@@ -1,6 +1,6 @@
 const DEFAULT_WEBHOOK_SECRET = "hook-123";
 const DEFAULT_TARGET_CHAT = "-1003167239288";
-const DEFAULT_REPOSITORY = "znamteam-max/HOH_NHL_Daily_Results";
+const DEFAULT_REPOSITORY = "RNGN-Home-of-Hockey/HOH_NHL_Daily_Results";
 const DEFAULT_GITHUB_REF = "main";
 const NHL_BASE = "https://api-web.nhle.com/v1";
 
