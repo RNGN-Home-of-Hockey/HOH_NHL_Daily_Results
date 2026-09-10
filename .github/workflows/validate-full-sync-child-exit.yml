@@ -1,0 +1,49 @@
+name: Validate Full Sync Child Exit
+
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-full-sync-child-exit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse full sync script
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'tools\run_full_history_sync.ps1'), [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw 'parse failed' }
+          Write-Host 'PARSE_OK'
+      - name: Validate numeric child exit codes
+        shell: powershell
+        run: |
+          @"
+          Write-Host 'CHILD_OK_OUTPUT'
+          exit 0
+          "@ | Set-Content -Encoding UTF8 .\child-ok.ps1
+          @"
+          Write-Host 'CHILD_FAIL_OUTPUT'
+          exit 7
+          "@ | Set-Content -Encoding UTF8 .\child-fail.ps1
+
+          function Invoke-ChildPowerShell([string]$ScriptPath) {
+              $process = Start-Process -FilePath 'powershell.exe' `
+                  -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $ScriptPath)) `
+                  -NoNewWindow -Wait -PassThru
+              return [int]$process.ExitCode
+          }
+
+          $ok = Invoke-ChildPowerShell (Resolve-Path '.\child-ok.ps1')
+          $fail = Invoke-ChildPowerShell (Resolve-Path '.\child-fail.ps1')
+          if ($ok -isnot [int]) { throw "OK not int: $($ok.GetType().FullName)" }
+          if ($fail -isnot [int]) { throw "FAIL not int: $($fail.GetType().FullName)" }
+          if ($ok -ne 0) { throw "Expected 0, got $ok" }
+          if ($fail -ne 7) { throw "Expected 7, got $fail" }
+          Write-Host "EXIT_CODES_OK ok=$ok fail=$fail"
