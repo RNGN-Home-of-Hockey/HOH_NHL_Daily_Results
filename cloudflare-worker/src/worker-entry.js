@@ -33,7 +33,7 @@ export default {
       console.error("Backfill safety stop: canary and full backfill cannot run together");
     } else if (canaryEnabled) {
       ctx.waitUntil(runScheduledCanary(env));
-    } else if (fullBackfillEnabled) {
+    } else if (fullBackfillEnabled && fullBackfillStartReached(env)) {
       ctx.waitUntil(runScheduledFullBackfill(env));
     }
 
@@ -145,6 +145,19 @@ async function runScheduledFullBackfill(env) {
     daily_game_limit: envInt(env.FULL_BACKFILL_DAILY_GAME_LIMIT, 20, 1, 10000),
     max_scan_days: envInt(env.FULL_BACKFILL_MAX_SCAN_DAYS, 14, 1, 31),
   });
+}
+
+function fullBackfillStartReached(env) {
+  const raw = String(env.FULL_BACKFILL_NOT_BEFORE_UTC || "").trim();
+  if (!raw) {
+    return true;
+  }
+  const timestamp = Date.parse(raw);
+  if (!Number.isFinite(timestamp)) {
+    console.error("Backfill safety stop: FULL_BACKFILL_NOT_BEFORE_UTC is invalid");
+    return false;
+  }
+  return Date.now() >= timestamp;
 }
 
 async function isManagementAuthorized(request, env) {
