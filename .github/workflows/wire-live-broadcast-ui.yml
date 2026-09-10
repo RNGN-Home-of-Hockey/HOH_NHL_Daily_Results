@@ -23,42 +23,30 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import base64
           p=Path('cloudflare-worker/src/broadcast-dashboard-v2.js')
           s=p.read_text()
-
           old="const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[];"
           new="const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],liveCards=[],liveTimer=null,currentData=null;"
-          if s.count(old)!=1:
-              raise SystemExit('state anchor mismatch')
+          if s.count(old)!=1: raise SystemExit('state anchor mismatch')
           s=s.replace(old,new,1)
-
           old="async function selectGame(id){selected=id;renderGames();$('#hero').innerHTML='<div class=\"empty\">Загружаю матч...</div>';const d=await api('/api/broadcast/games/'+id);renderGame(d)}"
           new="async function selectGame(id){selected=id;renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class=\"empty\">Загружаю матч...</div>';const d=await api('/api/broadcast/games/'+id);currentData=d;historicalCards=d.cards||[];renderGame(d);await refreshLive(id,true)}"
-          if s.count(old)!=1:
-              raise SystemExit('selectGame anchor mismatch')
+          if s.count(old)!=1: raise SystemExit('selectGame anchor mismatch')
           s=s.replace(old,new,1)
-
           old="function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class=\"herohead\"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class=\"match\">${teamHtml(g,'away')}<div class=\"score\">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class=\"periods\">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCards(d.cards||[]);renderPlayers(d.top_players||[]);renderEvents(d.events||[])}"
           new="function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class=\"herohead\"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class=\"match\">${teamHtml(g,'away')}<div class=\"score\">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class=\"periods\" id=\"liveclock\">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}"
-          if s.count(old)!=1:
-              raise SystemExit('renderGame anchor mismatch')
+          if s.count(old)!=1: raise SystemExit('renderGame anchor mismatch')
           s=s.replace(old,new,1)
-
           anchor="function renderCards(cards){currentCards=cards;"
-          if s.count(anchor)!=1:
-              raise SystemExit('renderCards anchor mismatch')
-          additions=r'''function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}renderCards(merged.slice(0,12));const sub=document.querySelector('.psub');if(sub)sub.textContent=liveCards.length?`LIVE ${liveCards.length} · история ${historicalCards.length} · рынок Winline подбирается по типу сигнала`:`Сильных live-сигналов сейчас нет · история ${historicalCards.length} · слабые тренды не показываем`}
-async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=l.cards||[];renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);c.textContent=parts.join(' · ')+' · LIVE FEED '+new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}if(['LIVE','CRIT'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
-'''
+          if s.count(anchor)!=1: raise SystemExit('renderCards anchor mismatch')
+          additions=base64.b64decode('ZnVuY3Rpb24gcmVuZGVyQ29tYmluZWRDYXJkcygpe2NvbnN0IHNlZW49bmV3IFNldCgpO2NvbnN0IG1lcmdlZD1bXTtmb3IoY29uc3QgYyBvZiBbLi4ubGl2ZUNhcmRzLC4uLmhpc3RvcmljYWxDYXJkc10pe2NvbnN0IGs9Yy5pZHx8YCR7Yy50eXBlfToke2MubWFya2V0Py50eXBlfHwnJ306JHtjLm1hcmtldD8uc3ViamVjdHx8Jyd9YDtpZihzZWVuLmhhcyhrKSljb250aW51ZTtzZWVuLmFkZChrKTttZXJnZWQucHVzaChjKX1yZW5kZXJDYXJkcyhtZXJnZWQuc2xpY2UoMCwxMikpO2NvbnN0IHN1Yj1kb2N1bWVudC5xdWVyeVNlbGVjdG9yKCcucHN1YicpO2lmKHN1YilzdWIudGV4dENvbnRlbnQ9bGl2ZUNhcmRzLmxlbmd0aD9gTElWRSAke2xpdmVDYXJkcy5sZW5ndGh9IMK3INC40YHRgtC+0YDQuNGPICR7aGlzdG9yaWNhbENhcmRzLmxlbmd0aH0gwrcg0YDRi9C90L7QuiBXaW5saW5lINC/0L7QtNCx0LjRgNCw0LXRgtGB0Y8g0L/QviDRgtC40L/RgyDRgdC40LPQvdCw0LvQsGA6YNCh0LjQu9GM0L3Ri9GFIGxpdmUt0YHQuNCz0L3QsNC70L7QsiDRgdC10LnRh9Cw0YEg0L3QtdGCIMK3INC40YHRgtC+0YDQuNGPICR7aGlzdG9yaWNhbENhcmRzLmxlbmd0aH0gwrcg0YHQu9Cw0LHRi9C1INGC0YDQtdC90LTRiyDQvdC1INC/0L7QutCw0LfRi9Cy0LDQtdC8YH0KYXN5bmMgZnVuY3Rpb24gcmVmcmVzaExpdmUoaWQsaW5pdGlhbD1mYWxzZSl7dHJ5e2NvbnN0IGw9YXdhaXQgYXBpKCcvYXBpL2Jyb2FkY2FzdC9saXZlLycraWQpO2lmKE51bWJlcihpZCkhPT1OdW1iZXIoc2VsZWN0ZWQpKXJldHVybjtsaXZlQ2FyZHM9bC5jYXJkc3x8W107cmVuZGVyQ29tYmluZWRDYXJkcygpO2NvbnN0IGM9JCgnI2xpdmVjbG9jaycpO2lmKGMmJmwuZ2FtZSl7Y29uc3QgcGFydHM9W2wuZ2FtZS5nYW1lX3N0YXRlLGwuZ2FtZS5wZXJpb2RfbnVtYmVyPydQJytsLmdhbWUucGVyaW9kX251bWJlcjpudWxsLGwuZ2FtZS50aW1lX3JlbWFpbmluZ10uZmlsdGVyKEJvb2xlYW4pO2MudGV4dENvbnRlbnQ9cGFydHMuam9pbignIMK3ICcpKycgwrcgTElWRSBGRUVEICcrbmV3IERhdGUobC5mZXRjaGVkX2F0KS50b0xvY2FsZVRpbWVTdHJpbmcoJ3J1LVJVJyx7aG91cjonMi1kaWdpdCcsbWludXRlOicyLWRpZ2l0JyxzZWNvbmQ6JzItZGlnaXQnfSl9aWYoWydMSVZFJywnQ1JJVCddLmluY2x1ZGVzKFN0cmluZyhsLmdhbWU/LmdhbWVfc3RhdGV8fCcnKS50b1VwcGVyQ2FzZSgpKSYmIWxpdmVUaW1lcil7bGl2ZVRpbWVyPXNldEludGVydmFsKCgpPT5yZWZyZXNoTGl2ZShpZCxmYWxzZSksMTUwMDApfX1jYXRjaChlKXtpZihpbml0aWFsKXtjb25zdCBzdWI9ZG9jdW1lbnQucXVlcnlTZWxlY3RvcignLnBzdWInKTtpZihzdWIpc3ViLnRleHRDb250ZW50PWDQmNGB0YLQvtGA0LjRjyAke2hpc3RvcmljYWxDYXJkcy5sZW5ndGh9IMK3IE5ITCBsaXZlIGZlZWQg0LLRgNC10LzQtdC90L3QviDQvdC10LTQvtGB0YLRg9C/0LXQvWB9fX0K').decode()
           s=s.replace(anchor,additions+anchor,1)
-
           p.write_text(s)
           PY
-
           node --check cloudflare-worker/src/live-betting-engine.js
           node --check cloudflare-worker/src/broadcast-dashboard-v2.js
           node --check cloudflare-worker/src/worker-entry.js
-
           node --input-type=module <<'NODE'
           import { buildLiveGameSnapshot } from './cloudflare-worker/src/live-betting-engine.js';
           for (const id of [2025030416, 2024020001, 2024020002]) {
