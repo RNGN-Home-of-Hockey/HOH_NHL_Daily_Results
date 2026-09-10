@@ -1,0 +1,49 @@
+name: Validate Local Warehouse
+
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-local-warehouse.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Syntax
+        run: python -m py_compile tools/build_local_warehouse.py
+      - name: Build from one real NHL game
+        run: |
+          mkdir -p local-data/nhl-history/games/20242025/2024020001
+          echo '{"ok":true}' > local-data/nhl-history/complete.json
+          python - <<'PY'
+          import json, urllib.request
+          from pathlib import Path
+          base='https://api-web.nhle.com/v1/gamecenter/2024020001/'
+          out=Path('local-data/nhl-history/games/20242025/2024020001')
+          for endpoint,name in [('boxscore','boxscore.json'),('play-by-play','play-by-play.json')]:
+              req=urllib.request.Request(base+endpoint,headers={'User-Agent':'HOH-warehouse-test/1.0','Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  payload=json.load(r)
+              (out/name).write_text(json.dumps(payload),encoding='utf-8')
+          PY
+          python tools/build_local_warehouse.py
+          python - <<'PY'
+          import json, sqlite3
+          s=json.load(open('local-data/warehouse/summary.json',encoding='utf-8'))
+          assert s['official_games']==1, s
+          assert not s['official_errors'], s
+          assert s['d1_rows']['games']==1, s
+          assert s['d1_rows']['team_game_features']==2, s
+          db=sqlite3.connect('local-data/warehouse/hoh_history.sqlite')
+          rows=db.execute('select team_tri,corsi_for,corsi_against,fenwick_for,fenwick_against from team_game_features order by team_tri').fetchall()
+          assert len(rows)==2, rows
+          assert all(r[1] is not None and r[2] is not None for r in rows), rows
+          print('WAREHOUSE_OK', s['d1_rows'], rows)
+          PY
