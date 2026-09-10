@@ -1,7 +1,7 @@
 import worker from "./index.js";
 import { getBackfillStatus, runBackfillStep } from "./data-core-backfill.js";
 import { getBackfillJob, runPersistentBackfillTick } from "./data-core-backfill-job.js";
-import { handleBroadcastRequest } from "./broadcast-dashboard.js";
+import { handleBroadcastRequest } from "./broadcast-dashboard-v2.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
