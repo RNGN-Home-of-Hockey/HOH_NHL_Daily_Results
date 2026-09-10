@@ -1,0 +1,51 @@
+name: HOH Broadcast App Runtime Fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/hoh-broadcast-app-runtime-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Add Wrangler helper shim to generated browser bundle
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/broadcast-dashboard-v2.js')
+          s=p.read_text()
+          old='return jsResponse(`(${browserApp.toString()})();`);'
+          new='return jsResponse(`const __name=(target,value)=>target;\\n(${browserApp.toString()})();`);'
+          if s.count(old)!=1:
+              raise SystemExit('expected app.js response anchor not found exactly once')
+          p.write_text(s.replace(old,new,1))
+          PY
+          node --check cloudflare-worker/src/broadcast-dashboard-v2.js
+          node --input-type=module <<'NODE'
+          import { handleBroadcastRequest } from './cloudflare-worker/src/broadcast-dashboard-v2.js';
+          import fs from 'node:fs/promises';
+          const response = await handleBroadcastRequest(new Request('https://x/broadcast/app.js'), {}, '/broadcast/app.js');
+          const body = await response.text();
+          await fs.writeFile('/tmp/broadcast-app.js', body);
+          if (!body.startsWith('const __name=')) throw new Error('runtime helper shim missing');
+          NODE
+          node --check /tmp/broadcast-app.js
+          git diff --check
+      - name: Commit runtime fix
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/broadcast-dashboard-v2.js
+          git commit -m 'Fix Broadcast browser runtime helper'
+          git push origin HEAD:main
