@@ -1,0 +1,38 @@
+name: Patch Final CSV Inventory
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-final-csv-inventory.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch downloader
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('tools/bulk_history_download.py')
+          s = p.read_text(encoding='utf-8')
+          old = '    atomic_json(root / "failed.json", failed)\n    complete = {\n'
+          new = '    atomic_json(root / "failed.json", failed)\n    # Re-scan manual CSVs at the end too, so files added while the overnight job was running are included.\n    inventory_manual_csvs(project_root, root)\n    complete = {\n'
+          if old not in s:
+              raise SystemExit('patch anchor missing or already patched')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+          python -m py_compile tools/bulk_history_download.py
+          git diff --check
+      - name: Commit
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add tools/bulk_history_download.py
+          git commit -m 'Refresh manual CSV inventory after overnight download'
+          git push origin HEAD:main
