@@ -270,6 +270,8 @@ function card({game=null,type,category,timing,score,eyebrow,value,title,explanat
     title,
     explanation,
     evidence:{sample_size:sample,...evidence},
+    note:`${market.label} · WINLINE: кэф — · промокод HOH`,
+    kind:category==="live"?"live":"history",
     market:{...market,odds:null,promo_code:"HOH",provider:"winline_pending"},
   };
 }

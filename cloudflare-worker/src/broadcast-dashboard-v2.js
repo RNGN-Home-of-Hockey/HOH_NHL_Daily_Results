@@ -1,3 +1,5 @@
+import { buildBettingInsights } from "./betting-insight-engine.js";
+
 const BROADCAST_PATH = "/broadcast";
 
 export async function handleBroadcastRequest(request, env, path) {
@@ -134,6 +136,7 @@ async function broadcastGameRoute(env, gamePk) {
 
     const teamStats=teamStatsResult.results||[];
     const playerStats=playerStatsResult.results||[];
+    const bettingInsights=await buildBettingInsights(env.DB,game);
     return jsonResponse({
       ok:true,
       game,
@@ -141,7 +144,8 @@ async function broadcastGameRoute(env, gamePk) {
       team_stats:teamStats,
       top_players:playerStats,
       events:eventsResult.results||[],
-      cards:buildQuickCards(game,teamStats,playerStats),
+      cards:bettingInsights,
+      quick_cards:buildQuickCards(game,teamStats,playerStats),
       persisted_cards:persistedCardsResult.results||[],
     });
   } catch (error) {
@@ -232,7 +236,7 @@ const DASHBOARD_HTML=String.raw`<!doctype html>
   <section class="hero" id="hero"><div class="empty">Выбираю матч...</div></section>
   <section class="metrics" id="metrics"></section>
   <section class="work">
-    <div class="panel"><div class="phead"><div><div class="ptitle">Очередь карточек</div><div class="psub">Сейчас — факты из матча. Исторические инсайты добавятся следующим слоем.</div></div><div class="safe">ручной показ</div></div><div class="cards" id="cards"></div></div>
+    <div class="panel"><div class="phead"><div><div class="ptitle">Очередь карточек</div><div class="psub">Сигналы: история + live-динамика → подходящий рынок Winline.</div></div><div class="safe">ручной показ</div></div><div class="cards" id="cards"></div></div>
     <div class="rightcol">
       <div class="panel"><div class="phead"><div class="ptitle">Игроки</div><div class="psub">топ по очкам</div></div><div class="players" id="players"></div></div>
       <div class="panel"><div class="phead"><div class="ptitle">События</div><div class="psub">голы / удаления</div></div><div class="events" id="events"></div></div>
