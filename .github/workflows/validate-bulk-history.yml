@@ -1,0 +1,36 @@
+name: Validate Bulk History Downloader
+
+on:
+  push:
+    paths:
+      - '.github/workflows/validate-bulk-history.yml'
+      - 'tools/bulk_history_download.py'
+      - 'tools/run_overnight_history.ps1'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Syntax
+        run: python -m py_compile tools/bulk_history_download.py
+      - name: NHL API smoke test
+        run: |
+          python - <<'PY'
+          import importlib.util
+          spec = importlib.util.spec_from_file_location('bulk', 'tools/bulk_history_download.py')
+          m = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(m)
+          box = m.request_json('https://api-web.nhle.com/v1/gamecenter/2024020001/boxscore', 30, 3)
+          pbp = m.request_json('https://api-web.nhle.com/v1/gamecenter/2024020001/play-by-play', 30, 3)
+          assert int(box['id']) == 2024020001
+          assert int(pbp['id']) == 2024020001
+          assert len(pbp.get('plays') or []) > 100
+          print('NHL_SMOKE_OK', box['id'], len(pbp['plays']))
+          PY
