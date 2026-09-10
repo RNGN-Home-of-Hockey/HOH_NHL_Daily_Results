@@ -1,0 +1,38 @@
+name: NHL PBP Shape Debug
+
+on:
+  push:
+    paths:
+      - '.github/workflows/nhl-pbp-shape-debug.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect official NHL PBP payload
+        run: |
+          set -euo pipefail
+          curl -sS 'https://api-web.nhle.com/v1/gamecenter/2025030416/play-by-play' -o /tmp/pbp.json
+          python - <<'PY'
+          import json
+          p=json.load(open('/tmp/pbp.json'))
+          print('TOP_KEYS', sorted(p.keys()))
+          print('HOME', p.get('homeTeam'))
+          print('AWAY', p.get('awayTeam'))
+          print('STATE', p.get('gameState'))
+          print('PERIOD', p.get('periodDescriptor'))
+          print('CLOCK', p.get('clock'))
+          plays=p.get('plays',[])
+          types={}
+          for x in plays:
+              types[x.get('typeDescKey')]=types.get(x.get('typeDescKey'),0)+1
+          print('TYPES', types)
+          shots=[x for x in plays if x.get('typeDescKey') in ('shot-on-goal','goal')]
+          last=shots[-20:]
+          print('LAST20')
+          for x in last:
+              print(x.get('sortOrder'),x.get('typeDescKey'),x.get('periodDescriptor'),x.get('timeInPeriod'),x.get('details',{}).get('eventOwnerTeamId'))
+          PY
