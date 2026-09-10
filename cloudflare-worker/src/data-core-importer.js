@@ -1,5 +1,10 @@
 const NHL_BASE = "https://api-web.nhle.com/v1";
 const FINAL_GAME_STATES = new Set(["FINAL", "OFF"]);
+const RETRYABLE_NHL_STATUSES = new Set([429, 500, 502, 503, 504]);
+const NHL_FETCH_MAX_ATTEMPTS = 4;
+const NHL_FETCH_TIMEOUT_MS = 20_000;
+const NHL_RETRY_BASE_DELAY_MS = 250;
+const NHL_RETRY_MAX_DELAY_MS = 5_000;
 
 const TEAM_UPSERT_SQL = `
   INSERT INTO teams (
@@ -31,7 +36,7 @@ const PLAYER_UPSERT_SQL = `
   INSERT INTO players (
     player_id, first_name_en, last_name_en, full_name_en,
     current_team_tri, position_code, sweater_number, shoots_catches,
-    active, updated_at
+    active, last_seen_game_start_utc, last_seen_game_pk, updated_at
   )
   SELECT
     json_extract(value, '$.player_id'),
@@ -43,6 +48,8 @@ const PLAYER_UPSERT_SQL = `
     json_extract(value, '$.sweater_number'),
     json_extract(value, '$.shoots_catches'),
     json_extract(value, '$.active'),
+    json_extract(value, '$.last_seen_game_start_utc'),
+    json_extract(value, '$.last_seen_game_pk'),
     CURRENT_TIMESTAMP
   FROM json_each(?)
   WHERE true
@@ -50,11 +57,58 @@ const PLAYER_UPSERT_SQL = `
     first_name_en = COALESCE(excluded.first_name_en, players.first_name_en),
     last_name_en = COALESCE(excluded.last_name_en, players.last_name_en),
     full_name_en = excluded.full_name_en,
-    current_team_tri = COALESCE(excluded.current_team_tri, players.current_team_tri),
-    position_code = COALESCE(excluded.position_code, players.position_code),
-    sweater_number = COALESCE(excluded.sweater_number, players.sweater_number),
+    current_team_tri = CASE
+      WHEN players.last_seen_game_start_utc IS NULL
+        OR excluded.last_seen_game_start_utc > players.last_seen_game_start_utc
+        OR (
+          excluded.last_seen_game_start_utc = players.last_seen_game_start_utc
+          AND excluded.last_seen_game_pk > COALESCE(players.last_seen_game_pk, -1)
+        )
+      THEN COALESCE(excluded.current_team_tri, players.current_team_tri)
+      ELSE players.current_team_tri
+    END,
+    position_code = CASE
+      WHEN players.last_seen_game_start_utc IS NULL
+        OR excluded.last_seen_game_start_utc > players.last_seen_game_start_utc
+        OR (
+          excluded.last_seen_game_start_utc = players.last_seen_game_start_utc
+          AND excluded.last_seen_game_pk > COALESCE(players.last_seen_game_pk, -1)
+        )
+      THEN COALESCE(excluded.position_code, players.position_code)
+      ELSE players.position_code
+    END,
+    sweater_number = CASE
+      WHEN players.last_seen_game_start_utc IS NULL
+        OR excluded.last_seen_game_start_utc > players.last_seen_game_start_utc
+        OR (
+          excluded.last_seen_game_start_utc = players.last_seen_game_start_utc
+          AND excluded.last_seen_game_pk > COALESCE(players.last_seen_game_pk, -1)
+        )
+      THEN COALESCE(excluded.sweater_number, players.sweater_number)
+      ELSE players.sweater_number
+    END,
     shoots_catches = COALESCE(excluded.shoots_catches, players.shoots_catches),
-    active = excluded.active,
+    active = players.active,
+    last_seen_game_start_utc = CASE
+      WHEN players.last_seen_game_start_utc IS NULL
+        OR excluded.last_seen_game_start_utc > players.last_seen_game_start_utc
+        OR (
+          excluded.last_seen_game_start_utc = players.last_seen_game_start_utc
+          AND excluded.last_seen_game_pk > COALESCE(players.last_seen_game_pk, -1)
+        )
+      THEN excluded.last_seen_game_start_utc
+      ELSE players.last_seen_game_start_utc
+    END,
+    last_seen_game_pk = CASE
+      WHEN players.last_seen_game_start_utc IS NULL
+        OR excluded.last_seen_game_start_utc > players.last_seen_game_start_utc
+        OR (
+          excluded.last_seen_game_start_utc = players.last_seen_game_start_utc
+          AND excluded.last_seen_game_pk > COALESCE(players.last_seen_game_pk, -1)
+        )
+      THEN excluded.last_seen_game_pk
+      ELSE players.last_seen_game_pk
+    END,
     updated_at = CURRENT_TIMESTAMP;
 `;
 
@@ -261,6 +315,109 @@ const PLAYER_GAME_STATS_UPSERT_SQL = `
     updated_at = CURRENT_TIMESTAMP;
 `;
 
+const GOALIE_GAME_STATS_UPSERT_SQL = `
+  INSERT INTO goalie_game_stats (
+    game_pk, player_id, team_tri, is_starter, decision, saves,
+    shots_against, goals_against, save_pct, toi_seconds,
+    even_strength_goals_against, power_play_goals_against,
+    shorthanded_goals_against, updated_at
+  )
+  SELECT
+    json_extract(value, '$.game_pk'),
+    json_extract(value, '$.player_id'),
+    json_extract(value, '$.team_tri'),
+    json_extract(value, '$.is_starter'),
+    json_extract(value, '$.decision'),
+    json_extract(value, '$.saves'),
+    json_extract(value, '$.shots_against'),
+    json_extract(value, '$.goals_against'),
+    json_extract(value, '$.save_pct'),
+    json_extract(value, '$.toi_seconds'),
+    json_extract(value, '$.even_strength_goals_against'),
+    json_extract(value, '$.power_play_goals_against'),
+    json_extract(value, '$.shorthanded_goals_against'),
+    CURRENT_TIMESTAMP
+  FROM json_each(?)
+  WHERE true
+  ON CONFLICT(game_pk, player_id) DO UPDATE SET
+    team_tri = excluded.team_tri,
+    is_starter = excluded.is_starter,
+    decision = excluded.decision,
+    saves = excluded.saves,
+    shots_against = excluded.shots_against,
+    goals_against = excluded.goals_against,
+    save_pct = excluded.save_pct,
+    toi_seconds = excluded.toi_seconds,
+    even_strength_goals_against = excluded.even_strength_goals_against,
+    power_play_goals_against = excluded.power_play_goals_against,
+    shorthanded_goals_against = excluded.shorthanded_goals_against,
+    updated_at = CURRENT_TIMESTAMP;
+`;
+
+const STALE_EVENT_PLAYERS_DELETE_SQL = `
+  DELETE FROM event_players
+  WHERE event_key LIKE ?
+    AND NOT EXISTS (
+      SELECT 1
+      FROM json_each(?) AS incoming
+      WHERE json_extract(incoming.value, '$.event_key') = event_players.event_key
+        AND json_extract(incoming.value, '$.player_id') = event_players.player_id
+        AND json_extract(incoming.value, '$.role') = event_players.role
+        AND json_extract(incoming.value, '$.ordinal') = event_players.ordinal
+    );
+`;
+
+const STALE_GAME_EVENTS_DELETE_SQL = `
+  DELETE FROM game_events
+  WHERE game_pk = ?
+    AND NOT EXISTS (
+      SELECT 1
+      FROM json_each(?) AS incoming
+      WHERE json_extract(incoming.value, '$.event_key') = game_events.event_key
+    );
+`;
+
+const STALE_PERIOD_SCORES_DELETE_SQL = `
+  DELETE FROM period_scores
+  WHERE game_pk = ?
+    AND NOT EXISTS (
+      SELECT 1
+      FROM json_each(?) AS incoming
+      WHERE json_extract(incoming.value, '$.period_number') = period_scores.period_number
+        AND json_extract(incoming.value, '$.period_type') = period_scores.period_type
+    );
+`;
+
+const STALE_TEAM_GAME_STATS_DELETE_SQL = `
+  DELETE FROM team_game_stats
+  WHERE game_pk = ?
+    AND NOT EXISTS (
+      SELECT 1
+      FROM json_each(?) AS incoming
+      WHERE json_extract(incoming.value, '$.team_tri') = team_game_stats.team_tri
+    );
+`;
+
+const STALE_PLAYER_GAME_STATS_DELETE_SQL = `
+  DELETE FROM player_game_stats
+  WHERE game_pk = ?
+    AND NOT EXISTS (
+      SELECT 1
+      FROM json_each(?) AS incoming
+      WHERE json_extract(incoming.value, '$.player_id') = player_game_stats.player_id
+    );
+`;
+
+const STALE_GOALIE_GAME_STATS_DELETE_SQL = `
+  DELETE FROM goalie_game_stats
+  WHERE game_pk = ?
+    AND NOT EXISTS (
+      SELECT 1
+      FROM json_each(?) AS incoming
+      WHERE json_extract(incoming.value, '$.player_id') = goalie_game_stats.player_id
+    );
+`;
+
 export async function importCurrentTeams(db, fetchImpl = fetch) {
   const sourceUrl = `${NHL_BASE}/standings/now`;
   const syncId = await startSyncRun(db, "teams", "current", { source_url: sourceUrl });
@@ -324,14 +481,16 @@ export async function importGame(db, gamePk, fetchImpl = fetch) {
     const awayTeam = teamFromGame(boxscore.awayTeam);
     const teams = [homeTeam, awayTeam];
     const teamById = new Map(teams.map((team) => [team.nhl_team_id, team.tri_code]));
-    const players = playersFromRoster(playByPlay.rosterSpots, teamById);
-    const rosterIds = new Set(players.map((player) => player.player_id));
     const game = gameFromPayload(boxscore);
+    const players = playersFromRoster(playByPlay.rosterSpots, teamById, game);
+    const rosterIds = new Set(players.map((player) => player.player_id));
     const events = eventsFromPlays(gamePk, playByPlay.plays, teamById);
+    validateScoreReconciliation(game, playByPlay.plays, teamById);
     const eventPlayers = eventPlayersFromPlays(events, playByPlay.plays, rosterIds);
     const periodScores = periodScoresFromPlays(gamePk, playByPlay.plays, teamById, homeTeam, awayTeam);
     const playerGameStats = playerStatsFromBoxscore(gamePk, boxscore, rosterIds);
     const teamGameStats = teamStatsFromBoxscore(gamePk, boxscore, playByPlay.plays);
+    const goalieGameStats = goalieStatsFromBoxscore(gamePk, boxscore, rosterIds);
 
     const records = {
       teams: teams.length,
@@ -342,6 +501,7 @@ export async function importGame(db, gamePk, fetchImpl = fetch) {
       period_scores: periodScores.length,
       team_game_stats: teamGameStats.length,
       player_game_stats: playerGameStats.length,
+      goalie_game_stats: goalieGameStats.length,
     };
     const existing = await existingGameRecordCounts(
       db,
@@ -351,7 +511,7 @@ export async function importGame(db, gamePk, fetchImpl = fetch) {
     );
     const { inserted, updated } = insertedAndUpdatedCounts(records, existing);
 
-    await db.batch([
+    const batchResults = await db.batch([
       jsonStatement(db, TEAM_UPSERT_SQL, teams),
       jsonStatement(db, PLAYER_UPSERT_SQL, players),
       jsonStatement(db, GAME_UPSERT_SQL, [game]),
@@ -360,7 +520,24 @@ export async function importGame(db, gamePk, fetchImpl = fetch) {
       jsonStatement(db, EVENT_PLAYER_UPSERT_SQL, eventPlayers),
       jsonStatement(db, TEAM_GAME_STATS_UPSERT_SQL, teamGameStats),
       jsonStatement(db, PLAYER_GAME_STATS_UPSERT_SQL, playerGameStats),
+      jsonStatement(db, GOALIE_GAME_STATS_UPSERT_SQL, goalieGameStats),
+      staleStatement(db, STALE_EVENT_PLAYERS_DELETE_SQL, `${gamePk}:%`, eventPlayers),
+      staleStatement(db, STALE_GAME_EVENTS_DELETE_SQL, gamePk, events),
+      staleStatement(db, STALE_PERIOD_SCORES_DELETE_SQL, gamePk, periodScores),
+      staleStatement(db, STALE_TEAM_GAME_STATS_DELETE_SQL, gamePk, teamGameStats),
+      staleStatement(db, STALE_PLAYER_GAME_STATS_DELETE_SQL, gamePk, playerGameStats),
+      staleStatement(db, STALE_GOALIE_GAME_STATS_DELETE_SQL, gamePk, goalieGameStats),
     ]);
+
+    const staleDeleted = {
+      event_players: statementChanges(batchResults[9]),
+      game_events: statementChanges(batchResults[10]),
+      period_scores: statementChanges(batchResults[11]),
+      team_game_stats: statementChanges(batchResults[12]),
+      player_game_stats: statementChanges(batchResults[13]),
+      goalie_game_stats: statementChanges(batchResults[14]),
+    };
+    const physicalWrites = batchResults.reduce((total, result) => total + statementChanges(result), 0);
 
     const metadata = {
       source_urls: [boxscoreUrl, playByPlayUrl],
@@ -368,6 +545,8 @@ export async function importGame(db, gamePk, fetchImpl = fetch) {
       matchup: `${awayTeam.tri_code} @ ${homeTeam.tri_code}`,
       final_score: `${awayTeam.score}-${homeTeam.score}`,
       records,
+      stale_deleted: staleDeleted,
+      physical_writes: physicalWrites,
     };
     await finishSyncRun(db, syncId, { status: "success", inserted, updated, metadata });
     return {
@@ -378,6 +557,8 @@ export async function importGame(db, gamePk, fetchImpl = fetch) {
       records,
       inserted,
       updated,
+      stale_deleted: staleDeleted,
+      physical_writes: physicalWrites,
     };
   } catch (error) {
     await recordSyncError(db, syncId, error, { source_urls: [boxscoreUrl, playByPlayUrl] });
@@ -385,12 +566,45 @@ export async function importGame(db, gamePk, fetchImpl = fetch) {
   }
 }
 
-async function fetchNhlJson(fetchImpl, url) {
-  const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
-  if (!response.ok) {
-    throw new Error(`NHL request failed with HTTP ${response.status}`);
+export async function fetchNhlJson(fetchImpl, url, options = {}) {
+  const sleepImpl = options.sleepImpl || sleep;
+  const timeoutMs = options.timeoutMs ?? NHL_FETCH_TIMEOUT_MS;
+
+  for (let attempt = 1; attempt <= NHL_FETCH_MAX_ATTEMPTS; attempt += 1) {
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch {
+      if (attempt === NHL_FETCH_MAX_ATTEMPTS) {
+        throw new Error(`NHL request failed after ${NHL_FETCH_MAX_ATTEMPTS} attempts (network_or_timeout)`);
+      }
+      await sleepImpl(retryDelayMs(null, attempt));
+      continue;
+    }
+
+    if (response.ok) {
+      try {
+        return await response.json();
+      } catch {
+        throw new Error("NHL response contained invalid JSON");
+      }
+    }
+
+    if (!RETRYABLE_NHL_STATUSES.has(response.status)) {
+      throw new Error(`NHL request failed with HTTP ${response.status}`);
+    }
+    if (attempt === NHL_FETCH_MAX_ATTEMPTS) {
+      throw new Error(
+        `NHL request failed with HTTP ${response.status} after ${NHL_FETCH_MAX_ATTEMPTS} attempts`,
+      );
+    }
+    await sleepImpl(retryDelayMs(response, attempt));
   }
-  return response.json();
+
+  throw new Error("NHL request failed");
 }
 
 function validateGamePayloads(gamePk, boxscore, playByPlay) {
@@ -404,12 +618,47 @@ function validateGamePayloads(gamePk, boxscore, playByPlay) {
   if (upper(playByPlay.gameState) !== state) {
     throw new Error("NHL payload game state mismatch");
   }
+  const boxscoreHome = requiredTeamIdentity(boxscore.homeTeam, "boxscore home team");
+  const boxscoreAway = requiredTeamIdentity(boxscore.awayTeam, "boxscore away team");
+  const playByPlayHome = requiredTeamIdentity(playByPlay.homeTeam, "play-by-play home team");
+  const playByPlayAway = requiredTeamIdentity(playByPlay.awayTeam, "play-by-play away team");
+  if (
+    boxscoreHome.id !== playByPlayHome.id ||
+    boxscoreHome.tri_code !== playByPlayHome.tri_code ||
+    boxscoreAway.id !== playByPlayAway.id ||
+    boxscoreAway.tri_code !== playByPlayAway.tri_code
+  ) {
+    throw new Error("NHL payload team identity mismatch");
+  }
+  if (
+    boxscoreHome.id === boxscoreAway.id ||
+    boxscoreHome.tri_code === boxscoreAway.tri_code
+  ) {
+    throw new Error("NHL payload has duplicate home and away teams");
+  }
+  const homeScore = requiredNonNegativeInteger(boxscore.homeTeam?.score, "home score");
+  const awayScore = requiredNonNegativeInteger(boxscore.awayTeam?.score, "away score");
+  if (
+    integerOrNull(playByPlay.homeTeam?.score) !== homeScore ||
+    integerOrNull(playByPlay.awayTeam?.score) !== awayScore
+  ) {
+    throw new Error("NHL payload final score mismatch");
+  }
   if (!Array.isArray(playByPlay.plays) || !playByPlay.plays.length) {
     throw new Error("NHL play-by-play returned no plays");
   }
   if (!Array.isArray(playByPlay.rosterSpots) || !playByPlay.rosterSpots.length) {
     throw new Error("NHL play-by-play returned no roster");
   }
+}
+
+function requiredTeamIdentity(source, label) {
+  const id = integerOrNull(source?.id);
+  const triCode = upper(source?.abbrev);
+  if (id === null || !triCode) {
+    throw new Error(`NHL payload is missing ${label} ID or abbreviation`);
+  }
+  return { id, tri_code: triCode };
 }
 
 function teamFromStandings(source) {
@@ -446,12 +695,12 @@ function teamFromGame(source) {
     location_en: location || null,
     active: 1,
     logo_url: textOrNull(source.logo),
-    score: requiredInteger(source.score, "team score"),
+    score: requiredNonNegativeInteger(source.score, "team score"),
     shots: integerOrNull(source.sog),
   };
 }
 
-function playersFromRoster(rosterSpots, teamById) {
+function playersFromRoster(rosterSpots, teamById, game) {
   const players = new Map();
   for (const source of rosterSpots) {
     const playerId = integerOrNull(source.playerId);
@@ -472,6 +721,8 @@ function playersFromRoster(rosterSpots, teamById) {
       sweater_number: integerOrNull(source.sweaterNumber),
       shoots_catches: null,
       active: 1,
+      last_seen_game_start_utc: game.scheduled_start_utc,
+      last_seen_game_pk: game.game_pk,
     });
   }
   return [...players.values()].sort((a, b) => a.player_id - b.player_id);
@@ -494,8 +745,8 @@ function gameFromPayload(boxscore) {
     game_state: state,
     home_tri: upper(homeTeam.abbrev),
     away_tri: upper(awayTeam.abbrev),
-    home_score: requiredInteger(homeTeam.score, "home score"),
-    away_score: requiredInteger(awayTeam.score, "away score"),
+    home_score: requiredNonNegativeInteger(homeTeam.score, "home score"),
+    away_score: requiredNonNegativeInteger(awayTeam.score, "away score"),
     current_period: integerOrNull(boxscore.periodDescriptor?.number),
     period_type: textOrNull(boxscore.periodDescriptor?.periodType),
     venue_name: localized(boxscore.venue) || null,
@@ -513,6 +764,8 @@ function eventsFromPlays(gamePk, plays, teamById) {
     }
     sortOrders.add(sortOrder);
     const details = play.details || {};
+    const periodType = textOrNull(play.periodDescriptor?.periodType);
+    const sourceEventType = textOrNull(play.typeDescKey) || String(play.typeCode);
     const ownerTeamId = integerOrNull(details.eventOwnerTeamId);
     const teamTri = ownerTeamId === null ? null : teamById.get(ownerTeamId);
     if (ownerTeamId !== null && !teamTri) {
@@ -523,9 +776,9 @@ function eventsFromPlays(gamePk, plays, teamById) {
       game_pk: gamePk,
       event_id: eventId,
       sort_order: sortOrder,
-      event_type: textOrNull(play.typeDescKey) || String(play.typeCode),
+      event_type: periodType === "SO" && sourceEventType === "goal" ? "shootout-goal" : sourceEventType,
       period_number: integerOrNull(play.periodDescriptor?.number),
-      period_type: textOrNull(play.periodDescriptor?.periodType),
+      period_type: periodType,
       time_in_period: textOrNull(play.timeInPeriod),
       time_remaining: textOrNull(play.timeRemaining),
       team_tri: teamTri || null,
@@ -538,6 +791,50 @@ function eventsFromPlays(gamePk, plays, teamById) {
     });
   }
   return events;
+}
+
+function validateScoreReconciliation(game, plays, teamById) {
+  const nonShootoutGoals = new Map([
+    [game.home_tri, 0],
+    [game.away_tri, 0],
+  ]);
+  let hasShootoutPlays = false;
+
+  for (const play of plays) {
+    const periodType = textOrNull(play.periodDescriptor?.periodType);
+    if (periodType === "SO") {
+      hasShootoutPlays = true;
+    }
+    if (play.typeDescKey !== "goal" || periodType === "SO") {
+      continue;
+    }
+    const teamTri = teamById.get(integerOrNull(play.details?.eventOwnerTeamId));
+    if (!nonShootoutGoals.has(teamTri)) {
+      throw new Error("NHL goal references an unknown scoring team");
+    }
+    nonShootoutGoals.set(teamTri, nonShootoutGoals.get(teamTri) + 1);
+  }
+
+  const homeGoals = nonShootoutGoals.get(game.home_tri);
+  const awayGoals = nonShootoutGoals.get(game.away_tri);
+  if (["REG", "OT"].includes(game.period_type)) {
+    if (homeGoals !== game.home_score || awayGoals !== game.away_score) {
+      throw new Error("NHL goal plays do not reconcile with the final score");
+    }
+    return;
+  }
+
+  if (game.period_type !== "SO") {
+    throw new Error(`NHL final game has unsupported period type: ${game.period_type || "unknown"}`);
+  }
+  const homeWon = game.home_score === game.away_score + 1;
+  const awayWon = game.away_score === game.home_score + 1;
+  const winnerBonusMatches = homeWon
+    ? game.home_score === homeGoals + 1 && game.away_score === awayGoals
+    : awayWon && game.away_score === awayGoals + 1 && game.home_score === homeGoals;
+  if (!hasShootoutPlays || homeGoals !== awayGoals || !winnerBonusMatches) {
+    throw new Error("NHL shootout goals do not reconcile with final winner-bonus semantics");
+  }
 }
 
 function eventPlayersFromPlays(events, plays, rosterIds) {
@@ -660,6 +957,74 @@ function playerStatsFromBoxscore(gamePk, boxscore, rosterIds) {
   return rows.sort((a, b) => a.player_id - b.player_id);
 }
 
+function goalieStatsFromBoxscore(gamePk, boxscore, rosterIds) {
+  const rows = new Map();
+  for (const [side, team] of [
+    ["awayTeam", boxscore.awayTeam],
+    ["homeTeam", boxscore.homeTeam],
+  ]) {
+    const teamTri = upper(team?.abbrev);
+    for (const source of boxscore.playerByGameStats?.[side]?.goalies || []) {
+      const playerId = integerOrNull(source.playerId);
+      if (playerId === null || !rosterIds.has(playerId)) {
+        throw new Error("NHL goalie is missing from the official roster");
+      }
+      if (rows.has(playerId)) {
+        throw new Error("NHL boxscore contains a duplicate goalie");
+      }
+      const parsedSaveShots = parseSaveShotsAgainst(source.saveShotsAgainst);
+      const saves = nonNegativeIntegerOrNull(source.saves, "goalie saves") ?? parsedSaveShots?.saves ?? null;
+      const shotsAgainst =
+        nonNegativeIntegerOrNull(source.shotsAgainst, "goalie shots against") ?? parsedSaveShots?.shots_against ?? null;
+      const savePct = numberOrNull(source.savePctg);
+      if (savePct !== null && (savePct < 0 || savePct > 1)) {
+        throw new Error("NHL goalie save percentage is outside 0..1");
+      }
+      rows.set(playerId, {
+        game_pk: gamePk,
+        player_id: playerId,
+        team_tri: teamTri,
+        is_starter: typeof source.starter === "boolean" ? Number(source.starter) : null,
+        decision: textOrNull(source.decision),
+        saves,
+        shots_against: shotsAgainst,
+        goals_against: nonNegativeIntegerOrNull(source.goalsAgainst, "goalie goals against"),
+        save_pct: savePct,
+        toi_seconds: toiSeconds(source.toi),
+        even_strength_goals_against: nonNegativeIntegerOrNull(
+          source.evenStrengthGoalsAgainst,
+          "goalie even-strength goals against",
+        ),
+        power_play_goals_against: nonNegativeIntegerOrNull(
+          source.powerPlayGoalsAgainst,
+          "goalie power-play goals against",
+        ),
+        shorthanded_goals_against: nonNegativeIntegerOrNull(
+          source.shorthandedGoalsAgainst,
+          "goalie shorthanded goals against",
+        ),
+      });
+    }
+  }
+  return [...rows.values()].sort((a, b) => a.player_id - b.player_id);
+}
+
+function parseSaveShotsAgainst(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const match = /^(\d+)\/(\d+)$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  const saves = Number(match[1]);
+  const shotsAgainst = Number(match[2]);
+  if (saves > shotsAgainst) {
+    throw new Error("NHL goalie saves exceed shots against");
+  }
+  return { saves, shots_against: shotsAgainst };
+}
+
 function teamStatsFromBoxscore(gamePk, boxscore, plays) {
   const faceoffs = (plays || []).filter((play) => play.typeDescKey === "faceoff");
   const winsByTeamId = new Map();
@@ -711,7 +1076,8 @@ async function existingGameRecordCounts(db, gamePk, teamCodes, playerIds) {
          (SELECT COUNT(*) FROM game_events WHERE game_pk = ?) AS events,
          (SELECT COUNT(*) FROM event_players WHERE event_key LIKE ?) AS event_players,
          (SELECT COUNT(*) FROM team_game_stats WHERE game_pk = ?) AS team_game_stats,
-         (SELECT COUNT(*) FROM player_game_stats WHERE game_pk = ?) AS player_game_stats;`,
+         (SELECT COUNT(*) FROM player_game_stats WHERE game_pk = ?) AS player_game_stats,
+         (SELECT COUNT(*) FROM goalie_game_stats WHERE game_pk = ?) AS goalie_game_stats;`,
     )
     .bind(
       JSON.stringify(teamCodes),
@@ -720,6 +1086,7 @@ async function existingGameRecordCounts(db, gamePk, teamCodes, playerIds) {
       gamePk,
       gamePk,
       `${gamePk}:%`,
+      gamePk,
       gamePk,
       gamePk,
     )
@@ -743,6 +1110,14 @@ function insertedAndUpdatedCounts(records, existing) {
 
 function jsonStatement(db, sql, rows) {
   return db.prepare(sql).bind(JSON.stringify(rows));
+}
+
+function staleStatement(db, sql, gameScope, rows) {
+  return db.prepare(sql).bind(gameScope, JSON.stringify(rows));
+}
+
+function statementChanges(result) {
+  return Number(result?.meta?.changes ?? result?.changes ?? 0);
 }
 
 async function startSyncRun(db, syncType, scopeKey, metadata) {
@@ -830,11 +1205,30 @@ function requiredInteger(value, label) {
   return parsed;
 }
 
+function nonNegativeIntegerOrNull(value, label) {
+  const parsed = integerOrNull(value);
+  if (parsed !== null && parsed < 0) {
+    throw new Error(`NHL payload has a negative ${label}`);
+  }
+  return parsed;
+}
+
+function requiredNonNegativeInteger(value, label) {
+  const parsed = requiredInteger(value, label);
+  if (parsed < 0) {
+    throw new Error(`NHL payload has a negative ${label}`);
+  }
+  return parsed;
+}
+
 function toiSeconds(value) {
   if (typeof value !== "string" || !/^\d+:\d{2}$/.test(value)) {
     return null;
   }
   const [minutes, seconds] = value.split(":").map(Number);
+  if (seconds > 59) {
+    return null;
+  }
   return minutes * 60 + seconds;
 }
 
@@ -845,4 +1239,26 @@ function sumAvailable(rows, key) {
 
 function safeError(error) {
   return String(error?.message || "import_failed").replace(/[\r\n]+/g, " ").slice(0, 500);
+}
+
+function retryDelayMs(response, attempt) {
+  const backoff = Math.min(NHL_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1), NHL_RETRY_MAX_DELAY_MS);
+  const retryAfter = parseRetryAfterMs(response?.headers?.get("Retry-After"));
+  return Math.min(Math.max(backoff, retryAfter ?? 0), NHL_RETRY_MAX_DELAY_MS);
+}
+
+function parseRetryAfterMs(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed) * 1_000;
+  }
+  const retryAt = Date.parse(trimmed);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : null;
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

@@ -11,6 +11,7 @@ const DATA_CORE_TABLES = [
   "event_players",
   "game_events",
   "games",
+  "goalie_game_stats",
   "insights",
   "notification_log",
   "period_scores",
