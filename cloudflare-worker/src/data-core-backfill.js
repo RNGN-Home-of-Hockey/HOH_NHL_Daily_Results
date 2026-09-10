@@ -2,6 +2,7 @@ import { fetchNhlJson, importGame } from "./data-core-importer.js";
 
 const NHL_BASE = "https://api-web.nhle.com/v1";
 const FINAL_GAME_STATES = new Set(["FINAL", "OFF"]);
+const ELIGIBLE_GAME_TYPES = new Set([2, 3]);
 const DEFAULT_MAX_SCAN_DAYS = 14;
 const MAX_SCAN_DAYS = 31;
 
@@ -33,6 +34,7 @@ export async function runBackfillStep(db, options = {}, fetchImpl = fetch) {
     const payload = await fetchNhlJson(fetchImpl, `${NHL_BASE}/schedule/${date}`);
     const games = gamesForDate(payload, date)
       .filter((game) => gameBelongsToSeason(game, season))
+      .filter((game) => ELIGIBLE_GAME_TYPES.has(integerOrNull(game.gameType)))
       .filter((game) => FINAL_GAME_STATES.has(upper(game.gameState || game.gameStatus)))
       .sort(compareGames);
 
