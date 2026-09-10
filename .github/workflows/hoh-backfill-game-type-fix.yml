@@ -1,0 +1,45 @@
+name: HOH Backfill Game Type Fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/hoh-backfill-game-type-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restrict backfill to regular season and playoffs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('cloudflare-worker/src/data-core-backfill.js')
+          text = path.read_text()
+          old1 = 'const FINAL_GAME_STATES = new Set(["FINAL", "OFF"]);\nconst DEFAULT_MAX_SCAN_DAYS = 14;'
+          new1 = 'const FINAL_GAME_STATES = new Set(["FINAL", "OFF"]);\nconst ELIGIBLE_GAME_TYPES = new Set([2, 3]);\nconst DEFAULT_MAX_SCAN_DAYS = 14;'
+          old2 = '      .filter((game) => gameBelongsToSeason(game, season))\n      .filter((game) => FINAL_GAME_STATES.has(upper(game.gameState || game.gameStatus)))'
+          new2 = '      .filter((game) => gameBelongsToSeason(game, season))\n      .filter((game) => ELIGIBLE_GAME_TYPES.has(integerOrNull(game.gameType)))\n      .filter((game) => FINAL_GAME_STATES.has(upper(game.gameState || game.gameStatus)))'
+          if text.count(old1) != 1 or text.count(old2) != 1:
+              raise SystemExit('Expected patch anchors not found exactly once')
+          text = text.replace(old1, new1).replace(old2, new2)
+          path.write_text(text)
+          PY
+          node --check cloudflare-worker/src/data-core-backfill.js
+          git diff --check
+          git diff -- cloudflare-worker/src/data-core-backfill.js
+      - name: Commit fix
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/data-core-backfill.js
+          git commit -m 'Restrict historical backfill to regular season and playoffs'
+          git push origin HEAD:main
