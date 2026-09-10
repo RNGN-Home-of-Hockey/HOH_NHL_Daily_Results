@@ -3,7 +3,7 @@ const BROADCAST_PATH = "/broadcast";
 export async function handleBroadcastRequest(request, env, path) {
   if (path === "/broadcast/app.js") {
     if (request.method !== "GET") return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
-    return jsResponse(`(${browserApp.toString()})();`);
+    return jsResponse(`const __name=(target,value)=>target;\n(${browserApp.toString()})();`);
   }
 
   if (path === BROADCAST_PATH) {
