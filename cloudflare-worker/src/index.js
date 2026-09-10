@@ -1,6 +1,5 @@
 import { importCurrentTeams, importGame } from "./data-core-importer.js";
 
-const DEFAULT_WEBHOOK_SECRET = "hook-123";
 const DEFAULT_TARGET_CHAT = "-1003167239288";
 const DEFAULT_REPOSITORY = "RNGN-Home-of-Hockey/HOH_NHL_Daily_Results";
 const DEFAULT_GITHUB_REF = "main";
@@ -132,6 +131,10 @@ async function handleRequest(request, env) {
     return dataCoreHealthRoute(env);
   }
 
+  if (path === "/api/admin/health") {
+    return adminHealthRoute(request, env);
+  }
+
   if (path === "/api/data-core/import/teams") {
     return dataCoreImportTeamsRoute(request, env);
   }
@@ -250,7 +253,7 @@ async function dataCoreImportTeamsRoute(request, env) {
   if (request.method !== "POST") {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
   }
-  if (!isManagementAuthorized(request, env)) {
+  if (!(await isManagementAuthorized(request, env))) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   }
   if (!env.DB) {
@@ -268,7 +271,7 @@ async function dataCoreImportGameRoute(request, env) {
   if (request.method !== "POST") {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
   }
-  if (!isManagementAuthorized(request, env)) {
+  if (!(await isManagementAuthorized(request, env))) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   }
   if (!env.DB) {
@@ -292,15 +295,23 @@ async function dataCoreImportGameRoute(request, env) {
 }
 
 async function setupWebhook(request, env) {
-  if (!isManagementAuthorized(request, env)) {
+  if (!(await isManagementAuthorized(request, env))) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  const verifySecret = webhookSecret(env);
+  if (!verifySecret) {
+    return jsonResponse(
+      { ok: false, error: "missing_telegram_webhook_verify_secret" },
+      503,
+    );
   }
 
   const url = new URL(request.url);
   const webhookUrl = `${publicBaseUrl(request, env)}/api/telegram`;
   const telegram = await telegramRequest(env, "setWebhook", {
     url: webhookUrl,
-    secret_token: webhookSecret(env),
+    secret_token: verifySecret,
     allowed_updates: ["message", "channel_post", "callback_query"],
   });
   const commands = await setBotCommands(env);
@@ -324,7 +335,7 @@ async function setupWebhook(request, env) {
 }
 
 async function sendMenuRoute(request, env) {
-  if (!isManagementAuthorized(request, env)) {
+  if (!(await isManagementAuthorized(request, env))) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   }
 
@@ -339,7 +350,7 @@ async function sendMenuRoute(request, env) {
 }
 
 async function setupCommandsRoute(request, env) {
-  if (!isManagementAuthorized(request, env)) {
+  if (!(await isManagementAuthorized(request, env))) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   }
 
@@ -364,8 +375,16 @@ async function telegramWebhook(request, env) {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
   }
 
+  const expectedSecret = webhookSecret(env);
+  if (!expectedSecret) {
+    return jsonResponse(
+      { ok: false, error: "missing_telegram_webhook_verify_secret" },
+      503,
+    );
+  }
+
   const providedSecret = request.headers.get("x-telegram-bot-api-secret-token") || "";
-  if (providedSecret !== webhookSecret(env)) {
+  if (!providedSecret || !(await secureEqual(providedSecret, expectedSecret))) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   }
 
@@ -396,7 +415,7 @@ async function telegramWebhook(request, env) {
 }
 
 async function cronRoute(request, env) {
-  if (!isManagementAuthorized(request, env)) {
+  if (!(await isManagementAuthorized(request, env))) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   }
 
@@ -728,12 +747,38 @@ async function triggerRepositoryDispatch(env, eventType, clientPayload) {
   return { ok: true, status_code: response.status, event_type: eventType };
 }
 
-function isManagementAuthorized(request, env) {
-  const url = new URL(request.url);
-  const provided = (url.searchParams.get("secret") || "").trim();
-  const authorization = request.headers.get("authorization") || "";
+async function adminHealthRoute(request, env) {
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+  if (request.method !== "GET") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  return jsonResponse({ ok: true, service: "hoh-admin" });
+}
+
+async function isManagementAuthorized(request, env) {
   const expected = managementSecret(env);
-  return provided === expected || authorization === `Bearer ${expected}`;
+  if (!expected) {
+    return false;
+  }
+
+  const authorization = (request.headers.get("authorization") || "").trim();
+  const match = /^Bearer\s+(\S+)$/i.exec(authorization);
+  if (!match) {
+    return false;
+  }
+
+  return secureEqual(match[1], expected);
+}
+
+async function secureEqual(provided, expected) {
+  const encoder = new TextEncoder();
+  const [providedHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  return crypto.subtle.timingSafeEqual(providedHash, expectedHash);
 }
 
 function isAllowedChat(env, chatId) {
@@ -751,11 +796,11 @@ function menuChatId(env) {
 }
 
 function webhookSecret(env) {
-  return String(env.TELEGRAM_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET).trim() || DEFAULT_WEBHOOK_SECRET;
+  return String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim();
 }
 
 function managementSecret(env) {
-  return String(env.WEBHOOK_SETUP_SECRET || webhookSecret(env)).trim() || webhookSecret(env);
+  return String(env.MANAGEMENT_API_SECRET || "").trim();
 }
 
 function publicBaseUrl(request, env) {

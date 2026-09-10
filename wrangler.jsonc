@@ -18,8 +18,6 @@
     }
   ],
   "vars": {
-    "TELEGRAM_WEBHOOK_SECRET": "hook-123",
-    "WEBHOOK_SETUP_SECRET": "hook-123",
     "TELEGRAM_MENU_CHAT_ID": "-1003167239288",
     "GITHUB_REPOSITORY": "RNGN-Home-of-Hockey/HOH_NHL_Daily_Results",
     "GITHUB_REF": "main",
