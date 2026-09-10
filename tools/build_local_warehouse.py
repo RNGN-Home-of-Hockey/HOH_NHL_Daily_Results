@@ -257,9 +257,14 @@ def parse_game(season_hint, box, pbp):
           "game_state":state,"home_tri":home_tri,"away_tri":away_tri,"home_score":home_score,"away_score":away_score,
           "current_period":integer(current_pd.get("number")),"period_type":text(current_pd.get("periodType")),
           "venue_name":localized(box.get("venue")) or localized((box.get("venue") or {}).get("default") if isinstance(box.get("venue"),dict) else None)}
-    periods=[]
+    # Always materialize regulation periods, including scoreless 0:0 periods.
+    periods=[
+        {"game_pk":game_pk,"period_number":pn,"period_type":"REG","home_goals":p[pn][0],"away_goals":p[pn][1]}
+        for pn in (1,2,3)
+    ]
     for (pn,pt),(hg,ag,_) in sorted(period_goals.items()):
-        periods.append({"game_pk":game_pk,"period_number":pn,"period_type":pt,"home_goals":hg,"away_goals":ag})
+        if pn > 3 and pt != "SO":
+            periods.append({"game_pk":game_pk,"period_number":pn,"period_type":pt,"home_goals":hg,"away_goals":ag})
     return {
       "teams":[(home_tri,team_name(home)),(away_tri,team_name(away))],"game":game,"periods":periods,
       "team_stats":[hs,aws],
@@ -364,16 +369,16 @@ def write_multirow_sql(path,table,cols,rows,conflict_cols,update_cols=None):
     values=',\n'.join('('+','.join(sql_value(r[c]) for c in cols)+')' for r in rows)
     if update_cols is None: update_cols=[c for c in cols if c not in conflict_cols]
     conflict=','.join(conflict_cols)
-    update=','.join(f"{c}=excluded.{c}" for c in update_cols)
-    path.write_text(f"INSERT INTO {table} ({','.join(cols)}) VALUES\n{values}\nON CONFLICT({conflict}) DO UPDATE SET {update};\n",encoding='utf-8')
+    action=("DO UPDATE SET "+','.join(f"{c}=excluded.{c}" for c in update_cols)) if update_cols else "DO NOTHING"
+    path.write_text(f"INSERT INTO {table} ({','.join(cols)}) VALUES\n{values}\nON CONFLICT({conflict}) {action};\n",encoding='utf-8')
 
 
-def export_table(db,table,conflict_cols,prefix,batch=200,exclude=()):
+def export_table(db,table,conflict_cols,prefix,batch=200,exclude=(),update_cols=None):
     rows=[dict(r) for r in db.execute(f"SELECT * FROM {table}")]
     if not rows: return 0
     cols=[c for c in rows[0].keys() if c not in exclude]
     for idx in range(0,len(rows),batch):
-        write_multirow_sql(CHUNK_ROOT/f"{prefix}_{idx//batch:04d}.sql",table,cols,rows[idx:idx+batch],conflict_cols)
+        write_multirow_sql(CHUNK_ROOT/f"{prefix}_{idx//batch:04d}.sql",table,cols,rows[idx:idx+batch],conflict_cols,update_cols)
     return len(rows)
 
 
@@ -381,7 +386,7 @@ def export_d1(db):
     if CHUNK_ROOT.exists(): shutil.rmtree(CHUNK_ROOT)
     CHUNK_ROOT.mkdir(parents=True,exist_ok=True)
     counts={}
-    counts['teams']=export_table(db,'teams',['tri_code'],'010_teams',100)
+    counts['teams']=export_table(db,'teams',['tri_code'],'010_teams',100,update_cols=[])
     counts['games']=export_table(db,'games',['game_pk'],'020_games',150,exclude=('game_date',))
     counts['period_scores']=export_table(db,'period_scores',['game_pk','period_number','period_type'],'030_periods',250)
     counts['team_game_stats']=export_table(db,'team_game_stats',['game_pk','team_tri'],'040_team_stats',200)
