@@ -14,10 +14,10 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 Write-Host ''
 Write-Host 'HOH NHL overnight history download'
-Write-Host ('Repo:       ' + $RepoRoot)
-Write-Host ('Manual CSV: ' + $ManualDir)
-Write-Host ('NHL archive:' + $HistoryDir)
-Write-Host ('Log:        ' + $LogFile)
+Write-Host ('Repo:        ' + $RepoRoot)
+Write-Host ('Manual CSV:  ' + $ManualDir)
+Write-Host ('NHL archive: ' + $HistoryDir)
+Write-Host ('Log:         ' + $LogFile)
 Write-Host ''
 
 $python = Get-Command python -ErrorAction SilentlyContinue
@@ -25,8 +25,28 @@ if (-not $python) {
     throw 'Python was not found in PATH.'
 }
 
-& python tools\bulk_history_download.py --workers 6 2>&1 | Tee-Object -FilePath $LogFile
-$exit = $LASTEXITCODE
+# Keep Windows awake while the unattended downloader is active.
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class HOHSleepGuard {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern uint SetThreadExecutionState(uint esFlags);
+}
+"@
+$ES_CONTINUOUS = [uint32]0x80000000
+$ES_SYSTEM_REQUIRED = [uint32]0x00000001
+[void][HOHSleepGuard]::SetThreadExecutionState($ES_CONTINUOUS -bor $ES_SYSTEM_REQUIRED)
+
+$exit = 1
+try {
+    & python tools\bulk_history_download.py --workers 6 2>&1 | Tee-Object -FilePath $LogFile
+    $exit = $LASTEXITCODE
+}
+finally {
+    # Restore normal Windows sleep behavior when the script finishes or is interrupted.
+    [void][HOHSleepGuard]::SetThreadExecutionState($ES_CONTINUOUS)
+}
 
 Write-Host ''
 if ($exit -eq 0) {
