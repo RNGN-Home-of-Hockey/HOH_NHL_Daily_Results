@@ -1,4 +1,5 @@
 import { withDemoOdds } from "./demo-winline-odds.js";
+import { buildFeatureMarketInsights } from "./feature-market-insights.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -53,6 +54,8 @@ export async function buildBettingInsights(db, game) {
     db.prepare(conferenceSql()).bind(season,before),
   ]);
 
+  const featureInsights = await buildFeatureMarketInsights(db, game);
+
   const insights = [];
   insights.push(...momentumInsights(momentumR.results || [], game));
   insights.push(...formInsights(awayFormR.results || [], away, home));
@@ -60,6 +63,7 @@ export async function buildBettingInsights(db, game) {
   insights.push(...periodInsights(periodR.results || [], game));
   insights.push(...h2hInsights(h2hR.results || [], game));
   insights.push(...conferenceInsights(conferenceR.results?.[0] || null, game));
+  insights.push(...featureInsights);
 
   return dedupe(insights)
     .sort((a,b) => b.score-a.score)

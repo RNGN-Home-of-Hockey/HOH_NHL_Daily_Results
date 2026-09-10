@@ -19,6 +19,7 @@ const DATA_CORE_TABLES = [
   "standings_snapshots",
   "subscriptions",
   "sync_runs",
+  "team_game_features",
   "team_game_stats",
   "teams",
   "telegram_users",

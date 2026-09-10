@@ -1,4 +1,5 @@
 import { fetchNhlJson, importGame } from "./data-core-importer.js";
+import { refreshTeamGameFeatures } from "./team-game-features.js";
 
 const NHL_BASE = "https://api-web.nhle.com/v1";
 const FINAL_GAME_STATES = new Set(["FINAL", "OFF"]);
@@ -82,6 +83,7 @@ export async function runBackfillStep(db, options = {}, fetchImpl = fetch) {
       }
 
       const importResult = await importGame(db, gamePk, fetchImpl);
+      const featureResult = await refreshTeamGameFeatures(db, gamePk);
       return {
         ok: true,
         action: "backfill_step",
@@ -97,6 +99,7 @@ export async function runBackfillStep(db, options = {}, fetchImpl = fetch) {
         scanned_final_games: scannedFinalGames,
         skipped_existing: skippedExisting,
         import_result: importResult,
+        feature_result: featureResult,
       };
     }
 
