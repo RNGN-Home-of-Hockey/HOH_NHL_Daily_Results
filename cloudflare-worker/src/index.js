@@ -80,3 +80,889 @@ const TEAM_EMOJI = {
   FLA: "🐆",
   LAK: "👑",
   MIN: "🌲",
+  MTL: "🇨🇦",
+  NSH: "🐯",
+  NJD: "😈",
+  NYI: "🏝️",
+  NYR: "🗽",
+  OTT: "🛡",
+  PHI: "🛩",
+  PIT: "🐧",
+  SJS: "🦈",
+  SEA: "🦑",
+  STL: "🎵",
+  TBL: "⚡",
+  TOR: "🍁",
+  VAN: "🐳",
+  VGK: "🎰",
+  WSH: "🦅",
+  WPG: "✈️",
+  UTA: "🧊",
+};
+
+const WEEKDAYS_RU = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
+
+export default {
+  async fetch(request, env) {
+    return handleRequest(request, env);
+  },
+
+  async scheduled(controller, env, ctx) {
+    if (!envFlag(env.CLOUDFLARE_CRON_ENABLED, false)) {
+      return;
+    }
+
+    ctx.waitUntil(
+      triggerRepositoryDispatch(env, eventName(env, "GITHUB_DISPATCH_EVENT_POLL", "nhl_poll"), {
+        source: "cloudflare_cron",
+        scheduled_time: controller.scheduledTime,
+      }),
+    );
+  },
+};
+
+async function handleRequest(request, env) {
+  const url = new URL(request.url);
+  const path = stripTrailingSlash(url.pathname);
+
+  if (path === "") {
+    return jsonResponse({ ok: true, service: "hoh-nhl-daily-results", runtime: "cloudflare-workers" });
+  }
+
+  if (["/api/data-core/health", "/data-core/health"].includes(path)) {
+    return dataCoreHealthRoute(env);
+  }
+
+  if (path === "/api/admin/health") {
+    return adminHealthRoute(request, env);
+  }
+
+  if (path === "/api/data-core/import/teams") {
+    return dataCoreImportTeamsRoute(request, env);
+  }
+
+  if (path === "/api/data-core/import/game") {
+    return dataCoreImportGameRoute(request, env);
+  }
+
+  if (["/api/setup-webhook", "/setup-webhook"].includes(path)) {
+    return setupWebhook(request, env);
+  }
+
+  if (["/api/menu", "/menu"].includes(path)) {
+    return sendMenuRoute(request, env);
+  }
+
+  if (["/api/setup-commands", "/setup-commands"].includes(path)) {
+    return setupCommandsRoute(request, env);
+  }
+
+  if (["/api/telegram", "/telegram"].includes(path)) {
+    return telegramWebhook(request, env);
+  }
+
+  if (["/api/cron", "/cron"].includes(path)) {
+    return cronRoute(request, env);
+  }
+
+  return jsonResponse({ ok: false, error: "not_found" }, 404);
+}
+
+async function dataCoreHealthRoute(env) {
+  const responseBase = {
+    service: "hoh-data-core",
+    binding: "DB",
+  };
+
+  if (!env.DB) {
+    return jsonResponse(
+      {
+        ok: false,
+        ...responseBase,
+        schema_ok: false,
+        error: "missing_d1_binding",
+      },
+      503,
+    );
+  }
+
+  try {
+    const tablesResult = await env.DB.prepare(
+      `SELECT name
+       FROM sqlite_schema
+       WHERE type = 'table'
+         AND name NOT LIKE 'sqlite_%'
+       ORDER BY name;`,
+    ).all();
+    const availableTables = new Set((tablesResult.results || []).map((row) => String(row.name)));
+    const presentTables = DATA_CORE_TABLES.filter((name) => availableTables.has(name));
+    const missingTables = DATA_CORE_TABLES.filter((name) => !availableTables.has(name));
+    const schemaOk = missingTables.length === 0;
+
+    if (!schemaOk) {
+      return jsonResponse(
+        {
+          ok: false,
+          ...responseBase,
+          schema_ok: false,
+          expected_table_count: DATA_CORE_TABLES.length,
+          present_table_count: presentTables.length,
+          missing_tables: missingTables,
+          present_tables: presentTables,
+        },
+        503,
+      );
+    }
+
+    const counts = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM teams) AS teams,
+         (SELECT COUNT(*) FROM players) AS players,
+         (SELECT COUNT(*) FROM games) AS games;`,
+    ).first();
+    if (!counts) {
+      throw new Error("missing_counts_row");
+    }
+
+    return jsonResponse({
+      ok: true,
+      ...responseBase,
+      schema_ok: true,
+      expected_table_count: DATA_CORE_TABLES.length,
+      present_table_count: presentTables.length,
+      missing_tables: [],
+      present_tables: presentTables,
+      counts: {
+        teams: Number(counts.teams),
+        players: Number(counts.players),
+        games: Number(counts.games),
+      },
+    });
+  } catch {
+    return jsonResponse(
+      {
+        ok: false,
+        ...responseBase,
+        schema_ok: false,
+        error: "d1_query_failed",
+      },
+      500,
+    );
+  }
+}
+
+async function dataCoreImportTeamsRoute(request, env) {
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+  if (!env.DB) {
+    return jsonResponse({ ok: false, action: "import_teams", error: "missing_d1_binding" }, 503);
+  }
+
+  try {
+    return jsonResponse(await importCurrentTeams(env.DB));
+  } catch {
+    return jsonResponse({ ok: false, action: "import_teams", error: "import_failed" }, 500);
+  }
+}
+
+async function dataCoreImportGameRoute(request, env) {
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+  if (!env.DB) {
+    return jsonResponse({ ok: false, action: "import_game", error: "missing_d1_binding" }, 503);
+  }
+
+  const rawGamePk = new URL(request.url).searchParams.get("game_pk") || "";
+  if (!/^\d+$/.test(rawGamePk)) {
+    return jsonResponse({ ok: false, action: "import_game", error: "invalid_game_pk" }, 400);
+  }
+  const gamePk = Number(rawGamePk);
+  if (!Number.isSafeInteger(gamePk) || gamePk <= 0) {
+    return jsonResponse({ ok: false, action: "import_game", error: "invalid_game_pk" }, 400);
+  }
+
+  try {
+    return jsonResponse(await importGame(env.DB, gamePk));
+  } catch {
+    return jsonResponse({ ok: false, action: "import_game", game_pk: gamePk, error: "import_failed" }, 500);
+  }
+}
+
+async function setupWebhook(request, env) {
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  const verifySecret = webhookSecret(env);
+  if (!verifySecret) {
+    return jsonResponse(
+      { ok: false, error: "missing_telegram_webhook_verify_secret" },
+      503,
+    );
+  }
+
+  const url = new URL(request.url);
+  const webhookUrl = `${publicBaseUrl(request, env)}/api/telegram`;
+  const telegram = await telegramRequest(env, "setWebhook", {
+    url: webhookUrl,
+    secret_token: verifySecret,
+    allowed_updates: ["message", "channel_post", "callback_query"],
+  });
+  const commands = await setBotCommands(env);
+
+  let menu = null;
+  if (queryBool(url, "send_menu", true) && telegram.ok) {
+    menu = await sendMenu(env, menuChatId(env));
+  }
+
+  return jsonResponse(
+    {
+      ok: telegram.ok,
+      webhook_url: webhookUrl,
+      webhook_secret: "configured",
+      telegram,
+      commands,
+      menu,
+    },
+    telegram.ok ? 200 : 500,
+  );
+}
+
+async function sendMenuRoute(request, env) {
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  const url = new URL(request.url);
+  const chatId = (url.searchParams.get("chat") || menuChatId(env)).trim();
+  if (!chatId) {
+    return jsonResponse({ ok: false, error: "missing_chat" }, 500);
+  }
+
+  const telegram = await sendMenu(env, chatId);
+  return jsonResponse({ ok: telegram.ok, chat_id: chatId, telegram }, telegram.ok ? 200 : 500);
+}
+
+async function setupCommandsRoute(request, env) {
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  const commands = await setBotCommands(env);
+  return jsonResponse({ ok: commands.ok, commands }, commands.ok ? 200 : 500);
+}
+
+async function setBotCommands(env) {
+  return telegramRequest(env, "setMyCommands", {
+    commands: [
+      { command: "menu", description: "Показать меню" },
+      { command: "latest", description: "Показать последние матчи" },
+      { command: "schedule", description: "Расписание по дням" },
+      { command: "reload", description: "Загрузить заново последний игровой день" },
+      { command: "resend", description: "Повторить отправку последнего игрового дня" },
+    ],
+  });
+}
+
+async function telegramWebhook(request, env) {
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const expectedSecret = webhookSecret(env);
+  if (!expectedSecret) {
+    return jsonResponse(
+      { ok: false, error: "missing_telegram_webhook_verify_secret" },
+      503,
+    );
+  }
+
+  const providedSecret = request.headers.get("x-telegram-bot-api-secret-token") || "";
+  if (!providedSecret || !(await secureEqual(providedSecret, expectedSecret))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  const update = await request.json();
+  const callback = update.callback_query || null;
+  if (callback) {
+    return handleCallback(callback, env);
+  }
+
+  const message = update.message || update.channel_post || {};
+  const chatId = message.chat?.id;
+  if (!isAllowedChat(env, chatId)) {
+    return jsonResponse({ ok: true, skipped: "chat_not_allowed" });
+  }
+
+  const command = commandName(message.text || "");
+  if (["/start", "/menu", "/help"].includes(command)) {
+    await sendMenu(env, chatId);
+  } else if (command === "/latest") {
+    await sendLatestMatches(env, chatId);
+  } else if (command === "/schedule") {
+    await sendScheduleOverview(env, chatId);
+  } else if (["/reload", "/resend"].includes(command)) {
+    await resendLatestDay(env, chatId);
+  }
+
+  return jsonResponse({ ok: true });
+}
+
+async function cronRoute(request, env) {
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+
+  const result = await triggerRepositoryDispatch(env, eventName(env, "GITHUB_DISPATCH_EVENT_POLL", "nhl_poll"), {
+    source: "cloudflare_http_cron",
+  });
+  return jsonResponse({ ok: true, dispatch: result });
+}
+
+async function handleCallback(callback, env) {
+  const callbackId = callback.id;
+  const data = callback.data || "";
+  const chatId = callback.message?.chat?.id;
+
+  if (!isAllowedChat(env, chatId)) {
+    await answerCallback(env, callbackId, "Эта кнопка доступна только в группе HOH NHL Results.");
+    return jsonResponse({ ok: true, skipped: "chat_not_allowed" });
+  }
+
+  if (data === "latest_matches") {
+    await answerCallback(env, callbackId, "Показываю последние матчи...");
+    await sendLatestMatches(env, chatId);
+    return jsonResponse({ ok: true, action: data });
+  }
+
+  if (data === "schedule_overview") {
+    await answerCallback(env, callbackId, "Показываю расписание...");
+    await sendScheduleOverview(env, chatId);
+    return jsonResponse({ ok: true, action: data });
+  }
+
+  if (data === "resend_last_day") {
+    await answerCallback(env, callbackId, "Запускаю повторную отправку...");
+    const result = await resendLatestDay(env, chatId);
+    return jsonResponse({ ok: result.ok, action: data, dispatch: result }, result.ok ? 200 : 500);
+  }
+
+  await answerCallback(env, callbackId, "Неизвестная команда");
+  return jsonResponse({ ok: false, error: "unknown_callback" }, 400);
+}
+
+async function sendLatestMatches(env, chatId) {
+  try {
+    await sendText(env, chatId, await latestMatchesText(env));
+    return { ok: true };
+  } catch (error) {
+    await sendText(env, chatId, `Не получилось загрузить последние матчи: ${error.message}`);
+    return { ok: false, error: error.message };
+  }
+}
+
+async function sendScheduleOverview(env, chatId) {
+  try {
+    await sendText(env, chatId, await scheduleOverviewText(env));
+    return { ok: true };
+  } catch (error) {
+    await sendText(env, chatId, `Не получилось загрузить расписание: ${error.message}`);
+    return { ok: false, error: error.message };
+  }
+}
+
+async function resendLatestDay(env, chatId) {
+  await sendText(env, chatId, "Запускаю повторную отправку последнего игрового дня.");
+
+  try {
+    const result = await triggerRepositoryDispatch(env, eventName(env, "GITHUB_DISPATCH_EVENT_RESEND", "resend_last_day"), {
+      source: "telegram_menu",
+      resend_last_day: "true",
+      target_chat_id: menuChatId(env),
+    });
+    await sendText(env, chatId, "Готово: GitHub Actions запущен, последний игровой день будет отправлен повторно.");
+    return { ok: true, ...result };
+  } catch (error) {
+    await sendText(env, chatId, `Не получилось запустить повторную отправку: ${error.message}`);
+    return { ok: false, error: error.message };
+  }
+}
+
+async function latestMatchesText(env) {
+  const baseDay = currentHockeyDayPT();
+  const daysBack = envInt(env.MENU_LATEST_DAYS_BACK, 6, 1, 14);
+  const limit = envInt(env.MENU_LATEST_LIMIT, 12, 3, 25);
+
+  const metas = [];
+  for (const day of dateRange(baseDay, -daysBack, 1)) {
+    metas.push(...(await metasForDay(day)));
+  }
+
+  const seen = new Set();
+  const finals = metas
+    .filter((meta) => {
+      if (seen.has(meta.gamePk) || !isFinalState(meta.state)) {
+        return false;
+      }
+      seen.add(meta.gamePk);
+      return true;
+    })
+    .sort((a, b) => b.gameDateUTC.getTime() - a.gameDateUTC.getTime());
+
+  if (!finals.length) {
+    return "Последние завершённые матчи не найдены.";
+  }
+
+  return ["Последние завершённые матчи", "", ...finals.slice(0, limit).map(matchLine)].join("\n");
+}
+
+async function scheduleOverviewText(env) {
+  const baseDay = currentHockeyDayPT();
+  const daysBack = envInt(env.MENU_SCHEDULE_DAYS_BACK, 2, 0, 7);
+  const daysForward = envInt(env.MENU_SCHEDULE_DAYS_FORWARD, 10, 1, 21);
+  const lines = ["Расписание NHL по игровым дням", ""];
+
+  for (const day of dateRange(baseDay, -daysBack, daysForward)) {
+    const metas = await metasForDay(day);
+    const total = metas.length;
+    const finalCount = metas.filter((meta) => isFinalState(meta.state)).length;
+    const liveCount = metas.filter((meta) => isLiveishState(meta.state)).length;
+    const upcomingCount = Math.max(0, total - finalCount - liveCount);
+    const weekday = WEEKDAYS_RU[weekdayIndex(day)];
+    const status = `${finalCount} завершено, ${liveCount} в игре, ${upcomingCount} впереди`;
+    lines.push(`${formatDay(day)} ${weekday} — ${total} ${pluralRu(total, "матч", "матча", "матчей")}: ${status}`);
+  }
+
+  return lines.join("\n");
+}
+
+async function metasForDay(day) {
+  const games = await fetchGamesForDay(day);
+  return games.map(gameToMeta).filter(Boolean);
+}
+
+async function fetchGamesForDay(day) {
+  const response = await fetch(`${NHL_BASE}/schedule/${day}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(`NHL schedule failed: HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  let games = payload.games || [];
+  if (!games.length && Array.isArray(payload.gameWeek)) {
+    games = payload.gameWeek.flatMap((weekDay) => weekDay.games || []);
+  }
+
+  if (games.some((game) => Object.prototype.hasOwnProperty.call(game, "gameDate"))) {
+    games = games.filter((game) => String(game.gameDate || "") === day);
+  }
+
+  const seen = new Set();
+  return games.filter((game) => {
+    const id = firstInt(game.id, game.gameId, game.gamePk);
+    if (!id || seen.has(id)) {
+      return false;
+    }
+    seen.add(id);
+    return true;
+  });
+}
+
+function gameToMeta(game) {
+  const gamePk = firstInt(game.id, game.gameId, game.gamePk);
+  if (!gamePk) {
+    return null;
+  }
+
+  const home = game.homeTeam || {};
+  const away = game.awayTeam || {};
+  const homeTri = upper(home.abbrev || home.triCode || home.teamAbbrev);
+  const awayTri = upper(away.abbrev || away.triCode || away.teamAbbrev);
+  const homeScore = firstInt(home.score);
+  const awayScore = firstInt(away.score);
+  const state = upper(game.gameState || game.gameStatus);
+  const gameDateUTC = parseGameDate(game.startTimeUTC || game.gameDate);
+
+  const series = game.seriesStatus || {};
+  const seriesGame = firstInt(series.gameNumberOfSeries) || null;
+  let homeSeriesWins = null;
+  let awaySeriesWins = null;
+  const top = upper(series.topSeedTeamAbbrev);
+  const bottom = upper(series.bottomSeedTeamAbbrev);
+  const topWins = firstInt(series.topSeedWins);
+  const bottomWins = firstInt(series.bottomSeedWins);
+
+  if (homeTri === top) {
+    homeSeriesWins = topWins;
+  } else if (homeTri === bottom) {
+    homeSeriesWins = bottomWins;
+  }
+  if (awayTri === top) {
+    awaySeriesWins = topWins;
+  } else if (awayTri === bottom) {
+    awaySeriesWins = bottomWins;
+  }
+
+  if (
+    seriesGame &&
+    isFinalState(state) &&
+    homeSeriesWins !== null &&
+    awaySeriesWins !== null &&
+    homeScore !== awayScore &&
+    homeSeriesWins + awaySeriesWins === seriesGame - 1
+  ) {
+    if (homeScore > awayScore) {
+      homeSeriesWins += 1;
+    } else {
+      awaySeriesWins += 1;
+    }
+  }
+
+  return {
+    gamePk,
+    gameDateUTC,
+    state,
+    homeTri,
+    awayTri,
+    homeScore,
+    awayScore,
+    seriesGame,
+    homeSeriesWins,
+    awaySeriesWins,
+  };
+}
+
+function matchLine(meta) {
+  const details = seriesText(meta);
+  const suffix = details ? ` · ${details}` : "";
+  return `${formatDay(toPTDate(meta.gameDateUTC))} · ${teamLabel(meta.homeTri)} ${meta.homeScore}:${meta.awayScore} ${teamLabel(meta.awayTri)}${suffix}`;
+}
+
+function seriesText(meta) {
+  const pieces = [];
+  if (meta.seriesGame) {
+    pieces.push(`Матч №${meta.seriesGame}`);
+  }
+  if (meta.homeSeriesWins !== null && meta.awaySeriesWins !== null) {
+    pieces.push(`серия ${meta.homeSeriesWins}-${meta.awaySeriesWins}`);
+  }
+  return pieces.join(", ");
+}
+
+async function sendMenu(env, chatId) {
+  return sendText(env, chatId, "Меню HOH NHL Results", {
+    inline_keyboard: [
+      [{ text: "Показать последние матчи", callback_data: "latest_matches" }],
+      [{ text: "Загрузить заново последний игровой день", callback_data: "resend_last_day" }],
+      [{ text: "Расписание по дням", callback_data: "schedule_overview" }],
+    ],
+  });
+}
+
+async function sendText(env, chatId, text, replyMarkup = null) {
+  const payload = {
+    chat_id: chatId,
+    text,
+    disable_web_page_preview: true,
+  };
+
+  if (env.TELEGRAM_THREAD_ID) {
+    payload.message_thread_id = Number(env.TELEGRAM_THREAD_ID);
+  }
+  if (replyMarkup) {
+    payload.reply_markup = replyMarkup;
+  }
+
+  return telegramRequest(env, "sendMessage", payload);
+}
+
+async function answerCallback(env, callbackId, text) {
+  if (!callbackId) {
+    return null;
+  }
+  return telegramRequest(env, "answerCallbackQuery", {
+    callback_query_id: callbackId,
+    text,
+  });
+}
+
+async function telegramRequest(env, method, payload) {
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    return { ok: false, error: "missing_TELEGRAM_BOT_TOKEN" };
+  }
+
+  const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  return {
+    ok: response.ok && data.ok === true,
+    status_code: response.status,
+    response: data,
+  };
+}
+
+async function triggerRepositoryDispatch(env, eventType, clientPayload) {
+  const token = env.GITHUB_DISPATCH_TOKEN || env.GITHUB_STATE_TOKEN || env.GITHUB_TOKEN;
+  if (!token) {
+    throw new Error("missing_GITHUB_DISPATCH_TOKEN");
+  }
+
+  const repository = env.GITHUB_REPOSITORY || DEFAULT_REPOSITORY;
+  const payload = {
+    event_type: eventType,
+    client_payload: {
+      ref: env.GITHUB_REF || DEFAULT_GITHUB_REF,
+      ...clientPayload,
+    },
+  };
+
+  const response = await fetch(`https://api.github.com/repos/${repository}/dispatches`, {
+    method: "POST",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "User-Agent": "hoh-nhl-cloudflare-worker",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status !== 204) {
+    const body = await response.text();
+    throw new Error(`GitHub dispatch failed: HTTP ${response.status} ${body.slice(0, 300)}`);
+  }
+
+  return { ok: true, status_code: response.status, event_type: eventType };
+}
+
+async function adminHealthRoute(request, env) {
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+  if (request.method !== "GET") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  return jsonResponse({ ok: true, service: "hoh-admin" });
+}
+
+async function isManagementAuthorized(request, env) {
+  const expected = managementSecret(env);
+  if (!expected) {
+    return false;
+  }
+
+  const authorization = (request.headers.get("authorization") || "").trim();
+  const match = /^Bearer\s+(\S+)$/i.exec(authorization);
+  if (!match) {
+    return false;
+  }
+
+  return secureEqual(match[1], expected);
+}
+
+async function secureEqual(provided, expected) {
+  const encoder = new TextEncoder();
+  const [providedHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  return crypto.subtle.timingSafeEqual(providedHash, expectedHash);
+}
+
+function isAllowedChat(env, chatId) {
+  if (!chatId) {
+    return false;
+  }
+  if (envFlag(env.TELEGRAM_ALLOW_ANY_CHAT, false)) {
+    return true;
+  }
+  return String(chatId) === menuChatId(env);
+}
+
+function menuChatId(env) {
+  return String(env.TELEGRAM_MENU_CHAT_ID || env.TELEGRAM_CHAT_ID || DEFAULT_TARGET_CHAT).trim();
+}
+
+function webhookSecret(env) {
+  return String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim();
+}
+
+function managementSecret(env) {
+  return String(env.MANAGEMENT_API_SECRET || "").trim();
+}
+
+function publicBaseUrl(request, env) {
+  const configured = String(env.PUBLIC_BASE_URL || "").trim();
+  if (configured) {
+    return configured.replace(/\/+$/, "");
+  }
+  const url = new URL(request.url);
+  return `${url.protocol}//${url.host}`;
+}
+
+function commandName(text) {
+  if (!text) {
+    return "";
+  }
+  return text.trim().split(/\s+/)[0].toLowerCase().split("@", 1)[0];
+}
+
+function currentHockeyDayPT(now = new Date()) {
+  const pt = partsInTimeZone(now, "America/Los_Angeles");
+  return pt.hour >= 6 ? pt.date : addDays(pt.date, -1);
+}
+
+function toPTDate(date) {
+  return partsInTimeZone(date, "America/Los_Angeles").date;
+}
+
+function partsInTimeZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type)?.value || "";
+  return {
+    date: `${value("year")}-${value("month")}-${value("day")}`,
+    hour: Number(value("hour")),
+  };
+}
+
+function dateRange(baseDay, startOffset, endOffset) {
+  const days = [];
+  for (let offset = startOffset; offset <= endOffset; offset += 1) {
+    days.push(addDays(baseDay, offset));
+  }
+  return days;
+}
+
+function addDays(day, offset) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function parseGameDate(value) {
+  if (!value) {
+    return new Date();
+  }
+  const raw = String(value);
+  return new Date(raw.includes("T") ? raw : `${raw}T12:00:00Z`);
+}
+
+function formatDay(day) {
+  const date = typeof day === "string" ? day : day.toISOString().slice(0, 10);
+  const [, month, dom] = date.split("-");
+  return `${dom}.${month}`;
+}
+
+function weekdayIndex(day) {
+  const jsDay = new Date(`${day}T12:00:00Z`).getUTCDay();
+  return (jsDay + 6) % 7;
+}
+
+function teamLabel(tricode) {
+  return `${TEAM_EMOJI[tricode] || ""} ${TEAM_RU[tricode] || tricode}`.trim();
+}
+
+function isFinalState(state) {
+  return ["FINAL", "OFF"].includes(upper(state));
+}
+
+function isLiveishState(state) {
+  return ["LIVE", "CRIT"].includes(upper(state));
+}
+
+function firstInt(...values) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.trunc(value);
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return 0;
+}
+
+function upper(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function pluralRu(n, one, few, many) {
+  const abs = Math.abs(n);
+  if (abs % 100 >= 11 && abs % 100 <= 14) {
+    return many;
+  }
+  if (abs % 10 === 1) {
+    return one;
+  }
+  if (abs % 10 >= 2 && abs % 10 <= 4) {
+    return few;
+  }
+  return many;
+}
+
+function envInt(value, fallback, minimum, maximum) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(minimum, Math.min(maximum, parsed));
+}
+
+function envFlag(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  return ["1", "true", "yes", "y", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function eventName(env, key, fallback) {
+  return String(env[key] || fallback).trim() || fallback;
+}
+
+function queryBool(url, name, fallback) {
+  if (!url.searchParams.has(name)) {
+    return fallback;
+  }
+  return envFlag(url.searchParams.get(name), fallback);
+}
+
+function stripTrailingSlash(path) {
+  if (path === "/") {
+    return "";
+  }
+  return path.replace(/\/+$/, "");
+}
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
