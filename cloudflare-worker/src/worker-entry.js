@@ -1,5 +1,6 @@
 import worker from "./index.js";
 import { getBackfillStatus, runBackfillStep } from "./data-core-backfill.js";
+import { getBackfillJob, runPersistentBackfillTick } from "./data-core-backfill-job.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -17,14 +18,25 @@ export default {
     if (path === "/api/data-core/backfill/step") {
       return backfillStepRoute(request, env);
     }
+    if (path === "/api/data-core/backfill/job") {
+      return persistentBackfillJobRoute(request, env);
+    }
 
     return worker.fetch(request, env);
   },
 
   async scheduled(controller, env, ctx) {
-    if (envFlag(env.BACKFILL_CANARY_ENABLED, false)) {
+    const canaryEnabled = envFlag(env.BACKFILL_CANARY_ENABLED, false);
+    const fullBackfillEnabled = envFlag(env.FULL_BACKFILL_ENABLED, false);
+
+    if (canaryEnabled && fullBackfillEnabled) {
+      console.error("Backfill safety stop: canary and full backfill cannot run together");
+    } else if (canaryEnabled) {
       ctx.waitUntil(runScheduledCanary(env));
+    } else if (fullBackfillEnabled) {
+      ctx.waitUntil(runScheduledFullBackfill(env));
     }
+
     if (typeof worker.scheduled === "function") {
       return worker.scheduled(controller, env, ctx);
     }
@@ -78,6 +90,29 @@ async function backfillStepRoute(request, env) {
   }
 }
 
+async function persistentBackfillJobRoute(request, env) {
+  if (request.method !== "GET") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+  if (!env.DB) {
+    return jsonResponse({ ok: false, error: "missing_d1_binding" }, 503);
+  }
+
+  const jobId = new URL(request.url).searchParams.get("job_id") || "";
+  try {
+    const job = await getBackfillJob(env.DB, jobId);
+    if (!job) {
+      return jsonResponse({ ok: false, error: "backfill_job_not_found" }, 404);
+    }
+    return jsonResponse({ ok: true, action: "backfill_job_status", job });
+  } catch {
+    return jsonResponse({ ok: false, error: "backfill_job_status_failed" }, 400);
+  }
+}
+
 async function runScheduledCanary(env) {
   if (!env.DB) {
     return;
@@ -94,6 +129,21 @@ async function runScheduledCanary(env) {
     end_date: CANARY_END_DATE,
     max_scan_days: 14,
     dry_run: false,
+  });
+}
+
+async function runScheduledFullBackfill(env) {
+  if (!env.DB) {
+    return;
+  }
+
+  await runPersistentBackfillTick(env.DB, {
+    job_id: String(env.FULL_BACKFILL_JOB_ID || "").trim(),
+    season: String(env.FULL_BACKFILL_SEASON || "").trim(),
+    start_date: String(env.FULL_BACKFILL_START_DATE || "").trim(),
+    end_date: String(env.FULL_BACKFILL_END_DATE || "").trim(),
+    daily_game_limit: envInt(env.FULL_BACKFILL_DAILY_GAME_LIMIT, 20, 1, 10000),
+    max_scan_days: envInt(env.FULL_BACKFILL_MAX_SCAN_DAYS, 14, 1, 31),
   });
 }
 
@@ -142,6 +192,17 @@ function envFlag(value, fallback = false) {
     return fallback;
   }
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function envInt(value, fallback, min, max) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < min || number > max) {
+    return fallback;
+  }
+  return number;
 }
 
 function stripTrailingSlash(path) {
