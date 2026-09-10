@@ -256,6 +256,8 @@ def main():
                     safe_print(f"PROGRESS {done + len(failed)}/{total} | ok={done} cached={cached} failed={len(failed)} | ETA ~{eta_min:.1f} min")
 
     atomic_json(root / "failed.json", failed)
+    # Re-scan manual CSVs at the end too, so files added while the overnight job was running are included.
+    inventory_manual_csvs(project_root, root)
     complete = {
         "ok": not failed,
         "games": total,
