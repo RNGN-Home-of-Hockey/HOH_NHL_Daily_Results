@@ -4,6 +4,26 @@ const DEFAULT_REPOSITORY = "RNGN-Home-of-Hockey/HOH_NHL_Daily_Results";
 const DEFAULT_GITHUB_REF = "main";
 const NHL_BASE = "https://api-web.nhle.com/v1";
 
+const DATA_CORE_TABLES = [
+  "broadcast_cards",
+  "event_players",
+  "game_events",
+  "games",
+  "insights",
+  "notification_log",
+  "period_scores",
+  "player_game_stats",
+  "players",
+  "standings_snapshots",
+  "subscriptions",
+  "sync_runs",
+  "team_game_stats",
+  "teams",
+  "telegram_users",
+  "winline_events",
+  "winline_markets",
+];
+
 const TEAM_RU = {
   ANA: "Анахайм",
   ARI: "Аризона",
@@ -105,6 +125,10 @@ async function handleRequest(request, env) {
     return jsonResponse({ ok: true, service: "hoh-nhl-daily-results", runtime: "cloudflare-workers" });
   }
 
+  if (["/api/data-core/health", "/data-core/health"].includes(path)) {
+    return dataCoreHealthRoute(env);
+  }
+
   if (["/api/setup-webhook", "/setup-webhook"].includes(path)) {
     return setupWebhook(request, env);
   }
@@ -126,6 +150,89 @@ async function handleRequest(request, env) {
   }
 
   return jsonResponse({ ok: false, error: "not_found" }, 404);
+}
+
+async function dataCoreHealthRoute(env) {
+  const responseBase = {
+    service: "hoh-data-core",
+    binding: "DB",
+  };
+
+  if (!env.DB) {
+    return jsonResponse(
+      {
+        ok: false,
+        ...responseBase,
+        schema_ok: false,
+        error: "missing_d1_binding",
+      },
+      503,
+    );
+  }
+
+  try {
+    const tablesResult = await env.DB.prepare(
+      `SELECT name
+       FROM sqlite_schema
+       WHERE type = 'table'
+         AND name NOT LIKE 'sqlite_%'
+       ORDER BY name;`,
+    ).all();
+    const availableTables = new Set((tablesResult.results || []).map((row) => String(row.name)));
+    const presentTables = DATA_CORE_TABLES.filter((name) => availableTables.has(name));
+    const missingTables = DATA_CORE_TABLES.filter((name) => !availableTables.has(name));
+    const schemaOk = missingTables.length === 0;
+
+    if (!schemaOk) {
+      return jsonResponse(
+        {
+          ok: false,
+          ...responseBase,
+          schema_ok: false,
+          expected_table_count: DATA_CORE_TABLES.length,
+          present_table_count: presentTables.length,
+          missing_tables: missingTables,
+          present_tables: presentTables,
+        },
+        503,
+      );
+    }
+
+    const counts = await env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM teams) AS teams,
+         (SELECT COUNT(*) FROM players) AS players,
+         (SELECT COUNT(*) FROM games) AS games;`,
+    ).first();
+    if (!counts) {
+      throw new Error("missing_counts_row");
+    }
+
+    return jsonResponse({
+      ok: true,
+      ...responseBase,
+      schema_ok: true,
+      expected_table_count: DATA_CORE_TABLES.length,
+      present_table_count: presentTables.length,
+      missing_tables: [],
+      present_tables: presentTables,
+      counts: {
+        teams: Number(counts.teams),
+        players: Number(counts.players),
+        games: Number(counts.games),
+      },
+    });
+  } catch {
+    return jsonResponse(
+      {
+        ok: false,
+        ...responseBase,
+        schema_ok: false,
+        error: "d1_query_failed",
+      },
+      500,
+    );
+  }
 }
 
 async function setupWebhook(request, env) {
