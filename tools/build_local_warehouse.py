@@ -4,7 +4,7 @@
 Inputs (all local, gitignored):
 - local-data/nhl-history/games/<season>/<gamePk>/boxscore.json
 - local-data/nhl-history/games/<season>/<gamePk>/play-by-play.json
-- local-data/hockeystats/2025-26/teams/*.csv  (optional manual 5v5 source)
+- local-data/hockeystats/<season>/teams/*.csv  (optional manual 5v5 sources)
 
 Outputs:
 - local-data/warehouse/hoh_history.sqlite
@@ -27,7 +27,7 @@ from collections import Counter, defaultdict
 
 ROOT = Path.cwd()
 HISTORY_ROOT = ROOT / "local-data" / "nhl-history"
-CSV_ROOT = ROOT / "local-data" / "hockeystats" / "2025-26" / "teams"
+CSV_ROOT = ROOT / "local-data" / "hockeystats"
 OUT_ROOT = ROOT / "local-data" / "warehouse"
 DB_PATH = OUT_ROOT / "hoh_history.sqlite"
 CHUNK_ROOT = OUT_ROOT / "d1-chunks"
@@ -326,7 +326,7 @@ def load_manual_advanced(db):
     games_by_date=defaultdict(list)
     for r in db.execute("SELECT game_pk,season_id,game_date,home_tri,away_tri FROM games"):
         games_by_date[r[2]].append({"game_pk":r[0],"season":r[1],"home":r[3],"away":r[4]})
-    files=sorted(CSV_ROOT.glob('*.csv')); inserted=0; matched_files=0; unmatched=[]
+    files=sorted(CSV_ROOT.glob('*/teams/*.csv')); inserted=0; matched_files=0; unmatched=[]
     for path in files:
         with path.open('r',encoding='utf-8-sig',newline='') as f: rows=list(csv.DictReader(f))
         guesses=[]
@@ -349,7 +349,7 @@ def load_manual_advanced(db):
             if len(matches)!=1: continue
             g=matches[0]
             adv={
-              "game_pk":g['game_pk'],"team_tri":team,"season_id":g['season'],"source":"manual_hockeystats_csv",
+              "game_pk":g['game_pk'],"team_tri":team,"season_id":g['season'],"source":f"manual_hockeystats_csv_{path.parent.parent.name}",
               "toi_5v5_minutes":csv_float(row,'TOI'),"gf_pct_5v5":csv_float(row,'GF%'),"xgf_pct_5v5":csv_float(row,'xGF%'),
               "sf_pct_5v5":csv_float(row,'SF%'),"goals_for_5v5":csv_int(row,'GF'),"goals_against_5v5":csv_int(row,'GA'),
               "xgf_5v5":csv_float(row,'xGF'),"xga_5v5":csv_float(row,'xGA'),"shots_for_5v5":csv_int(row,'SF'),
