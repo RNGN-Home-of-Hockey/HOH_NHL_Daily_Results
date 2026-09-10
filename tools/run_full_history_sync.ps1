@@ -32,8 +32,10 @@ function Write-Step([string]$Text) {
 }
 
 function Invoke-ChildPowerShell([string]$ScriptPath) {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath
-    return $LASTEXITCODE
+    $process = Start-Process -FilePath 'powershell.exe' `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $ScriptPath)) `
+        -NoNewWindow -Wait -PassThru
+    return [int]$process.ExitCode
 }
 
 try {
@@ -66,6 +68,7 @@ try {
 
     Write-Step 'Rebuilding local analytics warehouse from official NHL archive + both HockeyStats seasons...'
     $buildExit = Invoke-ChildPowerShell (Join-Path $PSScriptRoot 'run_build_warehouse.ps1')
+    Write-Step ("Warehouse child process exit code: {0}" -f $buildExit)
     if ($buildExit -ne 0) {
         throw ("Warehouse build failed with exit code {0}." -f $buildExit)
     }
@@ -106,6 +109,7 @@ try {
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt += 1) {
         Write-Step ("D1 upload attempt {0}/{1}..." -f $attempt, $maxAttempts)
         $uploadExit = Invoke-ChildPowerShell $uploadScript
+        Write-Step ("D1 uploader child process exit code: {0}" -f $uploadExit)
         if ($uploadExit -eq 0) {
             $success = $true
             break
