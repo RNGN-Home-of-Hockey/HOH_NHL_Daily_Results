@@ -8,7 +8,7 @@ Pipeline:
 
 `NHL data -> deterministic signal -> evidence/sample -> relevance score -> Winline market mapping -> editor preview -> manual SHOW`
 
-Odds are never invented. Until Winline market data is connected, `odds` remains null or is entered manually by an operator.
+Until the real Winline feed is connected, development/demo mode uses deterministic synthetic odds from 1.30 to 9.00. They are always marked `DEMO` / `odds_is_demo=true`; production odds must later come only from Winline or explicit operator input.
 
 ## Card contract
 

@@ -1,3 +1,5 @@
+import { withDemoOdds } from "./demo-winline-odds.js";
+
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
 ]);
@@ -259,8 +261,10 @@ function conferenceSql() {
 
 function card({game=null,type,category,timing,score,eyebrow,value,title,explanation,sample,evidence,market}) {
   const idParts=[game?.game_pk||"context",type,market?.subject||"all",String(sample||0)];
+  const id=idParts.join(":");
+  const pricedMarket=withDemoOdds(market,id);
   return {
-    id:idParts.join(":"),
+    id,
     insight_type:type,
     category,
     timing,
@@ -270,9 +274,9 @@ function card({game=null,type,category,timing,score,eyebrow,value,title,explanat
     title,
     explanation,
     evidence:{sample_size:sample,...evidence},
-    note:`${market.label} · WINLINE: кэф — · промокод HOH`,
+    note:`${pricedMarket.label} · WINLINE · ДЕМО-КЭФ ${pricedMarket.odds.toFixed(2)} · промокод HOH`,
     kind:category==="live"?"live":"history",
-    market:{...market,odds:null,promo_code:"HOH",provider:"winline_pending"},
+    market:pricedMarket,
   };
 }
 

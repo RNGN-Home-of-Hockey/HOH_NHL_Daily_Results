@@ -1,4 +1,5 @@
 import { fetchNhlJson } from "./data-core-importer.js";
+import { withDemoOdds } from "./demo-winline-odds.js";
 
 const NHL_BASE = "https://api-web.nhle.com/v1";
 const SHOT_TYPES = new Set(["shot-on-goal", "goal"]);
@@ -222,6 +223,7 @@ function addUnansweredRunCard(cards, game, shots) {
 }
 
 function card({ game, id, type, score, eyebrow, value, title, explanation, evidence, market }) {
+  const pricedMarket=withDemoOdds(market,id);
   return {
     id,
     type,
@@ -233,7 +235,7 @@ function card({ game, id, type, score, eyebrow, value, title, explanation, evide
     value,
     title,
     explanation,
-    note: `${market.label} · WINLINE: кэф — · промокод HOH`,
+    note: `${pricedMarket.label} · WINLINE · ДЕМО-КЭФ ${pricedMarket.odds.toFixed(2)} · промокод HOH`,
     evidence: {
       ...evidence,
       game_pk: game.game_pk,
@@ -242,12 +244,7 @@ function card({ game, id, type, score, eyebrow, value, title, explanation, evide
       time_remaining: game.time_remaining,
       score: `${game.away_tri} ${game.away_score}:${game.home_score} ${game.home_tri}`,
     },
-    market: {
-      ...market,
-      odds: null,
-      promo_code: "HOH",
-      provider: "winline_pending",
-    },
+    market: pricedMarket,
   };
 }
 
