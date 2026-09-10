@@ -1,0 +1,24 @@
+name: HOH Post-Canary Health
+
+on:
+  push:
+    paths:
+      - '.github/workflows/hoh-post-canary-health.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check root
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 'https://hoh-nhl-daily-results.znamteam-903.workers.dev/'
+          echo
+      - name: Check Data Core
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 'https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/data-core/health'
+          echo
