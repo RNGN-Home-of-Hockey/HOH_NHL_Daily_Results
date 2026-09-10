@@ -1,0 +1,10 @@
+# Local bulk-history data. Never commit downloaded NHL archives or manually supplied CSVs.
+local-data/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local logs / temp
+*.log
+.tmp/
