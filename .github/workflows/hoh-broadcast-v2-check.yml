@@ -1,0 +1,27 @@
+name: HOH Broadcast V2 Check
+
+on:
+  push:
+    paths:
+      - '.github/workflows/hoh-broadcast-v2-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Worker modules
+        run: |
+          set -euo pipefail
+          node --check cloudflare-worker/src/broadcast-dashboard-v2.js
+          node --check cloudflare-worker/src/worker-entry.js
+          node --check cloudflare-worker/src/data-core-backfill.js
+          node --check cloudflare-worker/src/data-core-backfill-job.js
+          node --check cloudflare-worker/src/index.js
+          echo BROADCAST_V2_SYNTAX_OK
