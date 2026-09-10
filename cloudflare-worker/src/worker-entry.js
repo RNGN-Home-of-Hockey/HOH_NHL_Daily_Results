@@ -2,6 +2,7 @@ import worker from "./index.js";
 import { getBackfillStatus, runBackfillStep } from "./data-core-backfill.js";
 import { getBackfillJob, runPersistentBackfillTick } from "./data-core-backfill-job.js";
 import { handleBroadcastRequest } from "./broadcast-dashboard-v2.js";
+import { buildLiveGameSnapshot } from "./live-betting-engine.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -12,6 +13,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = stripTrailingSlash(url.pathname);
+
+    const liveMatch = /^\/api\/broadcast\/live\/(\d+)$/.exec(path);
+    if (liveMatch) {
+      return broadcastLiveRoute(request, Number(liveMatch[1]));
+    }
 
     const broadcastResponse = await handleBroadcastRequest(request, env, path);
     if (broadcastResponse) {
@@ -48,6 +54,21 @@ export default {
     }
   },
 };
+
+async function broadcastLiveRoute(request, gamePk) {
+  if (request.method !== "GET") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  if (!Number.isSafeInteger(gamePk) || gamePk <= 0) {
+    return jsonResponse({ ok: false, error: "invalid_game_pk" }, 400);
+  }
+  try {
+    return jsonResponse(await buildLiveGameSnapshot(gamePk));
+  } catch (error) {
+    console.error("broadcast live snapshot failed", error);
+    return jsonResponse({ ok: false, error: "nhl_live_snapshot_failed" }, 502);
+  }
+}
 
 async function backfillStatusRoute(request, env) {
   if (request.method !== "GET") {
@@ -234,6 +255,9 @@ function stripTrailingSlash(path) {
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
   });
 }
