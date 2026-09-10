@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hoh-nhl-daily-results",
-  "main": "cloudflare-worker/src/index.js",
+  "main": "cloudflare-worker/src/worker-entry.js",
   "compatibility_date": "2026-05-06",
   "observability": {
     "enabled": true
@@ -23,6 +23,7 @@
     "GITHUB_REF": "main",
     "GITHUB_DISPATCH_EVENT_POLL": "nhl_poll",
     "GITHUB_DISPATCH_EVENT_RESEND": "resend_last_day",
-    "CLOUDFLARE_CRON_ENABLED": "0"
+    "CLOUDFLARE_CRON_ENABLED": "0",
+    "BACKFILL_CANARY_ENABLED": "1"
   }
 }
