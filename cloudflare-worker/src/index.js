@@ -1,3 +1,5 @@
+import { importCurrentTeams, importGame } from "./data-core-importer.js";
+
 const DEFAULT_WEBHOOK_SECRET = "hook-123";
 const DEFAULT_TARGET_CHAT = "-1003167239288";
 const DEFAULT_REPOSITORY = "RNGN-Home-of-Hockey/HOH_NHL_Daily_Results";
@@ -129,6 +131,14 @@ async function handleRequest(request, env) {
     return dataCoreHealthRoute(env);
   }
 
+  if (path === "/api/data-core/import/teams") {
+    return dataCoreImportTeamsRoute(request, env);
+  }
+
+  if (path === "/api/data-core/import/game") {
+    return dataCoreImportGameRoute(request, env);
+  }
+
   if (["/api/setup-webhook", "/setup-webhook"].includes(path)) {
     return setupWebhook(request, env);
   }
@@ -232,6 +242,51 @@ async function dataCoreHealthRoute(env) {
       },
       500,
     );
+  }
+}
+
+async function dataCoreImportTeamsRoute(request, env) {
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  if (!isManagementAuthorized(request, env)) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+  if (!env.DB) {
+    return jsonResponse({ ok: false, action: "import_teams", error: "missing_d1_binding" }, 503);
+  }
+
+  try {
+    return jsonResponse(await importCurrentTeams(env.DB));
+  } catch {
+    return jsonResponse({ ok: false, action: "import_teams", error: "import_failed" }, 500);
+  }
+}
+
+async function dataCoreImportGameRoute(request, env) {
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  if (!isManagementAuthorized(request, env)) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+  if (!env.DB) {
+    return jsonResponse({ ok: false, action: "import_game", error: "missing_d1_binding" }, 503);
+  }
+
+  const rawGamePk = new URL(request.url).searchParams.get("game_pk") || "";
+  if (!/^\d+$/.test(rawGamePk)) {
+    return jsonResponse({ ok: false, action: "import_game", error: "invalid_game_pk" }, 400);
+  }
+  const gamePk = Number(rawGamePk);
+  if (!Number.isSafeInteger(gamePk) || gamePk <= 0) {
+    return jsonResponse({ ok: false, action: "import_game", error: "invalid_game_pk" }, 400);
+  }
+
+  try {
+    return jsonResponse(await importGame(env.DB, gamePk));
+  } catch {
+    return jsonResponse({ ok: false, action: "import_game", game_pk: gamePk, error: "import_failed" }, 500);
   }
 }
 
