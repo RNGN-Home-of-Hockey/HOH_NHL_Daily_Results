@@ -1,0 +1,76 @@
+name: Wire Live Broadcast UI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/wire-live-broadcast-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Wire live polling into browser app
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/broadcast-dashboard-v2.js')
+          s=p.read_text()
+
+          old="const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[];"
+          new="const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],liveCards=[],liveTimer=null,currentData=null;"
+          if s.count(old)!=1:
+              raise SystemExit('state anchor mismatch')
+          s=s.replace(old,new,1)
+
+          old="async function selectGame(id){selected=id;renderGames();$('#hero').innerHTML='<div class=\"empty\">Загружаю матч...</div>';const d=await api('/api/broadcast/games/'+id);renderGame(d)}"
+          new="async function selectGame(id){selected=id;renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class=\"empty\">Загружаю матч...</div>';const d=await api('/api/broadcast/games/'+id);currentData=d;historicalCards=d.cards||[];renderGame(d);await refreshLive(id,true)}"
+          if s.count(old)!=1:
+              raise SystemExit('selectGame anchor mismatch')
+          s=s.replace(old,new,1)
+
+          old="function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class=\"herohead\"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class=\"match\">${teamHtml(g,'away')}<div class=\"score\">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class=\"periods\">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCards(d.cards||[]);renderPlayers(d.top_players||[]);renderEvents(d.events||[])}"
+          new="function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class=\"herohead\"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class=\"match\">${teamHtml(g,'away')}<div class=\"score\">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class=\"periods\" id=\"liveclock\">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}"
+          if s.count(old)!=1:
+              raise SystemExit('renderGame anchor mismatch')
+          s=s.replace(old,new,1)
+
+          anchor="function renderCards(cards){currentCards=cards;"
+          if s.count(anchor)!=1:
+              raise SystemExit('renderCards anchor mismatch')
+          additions="""function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}renderCards(merged.slice(0,12));const sub=document.querySelector('.psub');if(sub)sub.textContent=liveCards.length?`LIVE ${liveCards.length} · история ${historicalCards.length} · рынок Winline подбирается по типу сигнала`:`Сильных live-сигналов сейчас нет · история ${historicalCards.length} · слабые тренды не показываем`}\nasync function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=l.cards||[];renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);c.textContent=parts.join(' · ')+' · LIVE FEED '+new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}if(['LIVE','CRIT'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}\n"
+          s=s.replace(anchor,additions+anchor,1)
+
+          p.write_text(s)
+          PY
+
+          node --check cloudflare-worker/src/live-betting-engine.js
+          node --check cloudflare-worker/src/broadcast-dashboard-v2.js
+          node --check cloudflare-worker/src/worker-entry.js
+
+          node --input-type=module <<'NODE'
+          import { buildLiveGameSnapshot } from './cloudflare-worker/src/live-betting-engine.js';
+          for (const id of [2025030416, 2024020001, 2024020002]) {
+            const s = await buildLiveGameSnapshot(id);
+            if (!s.ok || !s.game || !Array.isArray(s.cards)) throw new Error('bad live snapshot '+id);
+            console.log('LIVE_TEST', id, s.game.away_tri, s.game.home_tri, 'shots', s.shot_events, 'cards', s.cards.length);
+            for (const c of s.cards) console.log('CARD', c.type, c.value, c.title, c.market.label);
+          }
+          NODE
+          git diff --check
+      - name: Commit live UI integration
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/broadcast-dashboard-v2.js
+          git commit -m 'Poll NHL live betting signals in Broadcast control'
+          git push origin HEAD:main
