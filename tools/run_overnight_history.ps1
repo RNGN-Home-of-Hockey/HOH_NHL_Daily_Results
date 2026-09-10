@@ -34,8 +34,12 @@ public static class HOHSleepGuard {
     public static extern uint SetThreadExecutionState(uint esFlags);
 }
 "@
-$ES_CONTINUOUS = [uint32]0x80000000
-$ES_SYSTEM_REQUIRED = [uint32]0x00000001
+# Windows PowerShell 5.1 parses the hex literal 0x80000000 as a signed Int32
+# (-2147483648), which cannot be cast directly to UInt32. Convert from the
+# hexadecimal string instead so the script works on both Windows PowerShell
+# 5.1 and newer PowerShell versions.
+$ES_CONTINUOUS = [Convert]::ToUInt32('80000000', 16)
+$ES_SYSTEM_REQUIRED = [Convert]::ToUInt32('00000001', 16)
 [void][HOHSleepGuard]::SetThreadExecutionState($ES_CONTINUOUS -bor $ES_SYSTEM_REQUIRED)
 
 $exit = 1
