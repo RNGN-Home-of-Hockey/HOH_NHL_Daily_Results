@@ -9,6 +9,14 @@
   "triggers": {
     "crons": ["*/5 * * * *"]
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hoh-data-core",
+      "database_id": "e72d8730-e1b1-4291-b659-6500769a1229",
+      "migrations_dir": "migrations"
+    }
+  ],
   "vars": {
     "TELEGRAM_WEBHOOK_SECRET": "hook-123",
     "WEBHOOK_SETUP_SECRET": "hook-123",
