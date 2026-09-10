@@ -1,0 +1,52 @@
+name: HOH Broadcast V2 Fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/hoh-broadcast-v2-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Split browser script from HTML template
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/broadcast-dashboard-v2.js')
+          s=p.read_text()
+          start=s.index('<script>')
+          end=s.index('</script></body></html>`;', start)
+          client=s[start+len('<script>'):end]
+          s=s[:start]+'<script src="/broadcast/app.js"></script></body></html>`;'+s[end+len('</script></body></html>`;'):]
+          anchor='export async function handleBroadcastRequest(request, env, path) {\n'
+          route='export async function handleBroadcastRequest(request, env, path) {\n  if (path === "/broadcast/app.js") {\n    if (request.method !== "GET") return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);\n    return jsResponse(`(${browserApp.toString()})();`);\n  }\n\n'
+          if s.count(anchor)!=1:
+              raise SystemExit('route anchor mismatch')
+          s=s.replace(anchor,route,1)
+          helper='function htmlResponse(html){return new Response(html,{status:200,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}})}\n\n'
+          replacement=helper+'function jsResponse(js){return new Response(js,{status:200,headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}})}\n\nfunction browserApp(){'+client+'\n}\n\n'
+          if s.count(helper)!=1:
+              raise SystemExit('helper anchor mismatch')
+          s=s.replace(helper,replacement,1)
+          p.write_text(s)
+          PY
+          node --check cloudflare-worker/src/broadcast-dashboard-v2.js
+          node --check cloudflare-worker/src/worker-entry.js
+          git diff --check
+      - name: Commit fix
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/broadcast-dashboard-v2.js
+          git commit -m 'Split Broadcast browser script from HTML template'
+          git push origin HEAD:main
