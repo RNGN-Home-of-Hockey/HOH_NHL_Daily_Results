@@ -1,0 +1,71 @@
+name: HOH Wire Betting Insights
+
+on:
+  push:
+    paths:
+      - '.github/workflows/hoh-wire-betting-insights.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Wire deterministic betting insights into Broadcast API
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/broadcast-dashboard-v2.js')
+          s=p.read_text()
+          if not s.startswith('const BROADCAST_PATH'):
+              raise SystemExit('unexpected dashboard header')
+          s='import { buildBettingInsights } from "./betting-insight-engine.js";\n\n'+s
+          old='''    const teamStats=teamStatsResult.results||[];\n    const playerStats=playerStatsResult.results||[];\n    return jsonResponse({'''
+          new='''    const teamStats=teamStatsResult.results||[];\n    const playerStats=playerStatsResult.results||[];\n    const bettingInsights=await buildBettingInsights(env.DB,game);\n    return jsonResponse({'''
+          if s.count(old)!=1:
+              raise SystemExit('stats anchor mismatch')
+          s=s.replace(old,new,1)
+          old2='''      cards:buildQuickCards(game,teamStats,playerStats),\n      persisted_cards:persistedCardsResult.results||[],'''
+          new2='''      cards:bettingInsights,\n      quick_cards:buildQuickCards(game,teamStats,playerStats),\n      persisted_cards:persistedCardsResult.results||[],'''
+          if s.count(old2)!=1:
+              raise SystemExit('cards anchor mismatch')
+          s=s.replace(old2,new2,1)
+          s=s.replace('Сейчас — факты из матча. Исторические инсайты добавятся следующим слоем.','Сигналы: история + live-динамика → подходящий рынок Winline.',1)
+          p.write_text(s)
+
+          e=Path('cloudflare-worker/src/betting-insight-engine.js')
+          t=e.read_text()
+          old3='''    evidence:{sample_size:sample,...evidence},\n    market:{...market,odds:null,promo_code:"HOH",provider:"winline_pending"},'''
+          new3='''    evidence:{sample_size:sample,...evidence},\n    note:`${market.label} · WINLINE: кэф — · промокод HOH`,\n    kind:category===\"live\"?\"live\":\"history\",\n    market:{...market,odds:null,promo_code:\"HOH\",provider:\"winline_pending\"},'''
+          if t.count(old3)!=1:
+              raise SystemExit('engine card anchor mismatch')
+          e.write_text(t.replace(old3,new3,1))
+          PY
+          node --check cloudflare-worker/src/betting-insight-engine.js
+          node --check cloudflare-worker/src/broadcast-dashboard-v2.js
+          node --check cloudflare-worker/src/worker-entry.js
+          node --input-type=module <<'NODE'
+          import { handleBroadcastRequest } from './cloudflare-worker/src/broadcast-dashboard-v2.js';
+          import fs from 'node:fs/promises';
+          const r=await handleBroadcastRequest(new Request('https://x/broadcast/app.js'),{},'/broadcast/app.js');
+          const body=await r.text();
+          await fs.writeFile('/tmp/app.js',body);
+          if(!body.startsWith('const __name=')) throw new Error('browser helper shim missing');
+          NODE
+          node --check /tmp/app.js
+          git diff --check
+      - name: Commit betting insight integration
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/broadcast-dashboard-v2.js cloudflare-worker/src/betting-insight-engine.js
+          git commit -m 'Wire betting insight engine into Broadcast control'
+          git push origin HEAD:main
