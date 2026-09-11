@@ -508,7 +508,7 @@ def build_player_aggregates(db, now_iso):
         for key, sample in variants:
             a = aggregate_skater(sample)
             db.execute(
-                """INSERT OR REPLACE INTO player_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT OR REPLACE INTO player_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     pid,latest["team_tri"],latest["position_code"],key,latest["scheduled_start_utc"],a["games"],a["goals"],a["assists"],a["points"],
                     a["shots"],a["hits"],a["blocked_shots"],a["pim"],a["plus_minus"],a["toi_seconds"],a["power_play_goals"],
@@ -547,7 +547,7 @@ def build_player_aggregates(db, now_iso):
         for key, sample in variants:
             a = aggregate_goalie(sample)
             db.execute(
-                """INSERT OR REPLACE INTO goalie_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT OR REPLACE INTO goalie_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     pid,latest["team_tri"],key,latest["scheduled_start_utc"],a["games"],a["starts"],a["wins"],a["losses"],a["ot_losses"],
                     a["saves"],a["shots_against"],a["goals_against"],a["save_pct"],a["goals_against_pg"],a["shutouts"],a["toi_seconds"],
@@ -563,7 +563,7 @@ def build_player_aggregates(db, now_iso):
                     continue
                 a = aggregate_goalie(sample)
                 db.execute(
-                    """INSERT OR REPLACE INTO goalie_opponent_splits_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    """INSERT OR REPLACE INTO goalie_opponent_splits_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         pid,latest["team_tri"],opp,scope,a["games"],a["starts"],a["wins"],a["losses"],a["ot_losses"],a["saves"],a["shots_against"],
                         a["goals_against"],a["save_pct"],a["goals_against_pg"],a["shutouts"],sample[-1]["scheduled_start_utc"],now_iso,
