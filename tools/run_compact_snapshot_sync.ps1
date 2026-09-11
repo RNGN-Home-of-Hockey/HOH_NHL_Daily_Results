@@ -6,6 +6,11 @@ $LogDir = Join-Path $RepoRoot 'local-data\logs'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $LogFile = Join-Path $LogDir ('compact-snapshot-sync-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
 
+# D1 Free row-read quota was exhausted on 2026-09-11. Do all expensive local
+# work immediately, then wait until shortly after the next UTC reset before the
+# first remote D1 operation. Future reruns naturally skip this wait.
+$D1NotBeforeUtc = [DateTimeOffset]::Parse('2026-09-12T00:05:00Z')
+
 $SleepGuardEnabled = $false
 try {
     Add-Type -TypeDefinition @'
@@ -39,9 +44,22 @@ function Invoke-ProcessExitCode {
     return [int]$process.ExitCode
 }
 
+function Wait-ForD1Reset {
+    $now = [DateTimeOffset]::UtcNow
+    if ($now -ge $D1NotBeforeUtc) { return }
+    $remaining = $D1NotBeforeUtc - $now
+    Write-Step ("D1 Free quota reset guard: waiting until {0} UTC ({1:hh\:mm\:ss} remaining). Local build is already complete; no user action is needed." -f `
+        $D1NotBeforeUtc.ToString('yyyy-MM-dd HH:mm'), $remaining)
+    while ([DateTimeOffset]::UtcNow -lt $D1NotBeforeUtc) {
+        $seconds = [Math]::Min(300, [Math]::Ceiling(($D1NotBeforeUtc - [DateTimeOffset]::UtcNow).TotalSeconds))
+        if ($seconds -gt 0) { Start-Sleep -Seconds $seconds }
+    }
+    Write-Step 'D1 quota reset guard elapsed; starting remote operations.'
+}
+
 try {
     Write-Host ''
-    Write-Host 'HOH COMPACT SNAPSHOT + PLAYER LAYER SYNC'
+    Write-Host 'HOH COMPACT SNAPSHOT + PLAYER LAYER SYNC + DEPLOY'
     Write-Host ('Repo: ' + $RepoRoot)
     Write-Host ('Log:  ' + $LogFile)
     Write-Host ''
@@ -69,8 +87,8 @@ try {
         throw ("Expected 2792 official games, found {0}." -f $summary.validation.official_games)
     }
     $writes = [int]$summary.supplemental_writes_estimate
-    Write-Step ("Local build validated: player-game={0}, goalie-game={1}, supplemental D1 rows={2}" -f `
-        $summary.validation.player_game_rows_local, $summary.validation.goalie_game_rows_local, $writes)
+    Write-Step ("Local build validated: player-game={0}, goalie-game={1}, team-snapshots={2}, supplemental D1 rows={3}" -f `
+        $summary.validation.player_game_rows_local, $summary.validation.goalie_game_rows_local, $summary.local_rows.pregame_team_snapshots, $writes)
     if ($writes -gt 85000) {
         throw ("Supplemental package is {0} rows, above the 85k safety ceiling for D1 Free. Do not upload until split into multiple days." -f $writes)
     }
@@ -78,6 +96,8 @@ try {
     # New compact chunks changed, so reset only the supplemental checkpoint.
     $stateFile = Join-Path $RepoRoot 'local-data\warehouse\d1-compact-supplement-upload-state.json'
     if (Test-Path $stateFile) { Remove-Item $stateFile -Force }
+
+    Wait-ForD1Reset
 
     $npx = (Get-Command npx.cmd -ErrorAction Stop).Source
     Write-Step 'Applying pending D1 migrations (0006 creates compact snapshot/player tables)...'
@@ -91,7 +111,13 @@ try {
         throw ("Compact D1 upload failed with exit code {0}. Rerun the same command; completed chunks are checkpointed." -f $uploadExit)
     }
 
-    Write-Step 'DONE: compact team snapshots + player/goalie aggregate layer synced to D1.'
+    Write-Step 'Deploying Worker with compact snapshot + player/goalie Stage 2 engine...'
+    $deployExit = Invoke-ProcessExitCode -FilePath $npx -ArgumentList @('wrangler','deploy')
+    if ($deployExit -ne 0) { throw ("Worker deploy failed with exit code {0}. Compact D1 data is already safe; rerun the same command." -f $deployExit) }
+
+    Write-Step 'DONE: compact team snapshots + player/goalie aggregate layer synced to D1 and Worker deployed.'
+    Write-Host ''
+    Write-Host 'No further action is required in this window.'
 }
 finally {
     if ($SleepGuardEnabled) {
