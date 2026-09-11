@@ -7,6 +7,7 @@ import { handleControlCenterRequest } from "./control-center.js";
 import { handleTelegramMiniAppRequest } from "./telegram-mini-app.js";
 import { handleTelegramProductBotRequest } from "./telegram-product-bot.js";
 import { handleTeamCurrentRequest } from "./team-current-routes.js";
+import { getLiveNotificationStatus, runLiveNotificationTick } from "./telegram-live-notifications.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -48,6 +49,12 @@ export default {
       return broadcastResponse;
     }
 
+    if (path === "/api/telegram-notifications/status") {
+      return telegramNotificationStatusRoute(request, env);
+    }
+    if (path === "/api/telegram-notifications/tick") {
+      return telegramNotificationTickRoute(request, env);
+    }
     if (path === "/api/data-core/backfill/status") {
       return backfillStatusRoute(request, env);
     }
@@ -64,6 +71,7 @@ export default {
   async scheduled(controller, env, ctx) {
     const canaryEnabled = envFlag(env.BACKFILL_CANARY_ENABLED, false);
     const fullBackfillEnabled = envFlag(env.FULL_BACKFILL_ENABLED, false);
+    const liveNotificationsEnabled = envFlag(env.TELEGRAM_LIVE_NOTIFICATIONS_ENABLED, false);
 
     if (canaryEnabled && fullBackfillEnabled) {
       console.error("Backfill safety stop: canary and full backfill cannot run together");
@@ -71,6 +79,14 @@ export default {
       ctx.waitUntil(runScheduledCanary(env));
     } else if (fullBackfillEnabled && fullBackfillStartReached(env)) {
       ctx.waitUntil(runScheduledFullBackfill(env));
+    }
+
+    if (liveNotificationsEnabled && env.DB) {
+      ctx.waitUntil(
+        runLiveNotificationTick(env).catch((error) => {
+          console.error("scheduled Telegram live notification tick failed", error);
+        }),
+      );
     }
 
     if (typeof worker.scheduled === "function") {
@@ -91,6 +107,31 @@ async function broadcastLiveRoute(request, gamePk) {
   } catch (error) {
     console.error("broadcast live snapshot failed", error);
     return jsonResponse({ ok: false, error: "nhl_live_snapshot_failed" }, 502);
+  }
+}
+
+async function telegramNotificationStatusRoute(request, env) {
+  if (request.method !== "GET") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  return jsonResponse(await getLiveNotificationStatus(env));
+}
+
+async function telegramNotificationTickRoute(request, env) {
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+  }
+  if (!(await isManagementAuthorized(request, env))) {
+    return jsonResponse({ ok: false, error: "unauthorized" }, 401);
+  }
+  const url = new URL(request.url);
+  const dryRun = queryBool(url, "dry_run", true);
+  try {
+    const result = await runLiveNotificationTick(env, { dryRun });
+    return jsonResponse(result, result.ok ? 200 : 500);
+  } catch (error) {
+    console.error("manual Telegram notification tick failed", error);
+    return jsonResponse({ ok: false, error: "notification_tick_failed" }, 500);
   }
 }
 
