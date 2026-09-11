@@ -83,7 +83,9 @@ jobs:
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           if (!r || r.status !== 200 || !(await r.text()).includes('NHL LIVE')) throw new Error('Mini App v2 shell failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/teams'), {}, '/teams');
-          if (!r || r.status !== 200 || !(await r.text()).includes('TEAM CENTER')) throw new Error('Team Center shell failed');
+          if (!r || r.status !== 200 || !(await r.text()).includes('Team Center')) throw new Error('Team Center shell failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/control'), {}, '/control');
+          if (!r || r.status !== 200 || !(await r.text()).includes('HOH NHL Control Center')) throw new Error('Control Center v2 shell failed');
           const secret = 'test-secret';
           const req = new Request('https://example.test/api/telegram', {
             method:'POST',
