@@ -1,6 +1,7 @@
 import { withDemoOdds } from "./demo-winline-odds.js";
 import { buildFeatureMarketInsights } from "./feature-market-insights.js";
 import { buildUniversalMarketInsights } from "./universal-market-evaluator.js";
+import { buildRollingLeagueRankInsights } from "./rolling-league-ranks.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -57,6 +58,7 @@ export async function buildBettingInsights(db, game) {
 
   const featureInsights = await buildFeatureMarketInsights(db, game);
   const universalMarketInsights = await buildUniversalMarketInsights(db, game);
+  const rollingRankInsights = await buildRollingLeagueRankInsights(db, game);
 
   const insights = [];
   insights.push(...momentumInsights(momentumR.results || [], game));
@@ -66,6 +68,7 @@ export async function buildBettingInsights(db, game) {
   insights.push(...h2hInsights(h2hR.results || [], game));
   insights.push(...conferenceInsights(conferenceR.results?.[0] || null, game));
   insights.push(...universalMarketInsights);
+  insights.push(...rollingRankInsights);
   insights.push(...featureInsights);
 
   return dedupe(insights)
