@@ -238,7 +238,11 @@ function selectPortfolio(candidates) {
   for (const card of candidates) {
     const key = `${card.market.type}:${card.market.subject || "all"}:${card.market.side}:${card.market.line}`;
     const current = bestExact.get(key);
-    if (!current || card.score > current.score) bestExact.set(key, card);
+    if (
+      !current ||
+      card.score > current.score ||
+      (card.score === current.score && Number(card.evidence?.window || 0) > Number(current.evidence?.window || 0))
+    ) bestExact.set(key, card);
   }
 
   const sorted = [...bestExact.values()].sort((a, b) => b.score - a.score);
@@ -250,10 +254,10 @@ function selectPortfolio(candidates) {
     let max;
     if (card.market.type === "game_total") {
       bucket = "game_total";
-      max = 2;
+      max = 1;
     } else if (card.market.type === "team_total") {
       bucket = `team_total:${card.market.subject}`;
-      max = 2;
+      max = 1;
     } else if (card.market.type === "handicap") {
       bucket = `handicap:${card.market.subject}`;
       max = 1;
@@ -319,14 +323,14 @@ function evidenceStats(stat, rows) {
 
 function singleTrendScore(stat, window) {
   const sampleBonus = window === 20 ? 7 : window === 10 ? 4 : 1;
-  return 58 + stat.rate * 22 + stat.wilson90 * 12 + sampleBonus;
+  return 54 + stat.rate * 18 + stat.wilson90 * 10 + sampleBonus;
 }
 
 function confluenceScore(a, b, window) {
   const sampleBonus = window === 20 ? 7 : window === 10 ? 4 : 1;
   const averageRate = (a.rate + b.rate) / 2;
   const averageLower = (a.wilson90 + b.wilson90) / 2;
-  return 60 + averageRate * 21 + averageLower * 11 + sampleBonus;
+  return 53 + averageRate * 18 + averageLower * 9 + sampleBonus;
 }
 
 function wilsonLower(hits, n, z) {
