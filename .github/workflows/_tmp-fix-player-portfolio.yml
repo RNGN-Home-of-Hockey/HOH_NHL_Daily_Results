@@ -1,0 +1,88 @@
+name: Temporary fix player portfolio
+on:
+  push:
+    paths:
+      - '.github/workflows/_tmp-fix-player-portfolio.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve independent player evidence categories
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/player-market-insights.js')
+          s=p.read_text()
+          start=s.index('function selectPlayerPortfolio(cards, game) {')
+          end=s.index('\nfunction teamForPlayerCard',start)
+          new='''function selectPlayerPortfolio(cards, game) {
+  // Preserve one candidate per independent category + exact market here.
+  // The global portfolio is responsible for consolidating rolling + H2H into
+  // one operator card and retaining the second category as supporting evidence.
+  const bestByCategoryExact = new Map();
+  for (const card of cards) {
+    const market = card.market || {};
+    const key = `${card.category}:${market.type}:${market.subject}:${market.side}:${market.line ?? ""}`;
+    const current = bestByCategoryExact.get(key);
+    const window = Number(card.evidence?.window || card.evidence?.games || 0);
+    const currentWindow = Number(current?.evidence?.window || current?.evidence?.games || 0);
+    if (!current || Number(card.score || 0) > Number(current.score || 0) || (Number(card.score || 0) === Number(current.score || 0) && window > currentWindow)) {
+      bestByCategoryExact.set(key, card);
+    }
+  }
+
+  const grouped = new Map();
+  for (const card of bestByCategoryExact.values()) {
+    const market = card.market || {};
+    const exact = `${market.type}:${market.subject}:${market.side}:${market.line ?? ""}`;
+    if (!grouped.has(exact)) grouped.set(exact, []);
+    grouped.get(exact).push(card);
+  }
+
+  const candidates = [];
+  for (const group of grouped.values()) {
+    group.sort((a,b)=>categoryPriority(b.category)-categoryPriority(a.category) || Number(b.score||0)-Number(a.score||0));
+    candidates.push(...group.slice(0,2));
+  }
+  candidates.sort((a,b)=>Number(b.score||0)-Number(a.score||0));
+
+  const selected=[];
+  const perTeam=new Map();
+  for(const card of candidates){
+    const team=card.evidence?.team_tri || teamForPlayerCard(card,game);
+    const used=perTeam.get(team)||0;
+    if(used>=5) continue;
+    selected.push(card); perTeam.set(team,used+1);
+    if(selected.length>=10) break;
+  }
+  return selected;
+}
+
+function categoryPriority(category) {
+  if (category === "player_market") return 3;
+  if (category === "player_h2h") return 2;
+  if (category === "goalie_context") return 1;
+  return 0;
+}
+'''
+          s=s[:start]+new+s[end:]
+          old='evidence:{games,hits:Number(row.games_with_point),hit_rate:pointRate,points:Number(row.points),points_pg:Number(row.points_pg),opponent:row.opponent_tri,scope:"2Y",feature_layer:"player_opponent_splits_v1"},'
+          new2='evidence:{games,hits:Number(row.games_with_point),hit_rate:pointRate,points:Number(row.points),points_pg:Number(row.points_pg),team_tri:row.team_tri,opponent:row.opponent_tri,scope:"2Y",feature_layer:"player_opponent_splits_v1"},'
+          if old not in s: raise SystemExit('player H2H evidence anchor missing')
+          s=s.replace(old,new2,1)
+          p.write_text(s)
+          PY
+          node --check cloudflare-worker/src/player-market-insights.js
+          git diff --check
+      - name: Commit fix
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/player-market-insights.js
+          git commit -m 'Preserve player H2H as independent support'
+          git push origin HEAD:main
