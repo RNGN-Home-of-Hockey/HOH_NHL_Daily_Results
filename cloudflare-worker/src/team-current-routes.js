@@ -1,7 +1,11 @@
 import { loadTeamDetail, loadTeamRankings } from "./team-current-data.js";
 import { handleTeamCurrentUiRequest } from "./team-current-ui.js";
+import { handleTelegramMiniAppV2Ui } from "./telegram-mini-app-v2-ui.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
+  const miniAppV2Response = handleTelegramMiniAppV2Ui(request, path);
+  if (miniAppV2Response) return miniAppV2Response;
+
   const uiResponse = await handleTeamCurrentUiRequest(request, path);
   if (uiResponse) return uiResponse;
 
