@@ -6,7 +6,7 @@ Date: 2026-09-11
 
 Stage 2 turns the historical NHL Data Core into market-first broadcast candidates.
 
-The engine no longer relies on a few fixed rules such as only total 5.5 or team total 2.5. It evaluates a grid of common markets and chooses the strongest defensible sample.
+The engine no longer relies on a few fixed rules such as only total 5.5 or team total 2.5. It evaluates a grid of common markets, chooses the strongest defensible sample, compares teams with the league, and can add advanced 5v5 context to the same betting direction.
 
 ## Universal market evaluator
 
@@ -78,22 +78,59 @@ Defensive rank market direction is explicitly tested:
 - elite low goals-against -> opponent team total UNDER
 - poor high goals-against -> opponent team total OVER
 
+## Advanced 5v5 market context
+
+File:
+`cloudflare-worker/src/advanced-market-context.js`
+
+Source table:
+`team_game_advanced_features`
+
+Rolling windows:
+
+- last 5
+- last 10
+- last 20
+
+Current advanced metrics:
+
+- xGF%
+- CF%
+- FF%
+- xGF/60
+- xGA/60
+- PDO as supporting evidence
+- GSAx as supporting evidence
+
+The engine ranks teams league-wide on the same rolling window. It does not emit a separate card for every advanced metric. Instead it combines multiple independent facts into one market context.
+
+Over example:
+
+`CAR: xGF% #1, CF% #1; NYR — xGA/60 #32 -> CAR team total OVER 2.5.`
+
+Under example:
+
+`NYR: xGF% #32, CF% #32; CAR — xGA/60 #1 -> NYR team total UNDER 2.5.`
+
+Advanced context is evidence supporting a market direction, not a claimed standalone probability.
+
 ## Portfolio suppression
 
 The evaluator intentionally suppresses adjacent redundant lines in the final candidate set.
 
 Current limits:
 
-- max 1 game-total candidate
-- max 1 team-total candidate per team
-- max 1 handicap candidate per team
+- max 1 game-total candidate from the universal evaluator
+- max 1 team-total candidate per team from the universal evaluator
+- max 1 handicap candidate per team from the universal evaluator
 - rolling league rank engine max 4 cards, max 2 per market subject
+- advanced 5v5 context max 2 cards
 
 The global Betting Insight Engine then combines these with existing H2H, period, feature and live candidates and keeps the top 12 by score.
 
 ## Integration
 
-Both V2 modules are called directly from:
+All Stage 2 modules are called directly from:
 `cloudflare-worker/src/betting-insight-engine.js`
 
 Broadcast V2 already uses `buildBettingInsights()`, therefore no separate UI integration is required. A Worker deploy is sufficient for the new cards to appear.
@@ -108,12 +145,21 @@ Validated with deterministic synthetic datasets:
 - preference for stable 20-game samples;
 - duplicate-line suppression;
 - league top-3 / bottom-3 ranking;
-- defensive market direction.
+- defensive market direction;
+- advanced attack-vs-defense context;
+- advanced OVER / UNDER market direction;
+- 20-game preference in the advanced context layer.
+
+Validation found and fixed before production:
+
+- score saturation could leave a shorter sample tied with a longer one; ranking was changed to preserve separation and explicitly prefer the longer sample on ties;
+- goals-against league rank originally mapped strong/weak defense to the wrong opponent team-total direction; the mapping was reversed and covered by a dedicated test.
 
 ## Next Stage 2 work
 
-1. enrich exact market candidates with advanced 5v5 context from `team_game_advanced_features` (xGF%, CF%, FF%, PDO, GSAx);
-2. add home/away and H2H market-specific splits;
-3. add market-line adapter for real Winline lines so only actually offered lines are evaluated;
-4. add player/goalie game features and player-vs-opponent splits later;
-5. add own HOH xG from NHL shot coordinates.
+1. global cross-engine portfolio/diversification so several rule families do not repeat the same underlying market;
+2. home/away exact market splits;
+3. H2H exact market-line evaluation;
+4. real Winline market-line adapter so, when available, only actually offered lines are evaluated;
+5. player/goalie game features and player-vs-opponent splits later;
+6. own HOH xG from NHL shot coordinates.
