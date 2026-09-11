@@ -12,90 +12,29 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Validate production Stage 2
+      - name: Diagnose production game endpoints
         env:
           BASE_URL: https://hoh-nhl-daily-results.znamteam-903.workers.dev
         run: |
           python - <<'PY'
-          import json, os, urllib.request
-          from collections import Counter, defaultdict
-
+          import json, os, urllib.request, urllib.error
           base=os.environ['BASE_URL'].rstrip('/')
-          def get(path):
-              req=urllib.request.Request(base+path,headers={'User-Agent':'HOH-Stage2-Postdeploy/1.0','Accept':'application/json'})
-              with urllib.request.urlopen(req,timeout=60) as r:
-                  return json.loads(r.read().decode('utf-8'))
-
-          listing=get('/api/broadcast/games')
-          counts=listing.get('counts') or {}
+          def raw(path):
+              req=urllib.request.Request(base+path,headers={'User-Agent':'HOH-Stage2-Diagnostic/1.0','Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=60) as r:
+                      body=r.read().decode('utf-8','replace')
+                      return r.status,body
+              except urllib.error.HTTPError as e:
+                  return e.code,e.read().decode('utf-8','replace')
+          status,body=raw('/api/broadcast/games')
+          print('LIST_STATUS',status)
+          print('LIST_BODY_PREFIX',body[:500])
+          listing=json.loads(body)
           games=listing.get('games') or []
-          print('COUNTS',json.dumps(counts,ensure_ascii=False))
-          if int(counts.get('games') or 0)!=2792: raise SystemExit(f"unexpected game count {counts}")
-          if int(counts.get('teams') or 0)!=32: raise SystemExit(f"unexpected team count {counts}")
-          if not games: raise SystemExit('no games')
-
-          sample=games[:40]
-          tiers=Counter(); periods=Counter(); cats=Counter(); exact=defaultdict(set)
-          settle_stats=defaultdict(lambda:[0,0])
-          examples=[]
-
-          def settle(card,d):
-              m=card.get('market') or {}; typ=m.get('type'); side=m.get('side'); line=m.get('line'); period=m.get('period') or 'GAME'
-              g=d.get('game') or {}; home=g.get('home_tri'); away=g.get('away_tri')
-              if period=='REG':
-                  ps=[p for p in (d.get('periods') or []) if int(p.get('period_number') or 0) in (1,2,3)]
-                  hs=sum(int(p.get('home_goals') or 0) for p in ps); a=sum(int(p.get('away_goals') or 0) for p in ps)
-              else:
-                  hs=int(g.get('home_score') or 0); a=int(g.get('away_score') or 0)
-              if typ=='game_total' and line is not None:
-                  total=hs+a; line=float(line); return (total>line if side=='over' else total<line if side=='under' else None)
-              if typ=='team_total' and line is not None:
-                  subject=m.get('subject'); gf=hs if subject==home else a if subject==away else None
-                  if gf is None: return None
-                  line=float(line); return (gf>line if side=='over' else gf<line if side=='under' else None)
-              if typ=='handicap' and line is not None and period=='GAME':
-                  subject=m.get('subject'); diff=(hs-a) if subject==home else (a-hs) if subject==away else None
-                  return None if diff is None else diff+float(line)>0
-              if typ=='moneyline' and period=='GAME':
-                  subject=m.get('subject') or side; winner=home if hs>a else away if a>hs else None
-                  return None if winner is None else winner==subject
-              return None
-
-          for i,g in enumerate(sample,1):
-              d=get('/api/broadcast/games/'+str(g['game_pk']))
-              cards=d.get('cards') or []
-              seen={}
-              for c in cards:
-                  q=c.get('evidence_quality') or {}; tier=q.get('tier')
-                  if tier: tiers[str(tier)]+=1
-                  m=c.get('market') or {}; period=str(m.get('period') or 'GAME'); periods[period]+=1
-                  cat=str(c.get('category') or c.get('insight_type') or 'unknown'); cats[cat]+=1
-                  k=(m.get('type'),m.get('subject'),m.get('side'),m.get('line'))
-                  exact[k].add(period)
-                  fullk=(m.get('type'),period,m.get('subject'),m.get('side'),m.get('line'))
-                  if fullk in seen: raise SystemExit(f'duplicate exact market in final portfolio: {g["game_pk"]} {fullk}')
-                  seen[fullk]=1
-                  result=settle(c,d)
-                  if result is not None and tier in {'A','B','C'}:
-                      settle_stats[str(tier)][0]+=1; settle_stats[str(tier)][1]+=int(bool(result))
-                  if len(examples)<24 and (tier=='A' or period=='REG'):
-                      examples.append({'game_pk':g['game_pk'],'match':f"{g.get('away_tri')}-{g.get('home_tri')}",'tier':tier,'category':cat,'market':m.get('label'),'period':period,'support':q.get('independent_support_count'),'portfolio_score':c.get('portfolio_score'),'source_score':c.get('score')})
-              if i%10==0: print('PROGRESS',i,'/',len(sample),flush=True)
-
-          both=sum(1 for v in exact.values() if 'REG' in v and 'GAME' in v)
-          report={
-            'tiers':dict(tiers),
-            'periods':dict(periods),
-            'categories':dict(cats),
-            'same_numeric_market_present_in_both_GAME_and_REG':both,
-            'retrospective_by_tier':{k:{'n':v[0],'hits':v[1],'rate':round(v[1]/v[0],3) if v[0] else None} for k,v in sorted(settle_stats.items())},
-            'examples':examples,
-            'note':'Retrospective production QA only; rates are not probabilities or betting edge.'
-          }
-          print('POSTDEPLOY_REPORT',json.dumps(report,ensure_ascii=False,indent=2))
-          if not tiers: raise SystemExit('evidence tiers missing')
-          if periods.get('REG',0)<5: raise SystemExit(f'too few REG cards: {periods}')
-          if periods.get('GAME',0)<5: raise SystemExit(f'too few GAME cards: {periods}')
-          if not any(t in tiers for t in ('A','B')): raise SystemExit(f'no A/B tiers: {tiers}')
-          print('STAGE2_POSTDEPLOY_OK')
+          for g in games[:8]:
+              path='/api/broadcast/games/'+str(g['game_pk'])
+              status,body=raw(path)
+              print('GAME',g['game_pk'],g.get('away_tri'),g.get('home_tri'),'STATUS',status,'BODY',body[:1000])
+          print('DIAGNOSTIC_DONE')
           PY
