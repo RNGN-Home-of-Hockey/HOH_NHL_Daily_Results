@@ -1,0 +1,64 @@
+name: Temporary Production Verify
+
+on:
+  push:
+    paths:
+      - '.github/workflows/_tmp-prod-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify production
+        env:
+          BASE_URL: https://hoh-nhl-daily-results.znamteam-903.workers.dev
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.error
+          from collections import Counter
+
+          base=os.environ['BASE_URL'].rstrip('/')
+          def get(path):
+              req=urllib.request.Request(base+path,headers={'User-Agent':'HOH-Prod-Verify/1.0','Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=60) as r:
+                      raw=r.read().decode('utf-8','replace')
+                      return r.status,json.loads(raw)
+              except urllib.error.HTTPError as e:
+                  raw=e.read().decode('utf-8','replace')
+                  try: payload=json.loads(raw)
+                  except Exception: payload={'raw':raw}
+                  return e.code,payload
+
+          s,listing=get('/api/broadcast/games')
+          print('LIST',s,json.dumps(listing.get('counts') or {},ensure_ascii=False))
+          games=(listing.get('games') or [])[:12]
+          fail=[]; degraded_sections=Counter(); betting_degraded=0; tiers=Counter(); periods=Counter(); cats=Counter(); total_cards=0
+          examples=[]
+          for g in games:
+              s,d=get('/api/broadcast/games/'+str(g['game_pk']))
+              print('GAME',g['game_pk'],g.get('away_tri'),g.get('home_tri'),'STATUS',s)
+              if s!=200:
+                  print('BODY',json.dumps(d,ensure_ascii=False)[:1200])
+                  fail.append(g['game_pk'])
+                  continue
+              secs=d.get('data_degraded_sections') or []
+              print('  SECTIONS',secs,'BETTING_DEGRADED',d.get('betting_insights_degraded'),'CARDS',len(d.get('cards') or []))
+              for x in secs: degraded_sections[str(x)]+=1
+              betting_degraded += int(bool(d.get('betting_insights_degraded')))
+              for c in d.get('cards') or []:
+                  total_cards += 1
+                  q=c.get('evidence_quality') or {}; m=c.get('market') or {}
+                  if q.get('tier'): tiers[str(q['tier'])]+=1
+                  periods[str(m.get('period') or 'GAME')]+=1
+                  cats[str(c.get('category') or c.get('insight_type') or 'unknown')]+=1
+                  if len(examples)<12 and (q.get('tier') in ('A','B') or m.get('period')=='REG'):
+                      examples.append({'game_pk':g['game_pk'],'tier':q.get('tier'),'cat':c.get('category'),'period':m.get('period'),'label':m.get('label'),'support':q.get('independent_support_count')})
+          report={'failures':fail,'degraded_sections':dict(degraded_sections),'betting_degraded_games':betting_degraded,'cards':total_cards,'tiers':dict(tiers),'periods':dict(periods),'categories':dict(cats),'examples':examples}
+          print('REPORT',json.dumps(report,ensure_ascii=False,indent=2))
+          if fail: raise SystemExit(f'game failures {len(fail)}')
+          print('PROD_VERIFY_OK')
+          PY
