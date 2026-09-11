@@ -82,11 +82,26 @@ export async function buildBettingInsights(db, game, options = {}) {
   insights.push(...marketSplitInsights);
   insights.push(...featureInsights);
 
-  const portfolio = selectInsightPortfolio(dedupe(insights), 12);
-  return applyWinlineMarkets(portfolio, options.provider_markets, {
-    now: options.now,
-    max_age_ms: options.market_max_age_ms,
-  });
+  const rawPortfolio = dedupe(insights);
+  let portfolio;
+  try {
+    portfolio = selectInsightPortfolio(rawPortfolio, 12);
+  } catch (error) {
+    console.error("betting insight portfolio failed", error);
+    portfolio = [...rawPortfolio]
+      .sort((a, b) => Number(b?.score || 0) - Number(a?.score || 0))
+      .slice(0, 12);
+  }
+
+  try {
+    return applyWinlineMarkets(portfolio, options.provider_markets, {
+      now: options.now,
+      max_age_ms: options.market_max_age_ms,
+    });
+  } catch (error) {
+    console.error("winline market adapter failed", error);
+    return portfolio;
+  }
 }
 
 async function safeInsightBuild(label, factory) {

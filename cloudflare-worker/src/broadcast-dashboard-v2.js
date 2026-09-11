@@ -141,7 +141,14 @@ async function broadcastGameRoute(env, gamePk) {
 
     const teamStats=teamStatsResult.results||[];
     const playerStats=playerStatsResult.results||[];
-    const bettingInsights=await buildBettingInsights(env.DB,game);
+    let bettingInsights=[];
+    let bettingInsightsDegraded=false;
+    try {
+      bettingInsights=await buildBettingInsights(env.DB,game);
+    } catch (error) {
+      bettingInsightsDegraded=true;
+      console.error("broadcast betting insights degraded", error);
+    }
     return jsonResponse({
       ok:true,
       game,
@@ -150,6 +157,7 @@ async function broadcastGameRoute(env, gamePk) {
       top_players:playerStats,
       events:eventsResult.results||[],
       cards:bettingInsights,
+      betting_insights_degraded:bettingInsightsDegraded,
       quick_cards:buildQuickCards(game,teamStats,playerStats),
       persisted_cards:persistedCardsResult.results||[],
     });
