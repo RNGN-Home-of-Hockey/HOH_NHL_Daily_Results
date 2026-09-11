@@ -716,15 +716,24 @@ def export_supplemental_chunks(db):
         int(r[0]) for r in db.execute("SELECT DISTINCT player_id FROM player_rolling_snapshots_local UNION SELECT DISTINCT player_id FROM goalie_rolling_snapshots_local")
     }
     players = []
+    player_d1_cols = [
+        "player_id","first_name_en","last_name_en","full_name_en","current_team_tri",
+        "position_code","sweater_number","shoots_catches","active",
+    ]
     if active_ids:
         marks = ",".join("?" for _ in active_ids)
-        players = [dict(r) for r in db.execute(f"SELECT * FROM players_compact_local WHERE player_id IN ({marks}) ORDER BY player_id", tuple(sorted(active_ids)))]
+        raw_players = [dict(r) for r in db.execute(
+            f"SELECT * FROM players_compact_local WHERE player_id IN ({marks}) ORDER BY player_id",
+            tuple(sorted(active_ids)),
+        )]
+        # last_seen_* is local bookkeeping only; production players does not expose it.
+        players = [{col: row.get(col) for col in player_d1_cols} for row in raw_players]
 
     counts = {}
     chunks = {}
     counts["players"], chunks["players"] = write_chunks(
         "070_players", "players", players, ["player_id"],
-        update_cols=["first_name_en","last_name_en","full_name_en","current_team_tri","position_code","sweater_number","shoots_catches","active","last_seen_game_start_utc","last_seen_game_pk"],
+        update_cols=player_d1_cols[1:],
         batch=200,
     )
     for prefix, table, local, conflicts, batch in (
