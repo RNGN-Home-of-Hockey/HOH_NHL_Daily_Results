@@ -6,6 +6,7 @@ import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
 import { handleTelegramGameSubscriptionRequest } from "./telegram-game-subscriptions.js";
 import { handleTelegramGameFollowUi } from "./telegram-game-follow-ui.js";
+import { handleTelegramNotificationPreferencesUi } from "./telegram-notification-preferences-ui.js";
 import { handleMatchupCenterRequest } from "./matchup-center.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
@@ -21,6 +22,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const gameFollowUiResponse = handleTelegramGameFollowUi(request, path);
   if (gameFollowUiResponse) return gameFollowUiResponse;
 
+  const preferenceUiResponse = handleTelegramNotificationPreferencesUi(request, path);
+  if (preferenceUiResponse) return preferenceUiResponse;
+
   const matchupResponse = await handleMatchupCenterRequest(request, env, path);
   if (matchupResponse) return matchupResponse;
 
@@ -30,10 +34,13 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const miniAppV2Response = handleTelegramMiniAppV2Ui(request, path);
   if (miniAppV2Response) {
     if (path === "/telegram-app" && request.method === "GET") {
-      const body = await miniAppV2Response.text();
-      const enhanced = body.includes("/telegram-app/game-follow.js")
-        ? body
-        : body.replace("</body>", '<script src="/telegram-app/game-follow.js"></script></body>');
+      let enhanced = await miniAppV2Response.text();
+      if (!enhanced.includes("/telegram-app/game-follow.js")) {
+        enhanced = enhanced.replace("</body>", '<script src="/telegram-app/game-follow.js"></script></body>');
+      }
+      if (!enhanced.includes("/telegram-app/preferences.js")) {
+        enhanced = enhanced.replace("</body>", '<script src="/telegram-app/preferences.js"></script></body>');
+      }
       return new Response(enhanced, {
         status:miniAppV2Response.status,
         headers:{
