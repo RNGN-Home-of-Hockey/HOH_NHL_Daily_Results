@@ -3,6 +3,7 @@ import { buildFeatureMarketInsights } from "./feature-market-insights.js";
 import { buildUniversalMarketInsights } from "./universal-market-evaluator.js";
 import { buildRollingLeagueRankInsights } from "./rolling-league-ranks.js";
 import { buildAdvancedMarketContextInsights } from "./advanced-market-context.js";
+import { selectInsightPortfolio } from "./insight-portfolio.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -74,9 +75,7 @@ export async function buildBettingInsights(db, game) {
   insights.push(...advancedContextInsights);
   insights.push(...featureInsights);
 
-  return dedupe(insights)
-    .sort((a,b) => b.score-a.score)
-    .slice(0,12);
+  return selectInsightPortfolio(dedupe(insights), 12);
 }
 
 function recentGamesStatement(db, team, before) {
