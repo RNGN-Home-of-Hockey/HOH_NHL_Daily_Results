@@ -1,0 +1,73 @@
+name: Stage2 Global Portfolio Integration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage2-global-portfolio-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Integrate portfolio
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/betting-insight-engine.js')
+          s=p.read_text(encoding='utf-8')
+          imp='import { selectInsightPortfolio } from "./insight-portfolio.js";\n'
+          if imp not in s:
+              anchor='import { buildAdvancedMarketContextInsights } from "./advanced-market-context.js";\n'
+              if anchor not in s: raise SystemExit('import anchor missing')
+              s=s.replace(anchor,anchor+imp,1)
+          old='''  return dedupe(insights)\n    .sort((a,b) => b.score-a.score)\n    .slice(0,12);'''
+          new='''  return selectInsightPortfolio(dedupe(insights), 12);'''
+          if old not in s: raise SystemExit('return anchor missing')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          node --check cloudflare-worker/src/insight-portfolio.js
+          node --check cloudflare-worker/src/betting-insight-engine.js
+          git diff --check
+      - name: Portfolio pure tests
+        run: |
+          node --input-type=module <<'NODE'
+          import { selectInsightPortfolio } from './cloudflare-worker/src/insight-portfolio.js';
+          const mk=(id,category,score,type,subject,side,line,title,timing='pregame')=>({id,category,insight_type:id,score,title,eyebrow:category,value:'x',timing,kind:timing==='live'?'live':'history',explanation:'base',evidence:{window:20},market:{type,subject,side,line,label:title}});
+          const cards=[
+            mk('u1','market_evaluator',92,'team_total','CAR','over',2.5,'CAR ИТБ 2.5'),
+            mk('a1','advanced_context',98,'team_total','CAR','over',2.5,'CAR ИТБ 2.5'),
+            mk('r1','league_rank',93,'team_total','CAR','over',2.5,'CAR ИТБ 2.5'),
+            mk('u2','market_evaluator',90,'team_total','CAR','over',3.5,'CAR ИТБ 3.5'),
+            mk('g1','market_evaluator',89,'game_total',null,'over',5.5,'ТБ 5.5'),
+            mk('g2','league_rank',88,'game_total',null,'over',6.5,'ТБ 6.5'),
+            mk('h1','market_evaluator',91,'handicap','CAR','CAR',-1.5,'CAR -1.5'),
+            mk('m1','history',80,'moneyline','CAR','CAR',null,'Победа CAR'),
+            mk('live1','live',99,'next_goal_team','CAR','CAR',null,'Следующий гол CAR','live'),
+          ];
+          const out=selectInsightPortfolio(cards,12);
+          const carTotals=out.filter(c=>c.market.type==='team_total'&&c.market.subject==='CAR');
+          if(carTotals.length!==1) throw new Error(`expected one CAR team total, got ${carTotals.length}`);
+          if(carTotals[0].market.line!==2.5) throw new Error('wrong CAR total survived');
+          if(Number(carTotals[0].evidence.independent_support_count)!==2) throw new Error(`expected 2 support signals: ${JSON.stringify(carTotals[0].evidence)}`);
+          if(carTotals[0].score!==99) throw new Error(`support boost/cap wrong: ${carTotals[0].score}`);
+          if(out.filter(c=>c.market.type==='game_total').length!==1) throw new Error('game total line spam not suppressed');
+          if(!out.some(c=>c.id==='live1')) throw new Error('live card lost');
+          console.log('GLOBAL_PORTFOLIO_OK',out.map(c=>({id:c.id,market:c.market.label,score:c.score,support:c.evidence?.independent_support_count||0})));
+          NODE
+      - name: Commit integration
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/betting-insight-engine.js
+          git commit -m 'Integrate global insight portfolio selection'
+          git push origin HEAD:main
