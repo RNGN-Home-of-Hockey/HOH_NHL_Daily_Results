@@ -34,7 +34,7 @@ if (-not (Test-Path $ChunkDir)) { throw "Missing $ChunkDir. Run build_compact_sn
 
 # Only supplemental compact files. Never replay the 010-060 historical package here.
 $files = @(Get-ChildItem $ChunkDir -Filter '*.sql' -File | Where-Object {
-    $_.Name -match '^(070_players|080_team_snapshots|090_player_rolling|100_player_opponents|110_goalie_rolling|120_goalie_opponents|125_team_current)_'
+    $_.Name -match '^(070_players|080_team_snapshots|090_player_rolling|100_player_opponents|110_goalie_rolling|120_goalie_opponents|125_team_current|130_data_core_meta)_'
 } | Sort-Object Name)
 if ($files.Count -eq 0) { throw 'No compact supplemental D1 chunks were generated.' }
 
@@ -86,9 +86,9 @@ Write-Host ''
 Write-Host 'DONE: compact snapshots/player aggregates uploaded.'
 Write-Host ('State: ' + $StateFile)
 Write-Host ''
-Write-Host 'Compact remote counts:'
-$query = 'SELECT (SELECT COUNT(*) FROM pregame_team_snapshots) AS team_snapshots, (SELECT COUNT(*) FROM team_current_snapshots) AS team_current, (SELECT COUNT(*) FROM player_rolling_snapshots) AS player_rolling, (SELECT COUNT(*) FROM player_opponent_splits) AS player_vs_opponent, (SELECT COUNT(*) FROM goalie_rolling_snapshots) AS goalie_rolling, (SELECT COUNT(*) FROM goalie_opponent_splits) AS goalie_vs_opponent;'
-$countExit = Invoke-NpxCaptured -ArgumentString ('wrangler d1 execute hoh-data-core --remote --command "' + $query + '"')
-if ($countExit -ne 0) {
-    Write-Host ("WARNING: upload completed but compact count verification failed with exit code {0}." -f $countExit)
+Write-Host 'Remote compact status (small metadata table; no historical COUNT scans):'
+$query = "SELECT meta_key,meta_value,updated_at FROM data_core_meta WHERE meta_key LIKE 'warehouse.%' OR meta_key LIKE 'compact.%' OR meta_key LIKE 'build.%' ORDER BY meta_key;"
+$metaExit = Invoke-NpxCaptured -ArgumentString ('wrangler d1 execute hoh-data-core --remote --command "' + $query + '"')
+if ($metaExit -ne 0) {
+    Write-Host ("WARNING: upload completed but metadata verification failed with exit code {0}." -f $metaExit)
 }
