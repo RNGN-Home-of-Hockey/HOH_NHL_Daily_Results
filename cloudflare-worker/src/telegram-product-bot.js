@@ -7,18 +7,37 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     return null;
   }
 
+  console.log("telegram_webhook_received", { path });
+
   const expected = String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim();
-  if (!expected) return null;
   const provided = request.headers.get("x-telegram-bot-api-secret-token") || "";
-  if (!provided || !(await secureEqual(provided, expected))) return null;
+  if (!expected) {
+    console.log("telegram_webhook_missing_secret_config");
+    return null;
+  }
+  if (!provided || !(await secureEqual(provided, expected))) {
+    console.log("telegram_webhook_secret_mismatch");
+    return null;
+  }
 
   let update;
-  try { update = await request.json(); } catch { return null; }
+  try { update = await request.json(); } catch {
+    console.log("telegram_webhook_invalid_json");
+    return null;
+  }
 
   const message = update.message || null;
+  console.log("telegram_update", {
+    has_message: Boolean(message),
+    chat_type: message?.chat?.type || null,
+    has_text: Boolean(message?.text),
+  });
+
   if (!message || message.chat?.type !== "private") return null;
 
   const command = commandName(message.text || "");
+  console.log("telegram_command", { command, chat_id_present: Boolean(message.chat?.id) });
+
   if (!["/start", "/menu", "/help", "/app"].includes(command)) {
     return json({ ok: true, skipped: "private_command_not_handled" });
   }
@@ -33,6 +52,12 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     reply_markup: {
       inline_keyboard: [[{ text: "🏒 Открыть HOH NHL Center", web_app: { url: miniAppUrl(request, env) } }]],
     },
+  });
+
+  console.log("telegram_send_result", {
+    ok: result.ok,
+    status_code: result.status_code,
+    error: result.response?.description || result.error || null,
   });
 
   return json({ ok: result.ok, action: "center_menu" }, result.ok ? 200 : 502);
@@ -59,8 +84,8 @@ function miniAppUrl(request, env) {
 }
 
 async function telegramRequest(env, method, payload) {
-  const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN || "").trim();
-  if (!token) return { ok:false,error:"missing_telegram_token" };
+  const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim();
+  if (!token) return { ok:false,error:"missing_telegram_center_token" };
 
   const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
     method:"POST",
