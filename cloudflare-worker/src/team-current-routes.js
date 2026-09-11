@@ -1,6 +1,10 @@
 import { loadTeamDetail, loadTeamRankings } from "./team-current-data.js";
+import { handleTeamCurrentUiRequest } from "./team-current-ui.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
+  const uiResponse = await handleTeamCurrentUiRequest(request, path);
+  if (uiResponse) return uiResponse;
+
   if (!["GET"].includes(request.method)) return null;
   if (!env.DB) {
     if (path.startsWith("/api/control/teams") || path.startsWith("/api/telegram-app/teams")) {
