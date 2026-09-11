@@ -5,6 +5,7 @@ import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
 import { handleTelegramGameSubscriptionRequest } from "./telegram-game-subscriptions.js";
+import { handleTelegramGameFollowUi } from "./telegram-game-follow-ui.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
   const healthResponse = await handleDataCoreHealthV2(request, env, path);
@@ -16,11 +17,30 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const gameSubscriptionResponse = await handleTelegramGameSubscriptionRequest(request.clone(), env, path);
   if (gameSubscriptionResponse) return gameSubscriptionResponse;
 
+  const gameFollowUiResponse = handleTelegramGameFollowUi(request, path);
+  if (gameFollowUiResponse) return gameFollowUiResponse;
+
   const controlV2Response = handleControlCenterV2Ui(request, path);
   if (controlV2Response) return controlV2Response;
 
   const miniAppV2Response = handleTelegramMiniAppV2Ui(request, path);
-  if (miniAppV2Response) return miniAppV2Response;
+  if (miniAppV2Response) {
+    if (path === "/telegram-app" && request.method === "GET") {
+      const body = await miniAppV2Response.text();
+      const enhanced = body.includes("/telegram-app/game-follow.js")
+        ? body
+        : body.replace("</body>", '<script src="/telegram-app/game-follow.js"></script></body>');
+      return new Response(enhanced, {
+        status:miniAppV2Response.status,
+        headers:{
+          "Content-Type":"text/html; charset=utf-8",
+          "Cache-Control":"public, max-age=120",
+          "X-Content-Type-Options":"nosniff",
+        },
+      });
+    }
+    return miniAppV2Response;
+  }
 
   const uiResponse = await handleTeamCurrentUiRequest(request, path);
   if (uiResponse) return uiResponse;
