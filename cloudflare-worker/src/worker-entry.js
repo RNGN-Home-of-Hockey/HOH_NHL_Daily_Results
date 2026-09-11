@@ -5,6 +5,7 @@ import { handleBroadcastRequest } from "./broadcast-dashboard-v2.js";
 import { buildLiveGameSnapshot } from "./live-betting-engine.js";
 import { handleControlCenterRequest } from "./control-center.js";
 import { handleTelegramMiniAppRequest } from "./telegram-mini-app.js";
+import { handleTelegramProductBotRequest } from "./telegram-product-bot.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -15,6 +16,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = stripTrailingSlash(url.pathname);
+
+    const telegramProductResponse = await handleTelegramProductBotRequest(request.clone(), env, path);
+    if (telegramProductResponse) {
+      return telegramProductResponse;
+    }
 
     const miniAppResponse = await handleTelegramMiniAppRequest(request, env, path);
     if (miniAppResponse) {
