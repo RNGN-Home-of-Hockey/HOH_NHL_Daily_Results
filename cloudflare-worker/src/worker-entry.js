@@ -6,6 +6,7 @@ import { buildLiveGameSnapshot } from "./live-betting-engine.js";
 import { handleControlCenterRequest } from "./control-center.js";
 import { handleTelegramMiniAppRequest } from "./telegram-mini-app.js";
 import { handleTelegramProductBotRequest } from "./telegram-product-bot.js";
+import { handleTeamCurrentRequest } from "./team-current-routes.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -20,6 +21,11 @@ export default {
     const telegramProductResponse = await handleTelegramProductBotRequest(request.clone(), env, path);
     if (telegramProductResponse) {
       return telegramProductResponse;
+    }
+
+    const teamCurrentResponse = await handleTeamCurrentRequest(request, env, path);
+    if (teamCurrentResponse) {
+      return teamCurrentResponse;
     }
 
     const miniAppResponse = await handleTelegramMiniAppRequest(request, env, path);
