@@ -1,0 +1,22 @@
+name: Temporary Broadcast Stage Read
+
+on:
+  push:
+    paths:
+      - '.github/workflows/_tmp-stage-read.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read production error stage
+        run: |
+          set -x
+          for id in 2025030416 2025030415 2025030315; do
+            echo "=== $id ==="
+            curl -sS -i "https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/broadcast/games/$id" || true
+            echo
+          done
