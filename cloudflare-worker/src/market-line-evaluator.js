@@ -5,9 +5,10 @@ const HANDICAPS = [-2.5,-1.5,1.5,2.5];
 export async function evaluateMarketLines(db, game, options = {}) {
   if (!db || !game?.home_tri || !game?.away_tri) return [];
   const window = clampInt(options.window,20,5,20);
+  const before = String(options.before || game.start_utc || game.scheduled_start_utc || "").trim() || null;
   const [home,away] = await Promise.all([
-    loadTeamWindow(db,game.home_tri,window),
-    loadTeamWindow(db,game.away_tri,window),
+    loadTeamWindow(db,game.home_tri,window,before),
+    loadTeamWindow(db,game.away_tri,window,before),
   ]);
   if (home.length < 5 || away.length < 5) return [];
 
@@ -21,15 +22,24 @@ export async function evaluateMarketLines(db, game, options = {}) {
   return result.sort((a,b)=>b.confidence-a.confidence||b.combined_rate-a.combined_rate||a.label.localeCompare(b.label));
 }
 
-async function loadTeamWindow(db,team,window) {
-  const result = await db.prepare(`
+async function loadTeamWindow(db,team,window,before) {
+  const sql = before ? `
+    SELECT game_pk,scheduled_start_utc,opponent_tri,is_home,final_goals_for,final_goals_against,
+           total_goals,final_goal_diff,final_win
+    FROM team_game_features
+    WHERE team_tri=? AND game_type IN (2,3) AND scheduled_start_utc<?
+    ORDER BY scheduled_start_utc DESC,game_pk DESC
+    LIMIT ?;
+  ` : `
     SELECT game_pk,scheduled_start_utc,opponent_tri,is_home,final_goals_for,final_goals_against,
            total_goals,final_goal_diff,final_win
     FROM team_game_features
     WHERE team_tri=? AND game_type IN (2,3)
     ORDER BY scheduled_start_utc DESC,game_pk DESC
     LIMIT ?;
-  `).bind(team,window).all();
+  `;
+  const statement = before ? db.prepare(sql).bind(team,before,window) : db.prepare(sql).bind(team,window);
+  const result = await statement.all();
   return result.results || [];
 }
 
@@ -89,7 +99,10 @@ function handicaps(game,team,opponent,teamRows,opponentRows) {
 }
 
 function market({game,type,subject,line,side,label,combinedRate,components,samples}) {
-  const confidence=Math.round(Math.abs(combinedRate-.5)*2000)/10;
+  // Confidence is evidence FOR the displayed market. A low handicap hit rate
+  // must not become a high-confidence card merely because it is far from 50%.
+  const edge=Math.max(0,Number(combinedRate)-.5);
+  const confidence=Math.round(edge*2000)/10;
   const score=Math.round((50+confidence*.5)*10)/10;
   return {
     game_pk:Number(game.game_pk)||null,
@@ -99,6 +112,7 @@ function market({game,type,subject,line,side,label,combinedRate,components,sampl
     side,
     label,
     combined_rate:round(combinedRate),
+    edge_pp:Math.round(edge*1000)/10,
     confidence,
     score,
     sample:Object.values(samples).reduce((a,b)=>a+Number(b||0),0),
