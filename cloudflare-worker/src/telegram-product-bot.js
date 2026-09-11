@@ -2,7 +2,8 @@ export async function handleTelegramProductBotRequest(request, env, path) {
   if (path === "/api/telegram-app/setup") {
     return setupMiniAppButton(request, env);
   }
-  if (!["/api/telegram", "/telegram"].includes(path) || request.method !== "POST") {
+
+  if (!["/api/telegram/center", "/telegram/center", "/api/telegram", "/telegram"].includes(path) || request.method !== "POST") {
     return null;
   }
 
@@ -13,6 +14,7 @@ export async function handleTelegramProductBotRequest(request, env, path) {
 
   let update;
   try { update = await request.json(); } catch { return null; }
+
   const message = update.message || null;
   if (!message || message.chat?.type !== "private") return null;
 
@@ -23,34 +25,28 @@ export async function handleTelegramProductBotRequest(request, env, path) {
 
   const chatId = message.chat?.id;
   if (!chatId) return json({ ok: true, skipped: "missing_chat" });
-  const appUrl = miniAppUrl(request, env);
+
   const result = await telegramRequest(env, "sendMessage", {
     chat_id: chatId,
-    text: "HOME OF HOCKEY · NHL Live\n\nМатчи, live-счёт, карточки игроков и персональные подписки — внутри приложения.",
+    text: "🏒 HOH NHL Center\n\nТвой персональный центр NHL:\n\n• игроки\n• команды\n• матчи\n• уведомления\n• статистика",
     disable_web_page_preview: true,
     reply_markup: {
-      inline_keyboard: [[{ text: "🏒 Открыть NHL Live", web_app: { url: appUrl } }]],
+      inline_keyboard: [[{ text: "🏒 Открыть HOH NHL Center", web_app: { url: miniAppUrl(request, env) } }]],
     },
   });
-  return json({ ok: result.ok, action: "private_mini_app_menu" }, result.ok ? 200 : 502);
+
+  return json({ ok: result.ok, action: "center_menu" }, result.ok ? 200 : 502);
 }
 
 async function setupMiniAppButton(request, env) {
   if (request.method !== "POST") return json({ ok:false,error:"method_not_allowed" },405);
   if (!(await managementAuthorized(request, env))) return json({ ok:false,error:"unauthorized" },401);
-  const appUrl = miniAppUrl(request, env);
+
   const menuButton = await telegramRequest(env, "setChatMenuButton", {
-    menu_button: { type: "web_app", text: "NHL Live", web_app: { url: appUrl } },
+    menu_button: { type: "web_app", text: "HOH NHL Center", web_app: { url: miniAppUrl(request, env) } },
   });
-  const commands = await telegramRequest(env, "setMyCommands", {
-    commands: [
-      { command: "app", description: "Открыть NHL Live" },
-      { command: "menu", description: "Показать меню" },
-      { command: "latest", description: "Последние матчи" },
-      { command: "schedule", description: "Расписание" },
-    ],
-  });
-  return json({ ok: menuButton.ok && commands.ok, app_url: appUrl, menu_button: menuButton, commands }, menuButton.ok && commands.ok ? 200 : 502);
+
+  return json({ ok: menuButton.ok, menu_button: menuButton }, menuButton.ok ? 200 : 502);
 }
 
 function miniAppUrl(request, env) {
@@ -64,10 +60,14 @@ function miniAppUrl(request, env) {
 
 async function telegramRequest(env, method, payload) {
   const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN || "").trim();
-  if (!token) return { ok:false,error:"missing_TELEGRAM_CENTER_BOT_TOKEN" };
+  if (!token) return { ok:false,error:"missing_telegram_token" };
+
   const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload),
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(payload),
   });
+
   const data = await response.json().catch(()=>({}));
   return { ok: response.ok && data.ok === true, status_code: response.status, response: data };
 }
