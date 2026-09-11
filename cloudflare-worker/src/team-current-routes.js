@@ -7,6 +7,7 @@ import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
 import { handleTelegramGameSubscriptionRequest } from "./telegram-game-subscriptions.js";
 import { handleTelegramGameFollowUi } from "./telegram-game-follow-ui.js";
 import { handleTelegramNotificationPreferencesUi } from "./telegram-notification-preferences-ui.js";
+import { handleTelegramMatchupPreviewUi } from "./telegram-matchup-preview-ui.js";
 import { handleMatchupCenterRequest } from "./matchup-center.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
@@ -25,6 +26,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const preferenceUiResponse = handleTelegramNotificationPreferencesUi(request, path);
   if (preferenceUiResponse) return preferenceUiResponse;
 
+  const matchupPreviewUiResponse = handleTelegramMatchupPreviewUi(request, path);
+  if (matchupPreviewUiResponse) return matchupPreviewUiResponse;
+
   const matchupResponse = await handleMatchupCenterRequest(request, env, path);
   if (matchupResponse) return matchupResponse;
 
@@ -35,11 +39,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (miniAppV2Response) {
     if (path === "/telegram-app" && request.method === "GET") {
       let enhanced = await miniAppV2Response.text();
-      if (!enhanced.includes("/telegram-app/game-follow.js")) {
-        enhanced = enhanced.replace("</body>", '<script src="/telegram-app/game-follow.js"></script></body>');
-      }
-      if (!enhanced.includes("/telegram-app/preferences.js")) {
-        enhanced = enhanced.replace("</body>", '<script src="/telegram-app/preferences.js"></script></body>');
+      for (const src of ["/telegram-app/game-follow.js","/telegram-app/preferences.js","/telegram-app/matchup.js"]) {
+        if (!enhanced.includes(src)) enhanced = enhanced.replace("</body>", `<script src="${src}"></script></body>`);
       }
       return new Response(enhanced, {
         status:miniAppV2Response.status,
