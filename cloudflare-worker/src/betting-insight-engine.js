@@ -15,74 +15,33 @@ const EAST = new Set([
 export async function buildBettingInsights(db, game, options = {}) {
   if (!db || !game?.game_pk) return [];
 
-  const away = game.away_tri;
-  const home = game.home_tri;
-  const before = game.scheduled_start_utc;
-  const season = String(game.season_id || "");
+  // Production defaults to a low-read profile suitable for D1 Free.
+  // Heavy league-wide context stays opt-in until it is served from
+  // precomputed snapshot tables rather than full historical scans.
+  const heavyContext = options.enable_heavy_context === true;
 
-  const [momentumR, awayFormR, homeFormR, periodR, h2hR, conferenceR] = await db.batch([
-    db.prepare(`
-      SELECT team_tri,event_type,sort_order,period_number,time_in_period
-      FROM game_events
-      WHERE game_pk=?
-        AND team_tri IS NOT NULL
-        AND event_type IN ('shot-on-goal','goal')
-      ORDER BY sort_order DESC
-      LIMIT 20;
-    `).bind(game.game_pk),
-    recentGamesStatement(db, away, before),
-    recentGamesStatement(db, home, before),
-    db.prepare(`
-      WITH team_period AS (
-        SELECT g.game_pk,g.home_tri AS team_tri,ps.home_goals AS gf,ps.away_goals AS ga
-        FROM games g JOIN period_scores ps ON ps.game_pk=g.game_pk
-        WHERE g.season_id=? AND g.game_type IN (2,3) AND g.scheduled_start_utc<? AND ps.period_number=2
-        UNION ALL
-        SELECT g.game_pk,g.away_tri AS team_tri,ps.away_goals AS gf,ps.home_goals AS ga
-        FROM games g JOIN period_scores ps ON ps.game_pk=g.game_pk
-        WHERE g.season_id=? AND g.game_type IN (2,3) AND g.scheduled_start_utc<? AND ps.period_number=2
-      )
-      SELECT team_tri,COUNT(*) AS games,SUM(gf) AS gf,SUM(ga) AS ga,
-             1.0*(SUM(gf)-SUM(ga))/COUNT(*) AS diff_pg,
-             1.0*SUM(gf)/COUNT(*) AS gf_pg
-      FROM team_period
-      GROUP BY team_tri
-      ORDER BY diff_pg DESC,gf_pg DESC;
-    `).bind(season,before,season,before),
-    db.prepare(`
-      SELECT game_pk,scheduled_start_utc,home_tri,away_tri,home_score,away_score
-      FROM games
-      WHERE game_type IN (2,3)
-        AND scheduled_start_utc<?
-        AND ((home_tri=? AND away_tri=?) OR (home_tri=? AND away_tri=?))
-      ORDER BY scheduled_start_utc DESC
-      LIMIT 10;
-    `).bind(before,home,away,away,home),
-    db.prepare(conferenceSql()).bind(season,before),
-  ]);
-
-  const featureInsights = await safeInsightBuild("feature_market", () => buildFeatureMarketInsights(db, game));
   const universalMarketInsights = await safeInsightBuild("universal_market", () => buildUniversalMarketInsights(db, game));
   const regulationMarketInsights = await safeInsightBuild("regulation_market", () => buildRegulationMarketInsights(db, game));
-  const rollingRankInsights = await safeInsightBuild("rolling_rank", () => buildRollingLeagueRankInsights(db, game));
-  const advancedContextInsights = await safeInsightBuild("advanced_context", () => buildAdvancedMarketContextInsights(db, game));
   const marketSplitInsights = await safeInsightBuild("market_splits", () => buildMarketSplitInsights(db, game));
 
-  const insights = [];
-  insights.push(...momentumInsights(momentumR.results || [], game));
-  insights.push(...formInsights(awayFormR.results || [], away, home));
-  insights.push(...formInsights(homeFormR.results || [], home, away));
-  insights.push(...periodInsights(periodR.results || [], game));
-  insights.push(...h2hInsights(h2hR.results || [], game));
-  insights.push(...conferenceInsights(conferenceR.results?.[0] || null, game));
-  insights.push(...universalMarketInsights);
-  insights.push(...regulationMarketInsights);
-  insights.push(...rollingRankInsights);
-  insights.push(...advancedContextInsights);
-  insights.push(...marketSplitInsights);
-  insights.push(...featureInsights);
+  let featureInsights = [];
+  let rollingRankInsights = [];
+  let advancedContextInsights = [];
+  if (heavyContext) {
+    featureInsights = await safeInsightBuild("feature_market", () => buildFeatureMarketInsights(db, game));
+    rollingRankInsights = await safeInsightBuild("rolling_rank", () => buildRollingLeagueRankInsights(db, game));
+    advancedContextInsights = await safeInsightBuild("advanced_context", () => buildAdvancedMarketContextInsights(db, game));
+  }
 
-  const rawPortfolio = dedupe(insights);
+  const rawPortfolio = dedupe([
+    ...universalMarketInsights,
+    ...regulationMarketInsights,
+    ...marketSplitInsights,
+    ...featureInsights,
+    ...rollingRankInsights,
+    ...advancedContextInsights,
+  ]);
+
   let portfolio;
   try {
     portfolio = selectInsightPortfolio(rawPortfolio, 12);

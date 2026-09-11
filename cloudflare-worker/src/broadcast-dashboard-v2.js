@@ -188,8 +188,7 @@ async function broadcastGameRoute(env, gamePk) {
     });
   } catch (error) {
     console.error(`broadcast game failed at ${routeStage}`, error);
-    const detail=String(error?.message||error||"unknown").slice(0,300);
-    return jsonResponse({ ok:false,error:"broadcast_game_failed",stage:routeStage,detail },500);
+    return jsonResponse({ ok:false,error:"broadcast_game_failed" },500);
   }
 }
 
