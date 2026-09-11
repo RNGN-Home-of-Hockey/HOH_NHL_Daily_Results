@@ -37,7 +37,7 @@ jobs:
           CREATE TABLE games(game_pk INTEGER PRIMARY KEY,game_type INTEGER,scheduled_start_utc TEXT);
           CREATE TABLE team_game_advanced_features(
             game_pk INTEGER,team_tri TEXT,season_id TEXT,source TEXT,toi_5v5_minutes REAL,gf_pct_5v5 REAL,xgf_pct_5v5 REAL,sf_pct_5v5 REAL,
-            goals_for_5v5 INTEGER,goals_against_5v5 INTEGER,xgf_5v5 REAL,xga_5v5 REAL,shots_for_5v5 INTEGER,shots_against_5v5 INTEGER,
+            goals_for_5v5 INTEGER,goals_against_5v5 INTEGER,xgf_5v5 REAL,xga_5v5 INTEGER,shots_for_5v5 INTEGER,shots_against_5v5 INTEGER,
             shooting_pct_5v5 REAL,save_pct_5v5 REAL,pdo_5v5 REAL,goals_minus_expected REAL,goals_saved_above_expected REAL,
             corsi_for_5v5 INTEGER,corsi_against_5v5 INTEGER,corsi_for_pct_5v5 REAL,fenwick_for_5v5 INTEGER,fenwick_against_5v5 INTEGER,fenwick_for_pct_5v5 REAL,
             shot_diff_5v5 REAL,xg_diff_5v5 REAL,goal_diff_5v5 REAL
