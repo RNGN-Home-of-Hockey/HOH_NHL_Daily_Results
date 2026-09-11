@@ -1,0 +1,107 @@
+name: Stage2 Production Backtest
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage2-production-backtest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backtest latest historical games
+        env:
+          BASE_URL: https://hoh-nhl-daily-results.znamteam-903.workers.dev
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, time
+          from collections import defaultdict
+
+          base=os.environ['BASE_URL'].rstrip('/')
+          def get(path):
+              req=urllib.request.Request(base+path, headers={'User-Agent':'HOH-Stage2-Backtest/1.0','Accept':'application/json'})
+              with urllib.request.urlopen(req, timeout=45) as r:
+                  return json.loads(r.read().decode('utf-8'))
+
+          def settle(card, game):
+              m=card.get('market') or {}
+              typ=m.get('type')
+              side=m.get('side')
+              line=m.get('line')
+              home=game.get('home_tri'); away=game.get('away_tri')
+              hs=int(game.get('home_score') or 0); a=int(game.get('away_score') or 0)
+              if typ=='game_total' and line is not None:
+                  total=hs+a; line=float(line)
+                  return total>line if side=='over' else total<line if side=='under' else None
+              if typ=='team_total' and line is not None:
+                  subject=m.get('subject'); line=float(line)
+                  gf=hs if subject==home else a if subject==away else None
+                  if gf is None: return None
+                  return gf>line if side=='over' else gf<line if side=='under' else None
+              if typ=='handicap' and line is not None:
+                  subject=m.get('subject'); line=float(line)
+                  diff=(hs-a) if subject==home else (a-hs) if subject==away else None
+                  if diff is None: return None
+                  return diff+line>0
+              if typ=='moneyline':
+                  subject=m.get('subject') or side
+                  winner=home if hs>a else away if a>hs else None
+                  return winner==subject if winner else None
+              return None
+
+          listing=get('/api/broadcast/games')
+          games=(listing.get('games') or [])[:40]
+          totals=defaultdict(lambda:[0,0])
+          scorebins=defaultdict(lambda:[0,0])
+          supportbins=defaultdict(lambda:[0,0])
+          types=defaultdict(lambda:[0,0])
+          examples=[]
+          evaluated_games=0
+          for idx,g in enumerate(games,1):
+              d=get('/api/broadcast/games/'+str(g['game_pk']))
+              game=d.get('game') or g
+              evaluated_games+=1
+              for c in d.get('cards') or []:
+                  if c.get('timing')=='live' or c.get('kind')=='live':
+                      continue
+                  result=settle(c,game)
+                  if result is None:
+                      continue
+                  cat=c.get('category') or c.get('insight_type') or 'unknown'
+                  score=float(c.get('score') or 0)
+                  support=int((c.get('evidence') or {}).get('independent_support_count') or 0)
+                  typ=(c.get('market') or {}).get('type') or 'unknown'
+                  for bucket,key in [
+                      (totals,cat),
+                      (scorebins,'90+' if score>=90 else '80-89' if score>=80 else '<80'),
+                      (supportbins,'support2+' if support>=2 else 'support1' if support==1 else 'support0'),
+                      (types,typ),
+                  ]:
+                      bucket[key][0]+=1
+                      bucket[key][1]+=int(bool(result))
+                  if len(examples)<20 and score>=90:
+                      examples.append({'game_pk':game.get('game_pk'),'match':f"{away}-{home}",'market':(c.get('market') or {}).get('label'),'category':cat,'score':score,'support':support,'hit':bool(result)})
+              if idx%10==0:
+                  print('PROGRESS',idx,'/',len(games),flush=True)
+
+          def render(d):
+              return {k:{'n':v[0],'hits':v[1],'rate':round(v[1]/v[0],3) if v[0] else None} for k,v in sorted(d.items())}
+          report={
+              'games':evaluated_games,
+              'by_category':render(totals),
+              'by_score':render(scorebins),
+              'by_support':render(supportbins),
+              'by_market_type':render(types),
+              'high_score_examples':examples,
+              'note':'Retrospective QC only; hit rate is not a future probability or claimed betting edge.'
+          }
+          print('BACKTEST_REPORT',json.dumps(report,ensure_ascii=False,indent=2))
+          if evaluated_games<30:
+              raise SystemExit('too few games evaluated')
+          if sum(v[0] for v in totals.values())<80:
+              raise SystemExit('too few settleable pregame cards')
+          print('STAGE2_BACKTEST_OK')
+          PY
