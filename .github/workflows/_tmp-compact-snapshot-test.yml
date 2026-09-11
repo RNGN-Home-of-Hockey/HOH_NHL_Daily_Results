@@ -1,0 +1,90 @@
+name: Temporary compact snapshot validation
+on:
+  push:
+    paths:
+      - '.github/workflows/_tmp-compact-snapshot-test.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate migration and builder helpers
+        run: |
+          python -m py_compile tools/build_compact_snapshots.py
+          python - <<'PY'
+          import importlib.util, sqlite3, tempfile
+          from pathlib import Path
+
+          spec=importlib.util.spec_from_file_location('snap','tools/build_compact_snapshots.py')
+          m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+          # Validate migration syntax against the minimum parent schema.
+          db=sqlite3.connect(':memory:')
+          db.executescript('''
+          PRAGMA foreign_keys=ON;
+          CREATE TABLE teams(tri_code TEXT PRIMARY KEY);
+          CREATE TABLE players(player_id INTEGER PRIMARY KEY);
+          CREATE TABLE games(game_pk INTEGER PRIMARY KEY);
+          ''')
+          db.executescript(Path('migrations/0006_compact_snapshots_players.sql').read_text())
+          for table in ['pregame_team_snapshots','player_rolling_snapshots','player_opponent_splits','goalie_rolling_snapshots','goalie_opponent_splits']:
+              assert db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone(), table
+
+          # Build a minimal local warehouse fixture and exercise snapshot insertion.
+          db=sqlite3.connect(':memory:'); db.row_factory=sqlite3.Row
+          db.executescript('''
+          CREATE TABLE games(game_pk INTEGER PRIMARY KEY,season_id TEXT,game_type INTEGER,scheduled_start_utc TEXT,home_tri TEXT,away_tri TEXT);
+          CREATE TABLE team_game_features(
+            game_pk INTEGER,team_tri TEXT,opponent_tri TEXT,season_id TEXT,game_type INTEGER,scheduled_start_utc TEXT,is_home INTEGER,
+            final_goals_for INTEGER,final_goals_against INTEGER,total_goals INTEGER,final_goal_diff INTEGER,final_win INTEGER,
+            regulation_goals_for INTEGER,regulation_goals_against INTEGER,regulation_goal_diff INTEGER,regulation_result TEXT,went_ot INTEGER,went_so INTEGER,
+            p1_goals_for INTEGER,p1_goals_against INTEGER,p2_goals_for INTEGER,p2_goals_against INTEGER,p3_goals_for INTEGER,p3_goals_against INTEGER,
+            score_after_p1_diff INTEGER,score_after_p2_diff INTEGER,first_goal_for INTEGER,shots_for INTEGER,shots_against INTEGER,shot_share_pct REAL,
+            corsi_for INTEGER,corsi_against INTEGER,corsi_for_pct REAL,fenwick_for INTEGER,fenwick_against INTEGER,fenwick_for_pct REAL,
+            p1_shots_for INTEGER,p1_shots_against INTEGER,p2_shots_for INTEGER,p2_shots_against INTEGER,p3_shots_for INTEGER,p3_shots_against INTEGER,
+            power_play_goals_for INTEGER,power_play_goals_against INTEGER,hits_for INTEGER,hits_against INTEGER,pim_for INTEGER,pim_against INTEGER,
+            previous_game_utc TEXT,rest_days INTEGER,is_back_to_back INTEGER,feature_version INTEGER
+          );
+          CREATE TABLE team_game_advanced_features(
+            game_pk INTEGER,team_tri TEXT,season_id TEXT,source TEXT,toi_5v5_minutes REAL,gf_pct_5v5 REAL,xgf_pct_5v5 REAL,sf_pct_5v5 REAL,
+            goals_for_5v5 INTEGER,goals_against_5v5 INTEGER,xgf_5v5 REAL,xga_5v5 REAL,shots_for_5v5 INTEGER,shots_against_5v5 INTEGER,
+            shooting_pct_5v5 REAL,save_pct_5v5 REAL,pdo_5v5 REAL,goals_minus_expected REAL,goals_saved_above_expected REAL,
+            corsi_for_5v5 INTEGER,corsi_against_5v5 INTEGER,corsi_for_pct_5v5 REAL,fenwick_for_5v5 INTEGER,fenwick_against_5v5 INTEGER,fenwick_for_pct_5v5 REAL,
+            shot_diff_5v5 REAL,xg_diff_5v5 REAL,goal_diff_5v5 REAL
+          );
+          ''')
+          m.create_local_schema(db)
+          cols=[x[1] for x in db.execute('PRAGMA table_info(team_game_features)')]
+          for i in range(1,7):
+              start=f'2025-10-{i:02d}T00:00:00Z'; pk=1000+i
+              db.execute('INSERT INTO games VALUES(?,?,?,?,?,?)',(pk,'20252026',2,start,'AAA','BBB'))
+              for team,opp,is_home,gf,ga in [('AAA','BBB',1,4,2),('BBB','AAA',0,2,4)]:
+                  row={c:None for c in cols}
+                  row.update(dict(game_pk=pk,team_tri=team,opponent_tri=opp,season_id='20252026',game_type=2,scheduled_start_utc=start,is_home=is_home,
+                    final_goals_for=gf,final_goals_against=ga,total_goals=6,final_goal_diff=gf-ga,final_win=int(gf>ga),
+                    p2_goals_for=2 if team=='AAA' else 0,p2_goals_against=0 if team=='AAA' else 2,corsi_for_pct=60 if team=='AAA' else 40,fenwick_for_pct=58 if team=='AAA' else 42))
+                  db.execute('INSERT INTO team_game_features VALUES('+','.join('?'*len(cols))+')',[row[c] for c in cols])
+                  db.execute('INSERT INTO team_game_advanced_features VALUES('+','.join('?'*28)+')',(
+                    pk,team,'20252026','fixture',50,60 if team=='AAA' else 40,60 if team=='AAA' else 40,60,
+                    3,1,3,1,30,20,10,95,100,0,1,60,40,60 if team=='AAA' else 40,50,30,62 if team=='AAA' else 38,10,2,2))
+          db.commit()
+          inserted=m.build_team_snapshots(db,'now')
+          assert inserted>=2, inserted
+          # Game 6 must use the first five games only.
+          rows=[dict(r) for r in db.execute('SELECT * FROM pregame_team_snapshots_local WHERE game_pk=1006 AND window_games=5 ORDER BY team_tri')]
+          assert len(rows)==2, rows
+          aaa=next(r for r in rows if r['team_tri']=='AAA')
+          assert abs(aaa['gf_pg']-4.0)<1e-9 and aaa['sample_size']==5
+
+          # Aggregate helper smoke tests.
+          s=m.aggregate_skater([{'goals':1,'assists':1,'points':2,'shots':3,'hits':1,'blocked_shots':0,'pim':2,'plus_minus':1,'toi_seconds':1200,'power_play_goals':1}]*5)
+          assert s['games']==5 and s['points']==10 and s['games_with_2plus_points']==5
+          g=m.aggregate_goalie([{'is_starter':1,'decision':'W','saves':30,'shots_against':32,'goals_against':2,'toi_seconds':3600}]*5)
+          assert g['wins']==5 and abs(g['save_pct']-(150/160))<1e-9
+          print('COMPACT_SNAPSHOT_TEST_OK',inserted)
+          PY
