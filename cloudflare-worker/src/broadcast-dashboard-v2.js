@@ -95,7 +95,9 @@ async function broadcastStateRoute(env) {
 async function broadcastGameRoute(env, gamePk) {
   if (!env.DB) return jsonResponse({ ok:false, error:"missing_d1_binding" },503);
   if (!Number.isSafeInteger(gamePk) || gamePk<=0) return jsonResponse({ ok:false,error:"invalid_game_pk" },400);
+  let routeStage="init";
   try {
+    routeStage="game_lookup";
     const game = await env.DB.prepare(`
       SELECT g.*,ht.name_en AS home_name,ht.name_ru AS home_name_ru,ht.logo_url AS home_logo,
              at.name_en AS away_name,at.name_ru AS away_name_ru,at.logo_url AS away_logo
@@ -107,6 +109,7 @@ async function broadcastGameRoute(env, gamePk) {
     `).bind(gamePk).first();
     if (!game) return jsonResponse({ ok:false,error:"game_not_found" },404);
 
+    routeStage="secondary_reads";
     const dataDegradedSections=[];
     const safeAll=async(label,statement)=>{
       try {
@@ -151,6 +154,7 @@ async function broadcastGameRoute(env, gamePk) {
       `).bind(gamePk)),
     ]);
 
+    routeStage="betting";
     let bettingInsights=[];
     let bettingInsightsDegraded=false;
     try {
@@ -159,6 +163,16 @@ async function broadcastGameRoute(env, gamePk) {
       bettingInsightsDegraded=true;
       console.error("broadcast betting insights degraded", error);
     }
+    routeStage="quick_cards";
+    let quickCards=[];
+    try {
+      quickCards=buildQuickCards(game,teamStats,playerStats);
+    } catch (error) {
+      dataDegradedSections.push("quick_cards");
+      console.error("broadcast quick cards degraded", error);
+    }
+
+    routeStage="serialize_response";
     return jsonResponse({
       ok:true,
       game,
@@ -169,12 +183,13 @@ async function broadcastGameRoute(env, gamePk) {
       cards:bettingInsights,
       betting_insights_degraded:bettingInsightsDegraded,
       data_degraded_sections:dataDegradedSections,
-      quick_cards:buildQuickCards(game,teamStats,playerStats),
+      quick_cards:quickCards,
       persisted_cards:persistedCards,
     });
   } catch (error) {
-    console.error("broadcast game failed", error);
-    return jsonResponse({ ok:false,error:"broadcast_game_failed" },500);
+    console.error(`broadcast game failed at ${routeStage}`, error);
+    const detail=String(error?.message||error||"unknown").slice(0,300);
+    return jsonResponse({ ok:false,error:"broadcast_game_failed",stage:routeStage,detail },500);
   }
 }
 
