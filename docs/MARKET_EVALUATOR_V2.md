@@ -6,7 +6,7 @@ Date: 2026-09-11
 
 Stage 2 turns the historical NHL Data Core into market-first broadcast candidates.
 
-The engine no longer relies on a few fixed rules such as only total 5.5 or team total 2.5. It evaluates a grid of common markets, chooses the strongest defensible sample, compares teams with the league, and can add advanced 5v5 context to the same betting direction.
+The engine no longer relies on a few fixed rules such as only total 5.5 or team total 2.5. It evaluates a grid of common markets, chooses the strongest defensible sample, compares teams with the league, adds advanced 5v5 context, and then consolidates overlapping evidence into a compact operator portfolio.
 
 ## Universal market evaluator
 
@@ -114,19 +114,33 @@ Under example:
 
 Advanced context is evidence supporting a market direction, not a claimed standalone probability.
 
-## Portfolio suppression
+## Global insight portfolio
 
-The evaluator intentionally suppresses adjacent redundant lines in the final candidate set.
+File:
+`cloudflare-worker/src/insight-portfolio.js`
 
-Current limits:
+The portfolio layer runs after all historical rule families have generated candidates.
 
-- max 1 game-total candidate from the universal evaluator
-- max 1 team-total candidate per team from the universal evaluator
-- max 1 handicap candidate per team from the universal evaluator
-- rolling league rank engine max 4 cards, max 2 per market subject
-- advanced 5v5 context max 2 cards
+If multiple independent engines point to the exact same market, only the strongest card is shown. Other independent categories are stored inside that card as `supporting_signals` and can add a small capped score boost.
 
-The global Betting Insight Engine then combines these with existing H2H, period, feature and live candidates and keeps the top 12 by score.
+Example:
+
+- rolling hit-rate -> CAR ИТБ 2.5
+- league rank -> CAR ИТБ 2.5
+- advanced xGF context -> CAR ИТБ 2.5
+
+Result: one `CAR ИТБ 2.5` card with two independent supporting signals, not three duplicate cards.
+
+The portfolio also suppresses adjacent redundant lines and keeps live cards available separately.
+
+Current global limits:
+
+- max 1 game-total direction in the final portfolio
+- max 1 team-total direction per team
+- max 1 handicap direction per team
+- max 2 moneyline candidates
+- up to 4 live candidates retained before the historical portfolio is filled
+- final Betting Insight Engine output remains capped at 12 cards
 
 ## Integration
 
@@ -148,18 +162,23 @@ Validated with deterministic synthetic datasets:
 - defensive market direction;
 - advanced attack-vs-defense context;
 - advanced OVER / UNDER market direction;
-- 20-game preference in the advanced context layer.
+- 20-game preference in the advanced context layer;
+- exact-market consolidation across independent engines;
+- supporting-signal score boost/cap;
+- global adjacent-line suppression;
+- preservation of live cards.
 
 Validation found and fixed before production:
 
 - score saturation could leave a shorter sample tied with a longer one; ranking was changed to preserve separation and explicitly prefer the longer sample on ties;
 - goals-against league rank originally mapped strong/weak defense to the wrong opponent team-total direction; the mapping was reversed and covered by a dedicated test.
 
+The complete Worker import graph also passed `wrangler deploy --dry-run` after the Stage 2 integration.
+
 ## Next Stage 2 work
 
-1. global cross-engine portfolio/diversification so several rule families do not repeat the same underlying market;
-2. home/away exact market splits;
-3. H2H exact market-line evaluation;
-4. real Winline market-line adapter so, when available, only actually offered lines are evaluated;
-5. player/goalie game features and player-vs-opponent splits later;
-6. own HOH xG from NHL shot coordinates.
+1. home/away exact market splits;
+2. H2H exact market-line evaluation;
+3. real Winline market-line adapter so, when available, only actually offered lines are evaluated;
+4. player/goalie game features and player-vs-opponent splits later;
+5. own HOH xG from NHL shot coordinates.
