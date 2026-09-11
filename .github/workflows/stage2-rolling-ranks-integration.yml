@@ -1,0 +1,84 @@
+name: Stage2 Rolling Ranks Integration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage2-rolling-ranks-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Integrate rank engine
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/betting-insight-engine.js')
+          s=p.read_text(encoding='utf-8')
+          imp='import { buildRollingLeagueRankInsights } from "./rolling-league-ranks.js";\n'
+          if imp not in s:
+              anchor='import { buildUniversalMarketInsights } from "./universal-market-evaluator.js";\n'
+              if anchor not in s: raise SystemExit('import anchor missing')
+              s=s.replace(anchor,anchor+imp,1)
+          call='  const rollingRankInsights = await buildRollingLeagueRankInsights(db, game);\n'
+          if call not in s:
+              anchor='  const universalMarketInsights = await buildUniversalMarketInsights(db, game);\n'
+              if anchor not in s: raise SystemExit('call anchor missing')
+              s=s.replace(anchor,anchor+call,1)
+          push='  insights.push(...rollingRankInsights);\n'
+          if push not in s:
+              anchor='  insights.push(...universalMarketInsights);\n'
+              if anchor not in s: raise SystemExit('push anchor missing')
+              s=s.replace(anchor,anchor+push,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          node --check cloudflare-worker/src/rolling-league-ranks.js
+          node --check cloudflare-worker/src/betting-insight-engine.js
+          git diff --check
+      - name: Rank-engine pure test
+        run: |
+          node --input-type=module <<'NODE'
+          import { evaluateRollingLeagueRanks } from './cloudflare-worker/src/rolling-league-ranks.js';
+          const teams=['ANA','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','UTA','VAN','VGK','WPG','WSH'];
+          const rows=[];
+          for(let t=0;t<teams.length;t++){
+            const team=teams[t];
+            for(let i=0;i<20;i++){
+              let gf=2.5+(t/31)*0.5;
+              let ga=3.0-(t/31)*0.2;
+              if(team==='CAR'){gf=4.2;ga=2.1}
+              if(team==='NYR'){gf=1.8;ga=4.0}
+              rows.push({team_tri:team,game_pk:100000+t*100+i,scheduled_start_utc:`2025-12-${String(20-i).padStart(2,'0')}T00:00:00Z`,final_goals_for:gf,final_goals_against:ga,total_goals:gf+ga,final_goal_diff:gf-ga,corsi_for_pct:team==='CAR'?58:team==='NYR'?43:50+t/50,fenwick_for_pct:team==='CAR'?57:team==='NYR'?44:50+t/60,p2_goals_for:team==='CAR'?1.4:team==='NYR'?0.4:0.9,p2_goals_against:team==='CAR'?0.5:team==='NYR'?1.3:0.9});
+            }
+          }
+          const game={game_pk:999,away_tri:'CAR',home_tri:'NYR'};
+          const cards=evaluateRollingLeagueRanks(game,rows);
+          if(!cards.length) throw new Error('no league-rank cards');
+          const car=cards.find(c=>c.title.startsWith('CAR'));
+          const nyr=cards.find(c=>c.title.startsWith('NYR'));
+          if(!car||!nyr) throw new Error('missing CAR or NYR rank card');
+          if(car.evidence.window!==20||nyr.evidence.window!==20) throw new Error('did not prefer 20-game rank window');
+          if(car.evidence.rank>3) throw new Error('CAR should be top-3');
+          if(nyr.evidence.rank<30) throw new Error('NYR should be bottom-3');
+          console.log('ROLLING_RANKS_OK',cards.map(c=>({title:c.title,score:c.score,window:c.evidence.window,market:c.market.label})));
+          NODE
+      - name: Commit integration
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/betting-insight-engine.js
+          if git diff --cached --quiet; then
+            echo 'No integration changes needed'
+          else
+            git commit -m 'Integrate rolling league ranks into betting insights'
+            git push origin HEAD:main
+          fi
