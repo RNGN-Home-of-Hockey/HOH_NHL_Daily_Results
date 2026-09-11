@@ -90,6 +90,8 @@ jobs:
           if (!r || r.status !== 200 || !(await r.text()).includes('Team Center')) throw new Error('Team Center shell failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/control'), {}, '/control');
           if (!r || r.status !== 200 || !(await r.text()).includes('HOH NHL Control Center')) throw new Error('Control Center v2 shell failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/matchup'), {}, '/matchup');
+          if (!r || r.status !== 200 || !(await r.text()).includes('MATCHUP LAB')) throw new Error('Matchup Lab shell failed');
           const secret = 'test-secret';
           const req = new Request('https://example.test/api/telegram', {
             method:'POST',
@@ -105,6 +107,9 @@ jobs:
         run: |
           node tests/validate_notification_engine.mjs
           node tests/validate_game_subscription.mjs
+
+      - name: Market line evaluator
+        run: node tests/validate_market_line_evaluator.mjs
 
       - name: Worker dry run
         run: |
