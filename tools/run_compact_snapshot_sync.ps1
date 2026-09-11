@@ -84,6 +84,10 @@ try {
     $currentTeamExit = Invoke-ProcessExitCode -FilePath $python.Source -ArgumentList @((Join-Path $PSScriptRoot 'build_current_team_snapshots.py'))
     if ($currentTeamExit -ne 0) { throw ("Current team snapshot build failed with exit code {0}." -f $currentTeamExit) }
 
+    Write-Step 'Building low-read Data Core metadata chunk...'
+    $metaExit = Invoke-ProcessExitCode -FilePath $python.Source -ArgumentList @((Join-Path $PSScriptRoot 'build_data_core_meta.py'))
+    if ($metaExit -ne 0) { throw ("Data Core metadata build failed with exit code {0}." -f $metaExit) }
+
     $summaryPath = Join-Path $RepoRoot 'local-data\warehouse\compact-snapshots-summary.json'
     if (-not (Test-Path $summaryPath)) { throw 'Compact snapshot summary was not produced.' }
     $summary = Get-Content $summaryPath -Raw | ConvertFrom-Json
@@ -97,11 +101,14 @@ try {
     $currentSummary = Get-Content $currentSummaryPath -Raw | ConvertFrom-Json
     if (-not $currentSummary.ok) { throw 'Current team snapshot summary reports ok=false.' }
 
-    $writes = [int]$summary.supplemental_writes_estimate + [int]$currentSummary.rows
-    Write-Step ("Local build validated: player-game={0}, goalie-game={1}, historical-team-snapshots={2}, current-team-snapshots={3}, supplemental D1 rows={4}" -f `
+    # build_data_core_meta.py currently emits 18 tiny rows. Keep a little margin
+    # here so adding another metadata key cannot accidentally trip the safety math.
+    $metaRowsEstimate = 32
+    $writes = [int]$summary.supplemental_writes_estimate + [int]$currentSummary.rows + $metaRowsEstimate
+    Write-Step ("Local build validated: player-game={0}, goalie-game={1}, historical-team-snapshots={2}, current-team-snapshots={3}, supplemental D1 rows<={4}" -f `
         $summary.validation.player_game_rows_local, $summary.validation.goalie_game_rows_local, $summary.local_rows.pregame_team_snapshots, $currentSummary.rows, $writes)
     if ($writes -gt 85000) {
-        throw ("Supplemental package is {0} rows, above the 85k safety ceiling for D1 Free. Do not upload until split into multiple days." -f $writes)
+        throw ("Supplemental package is approximately {0} rows, above the 85k safety ceiling for D1 Free. Do not upload until split into multiple days." -f $writes)
     }
 
     # New compact chunks changed, so reset only the supplemental checkpoint.
@@ -111,11 +118,11 @@ try {
     Wait-ForD1Reset
 
     $npx = (Get-Command npx.cmd -ErrorAction Stop).Source
-    Write-Step 'Applying all pending D1 migrations (compact/player/app query layers)...'
+    Write-Step 'Applying all pending D1 migrations (compact/player/app/notification/meta layers)...'
     $migrationExit = Invoke-ProcessExitCode -FilePath $npx -ArgumentList @('wrangler','d1','migrations','apply','hoh-data-core','--remote')
     if ($migrationExit -ne 0) { throw ("D1 migration failed with exit code {0}." -f $migrationExit) }
 
-    Write-Step 'Uploading supplemental compact chunks only (070-125; historical 010-060 will NOT replay)...'
+    Write-Step 'Uploading supplemental compact chunks only (070-130; historical 010-060 will NOT replay)...'
     $uploadScript = Join-Path $PSScriptRoot 'upload_compact_snapshots_d1.ps1'
     $uploadExit = Invoke-ProcessExitCode -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $uploadScript))
     if ($uploadExit -ne 0) {
@@ -126,9 +133,9 @@ try {
     $deployExit = Invoke-ProcessExitCode -FilePath $npx -ArgumentList @('wrangler','deploy')
     if ($deployExit -ne 0) { throw ("Worker deploy failed with exit code {0}. Compact D1 data is already safe; rerun the same command." -f $deployExit) }
 
-    Write-Step 'DONE: compact data, current rankings, web Control Center and Telegram Mini App deployed.'
+    Write-Step 'DONE: compact data, current rankings, low-read metadata, web Control Center and Telegram Mini App deployed.'
     Write-Host ''
-    Write-Host 'No further action is required in this window.'
+    Write-Host 'Telegram live notifications remain OFF until an explicit dry-run validation enables them.'
 }
 finally {
     if ($SleepGuardEnabled) {
