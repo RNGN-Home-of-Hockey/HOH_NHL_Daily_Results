@@ -9,6 +9,7 @@ import { handleTelegramGameFollowUi } from "./telegram-game-follow-ui.js";
 import { handleTelegramNotificationPreferencesUi } from "./telegram-notification-preferences-ui.js";
 import { handleTelegramMatchupPreviewUi } from "./telegram-matchup-preview-ui.js";
 import { handleMatchupCenterRequest } from "./matchup-center.js";
+import { handleBroadcastOperatorRequest } from "./broadcast-operator.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
   const healthResponse = await handleDataCoreHealthV2(request, env, path);
@@ -28,6 +29,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const matchupPreviewUiResponse = handleTelegramMatchupPreviewUi(request, path);
   if (matchupPreviewUiResponse) return matchupPreviewUiResponse;
+
+  const broadcastOperatorResponse = await handleBroadcastOperatorRequest(request.clone(), env, path);
+  if (broadcastOperatorResponse) return broadcastOperatorResponse;
 
   const matchupResponse = await handleMatchupCenterRequest(request, env, path);
   if (matchupResponse) return matchupResponse;
