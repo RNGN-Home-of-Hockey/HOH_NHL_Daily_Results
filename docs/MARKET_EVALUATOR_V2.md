@@ -6,14 +6,16 @@ Date: 2026-09-11
 
 Stage 2 turns the historical NHL Data Core into market-first broadcast candidates.
 
-The engine evaluates common market lines, chooses the strongest defensible sample, compares teams with the league, adds advanced 5v5 context, evaluates venue and H2H splits, and then consolidates overlapping evidence into a compact operator portfolio.
+The engine evaluates common market lines, chooses defensible samples, compares teams with the league, adds advanced 5v5 context, evaluates venue and H2H splits, keeps GAME and REG settlement semantics separate, and consolidates overlapping evidence into a compact operator portfolio.
 
-## Universal market evaluator
+`score` is an editorial rule score. It is **not** a probability, expected value, or claimed betting edge.
+
+## Universal GAME market evaluator
 
 File:
 `cloudflare-worker/src/universal-market-evaluator.js`
 
-Evaluated markets:
+Evaluated full-game markets:
 
 - game totals: 4.5 / 5.5 / 6.5 / 7.5
 - team totals: 1.5 / 2.5 / 3.5 / 4.5
@@ -33,66 +35,100 @@ Minimum trend thresholds:
 
 Short samples are intentionally penalized. A stable 20-game trend wins ties against a 5- or 10-game trend.
 
-The evaluator also uses a 90% Wilson lower bound in ranking so a superficially high hit rate on a tiny sample is not treated the same as a longer stable sample.
+The evaluator uses a 90% Wilson lower bound so a superficially high hit rate on a tiny sample is not treated like a longer stable sample.
 
-## Confluence
+### Team-total confluence
 
-For team totals the engine can combine two independent signals on the same line:
+A team-total candidate can combine:
 
-1. how often the team itself scores above/below the line;
-2. how often the opponent allows above/below the same line.
+1. how often the team itself scores above/below the exact line;
+2. how often the opponent allows above/below the same exact line.
 
-Example candidate:
+Example:
 
 `CAR ИТБ 2.5 — CAR scored 3+ in 16/20; opponent allowed 3+ in 14/20.`
 
-Confluence candidates receive higher priority than a single-team trend.
+## Regulation-only evaluator
+
+File:
+`cloudflare-worker/src/regulation-market-evaluator.js`
+
+This evaluator uses only:
+
+- `regulation_goals_for`
+- `regulation_goals_against`
+- P1 + P2 + P3
+
+Overtime and shootout are excluded.
+
+Current REG markets:
+
+- game totals: 4.5 / 5.5 / 6.5
+- team totals: 1.5 / 2.5 / 3.5
+
+Rolling windows:
+
+- 5
+- 10
+- 20
+
+Every card explicitly carries:
+
+`market.period = "REG"`
+
+while the existing full-game evaluator defaults to:
+
+`market.period = "GAME"`
+
+The portfolio exact-market key includes period, so `REG O5.5` and `GAME O5.5` cannot collapse into one card.
+
+The Winline adapter also requires period equality. A provider `REG O5.5` quote cannot attach to GAME evidence, and vice versa.
 
 ## Rolling league ranks
 
 File:
 `cloudflare-worker/src/rolling-league-ranks.js`
 
-The rank engine compares the two teams in the selected game with the whole league on identical 5/10/20-game windows.
+Metrics:
 
-Current metrics:
-
-- goals for per game
-- goals against per game
-- goal differential per game
+- goals for/game
+- goals against/game
+- goal differential/game
 - combined game total
 - Corsi%
 - Fenwick%
 - second-period goal differential
 
-Only top-3 / bottom-3 league ranks become broadcast candidates.
+Windows:
+
+- 5
+- 10
+- 20
+
+Only top-3 / bottom-3 ranks become candidates.
 
 Examples:
 
-- `#1 in NHL in goals over the last 20`
-- `#32 of 32 in goals allowed over the last 20`
+- `#1 NHL in goals over the last 20`
+- `#32 in goals allowed over the last 20`
 - `#2 in Corsi over the last 20`
 
-Defensive rank market direction is explicitly tested:
+Defensive market direction is explicitly tested:
 
-- elite low goals-against -> opponent team total UNDER
-- poor high goals-against -> opponent team total OVER
+- elite low GA -> opponent team total UNDER
+- poor high GA -> opponent team total OVER
 
-## Advanced 5v5 market context
+After production QC, `league_rank` is treated primarily as contextual evidence. A standalone league-rank card receives a portfolio penalty and cannot crowd the queue with context-only suggestions.
+
+## Advanced 5v5 context
 
 File:
 `cloudflare-worker/src/advanced-market-context.js`
 
-Source table:
+Source:
 `team_game_advanced_features`
 
-Rolling windows:
-
-- last 5
-- last 10
-- last 20
-
-Current advanced metrics:
+Metrics:
 
 - xGF%
 - CF%
@@ -102,26 +138,24 @@ Current advanced metrics:
 - PDO as supporting evidence
 - GSAx as supporting evidence
 
-The engine ranks teams league-wide on the same rolling window. It does not emit a separate card for every advanced metric. Instead it combines multiple independent facts into one market context.
+The engine combines multiple metrics into one market context rather than emitting one card per number.
 
-Over example:
+Example:
 
-`CAR: xGF% #1, CF% #1; NYR — xGA/60 #32 -> CAR team total OVER 2.5.`
+`CAR: xGF% #1, CF% #1; opponent xGA/60 #32 -> CAR team total OVER.`
 
-Under example:
+The current gate is intentionally strict. Production diagnostics over the latest playoff sample produced no primary advanced-context cards; the threshold has not been weakened merely to increase card volume. Advanced context remains a candidate supporting layer and will be tuned on a larger regular-season sample.
 
-`NYR: xGF% #32, CF% #32; CAR — xGA/60 #1 -> NYR team total UNDER 2.5.`
-
-Advanced context is evidence supporting a market direction, not a claimed standalone probability.
-
-## Venue and H2H market splits
+## Venue and H2H exact market splits
 
 File:
 `cloudflare-worker/src/market-split-insights.js`
 
-### Current-venue splits
+### Current venue
 
-The away team is evaluated only on its recent away games and the home team only on its recent home games.
+Away team: away games only.
+
+Home team: home games only.
 
 Windows:
 
@@ -131,20 +165,14 @@ Windows:
 
 Markets:
 
-- exact match totals
-- exact team totals
-- exact handicaps
-- moneyline
+- GAME totals
+- GAME team totals
+- GAME handicaps
+- GAME moneyline
 
-Example:
+### H2H
 
-`CAR away + NYR home: O5.5 hit in 16/20 and 15/20.`
-
-This becomes independent supporting evidence for the same exact market in the global portfolio.
-
-### H2H exact market evaluation
-
-The evaluator uses the previous meetings of the two current teams from the perspective of one team, avoiding double-counting the same H2H game.
+Previous meetings are queried from one team perspective to avoid counting the same game twice.
 
 Windows:
 
@@ -152,70 +180,148 @@ Windows:
 - 6
 - 10
 
-H2H has intentionally lower base weight than general rolling team trends because opponent-specific samples are smaller and noisier.
-
 Markets:
 
-- match totals
-- both team totals
-- both handicaps
-- moneyline
+- GAME totals
+- GAME team totals
+- GAME handicaps
+- GAME moneyline
 
-The home-team goal and handicap directions are explicitly transformed from the away-team-perspective H2H rows and covered by tests.
+H2H deliberately gets less base weight than broader rolling history because opponent-specific samples are smaller.
+
+Production support diagnostics over 24 recent games found H2H was frequently useful as confirmation rather than as the visible primary card:
+
+- venue supporting signals: 50
+- H2H supporting signals: 57
+
+## Unified market contract
+
+Old feature cards and Stage 2 cards now use the same market types:
+
+- `game_total`
+- `team_total`
+- `handicap`
+- `moneyline`
+
+Legacy names such as `game_total_5_5` and `team_total_2_5` were removed from feature-market output.
+
+This matters because the global portfolio can now recognize that two different engines are discussing the same exact market and consolidate them.
 
 ## Global insight portfolio
 
 File:
 `cloudflare-worker/src/insight-portfolio.js`
 
-The portfolio layer runs after all historical rule families have generated candidates.
+Exact market key:
 
-If multiple independent engines point to the exact same market, only the strongest card is shown. Other independent categories are stored inside that card as `supporting_signals` and can add a small capped score boost.
+`type + period + subject + side + line`
 
-Example:
+For each exact market:
+
+1. prefer a direct market signal as the visible primary card;
+2. use league-rank / advanced-context signals as context when a direct signal exists;
+3. retain independent categories inside `evidence.supporting_signals`;
+4. expose `independent_support_count`;
+5. suppress redundant neighbouring lines in the final operator queue.
+
+Example inputs:
 
 - rolling hit-rate -> CAR ИТБ 2.5
+- venue split -> CAR ИТБ 2.5
+- H2H -> CAR ИТБ 2.5
 - league rank -> CAR ИТБ 2.5
-- advanced xGF context -> CAR ИТБ 2.5
-- CAR away split -> CAR ИТБ 2.5
-- H2H split -> CAR ИТБ 2.5
+- advanced xG context -> CAR ИТБ 2.5
 
-Result: one `CAR ИТБ 2.5` card with independent supporting signals, not five duplicate cards.
+Result:
 
-The portfolio also suppresses adjacent redundant lines and keeps live cards available separately.
+one `CAR ИТБ 2.5` card with independent supporting evidence.
 
-Current global limits:
+### Evidence tiers
 
-- max 1 game-total direction in the final portfolio
-- max 1 team-total direction per team
-- max 1 handicap direction per team
-- max 2 moneyline candidates
-- up to 4 live candidates retained before the historical portfolio is filled
-- final Betting Insight Engine output remains capped at 12 cards
+The portfolio now adds `evidence_quality`.
+
+`A`
+- direct signal;
+- at least two independent supporting categories.
+
+`B`
+- direct signal with one independent support; or
+- sufficiently strong direct signal with a meaningful sample.
+
+`C`
+- single weaker/contextual signal.
+
+`LIVE`
+- live-game signal; separate priority path.
+
+The tier means **editorial evidence strength, not outcome probability**.
+
+The original rule `score` is no longer increased just because support exists. Instead the portfolio has a separate `portfolio_score` used only for queue ordering.
+
+### Context policy
+
+`league_rank` and `advanced_context` are marked context categories.
+
+A context-only card:
+
+- receives an ordering penalty;
+- must still clear a high source score;
+- is limited so context-only cards cannot flood the queue.
+
+### Broad-line editorial penalty
+
+A small presentation penalty is applied to very broad demo lines such as:
+
+- GAME O4.5
+- GAME U7.5
+- team O1.5
+- team U4.5
+- +2.5 handicap
+
+This does not change the underlying statistic. It only prevents relatively easy-to-hit but weak editorial lines from dominating the operator queue when a more meaningful exact line has comparable evidence.
+
+## Broadcast evidence badge
+
+Broadcast V2 now renders evidence tier next to the insight eyebrow:
+
+- `A · +N`
+- `B · +N`
+- `C`
+
+`+N` is the number of independent supporting categories.
+
+The tooltip explicitly states that this is evidence strength, not probability.
+
+No automated SHOW behavior was added. Final on-air display remains manual.
 
 ## Winline market availability adapter
 
 File:
 `cloudflare-worker/src/winline-market-adapter.js`
 
-The engine can now optionally receive normalized provider markets.
+Optional input to:
 
-Exact match key:
+`buildBettingInsights(db, game, options = {})`
+
+- `options.provider_markets`
+- `options.now`
+- `options.market_max_age_ms`
+
+Provider exact-match key:
 
 `market_type + period + subject + side + line`
 
-Behavior when provider markets are supplied:
+When provider markets are supplied:
 
-- only markets with an exact key match survive;
-- wrong line does not match;
-- regulation (`REG`) does not match evidence calculated for full game including OT/SO (`GAME`);
-- closed/suspended markets are rejected;
-- stale markets are rejected;
-- explicit empty provider feed fails closed and produces no provider-backed cards;
-- the newest quote is selected when duplicate exact markets are present;
-- synthetic DEMO odds are replaced by real provider odds and IDs only after an exact match.
+- wrong line -> rejected
+- wrong period -> rejected
+- closed/suspended -> rejected
+- stale quote -> rejected
+- explicit empty provider feed -> fail closed
+- newest exact duplicate -> selected
+- exact match -> DEMO odds replaced with real provider IDs/odds/deeplink
 
-Attached real fields include:
+Real attached fields include:
 
 - `provider`
 - `event_id`
@@ -228,88 +334,104 @@ Attached real fields include:
 - `odds_is_demo=false`
 - `odds_source=provider_live`
 
-If no provider feed is supplied at all, the current DEMO mode remains unchanged. This lets Broadcast V2 continue working until the real Winline integration is available.
+With no provider feed, existing DEMO behavior remains available for product testing.
 
 ## Safe degradation
 
-`buildBettingInsights()` now runs every Stage 2 data-dependent module through `safeInsightBuild()`.
+All data-dependent Stage 2 modules run through `safeInsightBuild()`.
 
-If a migration/table is temporarily missing or one Stage 2 query fails:
+If one module/table/query fails:
 
 - that module returns no candidates;
-- the rest of the Betting Insight Engine continues;
-- Broadcast V2 does not fail as a whole.
+- other insight families still run;
+- Broadcast game endpoint does not fail as a whole.
 
-This is especially important for:
+Relevant feature tables:
 
-- `team_game_features` from migration 0004;
-- `team_game_advanced_features` from migration 0005.
+- migration 0004 -> `team_game_features`
+- migration 0005 -> `team_game_advanced_features`
 
-The migrations still must be applied for those features to become active; the fail-safe only prevents a missing feature table from breaking the product.
+## Production validation
 
-## Integration
+A read-only smoke test against the deployed Worker confirmed:
 
-All Stage 2 modules are called directly from:
-`cloudflare-worker/src/betting-insight-engine.js`
+- 2792 historical REG/playoff games in remote D1
+- 32 teams
+- Stage 2 cards returned by real game endpoints
+- real categories included `market_evaluator`, `league_rank`, `venue_split`
+- exact markets already carried multiple supporting signals on production history
 
-`buildBettingInsights(db, game, options = {})` now supports optional:
+### Retrospective QC sample
 
-- `options.provider_markets`
-- `options.now`
-- `options.market_max_age_ms`
+A read-only retrospective QA run evaluated the latest 40 historical games. Each game endpoint generated pregame cards from history dated before that game, then the settleable GAME markets were compared with the final result.
 
-Broadcast V2 currently calls it without provider markets, so it remains in DEMO mode. When the Winline feed exists, the same engine can receive normalized live markets without changing the statistical rule modules.
+This was a small, playoff-heavy QA sample. It is **not** a future probability estimate and should not be used as a claimed betting edge.
 
-## Tests completed
+Observed QA hit rates:
 
-Validated with deterministic synthetic datasets:
+By category:
 
-- exact game total candidate generation;
-- team-total offense + opponent-defense confluence;
-- handicap cover math;
-- preference for stable 20-game samples;
-- duplicate-line suppression;
-- league top-3 / bottom-3 ranking;
-- defensive market direction;
-- advanced attack-vs-defense context;
-- advanced OVER / UNDER market direction;
-- 20-game preference in the advanced context layer;
-- exact-market consolidation across independent engines;
-- supporting-signal score boost/cap;
-- global adjacent-line suppression;
-- preservation of live cards;
-- away/home exact venue splits;
-- H2H team-total direction;
-- H2H handicap direction;
-- exact Winline line match;
-- period mismatch rejection;
-- stale-market rejection;
-- closed-market rejection;
-- empty-provider-feed fail-closed behavior;
-- DEMO fallback with no provider feed.
+- universal `market_evaluator`: 69/90 = 76.7%
+- `venue_split`: 28/37 = 75.7%
+- legacy `feature`: 13/22 = 59.1%
+- `history`: 15/26 = 57.7%
+- `league_rank`: 37/83 = 44.6%
+- legacy `matchup`: 2/5 = 40.0%
 
-Validation found and fixed before production:
+By independent support count:
 
-- score saturation could leave a shorter sample tied with a longer one; ranking was changed to preserve separation and explicitly prefer the longer sample on ties;
-- goals-against league rank originally mapped strong/weak defense to the wrong opponent team-total direction; the mapping was reversed and covered by a dedicated test;
-- Stage 2 modules originally could propagate a missing-table D1 error into the whole Broadcast game endpoint; they are now isolated through `safeInsightBuild()`.
+- no support: 54/106 = 50.9%
+- one support: 62/95 = 65.3%
+- two or more supports: 48/62 = 77.4%
 
-The complete Worker import graph passed `wrangler deploy --dry-run` after both the market-split and Winline-adapter integrations.
+By market family:
 
-## Deployment prerequisite
+- team total: 62/80 = 77.5%
+- game total: 23/39 = 59.0%
+- moneyline: 37/64 = 57.8%
+- handicap: 42/80 = 52.5%
 
-Apply pending D1 migrations before the next production deploy:
+The important product conclusion was not to encode these sample percentages as future probabilities. Instead:
 
-```powershell
-npx wrangler d1 migrations apply hoh-data-core --remote
-```
+- independent evidence became a first-class ranking signal;
+- standalone league ranks were demoted to context;
+- exact team-total confluence is prioritized when independently supported;
+- raw editorial score remains separate from evidence tier.
 
-This safely skips already-applied migrations and applies pending ones such as 0004/0005 if needed.
+## Validation completed
 
-## Next Stage 2 work
+Deterministic tests cover:
 
-1. production validation of real cards against remote D1 after migrations/deploy;
-2. provider ingestion once Winline API/feed credentials or payload examples are available;
-3. player/goalie game features and player-vs-opponent splits;
-4. own HOH xG from NHL shot coordinates;
-5. add more market families such as regulation-only 1X2/total and period totals with settlement semantics kept separate.
+- GAME total generation
+- team-total attack + opponent-defense confluence
+- handicap cover math
+- 5/10/20 sample preference
+- Wilson lower bound usage
+- league top/bottom ranking
+- defense-direction mapping
+- advanced attack-vs-defense mapping
+- venue exact splits
+- H2H team-total direction
+- H2H handicap direction
+- exact-market consolidation
+- direct-primary preference over contextual rank
+- A/B/C evidence tier assignment
+- broad-line editorial penalty
+- GAME vs REG portfolio separation
+- REG exact provider matching
+- wrong-period rejection
+- stale/closed provider rejection
+- empty-provider-feed fail-closed behavior
+- DEMO fallback
+- Broadcast evidence badge source
+
+The complete Worker import graph passed repeated `wrangler deploy --dry-run` checks after the Stage 2 changes.
+
+## Next work
+
+1. deploy the current bundled Stage 2 update;
+2. rerun production smoke/backtest on the new portfolio behavior;
+3. inspect advanced-context coverage on a broader regular-season sample;
+4. connect real Winline provider payloads when available;
+5. begin player/goalie game feature layer and player-vs-opponent splits;
+6. build HOH-owned xG from official NHL shot coordinates later.
