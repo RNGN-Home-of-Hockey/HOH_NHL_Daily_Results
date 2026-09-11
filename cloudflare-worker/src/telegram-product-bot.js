@@ -7,23 +7,24 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     return null;
   }
 
-  console.log("telegram_webhook_received", { path });
+  const isCenter = path.includes("center");
+  console.log("telegram_webhook_received", { path, isCenter });
 
   const expected = String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim();
   const provided = request.headers.get("x-telegram-bot-api-secret-token") || "";
   if (!expected) {
     console.log("telegram_webhook_missing_secret_config");
-    return null;
+    return json({ ok:false, error:"telegram_webhook_missing_secret_config" }, 401);
   }
   if (!provided || !(await secureEqual(provided, expected))) {
     console.log("telegram_webhook_secret_mismatch");
-    return null;
+    return json({ ok:false, error:"telegram_webhook_secret_mismatch" }, 401);
   }
 
   let update;
   try { update = await request.json(); } catch {
     console.log("telegram_webhook_invalid_json");
-    return null;
+    return json({ ok:false, error:"telegram_webhook_invalid_json" }, 400);
   }
 
   const message = update.message || null;
@@ -33,7 +34,7 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     has_text: Boolean(message?.text),
   });
 
-  if (!message || message.chat?.type !== "private") return null;
+  if (!message || message.chat?.type !== "private") return json({ ok:true, skipped:"unsupported_update" });
 
   const command = commandName(message.text || "");
   console.log("telegram_command", { command, chat_id_present: Boolean(message.chat?.id) });
