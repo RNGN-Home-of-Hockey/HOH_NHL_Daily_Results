@@ -5,6 +5,7 @@ import { buildRollingLeagueRankInsights } from "./rolling-league-ranks.js";
 import { buildAdvancedMarketContextInsights } from "./advanced-market-context.js";
 import { selectInsightPortfolio } from "./insight-portfolio.js";
 import { buildMarketSplitInsights } from "./market-split-insights.js";
+import { buildRegulationMarketInsights } from "./regulation-market-evaluator.js";
 import { applyWinlineMarkets } from "./winline-market-adapter.js";
 
 const EAST = new Set([
@@ -62,6 +63,7 @@ export async function buildBettingInsights(db, game, options = {}) {
 
   const featureInsights = await safeInsightBuild("feature_market", () => buildFeatureMarketInsights(db, game));
   const universalMarketInsights = await safeInsightBuild("universal_market", () => buildUniversalMarketInsights(db, game));
+  const regulationMarketInsights = await safeInsightBuild("regulation_market", () => buildRegulationMarketInsights(db, game));
   const rollingRankInsights = await safeInsightBuild("rolling_rank", () => buildRollingLeagueRankInsights(db, game));
   const advancedContextInsights = await safeInsightBuild("advanced_context", () => buildAdvancedMarketContextInsights(db, game));
   const marketSplitInsights = await safeInsightBuild("market_splits", () => buildMarketSplitInsights(db, game));
@@ -74,6 +76,7 @@ export async function buildBettingInsights(db, game, options = {}) {
   insights.push(...h2hInsights(h2hR.results || [], game));
   insights.push(...conferenceInsights(conferenceR.results?.[0] || null, game));
   insights.push(...universalMarketInsights);
+  insights.push(...regulationMarketInsights);
   insights.push(...rollingRankInsights);
   insights.push(...advancedContextInsights);
   insights.push(...marketSplitInsights);
@@ -140,176 +143,138 @@ function momentumInsights(rows, game) {
 }
 
 function formInsights(rows, team, opponent) {
-  const n = rows.length;
-  if (n < 5) return [];
-  const wins = rows.reduce((s,r)=>s+Number(r.win||0),0);
-  const winPct = wins/n;
-  const gf = rows.reduce((s,r)=>s+Number(r.gf||0),0);
-  const ga = rows.reduce((s,r)=>s+Number(r.ga||0),0);
-  const avgTotal = (gf+ga)/n;
+  if (rows.length < 8) return [];
+  const sample=rows.slice(0,10);
+  const wins=sample.filter(r=>Number(r.win)===1).length;
+  const gf=sample.reduce((s,r)=>s+Number(r.gf||0),0);
+  const ga=sample.reduce((s,r)=>s+Number(r.ga||0),0);
   const out=[];
-
-  if (winPct >= .70) {
-    out.push(card({
-      type:"recent_form",category:"history",timing:"pregame",score:78+(winPct-.70)*35,
-      eyebrow:"ФОРМА · ПОСЛЕДНИЕ МАТЧИ",value:`${wins}/${n}`,
-      title:`${team} выиграл ${wins} из последних ${n} матчей`,
-      explanation:`Голы на этом отрезке: ${gf}:${ga}. Это контекст к исходу матча, а не отдельная модель вероятности.`,
-      sample:n,evidence:{wins,gf,ga,game_pks:rows.map(r=>r.game_pk)},
-      market:{type:"moneyline",subject:team,side:team,label:`Победа ${team}`},
-    }));
-  } else if (winPct <= .30) {
-    out.push(card({
-      type:"recent_form_bad",category:"history",timing:"pregame",score:75+(.30-winPct)*35,
-      eyebrow:"НЕГАТИВНАЯ ФОРМА",value:`${wins}/${n}`,
-      title:`${team} выиграл только ${wins} из последних ${n} матчей`,
-      explanation:`Голы на этом отрезке: ${gf}:${ga}. Логичный рынок для проверки — соперник или двойной шанс/фора, когда появится линия Winline.`,
-      sample:n,evidence:{wins,gf,ga,game_pks:rows.map(r=>r.game_pk)},
-      market:{type:"moneyline",subject:opponent,side:opponent,label:`Победа ${opponent}`},
-    }));
-  }
-
-  if (avgTotal >= 6.8 || avgTotal <= 5.2) {
-    const over = avgTotal >= 6.8;
-    out.push(card({
-      type:over?"recent_total_over":"recent_total_under",category:"history",timing:"pregame",
-      score:72+Math.min(16,Math.abs(avgTotal-6)*8),
-      eyebrow:"ТОТАЛ · ПОСЛЕДНИЕ МАТЧИ",value:avgTotal.toFixed(1),
-      title:`В последних ${n} матчах ${team} команды забивали в среднем ${avgTotal.toFixed(1)} гола суммарно`,
-      explanation:"Сравниваем с фактической линией тотала Winline перед эфиром; без линии это только статистический контекст.",
-      sample:n,evidence:{goals_for:gf,goals_against:ga,avg_total:avgTotal,game_pks:rows.map(r=>r.game_pk)},
-      market:{type:"game_total",subject:null,side:over?"over":"under",label:over?"Тотал больше":"Тотал меньше"},
-    }));
-  }
+  if (wins>=7) out.push(card({
+    type:"recent_form", category:"history", timing:"pregame", score:82+(wins-7)*4,
+    eyebrow:"ФОРМА · ПОСЛЕДНИЕ 10",value:`${wins}–${sample.length-wins}`,
+    title:`${team} выиграл ${wins} из последних ${sample.length}`,
+    explanation:`Разница шайб на этом отрезке: ${gf-ga>=0?"+":""}${gf-ga}.`,
+    evidence:{team,opponent,wins,games:sample.length,gf,ga},
+    market:{type:"moneyline",subject:team,side:team,label:`Победа ${team}`},
+  }));
+  const total=(gf+ga)/sample.length;
+  if(total>=6.5) out.push(card({
+    type:"recent_total_environment",category:"history",timing:"pregame",score:76+Math.min(12,(total-6.5)*7),
+    eyebrow:"ГОЛЕВАЯ СРЕДА",value:`${total.toFixed(1)} гола`,
+    title:`В последних матчах ${team} в среднем забивают ${total.toFixed(1)} гола обе команды`,
+    explanation:"Это исторический контекст по общему тоталу; линия и коэффициент должны приходить из Winline.",
+    evidence:{team,games:sample.length,total_goals:gf+ga,average_total:total},
+    market:{type:"game_total",subject:null,side:"over",line:5.5,label:"ТБ 5.5"},
+  }));
   return out;
 }
 
 function periodInsights(rows, game) {
   if (!rows.length) return [];
-  const eligible = rows.filter(r=>Number(r.games)>=8);
-  if (eligible.length < 8) return [];
-  const sorted=[...eligible].sort((a,b)=>Number(b.diff_pg)-Number(a.diff_pg));
-  const out=[];
-  for (const team of [game.away_tri,game.home_tri]) {
-    const idx=sorted.findIndex(r=>r.team_tri===team);
-    if (idx<0) continue;
-    const r=sorted[idx],rank=idx+1,n=Number(r.games),diff=Number(r.diff_pg);
-    if (rank<=3) {
-      out.push(card({
-        type:"period2_rank_best",category:"period",timing:"pregame",score:88-rank*2,
-        eyebrow:"ВТОРОЙ ПЕРИОД",value:`#${rank} в НХЛ`,
-        title:`${team} — ${rank}-я команда лиги по разнице шайб во вторых периодах`,
-        explanation:`Разница во вторых периодах: ${Number(r.gf)}:${Number(r.ga)} за ${n} матчей (${signed(diff)} за игру).`,
-        sample:n,evidence:{rank,gf:Number(r.gf),ga:Number(r.ga),diff_per_game:diff},
+  const ranked=rows.map((r,i)=>({...r,rank:i+1,total:rows.length}));
+  const result=[];
+  for(const team of [game.away_tri,game.home_tri]){
+    const r=ranked.find(x=>x.team_tri===team);
+    if(!r || Number(r.games)<8) continue;
+    const rank=Number(r.rank);
+    if(rank<=3){
+      result.push(card({
+        game,type:"second_period_rank",category:"period",timing:"pregame",score:84+(4-rank)*3,
+        eyebrow:"2-Й ПЕРИОД · РЕЙТИНГ НХЛ",value:`№${rank}`,
+        title:`${team} — №${rank} в НХЛ по разнице шайб во втором периоде`,
+        explanation:`${Number(r.diff_pg).toFixed(2)} шайбы разницы за второй период в среднем на матч.`,
+        evidence:{team,rank,total:Number(r.total),games:Number(r.games),diff_pg:Number(r.diff_pg),gf_pg:Number(r.gf_pg)},
         market:{type:"period_2_result",subject:team,side:team,label:`2-й период — ${team}`},
-      }));
-    } else if (rank>=Math.max(eligible.length-2,1)) {
-      out.push(card({
-        type:"period2_rank_worst",category:"period",timing:"pregame",score:82,
-        eyebrow:"СЛАБЫЙ ВТОРОЙ ПЕРИОД",value:`#${rank} из ${eligible.length}`,
-        title:`${team} — внизу лиги по разнице шайб во вторых периодах`,
-        explanation:`Разница во вторых периодах: ${Number(r.gf)}:${Number(r.ga)} за ${n} матчей (${signed(diff)} за игру).`,
-        sample:n,evidence:{rank,gf:Number(r.gf),ga:Number(r.ga),diff_per_game:diff},
-        market:{type:"period_2_opponent",subject:team,side:"against",label:`Соперник ${team} во 2-м периоде`},
       }));
     }
   }
-  return out;
+  return result;
 }
 
 function h2hInsights(rows, game) {
-  if (rows.length < 3) return [];
-  const wins={[game.away_tri]:0,[game.home_tri]:0};
-  let totalGoals=0;
-  for (const r of rows) {
-    totalGoals += Number(r.home_score||0)+Number(r.away_score||0);
-    const winner=Number(r.home_score)>Number(r.away_score)?r.home_tri:r.away_tri;
-    if (winner in wins) wins[winner]++;
+  if(rows.length<4) return [];
+  const wins={[game.home_tri]:0,[game.away_tri]:0};
+  let total=0;
+  for(const r of rows){
+    const hs=Number(r.home_score), as=Number(r.away_score);
+    if(hs>as) wins[r.home_tri]=(wins[r.home_tri]||0)+1;
+    else if(as>hs) wins[r.away_tri]=(wins[r.away_tri]||0)+1;
+    total+=hs+as;
   }
-  const n=rows.length;
   const [leader,count]=Object.entries(wins).sort((a,b)=>b[1]-a[1])[0];
   const out=[];
-  if (count/n >= .67) {
-    out.push(card({
-      type:"head_to_head",category:"matchup",timing:"pregame",score:76+(count/n-.67)*30,
-      eyebrow:"ЛИЧНЫЕ ВСТРЕЧИ",value:`${count}/${n}`,
-      title:`${leader} выиграл ${count} из последних ${n} очных матчей`,
-      explanation:"Очные встречи — отдельный контекст, который не заменяет текущую форму и составы.",
-      sample:n,evidence:{wins,game_pks:rows.map(r=>r.game_pk)},
-      market:{type:"moneyline",subject:leader,side:leader,label:`Победа ${leader}`},
-    }));
-  }
-  const avg=totalGoals/n;
-  if (avg>=6.8 || avg<=5.2) {
-    out.push(card({
-      type:"h2h_total",category:"matchup",timing:"pregame",score:70,
-      eyebrow:"ТОТАЛ В ОЧНЫХ МАТЧАХ",value:avg.toFixed(1),
-      title:`В последних ${n} очных матчах было в среднем ${avg.toFixed(1)} гола`,
-      explanation:"Использовать только вместе с актуальной линией тотала Winline.",
-      sample:n,evidence:{avg_total:avg,game_pks:rows.map(r=>r.game_pk)},
-      market:{type:"game_total",subject:null,side:avg>=6.8?"over":"under",label:avg>=6.8?"Тотал больше":"Тотал меньше"},
-    }));
-  }
+  if(count/rows.length>=0.7) out.push(card({
+    game,type:"h2h_dominance",category:"matchup",timing:"pregame",score:80+(count/rows.length-.7)*30,
+    eyebrow:"ЛИЧНЫЕ ВСТРЕЧИ",value:`${count}/${rows.length}`,
+    title:`${leader} выиграл ${count} из последних ${rows.length} очных матчей`,
+    explanation:"H2H — контекст, а не самостоятельный прогноз; используем только при выраженном перевесе.",
+    evidence:{wins,sample:rows.length,game_pks:rows.map(r=>r.game_pk)},
+    market:{type:"moneyline",subject:leader,side:leader,label:`Победа ${leader}`},
+  }));
+  const avg=total/rows.length;
+  if(avg>=6.5) out.push(card({
+    game,type:"h2h_total",category:"matchup",timing:"pregame",score:76+Math.min(12,(avg-6.5)*7),
+    eyebrow:"H2H · ТОТАЛ",value:`${avg.toFixed(1)}`,
+    title:`В последних ${rows.length} очных матчах — ${avg.toFixed(1)} гола в среднем`,
+    explanation:"Высокий исторический тотал личных встреч.",
+    evidence:{average_total:avg,sample:rows.length},
+    market:{type:"game_total",subject:null,side:"over",line:5.5,label:"ТБ 5.5"},
+  }));
   return out;
 }
 
 function conferenceInsights(row, game) {
-  const homeEast=EAST.has(game.home_tri),awayEast=EAST.has(game.away_tri);
-  if (homeEast===awayEast || !row) return [];
-  const n=Number(row.games||0),eastWins=Number(row.east_wins||0);
-  if (n<30) return [];
-  const pct=eastWins/n;
-  if (pct>.42 && pct<.58) return [];
-  const eastTeam=homeEast?game.home_tri:game.away_tri;
-  const westTeam=homeEast?game.away_tri:game.home_tri;
-  const eastFav=pct>=.58;
-  const subject=eastFav?eastTeam:westTeam;
+  if(!row) return [];
+  const east=Number(row.east_wins||0), west=Number(row.west_wins||0), games=east+west;
+  if(games<20) return [];
+  const diff=Math.abs(east-west)/games;
+  if(diff<0.12) return [];
+  const favored=east>west?"EAST":"WEST";
+  const favoredTeam=[game.away_tri,game.home_tri].find(t=>(EAST.has(t)?"EAST":"WEST")===favored);
+  if(!favoredTeam) return [];
   return [card({
-    type:"interconference",category:"league",timing:"pregame",score:68+Math.abs(pct-.5)*60,
-    eyebrow:"ВОСТОК × ЗАПАД",value:`${Math.round((eastFav?pct:1-pct)*100)}%`,
-    title:`${eastFav?"Восток":"Запад"} выиграл ${eastFav?eastWins:n-eastWins} из ${n} межконференционных матчей сезона`,
-    explanation:"Лиговый тренд. Слабее командных и live-сигналов, поэтому получает меньший приоритет.",
-    sample:n,evidence:{games:n,east_wins:eastWins,west_wins:n-eastWins},
-    market:{type:"moneyline",subject,side:subject,label:`Победа ${subject}`},
+    game,type:"conference_edge",category:"history",timing:"pregame",score:70+diff*40,
+    eyebrow:"ВОСТОК × ЗАПАД",value:`${favored} ${Math.max(east,west)}–${Math.min(east,west)}`,
+    title:`В этом сезоне ${favored==="EAST"?"Восток":"Запад"} имеет перевес в межконференционных матчах`,
+    explanation:"Лиговый контекст с более низким весом, чем форма команд и H2H.",
+    evidence:{season_id:game.season_id,games,east_wins:east,west_wins:west},
+    market:{type:"moneyline",subject:favoredTeam,side:favoredTeam,label:`Победа ${favoredTeam}`},
   })];
 }
 
-function conferenceSql() {
-  const east=[...EAST].map(x=>`'${x}'`).join(',');
-  return `
-    SELECT COUNT(*) AS games,
-      SUM(CASE
-        WHEN home_tri IN (${east}) AND home_score>away_score THEN 1
-        WHEN away_tri IN (${east}) AND away_score>home_score THEN 1
-        ELSE 0 END) AS east_wins
-    FROM games
-    WHERE season_id=? AND game_type=2 AND scheduled_start_utc<?
-      AND ((home_tri IN (${east}) AND away_tri NOT IN (${east}))
-        OR (away_tri IN (${east}) AND home_tri NOT IN (${east})));
-  `;
-}
-
-function card({game=null,type,category,timing,score,eyebrow,value,title,explanation,sample,evidence,market}) {
-  const idParts=[game?.game_pk||"context",type,market?.subject||"all",String(sample||0)];
-  const id=idParts.join(":");
+function card({game=null,type,category,timing,score,eyebrow,value,title,explanation,sample=null,evidence,market}) {
+  const id=`${game?.game_pk||"league"}:${type}:${market?.subject||market?.side||"all"}`;
   const pricedMarket=withDemoOdds(market,id);
   return {
-    id,
-    insight_type:type,
-    category,
-    timing,
-    score:Math.round(Math.max(0,Math.min(100,score))),
-    eyebrow,
-    value,
-    title,
-    explanation,
-    evidence:{sample_size:sample,...evidence},
+    id,insight_type:type,category,kind:timing==="live"?"live":"history",timing,
+    score:Math.round(Math.max(0,Math.min(100,score))),eyebrow,value,title,explanation,sample,evidence,
     note:`${pricedMarket.label} · WINLINE · ДЕМО-КЭФ ${pricedMarket.odds.toFixed(2)} · промокод HOH`,
-    kind:category==="live"?"live":"history",
     market:pricedMarket,
   };
 }
 
-function countBy(rows,keyFn){const out={};for(const r of rows){const k=keyFn(r);if(k)out[k]=(out[k]||0)+1}return out}
-function signed(v){const n=Number(v||0);return `${n>0?"+":""}${n.toFixed(2)}`}
-function dedupe(items){const seen=new Set();return items.filter(x=>{const key=`${x.insight_type}:${x.market?.subject||""}:${x.market?.side||""}`;if(seen.has(key))return false;seen.add(key);return true})}
+function countBy(rows,keyFn){
+  const out={}; for(const r of rows){const k=keyFn(r); if(k) out[k]=(out[k]||0)+1;} return out;
+}
+
+function dedupe(cards){
+  const m=new Map();
+  for(const c of cards){const key=`${c.insight_type}:${c.market?.subject||c.market?.side||"all"}`; if(!m.has(key)||m.get(key).score<c.score)m.set(key,c);}
+  return [...m.values()];
+}
+
+function conferenceSql(){
+  return `
+    WITH tagged AS (
+      SELECT home_tri,away_tri,home_score,away_score,
+             CASE WHEN home_tri IN ('BOS','BUF','CAR','CBJ','DET','FLA','MTL','NJD','NYI','NYR','OTT','PHI','PIT','TBL','TOR','WSH') THEN 'EAST' ELSE 'WEST' END AS home_conf,
+             CASE WHEN away_tri IN ('BOS','BUF','CAR','CBJ','DET','FLA','MTL','NJD','NYI','NYR','OTT','PHI','PIT','TBL','TOR','WSH') THEN 'EAST' ELSE 'WEST' END AS away_conf
+      FROM games
+      WHERE season_id=? AND game_type IN (2,3) AND scheduled_start_utc<?
+    )
+    SELECT
+      SUM(CASE WHEN home_conf<>away_conf AND ((home_score>away_score AND home_conf='EAST') OR (away_score>home_score AND away_conf='EAST')) THEN 1 ELSE 0 END) AS east_wins,
+      SUM(CASE WHEN home_conf<>away_conf AND ((home_score>away_score AND home_conf='WEST') OR (away_score>home_score AND away_conf='WEST')) THEN 1 ELSE 0 END) AS west_wins
+    FROM tagged;
+  `;
+}
