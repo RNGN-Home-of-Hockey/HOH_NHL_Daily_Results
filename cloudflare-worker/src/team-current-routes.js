@@ -6,6 +6,7 @@ import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
 import { handleTelegramGameSubscriptionRequest } from "./telegram-game-subscriptions.js";
 import { handleTelegramGameFollowUi } from "./telegram-game-follow-ui.js";
+import { handleMatchupCenterRequest } from "./matchup-center.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
   const healthResponse = await handleDataCoreHealthV2(request, env, path);
@@ -19,6 +20,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const gameFollowUiResponse = handleTelegramGameFollowUi(request, path);
   if (gameFollowUiResponse) return gameFollowUiResponse;
+
+  const matchupResponse = await handleMatchupCenterRequest(request, env, path);
+  if (matchupResponse) return matchupResponse;
 
   const controlV2Response = handleControlCenterV2Ui(request, path);
   if (controlV2Response) return controlV2Response;
