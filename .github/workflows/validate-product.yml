@@ -7,6 +7,7 @@ on:
       - 'cloudflare-worker/**'
       - 'migrations/**'
       - 'tools/**'
+      - 'tests/**'
       - 'wrangler.jsonc'
       - 'package.json'
       - '.github/workflows/validate-product.yml'
@@ -34,7 +35,7 @@ jobs:
       - name: JavaScript syntax
         run: |
           set -e
-          for file in cloudflare-worker/src/*.js; do
+          for file in cloudflare-worker/src/*.js tests/*.mjs; do
             node --check "$file"
           done
 
@@ -81,7 +82,10 @@ jobs:
           import { handleTeamCurrentRequest } from './cloudflare-worker/src/team-current-routes.js';
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
-          if (!r || r.status !== 200 || !(await r.text()).includes('NHL LIVE')) throw new Error('Mini App v2 shell failed');
+          const mini = await r.text();
+          if (!r || r.status !== 200 || !mini.includes('NHL LIVE') || !mini.includes('/telegram-app/game-follow.js')) throw new Error('Mini App v2 shell/game-follow enhancement failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
+          if (!r || r.status !== 200 || !(await r.text()).includes('gameFollowEnhancer')) throw new Error('Game-follow JS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/teams'), {}, '/teams');
           if (!r || r.status !== 200 || !(await r.text()).includes('Team Center')) throw new Error('Team Center shell failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/control'), {}, '/control');
@@ -96,6 +100,9 @@ jobs:
           if (delegated !== null) throw new Error('Group Telegram update was intercepted');
           console.log('ROUTE_CONTRACTS_OK');
           JS
+
+      - name: Telegram notification rules
+        run: node tests/validate_notification_engine.mjs
 
       - name: Worker dry run
         run: |
