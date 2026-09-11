@@ -148,7 +148,7 @@ function marketForRank(game, team, family, bottom) {
     return { type: "team_total", subject: team, side: bottom ? "under" : "over", line: 2.5, label: `${team} ${bottom ? "ИТМ" : "ИТБ"} 2.5` };
   }
   if (family === "defense") {
-    return { type: "team_total", subject: opponent, side: bottom ? "under" : "over", line: 2.5, label: `${opponent} ${bottom ? "ИТМ" : "ИТБ"} 2.5` };
+    return { type: "team_total", subject: opponent, side: bottom ? "over" : "under", line: 2.5, label: `${opponent} ${bottom ? "ИТБ" : "ИТМ"} 2.5` };
   }
   if (family === "total") {
     return { type: "game_total", subject: null, side: bottom ? "under" : "over", line: 5.5, label: `${bottom ? "ТМ" : "ТБ"} 5.5` };
