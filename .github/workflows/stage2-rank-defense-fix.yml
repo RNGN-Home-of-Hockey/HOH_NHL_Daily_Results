@@ -1,0 +1,64 @@
+name: Stage2 Rank Defense Mapping
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage2-rank-defense-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Fix defense mapping
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/rolling-league-ranks.js')
+          s=p.read_text(encoding='utf-8')
+          old='''  if (family === "defense") {\n    return { type: "team_total", subject: opponent, side: bottom ? "under" : "over", line: 2.5, label: `${opponent} ${bottom ? "ИТМ" : "ИТБ"} 2.5` };\n  }'''
+          new='''  if (family === "defense") {\n    return { type: "team_total", subject: opponent, side: bottom ? "over" : "under", line: 2.5, label: `${opponent} ${bottom ? "ИТБ" : "ИТМ"} 2.5` };\n  }'''
+          if old not in s: raise SystemExit('defense mapping anchor missing')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          node --check cloudflare-worker/src/rolling-league-ranks.js
+          git diff --check
+      - name: Direction test
+        run: |
+          node --input-type=module <<'NODE'
+          import { evaluateRollingLeagueRanks } from './cloudflare-worker/src/rolling-league-ranks.js';
+          const teams=['ANA','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','UTA','VAN','VGK','WPG','WSH'];
+          const rows=[];
+          for(let t=0;t<teams.length;t++){
+            const team=teams[t];
+            for(let i=0;i<20;i++){
+              let gf=3,ga=3;
+              if(team==='CAR'){gf=4;ga=2}
+              if(team==='NYR'){gf=2;ga=4}
+              rows.push({team_tri:team,game_pk:100000+t*100+i,scheduled_start_utc:`2025-12-${String(20-i).padStart(2,'0')}T00:00:00Z`,final_goals_for:gf,final_goals_against:ga,total_goals:gf+ga,final_goal_diff:gf-ga,corsi_for_pct:team==='CAR'?58:team==='NYR'?42:50,fenwick_for_pct:team==='CAR'?57:team==='NYR'?43:50,p2_goals_for:1,p2_goals_against:1});
+            }
+          }
+          const cards=evaluateRollingLeagueRanks({game_pk:999,away_tri:'CAR',home_tri:'NYR'},rows);
+          const strongDefense=cards.find(c=>c.title.startsWith('CAR') && c.evidence.metric==='ga');
+          const weakDefense=cards.find(c=>c.title.startsWith('NYR') && c.evidence.metric==='ga');
+          if(!strongDefense||!weakDefense) throw new Error('missing defense rank cards');
+          if(strongDefense.market.subject!=='NYR'||strongDefense.market.side!=='under') throw new Error(`strong defense mapped wrong: ${JSON.stringify(strongDefense.market)}`);
+          if(weakDefense.market.subject!=='CAR'||weakDefense.market.side!=='over') throw new Error(`weak defense mapped wrong: ${JSON.stringify(weakDefense.market)}`);
+          console.log('DEFENSE_MAPPING_OK',strongDefense.market.label,weakDefense.market.label);
+          NODE
+      - name: Commit fix
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/rolling-league-ranks.js
+          git commit -m 'Fix defensive rank market direction'
+          git push origin HEAD:main
