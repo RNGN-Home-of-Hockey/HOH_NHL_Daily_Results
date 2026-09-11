@@ -4,18 +4,32 @@ on:
     paths:
       - '.github/workflows/_tmp-current-team-snapshot-test.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Fix shared rank offset
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/build_compact_snapshots.py')
+          s=p.read_text()
+          old='return {team: i + 1 for i, (team, _) in enumerate(vals, 1)}'
+          new='return {team: i for i, (team, _) in enumerate(vals, 1)}'
+          if old not in s:
+              raise SystemExit('rank offset anchor missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          python -m py_compile tools/build_compact_snapshots.py tools/build_current_team_snapshots.py
       - name: Build and execute current-team chunks
         run: |
-          python -m py_compile tools/build_current_team_snapshots.py
           python - <<'PY'
           import importlib.util,sqlite3,tempfile
           from pathlib import Path
@@ -37,7 +51,7 @@ jobs:
           CREATE TABLE games(game_pk INTEGER PRIMARY KEY,game_type INTEGER,scheduled_start_utc TEXT);
           CREATE TABLE team_game_advanced_features(
             game_pk INTEGER,team_tri TEXT,season_id TEXT,source TEXT,toi_5v5_minutes REAL,gf_pct_5v5 REAL,xgf_pct_5v5 REAL,sf_pct_5v5 REAL,
-            goals_for_5v5 INTEGER,goals_against_5v5 INTEGER,xgf_5v5 REAL,xga_5v5 INTEGER,shots_for_5v5 INTEGER,shots_against_5v5 INTEGER,
+            goals_for_5v5 INTEGER,goals_against_5v5 INTEGER,xgf_5v5 REAL,xga_5v5 REAL,shots_for_5v5 INTEGER,shots_against_5v5 INTEGER,
             shooting_pct_5v5 REAL,save_pct_5v5 REAL,pdo_5v5 REAL,goals_minus_expected REAL,goals_saved_above_expected REAL,
             corsi_for_5v5 INTEGER,corsi_against_5v5 INTEGER,corsi_for_pct_5v5 REAL,fenwick_for_5v5 INTEGER,fenwick_against_5v5 INTEGER,fenwick_for_pct_5v5 REAL,
             shot_diff_5v5 REAL,xg_diff_5v5 REAL,goal_diff_5v5 REAL
@@ -63,6 +77,8 @@ jobs:
           top=dict(db.execute("SELECT * FROM team_current_snapshots_local WHERE team_tri='AAA' AND window_games=20").fetchone())
           assert top['rank_goal_diff']==1,top
           assert top['rank_xgf_pct_5v5']==1,top
+          bottom=dict(db.execute("SELECT * FROM team_current_snapshots_local WHERE team_tri='DDD' AND window_games=20").fetchone())
+          assert bottom['rank_goal_diff']==4,bottom
           with tempfile.TemporaryDirectory() as td:
             m.compact.CHUNK_ROOT=Path(td)
             count,chunks=m.export(db)
@@ -80,3 +96,10 @@ jobs:
           [void][scriptblock]::Create((Get-Content tools/run_compact_snapshot_sync.ps1 -Raw))
           [void][scriptblock]::Create((Get-Content tools/upload_compact_snapshots_d1.ps1 -Raw))
           Write-Host 'POWERSHELL_PARSE_OK'
+      - name: Commit shared rank fix
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add tools/build_compact_snapshots.py
+          git commit -m 'Fix league rank numbering in compact snapshots'
+          git push origin HEAD:main
