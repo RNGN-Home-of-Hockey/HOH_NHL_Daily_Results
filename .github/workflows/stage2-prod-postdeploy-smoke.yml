@@ -1,4 +1,4 @@
-name: Stage2 Postdeploy Production Smoke
+name: Stage2 Production Recovery Validation
 
 on:
   push:
@@ -6,35 +6,54 @@ on:
       - '.github/workflows/stage2-prod-postdeploy-smoke.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  smoke:
+  recover:
     runs-on: ubuntu-latest
     steps:
-      - name: Diagnose production game endpoints
-        env:
-          BASE_URL: https://hoh-nhl-daily-results.znamteam-903.workers.dev
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Add fail-safe portfolio and endpoint degradation
         run: |
           python - <<'PY'
-          import json, os, urllib.request, urllib.error
-          base=os.environ['BASE_URL'].rstrip('/')
-          def raw(path):
-              req=urllib.request.Request(base+path,headers={'User-Agent':'HOH-Stage2-Diagnostic/1.0','Accept':'application/json'})
-              try:
-                  with urllib.request.urlopen(req,timeout=60) as r:
-                      body=r.read().decode('utf-8','replace')
-                      return r.status,body
-              except urllib.error.HTTPError as e:
-                  return e.code,e.read().decode('utf-8','replace')
-          status,body=raw('/api/broadcast/games')
-          print('LIST_STATUS',status)
-          print('LIST_BODY_PREFIX',body[:500])
-          listing=json.loads(body)
-          games=listing.get('games') or []
-          for g in games[:8]:
-              path='/api/broadcast/games/'+str(g['game_pk'])
-              status,body=raw(path)
-              print('GAME',g['game_pk'],g.get('away_tri'),g.get('home_tri'),'STATUS',status,'BODY',body[:1000])
-          print('DIAGNOSTIC_DONE')
+          from pathlib import Path
+
+          p=Path('cloudflare-worker/src/betting-insight-engine.js')
+          s=p.read_text(encoding='utf-8')
+          old='''  const portfolio = selectInsightPortfolio(dedupe(insights), 12);\n  return applyWinlineMarkets(portfolio, options.provider_markets, {\n    now: options.now,\n    max_age_ms: options.market_max_age_ms,\n  });\n'''
+          new='''  const rawPortfolio = dedupe(insights);\n  let portfolio;\n  try {\n    portfolio = selectInsightPortfolio(rawPortfolio, 12);\n  } catch (error) {\n    console.error("betting insight portfolio failed", error);\n    portfolio = [...rawPortfolio]\n      .sort((a, b) => Number(b?.score || 0) - Number(a?.score || 0))\n      .slice(0, 12);\n  }\n\n  try {\n    return applyWinlineMarkets(portfolio, options.provider_markets, {\n      now: options.now,\n      max_age_ms: options.market_max_age_ms,\n    });\n  } catch (error) {\n    console.error("winline market adapter failed", error);\n    return portfolio;\n  }\n'''
+          if old not in s: raise SystemExit('betting portfolio anchor missing')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+
+          p=Path('cloudflare-worker/src/broadcast-dashboard-v2.js')
+          s=p.read_text(encoding='utf-8')
+          old='''    const teamStats=teamStatsResult.results||[];\n    const playerStats=playerStatsResult.results||[];\n    const bettingInsights=await buildBettingInsights(env.DB,game);\n    return jsonResponse({\n'''
+          new='''    const teamStats=teamStatsResult.results||[];\n    const playerStats=playerStatsResult.results||[];\n    let bettingInsights=[];\n    let bettingInsightsDegraded=false;\n    try {\n      bettingInsights=await buildBettingInsights(env.DB,game);\n    } catch (error) {\n      bettingInsightsDegraded=true;\n      console.error("broadcast betting insights degraded", error);\n    }\n    return jsonResponse({\n'''
+          if old not in s: raise SystemExit('broadcast betting anchor missing')
+          s=s.replace(old,new,1)
+          old='''      cards:bettingInsights,\n      quick_cards:buildQuickCards(game,teamStats,playerStats),\n'''
+          new='''      cards:bettingInsights,\n      betting_insights_degraded:bettingInsightsDegraded,\n      quick_cards:buildQuickCards(game,teamStats,playerStats),\n'''
+          if old not in s: raise SystemExit('broadcast cards anchor missing')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
           PY
+          node --check cloudflare-worker/src/betting-insight-engine.js
+          node --check cloudflare-worker/src/broadcast-dashboard-v2.js
+          git diff --check
+      - name: Full Worker dry run
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .stage2-recovery-build
+          test -d .stage2-recovery-build
+          echo STAGE2_RECOVERY_BUILD_OK
+      - name: Commit recovery
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/betting-insight-engine.js cloudflare-worker/src/broadcast-dashboard-v2.js
+          git commit -m 'Keep Broadcast game endpoint alive when insight ranking fails'
+          git push origin HEAD:main
