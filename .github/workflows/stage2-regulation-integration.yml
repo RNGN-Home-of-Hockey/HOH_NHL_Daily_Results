@@ -1,0 +1,72 @@
+name: Stage2 Regulation Integration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage2-regulation-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Add regulation primary priority
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/insight-portfolio.js')
+          s=p.read_text(encoding='utf-8')
+          anchor='  ["market_evaluator", 6],\n'
+          insert='  ["regulation_market", 6],\n'
+          if insert not in s:
+              if anchor not in s: raise SystemExit('priority anchor missing')
+              s=s.replace(anchor,anchor+insert,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          node --check cloudflare-worker/src/regulation-market-evaluator.js
+          node --check cloudflare-worker/src/betting-insight-engine.js
+          node --check cloudflare-worker/src/insight-portfolio.js
+          git diff --check
+      - name: Regulation settlement tests
+        run: |
+          node --input-type=module <<'NODE'
+          import { evaluateRegulationMarketRows } from './cloudflare-worker/src/regulation-market-evaluator.js';
+          import { exactMarketKey, selectInsightPortfolio } from './cloudflare-worker/src/insight-portfolio.js';
+          import { applyWinlineMarkets } from './cloudflare-worker/src/winline-market-adapter.js';
+          const game={game_pk:9001,away_tri:'CAR',home_tri:'NYR',scheduled_start_utc:'2026-01-01T00:00:00Z'};
+          const rows=(team,gf,ga)=>Array.from({length:20},(_,i)=>({game_pk:1000+i,scheduled_start_utc:`2025-12-${String(20-i).padStart(2,'0')}T00:00:00Z`,opponent_tri:'X',is_home:team==='NYR'?1:0,regulation_goals_for:gf,regulation_goals_against:ga,regulation_total:gf+ga,regulation_goal_diff:gf-ga,regulation_result:gf>ga?'W':gf<ga?'L':'T'}));
+          const cards=evaluateRegulationMarketRows(game,{CAR:rows('CAR',4,2),NYR:rows('NYR',3,4)});
+          const total=cards.find(c=>c.market.type==='game_total'&&c.market.period==='REG'&&c.market.side==='over'&&c.market.line===5.5);
+          const car=cards.find(c=>c.market.type==='team_total'&&c.market.period==='REG'&&c.market.subject==='CAR'&&c.market.side==='over'&&c.market.line===2.5);
+          if(!total||!car) throw new Error(`missing REG cards: ${JSON.stringify(cards.map(c=>c.market))}`);
+          if(exactMarketKey(total.market)!=='game_total:REG:all:over:5.5') throw new Error(`bad REG key ${exactMarketKey(total.market)}`);
+          if(exactMarketKey({...total.market,period:'GAME'})===exactMarketKey(total.market)) throw new Error('REG and GAME collapsed');
+          const provider={provider:'winline',event_id:'e',market_id:'m',selection_id:'s',market_type:'game_total',period:'REG',subject:null,side:'over',line:5.5,odds:1.91,status:'open',updated_at:'2026-01-01T00:00:00Z'};
+          const matched=applyWinlineMarkets([total],[provider],{now:'2026-01-01T00:01:00Z'});
+          if(matched.length!==1||matched[0].market.odds_is_demo!==false) throw new Error('REG provider exact match failed');
+          if(applyWinlineMarkets([total],[{...provider,period:'GAME'}],{now:'2026-01-01T00:01:00Z'}).length!==0) throw new Error('GAME provider incorrectly matched REG insight');
+          const mixed=selectInsightPortfolio([total,{...total,id:'game-version',category:'market_evaluator',market:{...total.market,period:'GAME'}}],12);
+          if(mixed.length!==2) throw new Error('portfolio collapsed GAME and REG markets');
+          console.log('REGULATION_MARKETS_OK',cards.map(c=>({label:c.market.label,period:c.market.period,score:c.score,evidence:c.evidence.window})));
+          NODE
+      - name: Full Worker dry run
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .stage2-reg-build
+          test -d .stage2-reg-build
+          echo STAGE2_REGULATION_WORKER_OK
+      - name: Commit portfolio integration
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/insight-portfolio.js
+          git commit -m 'Prioritize regulation market evidence'
+          git push origin HEAD:main
