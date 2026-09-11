@@ -17,7 +17,7 @@ jobs:
           BASE_URL: https://hoh-nhl-daily-results.znamteam-903.workers.dev
         run: |
           python - <<'PY'
-          import json, os, urllib.request, time
+          import json, os, urllib.request
           from collections import defaultdict
 
           base=os.environ['BASE_URL'].rstrip('/')
@@ -83,7 +83,7 @@ jobs:
                       bucket[key][0]+=1
                       bucket[key][1]+=int(bool(result))
                   if len(examples)<20 and score>=90:
-                      examples.append({'game_pk':game.get('game_pk'),'match':f"{away}-{home}",'market':(c.get('market') or {}).get('label'),'category':cat,'score':score,'support':support,'hit':bool(result)})
+                      examples.append({'game_pk':game.get('game_pk'),'match':f"{game.get('away_tri')}-{game.get('home_tri')}",'market':(c.get('market') or {}).get('label'),'category':cat,'score':score,'support':support,'hit':bool(result)})
               if idx%10==0:
                   print('PROGRESS',idx,'/',len(games),flush=True)
 
