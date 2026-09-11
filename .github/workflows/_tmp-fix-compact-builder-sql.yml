@@ -1,0 +1,73 @@
+name: Temporary fix compact builder SQL
+on:
+  push:
+    paths:
+      - '.github/workflows/_tmp-fix-compact-builder-sql.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fix placeholder counts and exercise aggregates
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/build_compact_snapshots.py')
+          s=p.read_text()
+          replacements={
+            'player_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)':'player_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            'goalie_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)':'goalie_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            'goalie_opponent_splits_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)':'goalie_opponent_splits_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          }
+          for old,new in replacements.items():
+              if old not in s: raise SystemExit('missing placeholder anchor: '+old)
+              s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          python -m py_compile tools/build_compact_snapshots.py
+          python - <<'PY'
+          import importlib.util, sqlite3
+          spec=importlib.util.spec_from_file_location('m','tools/build_compact_snapshots.py')
+          m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          db=sqlite3.connect(':memory:'); db.row_factory=sqlite3.Row
+          db.executescript('''
+          CREATE TABLE games(game_pk INTEGER PRIMARY KEY,season_id TEXT,game_type INTEGER,scheduled_start_utc TEXT,home_tri TEXT,away_tri TEXT);
+          CREATE TABLE team_game_features(game_pk INTEGER,team_tri TEXT,scheduled_start_utc TEXT);
+          CREATE TABLE team_game_advanced_features(game_pk INTEGER,team_tri TEXT);
+          ''')
+          m.create_local_schema(db)
+          for i in range(1,21):
+              season='20252026'; start=f'2026-01-{i:02d}T00:00:00Z'; pk=1000+i
+              db.execute('INSERT INTO games VALUES(?,?,?,?,?,?)',(pk,season,2,start,'AAA','BBB'))
+              db.execute('INSERT INTO player_game_features_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(
+                pk,1,'AAA','BBB',season,2,start,1,'C',1 if i%2==0 else 0,1,2 if i%2==0 else 1,3,1,0,0,1,.5,1200,0))
+              db.execute('INSERT INTO goalie_game_features_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(
+                pk,2,'AAA','BBB',season,2,start,1,1,'W',30,32,2,30/32,3600,2,0,0))
+          db.commit()
+          meta=m.build_player_aggregates(db,'NOW')
+          pr=db.execute('SELECT COUNT(*) FROM player_rolling_snapshots_local').fetchone()[0]
+          po=db.execute('SELECT COUNT(*) FROM player_opponent_splits_local').fetchone()[0]
+          gr=db.execute('SELECT COUNT(*) FROM goalie_rolling_snapshots_local').fetchone()[0]
+          go=db.execute('SELECT COUNT(*) FROM goalie_opponent_splits_local').fetchone()[0]
+          assert pr>=5,(pr,meta); assert po>=2,po; assert gr>=4,gr; assert go>=2,go
+          row=dict(db.execute("SELECT * FROM player_rolling_snapshots_local WHERE player_id=1 AND window_key='20'").fetchone())
+          assert row['games']==20 and row['points']>0
+          grow=dict(db.execute("SELECT * FROM goalie_rolling_snapshots_local WHERE player_id=2 AND window_key='20'").fetchone())
+          assert grow['games']==20 and abs(grow['save_pct']-30/32)<1e-9
+          print('FULL_PLAYER_AGGREGATE_SQL_OK',meta,pr,po,gr,go)
+          PY
+          git diff --check
+      - name: Commit fix
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add tools/build_compact_snapshots.py
+          git commit -m 'Fix compact player aggregate SQL placeholders'
+          git push origin HEAD:main
