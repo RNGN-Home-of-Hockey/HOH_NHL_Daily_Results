@@ -83,9 +83,11 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          if (!r || r.status !== 200 || !mini.includes('NHL LIVE') || !mini.includes('/telegram-app/game-follow.js')) throw new Error('Mini App v2 shell/game-follow enhancement failed');
+          if (!r || r.status !== 200 || !mini.includes('NHL LIVE') || !mini.includes('/telegram-app/game-follow.js') || !mini.includes('/telegram-app/preferences.js')) throw new Error('Mini App v2 shell enhancements failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
           if (!r || r.status !== 200 || !(await r.text()).includes('gameFollowEnhancer')) throw new Error('Game-follow JS route failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/preferences.js'), {}, '/telegram-app/preferences.js');
+          if (!r || r.status !== 200 || !(await r.text()).includes('notificationPreferencesEnhancer')) throw new Error('Notification preferences JS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/teams'), {}, '/teams');
           if (!r || r.status !== 200 || !(await r.text()).includes('Team Center')) throw new Error('Team Center shell failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/control'), {}, '/control');
