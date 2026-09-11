@@ -59,7 +59,7 @@ function Wait-ForD1Reset {
 
 try {
     Write-Host ''
-    Write-Host 'HOH COMPACT SNAPSHOT + PLAYER LAYER SYNC + DEPLOY'
+    Write-Host 'HOH COMPACT SNAPSHOT + PLAYER LAYER + APPS SYNC + DEPLOY'
     Write-Host ('Repo: ' + $RepoRoot)
     Write-Host ('Log:  ' + $LogFile)
     Write-Host ''
@@ -75,9 +75,14 @@ try {
 
     $python = (Get-Command python.exe -ErrorAction SilentlyContinue)
     if (-not $python) { $python = (Get-Command python -ErrorAction Stop) }
+
     Write-Step 'Building pregame team snapshots and compact player/goalie aggregates locally...'
     $buildExit = Invoke-ProcessExitCode -FilePath $python.Source -ArgumentList @((Join-Path $PSScriptRoot 'build_compact_snapshots.py'))
     if ($buildExit -ne 0) { throw ("Compact snapshot build failed with exit code {0}." -f $buildExit) }
+
+    Write-Step 'Building current 5/10/20 team rankings for Control Center and Telegram Mini App...'
+    $currentTeamExit = Invoke-ProcessExitCode -FilePath $python.Source -ArgumentList @((Join-Path $PSScriptRoot 'build_current_team_snapshots.py'))
+    if ($currentTeamExit -ne 0) { throw ("Current team snapshot build failed with exit code {0}." -f $currentTeamExit) }
 
     $summaryPath = Join-Path $RepoRoot 'local-data\warehouse\compact-snapshots-summary.json'
     if (-not (Test-Path $summaryPath)) { throw 'Compact snapshot summary was not produced.' }
@@ -86,9 +91,15 @@ try {
     if ([int]$summary.validation.official_games -ne 2792) {
         throw ("Expected 2792 official games, found {0}." -f $summary.validation.official_games)
     }
-    $writes = [int]$summary.supplemental_writes_estimate
-    Write-Step ("Local build validated: player-game={0}, goalie-game={1}, team-snapshots={2}, supplemental D1 rows={3}" -f `
-        $summary.validation.player_game_rows_local, $summary.validation.goalie_game_rows_local, $summary.local_rows.pregame_team_snapshots, $writes)
+
+    $currentSummaryPath = Join-Path $RepoRoot 'local-data\warehouse\current-team-snapshots-summary.json'
+    if (-not (Test-Path $currentSummaryPath)) { throw 'Current team snapshot summary was not produced.' }
+    $currentSummary = Get-Content $currentSummaryPath -Raw | ConvertFrom-Json
+    if (-not $currentSummary.ok) { throw 'Current team snapshot summary reports ok=false.' }
+
+    $writes = [int]$summary.supplemental_writes_estimate + [int]$currentSummary.rows
+    Write-Step ("Local build validated: player-game={0}, goalie-game={1}, historical-team-snapshots={2}, current-team-snapshots={3}, supplemental D1 rows={4}" -f `
+        $summary.validation.player_game_rows_local, $summary.validation.goalie_game_rows_local, $summary.local_rows.pregame_team_snapshots, $currentSummary.rows, $writes)
     if ($writes -gt 85000) {
         throw ("Supplemental package is {0} rows, above the 85k safety ceiling for D1 Free. Do not upload until split into multiple days." -f $writes)
     }
@@ -100,22 +111,22 @@ try {
     Wait-ForD1Reset
 
     $npx = (Get-Command npx.cmd -ErrorAction Stop).Source
-    Write-Step 'Applying pending D1 migrations (0006 creates compact snapshot/player tables)...'
+    Write-Step 'Applying all pending D1 migrations (compact/player/app query layers)...'
     $migrationExit = Invoke-ProcessExitCode -FilePath $npx -ArgumentList @('wrangler','d1','migrations','apply','hoh-data-core','--remote')
     if ($migrationExit -ne 0) { throw ("D1 migration failed with exit code {0}." -f $migrationExit) }
 
-    Write-Step 'Uploading supplemental compact chunks only (070-120; historical 010-060 will NOT replay)...'
+    Write-Step 'Uploading supplemental compact chunks only (070-125; historical 010-060 will NOT replay)...'
     $uploadScript = Join-Path $PSScriptRoot 'upload_compact_snapshots_d1.ps1'
     $uploadExit = Invoke-ProcessExitCode -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $uploadScript))
     if ($uploadExit -ne 0) {
         throw ("Compact D1 upload failed with exit code {0}. Rerun the same command; completed chunks are checkpointed." -f $uploadExit)
     }
 
-    Write-Step 'Deploying Worker with compact snapshot + player/goalie Stage 2 engine...'
+    Write-Step 'Deploying Worker with Control Center + Telegram Mini App + compact Stage 2 engine...'
     $deployExit = Invoke-ProcessExitCode -FilePath $npx -ArgumentList @('wrangler','deploy')
     if ($deployExit -ne 0) { throw ("Worker deploy failed with exit code {0}. Compact D1 data is already safe; rerun the same command." -f $deployExit) }
 
-    Write-Step 'DONE: compact team snapshots + player/goalie aggregate layer synced to D1 and Worker deployed.'
+    Write-Step 'DONE: compact data, current rankings, web Control Center and Telegram Mini App deployed.'
     Write-Host ''
     Write-Host 'No further action is required in this window.'
 }
