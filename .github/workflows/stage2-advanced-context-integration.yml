@@ -1,0 +1,81 @@
+name: Stage2 Advanced Context Integration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage2-advanced-context-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Integrate advanced context
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/betting-insight-engine.js')
+          s=p.read_text(encoding='utf-8')
+          imp='import { buildAdvancedMarketContextInsights } from "./advanced-market-context.js";\n'
+          if imp not in s:
+              anchor='import { buildRollingLeagueRankInsights } from "./rolling-league-ranks.js";\n'
+              if anchor not in s: raise SystemExit('import anchor missing')
+              s=s.replace(anchor,anchor+imp,1)
+          call='  const advancedContextInsights = await buildAdvancedMarketContextInsights(db, game);\n'
+          if call not in s:
+              anchor='  const rollingRankInsights = await buildRollingLeagueRankInsights(db, game);\n'
+              if anchor not in s: raise SystemExit('call anchor missing')
+              s=s.replace(anchor,anchor+call,1)
+          push='  insights.push(...advancedContextInsights);\n'
+          if push not in s:
+              anchor='  insights.push(...rollingRankInsights);\n'
+              if anchor not in s: raise SystemExit('push anchor missing')
+              s=s.replace(anchor,anchor+push,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          node --check cloudflare-worker/src/advanced-market-context.js
+          node --check cloudflare-worker/src/betting-insight-engine.js
+          git diff --check
+      - name: Advanced context pure test
+        run: |
+          node --input-type=module <<'NODE'
+          import { evaluateAdvancedMarketContext } from './cloudflare-worker/src/advanced-market-context.js';
+          const teams=['ANA','BOS','BUF','CAR','CBJ','CGY','CHI','COL','DAL','DET','EDM','FLA','LAK','MIN','MTL','NJD','NSH','NYI','NYR','OTT','PHI','PIT','SEA','SJS','STL','TBL','TOR','UTA','VAN','VGK','WPG','WSH'];
+          const rows=[];
+          for(let t=0;t<teams.length;t++){
+            const team=teams[t];
+            for(let i=0;i<20;i++){
+              let xgfPct=50,corsi=50,fenwick=50,xgf=2.5,xga=2.5;
+              if(team==='CAR'){xgfPct=58;corsi=57;fenwick=56;xgf=3.5;xga=1.8}
+              if(team==='NYR'){xgfPct=42;corsi=43;fenwick=44;xgf=1.8;xga=3.6}
+              rows.push({team_tri:team,game_pk:100000+t*100+i,scheduled_start_utc:`2025-12-${String(20-i).padStart(2,'0')}T00:00:00Z`,toi_5v5_minutes:60,xgf_pct_5v5:xgfPct,corsi_for_pct_5v5:corsi,fenwick_for_pct_5v5:fenwick,xgf_5v5:xgf,xga_5v5:xga,pdo_5v5:100,goals_saved_above_expected:0});
+            }
+          }
+          const cards=evaluateAdvancedMarketContext({game_pk:999,away_tri:'CAR',home_tri:'NYR'},rows);
+          const car=cards.find(c=>c.market.subject==='CAR'&&c.market.side==='over');
+          const nyr=cards.find(c=>c.market.subject==='NYR'&&c.market.side==='under');
+          if(!car||!nyr) throw new Error(`missing expected matchup contexts: ${JSON.stringify(cards.map(c=>c.market))}`);
+          if(car.evidence.window!==20||nyr.evidence.window!==20) throw new Error('advanced context did not prefer 20-game sample');
+          if(car.evidence.team.ranks.xgf_pct>3||car.evidence.opponent.ranks.xga60<30) throw new Error('CAR over evidence rank mismatch');
+          if(nyr.evidence.team.ranks.xgf_pct<30||nyr.evidence.opponent.ranks.xga60>3) throw new Error('NYR under evidence rank mismatch');
+          console.log('ADVANCED_CONTEXT_OK',cards.map(c=>({title:c.title,market:c.market.label,score:c.score,window:c.evidence.window})));
+          NODE
+      - name: Commit integration
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/betting-insight-engine.js
+          if git diff --cached --quiet; then
+            echo 'No integration changes needed'
+          else
+            git commit -m 'Integrate advanced 5v5 context into betting insights'
+            git push origin HEAD:main
+          fi
