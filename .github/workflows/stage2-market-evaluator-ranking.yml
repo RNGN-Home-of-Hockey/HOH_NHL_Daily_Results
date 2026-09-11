@@ -1,0 +1,67 @@
+name: Stage2 Market Evaluator Ranking
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage2-market-evaluator-ranking.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Patch ranking
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/universal-market-evaluator.js')
+          s=p.read_text(encoding='utf-8')
+          old='''    if (!current || card.score > current.score) bestExact.set(key, card);'''
+          new='''    if (\n      !current ||\n      card.score > current.score ||\n      (card.score === current.score && Number(card.evidence?.window || 0) > Number(current.evidence?.window || 0))\n    ) bestExact.set(key, card);'''
+          if old not in s: raise SystemExit('tie-break anchor missing')
+          s=s.replace(old,new,1)
+          s=s.replace('''      max = 2;\n    } else if (card.market.type === "team_total") {\n      bucket = `team_total:${card.market.subject}`;\n      max = 2;''','''      max = 1;\n    } else if (card.market.type === "team_total") {\n      bucket = `team_total:${card.market.subject}`;\n      max = 1;''',1)
+          old2='''  return 58 + stat.rate * 22 + stat.wilson90 * 12 + sampleBonus;'''
+          new2='''  return 54 + stat.rate * 18 + stat.wilson90 * 10 + sampleBonus;'''
+          if old2 not in s: raise SystemExit('single score anchor missing')
+          s=s.replace(old2,new2,1)
+          old3='''  return 60 + averageRate * 21 + averageLower * 11 + sampleBonus;'''
+          new3='''  return 53 + averageRate * 18 + averageLower * 9 + sampleBonus;'''
+          if old3 not in s: raise SystemExit('confluence score anchor missing')
+          s=s.replace(old3,new3,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          node --check cloudflare-worker/src/universal-market-evaluator.js
+          git diff --check
+      - name: Ranking tests
+        run: |
+          node --input-type=module <<'NODE'
+          import { evaluateUniversalMarketRows } from './cloudflare-worker/src/universal-market-evaluator.js';
+          const game={game_pk:999,away_tri:'CAR',home_tri:'NYR',scheduled_start_utc:'2026-01-01T00:00:00Z'};
+          const rows=(gf,ga,diff)=>Array.from({length:20},(_,i)=>({game_pk:1000+i,total_goals:gf+ga,final_goals_for:gf,final_goals_against:ga,final_goal_diff:diff}));
+          const cards=evaluateUniversalMarketRows(game,{CAR:rows(4,3,2),NYR:rows(3,4,-1)});
+          const gt=cards.find(c=>c.market.type==='game_total');
+          const carTT=cards.find(c=>c.market.type==='team_total'&&c.market.subject==='CAR');
+          const carHC=cards.find(c=>c.market.type==='handicap'&&c.market.subject==='CAR');
+          if(!gt||!carTT||!carHC) throw new Error('missing required market families');
+          for(const c of [gt,carTT,carHC]) if(c.evidence.window!==20) throw new Error(`expected 20-game stable window for ${c.market.label}, got ${c.evidence.window}`);
+          if(cards.filter(c=>c.market.type==='game_total').length!==1) throw new Error('game-total duplicate portfolio');
+          if(cards.filter(c=>c.market.type==='team_total'&&c.market.subject==='CAR').length!==1) throw new Error('CAR team-total duplicate portfolio');
+          if(cards.some(c=>c.score>=100)) throw new Error('score saturation still present');
+          console.log('RANKING_OK',cards.map(c=>({market:c.market.label,score:c.score,window:c.evidence.window})));
+          NODE
+      - name: Commit ranking hardening
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/universal-market-evaluator.js
+          git commit -m 'Harden rolling-window market ranking'
+          git push origin HEAD:main
