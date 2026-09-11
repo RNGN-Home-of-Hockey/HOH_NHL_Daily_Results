@@ -614,7 +614,7 @@ def advanced_summary(rows):
 def ranks(summaries, key, ascending=False):
     vals = [(team, s.get(key)) for team, s in summaries.items() if s.get(key) is not None and math.isfinite(float(s.get(key)))]
     vals.sort(key=lambda x: (x[1], x[0]) if ascending else (-x[1], x[0]))
-    return {team: i + 1 for i, (team, _) in enumerate(vals, 1)}
+    return {team: i for i, (team, _) in enumerate(vals, 1)}
 
 
 def build_team_snapshots(db, now_iso):
