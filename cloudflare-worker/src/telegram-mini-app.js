@@ -27,6 +27,20 @@ export async function handleTelegramMiniAppRequest(request, env, path) {
     if (request.method !== "GET") return json({ ok:false,error:"method_not_allowed" },405);
     return bootstrapRoute(request,env);
   }
+  if (path === "/api/me/subscriptions") {
+    if (request.method === "GET") return subscriptionsRoute(request,env);
+    if (request.method === "POST") return subscriptionWriteRoute(request,env);
+    return json({ ok:false,error:"method_not_allowed" },405);
+  }
+  const subscriptionDeleteMatch = /^\/api\/me\/subscriptions\/(\d+)$/.exec(path);
+  if (subscriptionDeleteMatch) {
+    if (request.method !== "DELETE") return json({ ok:false,error:"method_not_allowed" },405);
+    return subscriptionDeleteRoute(request,env,Number(subscriptionDeleteMatch[1]));
+  }
+  if (path === "/api/test-notification") {
+    if (request.method !== "POST") return json({ ok:false,error:"method_not_allowed" },405);
+    return testNotificationRoute(request,env);
+  }
   if (path === "/api/telegram-app/schedule") {
     if (request.method !== "GET") return json({ ok:false,error:"method_not_allowed" },405);
     return scheduleRoute(request);
@@ -141,6 +155,81 @@ async function followWriteRoute(request,env,remove) {
   return json({ok:true,removed:remove,follows:await userFollows(env.DB,auth.user.id)});
 }
 
+async function subscriptionsRoute(request,env) {
+  if (!env.DB) return json({ok:false,error:"missing_d1_binding"},503);
+  const auth=await telegramAuth(request,env,{required:true});
+  if (!auth.ok) return json({ok:false,error:auth.error},401);
+  await upsertTelegramUser(env.DB,auth.user);
+  return json({subscriptions:await userSubscriptions(env.DB,auth.user.id)});
+}
+
+async function subscriptionWriteRoute(request,env) {
+  if (!env.DB) return json({ok:false,error:"missing_d1_binding"},503);
+  const auth=await telegramAuth(request,env,{required:true});
+  if (!auth.ok) return json({ok:false,error:auth.error},401);
+
+  let body;
+  try { body=await request.json(); } catch { return json({ok:false,error:"invalid_json"},400); }
+  const input=normalizeSubscriptionInput(body);
+  if (!input.ok) return json({ok:false,error:input.error},400);
+  if (!(await validSubscriptionSubject(env.DB,auth.user.id,input.type,input.entityId))) {
+    return json({ok:false,error:"subject_not_found"},404);
+  }
+
+  const flags=subscriptionFlags(input.type,input.events);
+  await upsertTelegramUser(env.DB,auth.user);
+  await env.DB.prepare(`
+    INSERT INTO subscriptions (
+      telegram_user_id,subject_type,subject_key,notify_pregame,notify_start,
+      notify_goal,notify_assist,notify_point,notify_period_end,notify_final
+    ) VALUES (?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(telegram_user_id,subject_type,subject_key) DO UPDATE SET
+      notify_pregame=excluded.notify_pregame,notify_start=excluded.notify_start,
+      notify_goal=excluded.notify_goal,notify_assist=excluded.notify_assist,
+      notify_point=excluded.notify_point,notify_period_end=excluded.notify_period_end,
+      notify_final=excluded.notify_final;
+  `).bind(
+    auth.user.id,input.type,input.entityId,flags.pregame,flags.start,
+    flags.goal,flags.assist,flags.point,flags.periodEnd,flags.final,
+  ).run();
+
+  return json({subscriptions:await userSubscriptions(env.DB,auth.user.id)});
+}
+
+async function subscriptionDeleteRoute(request,env,subscriptionId) {
+  if (!env.DB) return json({ok:false,error:"missing_d1_binding"},503);
+  if (!Number.isSafeInteger(subscriptionId)||subscriptionId<=0) return json({ok:false,error:"invalid_subscription_id"},400);
+  const auth=await telegramAuth(request,env,{required:true});
+  if (!auth.ok) return json({ok:false,error:auth.error},401);
+  await upsertTelegramUser(env.DB,auth.user);
+  await env.DB.prepare("DELETE FROM subscriptions WHERE subscription_id=? AND telegram_user_id=?;")
+    .bind(subscriptionId,auth.user.id).run();
+  return json({subscriptions:await userSubscriptions(env.DB,auth.user.id)});
+}
+
+async function testNotificationRoute(request,env) {
+  if (!env.DB) return json({ok:false,error:"missing_d1_binding"},503);
+  const auth=await telegramAuth(request,env,{required:true});
+  if (!auth.ok) return json({ok:false,error:auth.error},401);
+
+  let body;
+  try { body=await request.json(); } catch { return json({ok:false,error:"invalid_json"},400); }
+  const userId=Number(body?.user_id);
+  if (!Number.isSafeInteger(userId)||userId<=0) return json({ok:false,error:"invalid_user_id"},400);
+  if (userId!==auth.user.id) return json({ok:false,error:"forbidden_user_id"},403);
+  const type=String(body?.type||"").trim().toLowerCase();
+  if (!new Set(["pregame","start","goal","assist","point","period_end","final"]).has(type)) {
+    return json({ok:false,error:"invalid_notification_type"},400);
+  }
+  const text=String(body?.text||"").trim();
+  if (!text||text.length>1000) return json({ok:false,error:"invalid_notification_text"},400);
+
+  await upsertTelegramUser(env.DB,auth.user);
+  const sent=await telegramBotRequest(env,"sendMessage",{chat_id:userId,text});
+  if (!sent.ok) return json({ok:false,error:"telegram_send_failed"},502);
+  return json({ok:true,user_id:userId,type});
+}
+
 async function playersRoute(request,env) {
   if (!env.DB) return json({ok:false,error:"missing_d1_binding"},503);
   const url=new URL(request.url);
@@ -249,6 +338,85 @@ async function userFollows(db,userId) {
   return result.results||[];
 }
 
+async function userSubscriptions(db,userId) {
+  const result=await db.prepare(`
+    SELECT s.subscription_id,s.subject_type,s.subject_key,
+           s.notify_pregame,s.notify_start,s.notify_goal,s.notify_assist,
+           s.notify_point,s.notify_period_end,s.notify_final,
+           CASE s.subject_type
+             WHEN 'player' THEN COALESCE(p.full_name_en,p.full_name_ru,s.subject_key)
+             WHEN 'team' THEN COALESCE(t.name_en,t.name_ru,s.subject_key)
+             WHEN 'game' THEN COALESCE(g.away_tri||' — '||g.home_tri,'Game #'||s.subject_key)
+             ELSE s.subject_key
+           END AS name
+    FROM subscriptions s
+    LEFT JOIN players p ON s.subject_type='player' AND p.player_id=CAST(s.subject_key AS INTEGER)
+    LEFT JOIN teams t ON s.subject_type='team' AND t.tri_code=s.subject_key
+    LEFT JOIN games g ON s.subject_type='game' AND g.game_pk=CAST(s.subject_key AS INTEGER)
+    WHERE s.telegram_user_id=?
+    ORDER BY CASE s.subject_type WHEN 'player' THEN 1 WHEN 'team' THEN 2 ELSE 3 END,s.subject_key;
+  `).bind(userId).all();
+  return (result.results||[]).map(serializeSubscription);
+}
+
+function serializeSubscription(row) {
+  const type=String(row.subject_type||"");
+  return {
+    id:Number(row.subscription_id),
+    type,
+    entity_id:String(row.subject_key||""),
+    name:String(row.name||row.subject_key||""),
+    events:subscriptionEvents(type,row),
+  };
+}
+
+function subscriptionEvents(type,row) {
+  const candidates=type==="player"
+    ? [["goal","notify_goal"],["assist","notify_assist"],["point","notify_point"]]
+    : type==="team"
+      ? [["start","notify_start"],["goal","notify_goal"],["final","notify_final"]]
+      : [["pregame","notify_pregame"],["start","notify_start"],["goal","notify_goal"],["period_end","notify_period_end"],["final","notify_final"]];
+  return candidates.filter(([,column])=>Number(row[column])===1).map(([event])=>event);
+}
+
+function normalizeSubscriptionInput(body) {
+  const type=String(body?.type||"").trim().toLowerCase();
+  if (!new Set(["player","team","game"]).has(type)) return {ok:false,error:"invalid_subscription_type"};
+  let entityId=String(body?.entity_id||"").trim();
+  if (type==="team") entityId=entityId.toUpperCase();
+  if (type==="team"&&!/^[A-Z]{3}$/.test(entityId)) return {ok:false,error:"invalid_entity_id"};
+  if (type!=="team"&&(!/^\d+$/.test(entityId)||!Number.isSafeInteger(Number(entityId))||Number(entityId)<=0)) {
+    return {ok:false,error:"invalid_entity_id"};
+  }
+  if (!Array.isArray(body?.events)) return {ok:false,error:"invalid_events"};
+  const allowed=new Set(type==="player"
+    ? ["goal","assist","point"]
+    : type==="team"
+      ? ["start","goal","final"]
+      : ["pregame","start","goal","period_end","final"]);
+  const events=[];
+  for (const raw of body.events) {
+    if (typeof raw!=="string") return {ok:false,error:"invalid_events"};
+    const event=raw.trim().toLowerCase();
+    if (!allowed.has(event)) return {ok:false,error:"invalid_events"};
+    if (!events.includes(event)) events.push(event);
+  }
+  return {ok:true,type,entityId,events};
+}
+
+function subscriptionFlags(type,events) {
+  const selected=new Set(events);
+  return {
+    pregame:Number(type==="game"&&selected.has("pregame")),
+    start:Number(type!=="player"&&selected.has("start")),
+    goal:Number(selected.has("goal")),
+    assist:Number(type==="player"&&selected.has("assist")),
+    point:Number(type==="player"&&selected.has("point")),
+    periodEnd:Number(type==="game"&&selected.has("period_end")),
+    final:Number(type!=="player"&&selected.has("final")),
+  };
+}
+
 async function validSubject(db,type,key) {
   if (type==="team") return Boolean(await db.prepare("SELECT 1 FROM teams WHERE tri_code=? LIMIT 1;").bind(key).first());
   if (type==="player"&&!/^\d+$/.test(key)) return false;
@@ -256,6 +424,14 @@ async function validSubject(db,type,key) {
   if (type==="player") return Boolean(await db.prepare("SELECT 1 FROM players WHERE player_id=? LIMIT 1;").bind(Number(key)).first());
   if (type==="game") return Boolean(await db.prepare("SELECT 1 FROM games WHERE game_pk=? LIMIT 1;").bind(Number(key)).first());
   return false;
+}
+
+async function validSubscriptionSubject(db,userId,type,key) {
+  if (await validSubject(db,type,key)) return true;
+  if (type!=="game") return false;
+  return Boolean(await db.prepare(
+    "SELECT 1 FROM subscriptions WHERE telegram_user_id=? AND subject_type='game' AND subject_key=? LIMIT 1;",
+  ).bind(userId,key).first());
 }
 
 function notificationFlags(body) {
@@ -267,6 +443,20 @@ async function fetchNhl(url) {
   const response=await fetch(url,{headers:{Accept:"application/json"}});
   if (!response.ok) throw new Error(`NHL HTTP ${response.status}`);
   return response.json();
+}
+
+async function telegramBotRequest(env,method,payload) {
+  if (!env.TELEGRAM_BOT_TOKEN) return {ok:false,error:"missing_TELEGRAM_BOT_TOKEN"};
+  try {
+    const response=await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,{
+      method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),
+    });
+    const data=await response.json().catch(()=>({}));
+    return {ok:response.ok&&data.ok===true,status_code:response.status};
+  } catch (error) {
+    console.error("telegram test notification failed",error);
+    return {ok:false,error:"telegram_request_failed"};
+  }
 }
 
 function normalizeScheduleGames(payload,date) {

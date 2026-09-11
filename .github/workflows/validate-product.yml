@@ -117,6 +117,7 @@ jobs:
         run: |
           node tests/validate_notification_engine.mjs
           node tests/validate_game_subscription.mjs
+          node tests/validate_mini_app_subscriptions.mjs
 
       - name: Market line evaluator
         run: node tests/validate_market_line_evaluator.mjs
