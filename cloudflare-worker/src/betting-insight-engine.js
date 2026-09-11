@@ -5,12 +5,13 @@ import { buildRollingLeagueRankInsights } from "./rolling-league-ranks.js";
 import { buildAdvancedMarketContextInsights } from "./advanced-market-context.js";
 import { selectInsightPortfolio } from "./insight-portfolio.js";
 import { buildMarketSplitInsights } from "./market-split-insights.js";
+import { applyWinlineMarkets } from "./winline-market-adapter.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
 ]);
 
-export async function buildBettingInsights(db, game) {
+export async function buildBettingInsights(db, game, options = {}) {
   if (!db || !game?.game_pk) return [];
 
   const away = game.away_tri;
@@ -78,7 +79,11 @@ export async function buildBettingInsights(db, game) {
   insights.push(...marketSplitInsights);
   insights.push(...featureInsights);
 
-  return selectInsightPortfolio(dedupe(insights), 12);
+  const portfolio = selectInsightPortfolio(dedupe(insights), 12);
+  return applyWinlineMarkets(portfolio, options.provider_markets, {
+    now: options.now,
+    max_age_ms: options.market_max_age_ms,
+  });
 }
 
 async function safeInsightBuild(label, factory) {
