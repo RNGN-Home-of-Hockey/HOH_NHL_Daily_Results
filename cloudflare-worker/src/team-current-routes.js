@@ -2,10 +2,14 @@ import { loadTeamDetail, loadTeamRankings } from "./team-current-data.js";
 import { handleTeamCurrentUiRequest } from "./team-current-ui.js";
 import { handleTelegramMiniAppV2Ui } from "./telegram-mini-app-v2-ui.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
+import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
   const healthResponse = await handleDataCoreHealthV2(request, env, path);
   if (healthResponse) return healthResponse;
+
+  const controlLowReadResponse = await handleControlLowReadRequest(request, env, path);
+  if (controlLowReadResponse) return controlLowReadResponse;
 
   const miniAppV2Response = handleTelegramMiniAppV2Ui(request, path);
   if (miniAppV2Response) return miniAppV2Response;
