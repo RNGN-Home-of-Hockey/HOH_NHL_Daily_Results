@@ -1,0 +1,35 @@
+name: Broadcast Section Isolation
+
+on:
+  push:
+    paths:
+      - 'tools/_tmp_patch_broadcast_isolation.py'
+      - '.github/workflows/broadcast-section-isolation.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Patch and validate
+        run: |
+          python tools/_tmp_patch_broadcast_isolation.py
+          node --check cloudflare-worker/src/broadcast-dashboard-v2.js
+          git diff --check
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .broadcast-isolation-build
+      - name: Commit patch
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/broadcast-dashboard-v2.js
+          git commit -m 'Isolate Broadcast data sections from D1 read failures'
+          git push origin HEAD:main
