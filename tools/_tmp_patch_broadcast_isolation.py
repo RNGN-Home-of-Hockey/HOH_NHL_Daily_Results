@@ -1,0 +1,64 @@
+from pathlib import Path
+
+p = Path('cloudflare-worker/src/broadcast-dashboard-v2.js')
+s = p.read_text(encoding='utf-8')
+start = s.index('    const [periodsResult,teamStatsResult,playerStatsResult,eventsResult,persistedCardsResult] = await env.DB.batch([')
+end = s.index('\n\n    const teamStats=teamStatsResult.results||[];', start)
+
+new = '''    const dataDegradedSections=[];
+    const safeAll=async(label,statement)=>{
+      try {
+        const result=await statement.all();
+        return result?.results||[];
+      } catch (error) {
+        dataDegradedSections.push(label);
+        console.error(`broadcast data section degraded: ${label}`, error);
+        return [];
+      }
+    };
+
+    const [periods,teamStats,playerStats,events,persistedCards] = await Promise.all([
+      safeAll("periods", env.DB.prepare(`SELECT period_number,period_type,home_goals,away_goals FROM period_scores WHERE game_pk=? ORDER BY period_number,period_type;`).bind(gamePk)),
+      safeAll("team_stats", env.DB.prepare(`SELECT * FROM team_game_stats WHERE game_pk=? ORDER BY is_home ASC;`).bind(gamePk)),
+      safeAll("top_players", env.DB.prepare(`
+        SELECT pgs.player_id,pgs.team_tri,pgs.goals,pgs.assists,pgs.points,pgs.shots,pgs.hits,pgs.blocked_shots,
+               pgs.pim,pgs.plus_minus,pgs.toi_seconds,p.full_name_en,p.full_name_ru,p.position_code,p.sweater_number
+        FROM player_game_stats pgs
+        JOIN players p ON p.player_id=pgs.player_id
+        WHERE pgs.game_pk=?
+        ORDER BY pgs.points DESC,pgs.goals DESC,pgs.shots DESC,pgs.toi_seconds DESC
+        LIMIT 20;
+      `).bind(gamePk)),
+      safeAll("events", env.DB.prepare(`
+        SELECT ge.event_key,ge.event_type,ge.period_number,ge.period_type,ge.time_in_period,ge.team_tri,
+               ge.home_score,ge.away_score,ge.description,
+               GROUP_CONCAT(COALESCE(p.full_name_ru,p.full_name_en)||'|'||ep.role,';;') AS people
+        FROM game_events ge
+        LEFT JOIN event_players ep ON ep.event_key=ge.event_key
+        LEFT JOIN players p ON p.player_id=ep.player_id
+        WHERE ge.game_pk=? AND ge.event_type IN ('goal','shootout-goal','penalty','period-end')
+        GROUP BY ge.event_key
+        ORDER BY ge.sort_order DESC
+        LIMIT 50;
+      `).bind(gamePk)),
+      safeAll("persisted_cards", env.DB.prepare(`
+        SELECT card_id,headline_ru,stat_text_ru,source_note_ru,status,shown_at,display_order
+        FROM broadcast_cards
+        WHERE game_pk=?
+        ORDER BY CASE status WHEN 'shown' THEN 0 WHEN 'preview' THEN 1 ELSE 2 END,display_order,created_at;
+      `).bind(gamePk)),
+    ]);'''
+
+s = s[:start] + new + s[end:]
+s = s.replace('    const teamStats=teamStatsResult.results||[];\n    const playerStats=playerStatsResult.results||[];\n', '', 1)
+s = s.replace(
+    '      periods:periodsResult.results||[],\n      team_stats:teamStats,\n      top_players:playerStats,\n      events:eventsResult.results||[],\n',
+    '      periods,\n      team_stats:teamStats,\n      top_players:playerStats,\n      events,\n',
+    1,
+)
+s = s.replace(
+    '      betting_insights_degraded:bettingInsightsDegraded,\n      quick_cards:buildQuickCards(game,teamStats,playerStats),\n      persisted_cards:persistedCardsResult.results||[],\n',
+    '      betting_insights_degraded:bettingInsightsDegraded,\n      data_degraded_sections:dataDegradedSections,\n      quick_cards:buildQuickCards(game,teamStats,playerStats),\n      persisted_cards:persistedCards,\n',
+    1,
+)
+p.write_text(s, encoding='utf-8')
