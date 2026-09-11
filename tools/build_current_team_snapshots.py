@@ -2,8 +2,13 @@
 import datetime as dt
 import json
 import sqlite3
+import sys
 from collections import defaultdict
 from pathlib import Path
+
+TOOLS_DIR = Path(__file__).resolve().parent
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
 
 import build_compact_snapshots as compact
 
@@ -116,32 +121,29 @@ def build(db, now_iso):
         for team, b in sorted(base_summaries.items()):
             a = adv_summaries.get(team)
             as_of = base_hist[team][-1]["scheduled_start_utc"]
+            values = (
+                team, window, as_of, window, len(base_summaries),
+                b.get("gf"), b.get("ga"), b.get("goal_diff"), b.get("total"),
+                b.get("corsi"), b.get("fenwick"), b.get("p2_diff"),
+                base_rank["gf"].get(team), base_rank["ga"].get(team),
+                base_rank["goal_diff"].get(team), base_rank["total"].get(team),
+                base_rank["corsi"].get(team), base_rank["fenwick"].get(team),
+                base_rank["p2_diff"].get(team),
+                window if a else 0, len(adv_summaries),
+                a.get("xgf_pct") if a else None,
+                a.get("xgf60") if a else None,
+                a.get("xga60") if a else None,
+                a.get("corsi") if a else None,
+                a.get("fenwick") if a else None,
+                a.get("pdo") if a else None,
+                a.get("gsax") if a else None,
+                adv_rank["xgf_pct"].get(team), adv_rank["xgf60"].get(team),
+                adv_rank["xga60"].get(team), adv_rank["corsi"].get(team),
+                adv_rank["fenwick"].get(team), now_iso,
+            )
             db.execute(
-                """
-                INSERT OR REPLACE INTO team_current_snapshots_local VALUES(
-                  ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-                )
-                """,
-                (
-                    team, window, as_of, window, len(base_summaries),
-                    b.get("gf"), b.get("ga"), b.get("goal_diff"), b.get("total"),
-                    b.get("corsi"), b.get("fenwick"), b.get("p2_diff"),
-                    base_rank["gf"].get(team), base_rank["ga"].get(team),
-                    base_rank["goal_diff"].get(team), base_rank["total"].get(team),
-                    base_rank["corsi"].get(team), base_rank["fenwick"].get(team),
-                    base_rank["p2_diff"].get(team),
-                    window if a else 0, len(adv_summaries),
-                    a.get("xgf_pct") if a else None,
-                    a.get("xgf60") if a else None,
-                    a.get("xga60") if a else None,
-                    a.get("corsi") if a else None,
-                    a.get("fenwick") if a else None,
-                    a.get("pdo") if a else None,
-                    a.get("gsax") if a else None,
-                    adv_rank["xgf_pct"].get(team), adv_rank["xgf60"].get(team),
-                    adv_rank["xga60"].get(team), adv_rank["corsi"].get(team),
-                    adv_rank["fenwick"].get(team), now_iso,
-                ),
+                "INSERT OR REPLACE INTO team_current_snapshots_local VALUES(" + ",".join("?" for _ in values) + ")",
+                values,
             )
             inserted += 1
     db.commit()
