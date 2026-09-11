@@ -6,7 +6,7 @@ Date: 2026-09-11
 
 Stage 2 turns the historical NHL Data Core into market-first broadcast candidates.
 
-The engine no longer relies on a few fixed rules such as only total 5.5 or team total 2.5. It evaluates a grid of common markets, chooses the strongest defensible sample, compares teams with the league, adds advanced 5v5 context, and then consolidates overlapping evidence into a compact operator portfolio.
+The engine evaluates common market lines, chooses the strongest defensible sample, compares teams with the league, adds advanced 5v5 context, evaluates venue and H2H splits, and then consolidates overlapping evidence into a compact operator portfolio.
 
 ## Universal market evaluator
 
@@ -114,6 +114,55 @@ Under example:
 
 Advanced context is evidence supporting a market direction, not a claimed standalone probability.
 
+## Venue and H2H market splits
+
+File:
+`cloudflare-worker/src/market-split-insights.js`
+
+### Current-venue splits
+
+The away team is evaluated only on its recent away games and the home team only on its recent home games.
+
+Windows:
+
+- 5
+- 10
+- 20
+
+Markets:
+
+- exact match totals
+- exact team totals
+- exact handicaps
+- moneyline
+
+Example:
+
+`CAR away + NYR home: O5.5 hit in 16/20 and 15/20.`
+
+This becomes independent supporting evidence for the same exact market in the global portfolio.
+
+### H2H exact market evaluation
+
+The evaluator uses the previous meetings of the two current teams from the perspective of one team, avoiding double-counting the same H2H game.
+
+Windows:
+
+- 4
+- 6
+- 10
+
+H2H has intentionally lower base weight than general rolling team trends because opponent-specific samples are smaller and noisier.
+
+Markets:
+
+- match totals
+- both team totals
+- both handicaps
+- moneyline
+
+The home-team goal and handicap directions are explicitly transformed from the away-team-perspective H2H rows and covered by tests.
+
 ## Global insight portfolio
 
 File:
@@ -128,8 +177,10 @@ Example:
 - rolling hit-rate -> CAR ИТБ 2.5
 - league rank -> CAR ИТБ 2.5
 - advanced xGF context -> CAR ИТБ 2.5
+- CAR away split -> CAR ИТБ 2.5
+- H2H split -> CAR ИТБ 2.5
 
-Result: one `CAR ИТБ 2.5` card with two independent supporting signals, not three duplicate cards.
+Result: one `CAR ИТБ 2.5` card with independent supporting signals, not five duplicate cards.
 
 The portfolio also suppresses adjacent redundant lines and keeps live cards available separately.
 
@@ -142,12 +193,72 @@ Current global limits:
 - up to 4 live candidates retained before the historical portfolio is filled
 - final Betting Insight Engine output remains capped at 12 cards
 
+## Winline market availability adapter
+
+File:
+`cloudflare-worker/src/winline-market-adapter.js`
+
+The engine can now optionally receive normalized provider markets.
+
+Exact match key:
+
+`market_type + period + subject + side + line`
+
+Behavior when provider markets are supplied:
+
+- only markets with an exact key match survive;
+- wrong line does not match;
+- regulation (`REG`) does not match evidence calculated for full game including OT/SO (`GAME`);
+- closed/suspended markets are rejected;
+- stale markets are rejected;
+- explicit empty provider feed fails closed and produces no provider-backed cards;
+- the newest quote is selected when duplicate exact markets are present;
+- synthetic DEMO odds are replaced by real provider odds and IDs only after an exact match.
+
+Attached real fields include:
+
+- `provider`
+- `event_id`
+- `market_id`
+- `selection_id`
+- `period`
+- `odds`
+- `updated_at`
+- `deeplink`
+- `odds_is_demo=false`
+- `odds_source=provider_live`
+
+If no provider feed is supplied at all, the current DEMO mode remains unchanged. This lets Broadcast V2 continue working until the real Winline integration is available.
+
+## Safe degradation
+
+`buildBettingInsights()` now runs every Stage 2 data-dependent module through `safeInsightBuild()`.
+
+If a migration/table is temporarily missing or one Stage 2 query fails:
+
+- that module returns no candidates;
+- the rest of the Betting Insight Engine continues;
+- Broadcast V2 does not fail as a whole.
+
+This is especially important for:
+
+- `team_game_features` from migration 0004;
+- `team_game_advanced_features` from migration 0005.
+
+The migrations still must be applied for those features to become active; the fail-safe only prevents a missing feature table from breaking the product.
+
 ## Integration
 
 All Stage 2 modules are called directly from:
 `cloudflare-worker/src/betting-insight-engine.js`
 
-Broadcast V2 already uses `buildBettingInsights()`, therefore no separate UI integration is required. A Worker deploy is sufficient for the new cards to appear.
+`buildBettingInsights(db, game, options = {})` now supports optional:
+
+- `options.provider_markets`
+- `options.now`
+- `options.market_max_age_ms`
+
+Broadcast V2 currently calls it without provider markets, so it remains in DEMO mode. When the Winline feed exists, the same engine can receive normalized live markets without changing the statistical rule modules.
 
 ## Tests completed
 
@@ -166,19 +277,39 @@ Validated with deterministic synthetic datasets:
 - exact-market consolidation across independent engines;
 - supporting-signal score boost/cap;
 - global adjacent-line suppression;
-- preservation of live cards.
+- preservation of live cards;
+- away/home exact venue splits;
+- H2H team-total direction;
+- H2H handicap direction;
+- exact Winline line match;
+- period mismatch rejection;
+- stale-market rejection;
+- closed-market rejection;
+- empty-provider-feed fail-closed behavior;
+- DEMO fallback with no provider feed.
 
 Validation found and fixed before production:
 
 - score saturation could leave a shorter sample tied with a longer one; ranking was changed to preserve separation and explicitly prefer the longer sample on ties;
-- goals-against league rank originally mapped strong/weak defense to the wrong opponent team-total direction; the mapping was reversed and covered by a dedicated test.
+- goals-against league rank originally mapped strong/weak defense to the wrong opponent team-total direction; the mapping was reversed and covered by a dedicated test;
+- Stage 2 modules originally could propagate a missing-table D1 error into the whole Broadcast game endpoint; they are now isolated through `safeInsightBuild()`.
 
-The complete Worker import graph also passed `wrangler deploy --dry-run` after the Stage 2 integration.
+The complete Worker import graph passed `wrangler deploy --dry-run` after both the market-split and Winline-adapter integrations.
+
+## Deployment prerequisite
+
+Apply pending D1 migrations before the next production deploy:
+
+```powershell
+npx wrangler d1 migrations apply hoh-data-core --remote
+```
+
+This safely skips already-applied migrations and applies pending ones such as 0004/0005 if needed.
 
 ## Next Stage 2 work
 
-1. home/away exact market splits;
-2. H2H exact market-line evaluation;
-3. real Winline market-line adapter so, when available, only actually offered lines are evaluated;
-4. player/goalie game features and player-vs-opponent splits later;
-5. own HOH xG from NHL shot coordinates.
+1. production validation of real cards against remote D1 after migrations/deploy;
+2. provider ingestion once Winline API/feed credentials or payload examples are available;
+3. player/goalie game features and player-vs-opponent splits;
+4. own HOH xG from NHL shot coordinates;
+5. add more market families such as regulation-only 1X2/total and period totals with settlement semantics kept separate.
