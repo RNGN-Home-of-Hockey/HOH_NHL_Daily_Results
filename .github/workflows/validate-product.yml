@@ -102,7 +102,9 @@ jobs:
           JS
 
       - name: Telegram notification rules
-        run: node tests/validate_notification_engine.mjs
+        run: |
+          node tests/validate_notification_engine.mjs
+          node tests/validate_game_subscription.mjs
 
       - name: Worker dry run
         run: |
