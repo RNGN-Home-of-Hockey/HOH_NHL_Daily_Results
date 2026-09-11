@@ -4,6 +4,7 @@ import { handleTelegramMiniAppV2Ui } from "./telegram-mini-app-v2-ui.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
+import { handleControlNavEnhancer } from "./control-nav-enhancer.js";
 import { handleTelegramGameSubscriptionRequest } from "./telegram-game-subscriptions.js";
 import { handleTelegramGameFollowUi } from "./telegram-game-follow-ui.js";
 import { handleTelegramNotificationPreferencesUi } from "./telegram-notification-preferences-ui.js";
@@ -30,6 +31,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const matchupPreviewUiResponse = handleTelegramMatchupPreviewUi(request, path);
   if (matchupPreviewUiResponse) return matchupPreviewUiResponse;
 
+  const controlNavResponse = handleControlNavEnhancer(request,path);
+  if (controlNavResponse) return controlNavResponse;
+
   const broadcastOperatorResponse = await handleBroadcastOperatorRequest(request.clone(), env, path);
   if (broadcastOperatorResponse) return broadcastOperatorResponse;
 
@@ -37,7 +41,14 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (matchupResponse) return matchupResponse;
 
   const controlV2Response = handleControlCenterV2Ui(request, path);
-  if (controlV2Response) return controlV2Response;
+  if (controlV2Response) {
+    if(path==="/control"&&request.method==="GET"){
+      let body=await controlV2Response.text();
+      if(!body.includes("/control/nav.js"))body=body.replace("</body>",'<script src="/control/nav.js"></script></body>');
+      return new Response(body,{status:controlV2Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=120","X-Content-Type-Options":"nosniff"}});
+    }
+    return controlV2Response;
+  }
 
   const miniAppV2Response = handleTelegramMiniAppV2Ui(request, path);
   if (miniAppV2Response) {
