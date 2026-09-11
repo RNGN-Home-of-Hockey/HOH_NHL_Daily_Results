@@ -1,0 +1,82 @@
+name: Temporary current team snapshot validation
+on:
+  push:
+    paths:
+      - '.github/workflows/_tmp-current-team-snapshot-test.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build and execute current-team chunks
+        run: |
+          python -m py_compile tools/build_current_team_snapshots.py
+          python - <<'PY'
+          import importlib.util,sqlite3,tempfile
+          from pathlib import Path
+          spec=importlib.util.spec_from_file_location('m','tools/build_current_team_snapshots.py')
+          m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+          db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
+          db.executescript('''
+          CREATE TABLE team_game_features(
+            game_pk INTEGER,team_tri TEXT,opponent_tri TEXT,season_id TEXT,game_type INTEGER,scheduled_start_utc TEXT,is_home INTEGER,
+            final_goals_for INTEGER,final_goals_against INTEGER,total_goals INTEGER,final_goal_diff INTEGER,final_win INTEGER,
+            regulation_goals_for INTEGER,regulation_goals_against INTEGER,regulation_goal_diff INTEGER,regulation_result TEXT,went_ot INTEGER,went_so INTEGER,
+            p1_goals_for INTEGER,p1_goals_against INTEGER,p2_goals_for INTEGER,p2_goals_against INTEGER,p3_goals_for INTEGER,p3_goals_against INTEGER,
+            score_after_p1_diff INTEGER,score_after_p2_diff INTEGER,first_goal_for INTEGER,shots_for INTEGER,shots_against INTEGER,shot_share_pct REAL,
+            corsi_for INTEGER,corsi_against INTEGER,corsi_for_pct REAL,fenwick_for INTEGER,fenwick_against INTEGER,fenwick_for_pct REAL,
+            p1_shots_for INTEGER,p1_shots_against INTEGER,p2_shots_for INTEGER,p2_shots_against INTEGER,p3_shots_for INTEGER,p3_shots_against INTEGER,
+            power_play_goals_for INTEGER,power_play_goals_against INTEGER,hits_for INTEGER,hits_against INTEGER,pim_for INTEGER,pim_against INTEGER,
+            previous_game_utc TEXT,rest_days INTEGER,is_back_to_back INTEGER,feature_version INTEGER
+          );
+          CREATE TABLE games(game_pk INTEGER PRIMARY KEY,game_type INTEGER,scheduled_start_utc TEXT);
+          CREATE TABLE team_game_advanced_features(
+            game_pk INTEGER,team_tri TEXT,season_id TEXT,source TEXT,toi_5v5_minutes REAL,gf_pct_5v5 REAL,xgf_pct_5v5 REAL,sf_pct_5v5 REAL,
+            goals_for_5v5 INTEGER,goals_against_5v5 INTEGER,xgf_5v5 REAL,xga_5v5 REAL,shots_for_5v5 INTEGER,shots_against_5v5 INTEGER,
+            shooting_pct_5v5 REAL,save_pct_5v5 REAL,pdo_5v5 REAL,goals_minus_expected REAL,goals_saved_above_expected REAL,
+            corsi_for_5v5 INTEGER,corsi_against_5v5 INTEGER,corsi_for_pct_5v5 REAL,fenwick_for_5v5 INTEGER,fenwick_against_5v5 INTEGER,fenwick_for_pct_5v5 REAL,
+            shot_diff_5v5 REAL,xg_diff_5v5 REAL,goal_diff_5v5 REAL
+          );
+          ''')
+          cols=[r[1] for r in db.execute('PRAGMA table_info(team_game_features)')]
+          teams=['AAA','BBB','CCC','DDD']
+          pk=1000
+          for i in range(20):
+            for ti,team in enumerate(teams):
+              pk+=1;start=f'2026-01-{i+1:02d}T{ti:02d}:00:00Z';opp=teams[(ti+1)%4]
+              db.execute('INSERT INTO games VALUES(?,?,?)',(pk,2,start))
+              row={c:None for c in cols};gf=5-ti;ga=1+ti
+              row.update(game_pk=pk,team_tri=team,opponent_tri=opp,season_id='20252026',game_type=2,scheduled_start_utc=start,is_home=ti%2,
+                final_goals_for=gf,final_goals_against=ga,total_goals=gf+ga,final_goal_diff=gf-ga,final_win=int(gf>ga),
+                p2_goals_for=2,p2_goals_against=1,corsi_for_pct=60-ti*6,fenwick_for_pct=58-ti*5)
+              db.execute('INSERT INTO team_game_features VALUES('+','.join('?' for _ in cols)+')',[row[c] for c in cols])
+              db.execute('INSERT INTO team_game_advanced_features VALUES('+','.join('?' for _ in range(28))+')',(
+                pk,team,'20252026','fixture',50,55,60-ti*6,55,3,2,3-ti*.2,2+ti*.2,30,25,10,92,100,0,.2,60,40,60-ti*6,50,35,58-ti*5,5,1,1))
+          db.commit()
+          rows=m.build(db,'NOW')
+          assert rows==12,rows
+          top=dict(db.execute("SELECT * FROM team_current_snapshots_local WHERE team_tri='AAA' AND window_games=20").fetchone())
+          assert top['rank_goal_diff']==1,top
+          assert top['rank_xgf_pct_5v5']==1,top
+          with tempfile.TemporaryDirectory() as td:
+            m.compact.CHUNK_ROOT=Path(td)
+            count,chunks=m.export(db)
+            assert count==12 and chunks>=1,(count,chunks)
+            prod=sqlite3.connect(':memory:')
+            prod.executescript('''CREATE TABLE teams(tri_code TEXT PRIMARY KEY); INSERT INTO teams VALUES('AAA'),('BBB'),('CCC'),('DDD');''')
+            prod.executescript(Path('migrations/0008_current_team_snapshots.sql').read_text())
+            for p in sorted(Path(td).glob('125_team_current_*.sql')): prod.executescript(p.read_text())
+            assert prod.execute('SELECT COUNT(*) FROM team_current_snapshots').fetchone()[0]==12
+          print('CURRENT_TEAM_SNAPSHOT_OK',rows)
+          PY
+      - name: PowerShell parse
+        shell: pwsh
+        run: |
+          [void][scriptblock]::Create((Get-Content tools/run_compact_snapshot_sync.ps1 -Raw))
+          [void][scriptblock]::Create((Get-Content tools/upload_compact_snapshots_d1.ps1 -Raw))
+          Write-Host 'POWERSHELL_PARSE_OK'
