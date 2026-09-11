@@ -4,6 +4,7 @@ import { buildUniversalMarketInsights } from "./universal-market-evaluator.js";
 import { buildRollingLeagueRankInsights } from "./rolling-league-ranks.js";
 import { buildAdvancedMarketContextInsights } from "./advanced-market-context.js";
 import { selectInsightPortfolio } from "./insight-portfolio.js";
+import { buildMarketSplitInsights } from "./market-split-insights.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -58,10 +59,11 @@ export async function buildBettingInsights(db, game) {
     db.prepare(conferenceSql()).bind(season,before),
   ]);
 
-  const featureInsights = await buildFeatureMarketInsights(db, game);
-  const universalMarketInsights = await buildUniversalMarketInsights(db, game);
-  const rollingRankInsights = await buildRollingLeagueRankInsights(db, game);
-  const advancedContextInsights = await buildAdvancedMarketContextInsights(db, game);
+  const featureInsights = await safeInsightBuild("feature_market", () => buildFeatureMarketInsights(db, game));
+  const universalMarketInsights = await safeInsightBuild("universal_market", () => buildUniversalMarketInsights(db, game));
+  const rollingRankInsights = await safeInsightBuild("rolling_rank", () => buildRollingLeagueRankInsights(db, game));
+  const advancedContextInsights = await safeInsightBuild("advanced_context", () => buildAdvancedMarketContextInsights(db, game));
+  const marketSplitInsights = await safeInsightBuild("market_splits", () => buildMarketSplitInsights(db, game));
 
   const insights = [];
   insights.push(...momentumInsights(momentumR.results || [], game));
@@ -73,9 +75,20 @@ export async function buildBettingInsights(db, game) {
   insights.push(...universalMarketInsights);
   insights.push(...rollingRankInsights);
   insights.push(...advancedContextInsights);
+  insights.push(...marketSplitInsights);
   insights.push(...featureInsights);
 
   return selectInsightPortfolio(dedupe(insights), 12);
+}
+
+async function safeInsightBuild(label, factory) {
+  try {
+    const value = await factory();
+    return Array.isArray(value) ? value : [];
+  } catch (error) {
+    console.error(`betting insight module failed: ${label}`, error);
+    return [];
+  }
 }
 
 function recentGamesStatement(db, team, before) {
