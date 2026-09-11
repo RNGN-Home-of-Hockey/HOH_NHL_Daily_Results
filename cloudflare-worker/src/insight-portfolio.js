@@ -1,10 +1,12 @@
-const CONTEXT_CATEGORIES = new Set(["league_rank", "advanced_context"]);
+const CONTEXT_CATEGORIES = new Set(["league_rank", "advanced_context", "goalie_context"]);
 
 const PRIMARY_PRIORITY = new Map([
   ["market_evaluator", 6],
   ["regulation_market", 6],
   ["venue_split", 5],
+  ["player_market", 5],
   ["h2h_market", 4],
+  ["player_h2h", 4],
   ["h2h_split", 4],
   ["feature", 3],
   ["history", 2],
@@ -12,6 +14,7 @@ const PRIMARY_PRIORITY = new Map([
   ["period", 2],
   ["league_rank", 1],
   ["advanced_context", 1],
+  ["goalie_context", 1],
 ]);
 
 export function selectInsightPortfolio(insights, limit = 12) {

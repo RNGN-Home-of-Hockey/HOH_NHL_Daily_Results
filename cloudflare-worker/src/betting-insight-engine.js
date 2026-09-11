@@ -7,6 +7,8 @@ import { selectInsightPortfolio } from "./insight-portfolio.js";
 import { buildMarketSplitInsights } from "./market-split-insights.js";
 import { buildRegulationMarketInsights } from "./regulation-market-evaluator.js";
 import { applyWinlineMarkets } from "./winline-market-adapter.js";
+import { buildSnapshotMarketContextInsights } from "./snapshot-market-context.js";
+import { buildPlayerMarketInsights } from "./player-market-insights.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -23,6 +25,8 @@ export async function buildBettingInsights(db, game, options = {}) {
   const universalMarketInsights = await safeInsightBuild("universal_market", () => buildUniversalMarketInsights(db, game));
   const regulationMarketInsights = await safeInsightBuild("regulation_market", () => buildRegulationMarketInsights(db, game));
   const marketSplitInsights = await safeInsightBuild("market_splits", () => buildMarketSplitInsights(db, game));
+  const snapshotContextInsights = await safeInsightBuild("snapshot_context", () => buildSnapshotMarketContextInsights(db, game));
+  const playerMarketInsights = await safeInsightBuild("player_markets", () => buildPlayerMarketInsights(db, game));
 
   let featureInsights = [];
   let rollingRankInsights = [];
@@ -37,6 +41,8 @@ export async function buildBettingInsights(db, game, options = {}) {
     ...universalMarketInsights,
     ...regulationMarketInsights,
     ...marketSplitInsights,
+    ...snapshotContextInsights,
+    ...playerMarketInsights,
     ...featureInsights,
     ...rollingRankInsights,
     ...advancedContextInsights,
