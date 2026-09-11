@@ -79,7 +79,7 @@ function teamTotalInsights(game, team, opponent, rows, oppRows) {
       title: `${team} ${isOver ? "забил 3+" : "не забил больше 2"} в ${hits} из последних ${sample.length} матчей`,
       explanation: "Точный hit-rate под демонстрационную линию командного тотала 2.5.",
       evidence: { hit_rate: isOver ? over : under, game_pks: sample.map((r) => r.game_pk) },
-      market: { type: "team_total_2_5", subject: team, side: isOver ? "over" : "under", line: 2.5, label: `${team} ${isOver ? "ТБ" : "ТМ"} 2.5` },
+      market: { type: "team_total", subject: team, side: isOver ? "over" : "under", line: 2.5, label: `${team} ${isOver ? "ТБ" : "ТМ"} 2.5` },
     }));
   }
 
@@ -95,7 +95,7 @@ function teamTotalInsights(game, team, opponent, rows, oppRows) {
         title: `${team} регулярно забивает 3+, а ${opponent} регулярно пропускает 3+`,
         explanation: "Совпадают атакующий тренд команды и защитный тренд соперника.",
         evidence: { team_over_rate: teamScores3, opponent_allow_rate: oppAllows3 },
-        market: { type: "team_total_2_5", subject: team, side: "over", line: 2.5, label: `${team} ТБ 2.5` },
+        market: { type: "team_total", subject: team, side: "over", line: 2.5, label: `${team} ТБ 2.5` },
       }));
     }
   }
@@ -118,7 +118,7 @@ function gameTotalInsights(game, team, rows) {
     title: `В ${hits} из последних ${sample.length} матчей ${team} тотал был ${side === "over" ? "6+" : "5 или меньше"}`,
     explanation: "Точный hit-rate для линии тотала 5.5.",
     evidence: { hit_rate: rate, average_total: average(sample, "total_goals") },
-    market: { type: "game_total_5_5", subject: null, side, line: 5.5, label: `${side === "over" ? "ТБ" : "ТМ"} 5.5` },
+    market: { type: "game_total", subject: null, side, line: 5.5, label: `${side === "over" ? "ТБ" : "ТМ"} 5.5` },
   })];
 }
 
