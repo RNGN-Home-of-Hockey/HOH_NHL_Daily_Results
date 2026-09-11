@@ -1,0 +1,90 @@
+name: Temporary compact Stage2 integration v2
+on:
+  push:
+    paths:
+      - '.github/workflows/_tmp-integrate-compact-stage2-v2.yml'
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Patch engine and portfolio
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/betting-insight-engine.js')
+          s=p.read_text()
+          anchor='import { applyWinlineMarkets } from "./winline-market-adapter.js";\n'
+          add='import { buildSnapshotMarketContextInsights } from "./snapshot-market-context.js";\nimport { buildPlayerMarketInsights } from "./player-market-insights.js";\n'
+          if add not in s:
+              s=s.replace(anchor,anchor+add,1)
+          old='''  const marketSplitInsights = await safeInsightBuild("market_splits", () => buildMarketSplitInsights(db, game));\n\n  let featureInsights = [];'''
+          new='''  const marketSplitInsights = await safeInsightBuild("market_splits", () => buildMarketSplitInsights(db, game));\n  const snapshotContextInsights = await safeInsightBuild("snapshot_context", () => buildSnapshotMarketContextInsights(db, game));\n  const playerMarketInsights = await safeInsightBuild("player_markets", () => buildPlayerMarketInsights(db, game));\n\n  let featureInsights = [];'''
+          if old not in s: raise SystemExit('engine call anchor missing')
+          s=s.replace(old,new,1)
+          old='''    ...marketSplitInsights,\n    ...featureInsights,'''
+          new='''    ...marketSplitInsights,\n    ...snapshotContextInsights,\n    ...playerMarketInsights,\n    ...featureInsights,'''
+          if old not in s: raise SystemExit('engine portfolio anchor missing')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+
+          p=Path('cloudflare-worker/src/insight-portfolio.js')
+          s=p.read_text()
+          s=s.replace('const CONTEXT_CATEGORIES = new Set(["league_rank", "advanced_context"]);','const CONTEXT_CATEGORIES = new Set(["league_rank", "advanced_context", "goalie_context"]);')
+          if '["player_market", 5]' not in s:
+              s=s.replace('  ["venue_split", 5],','  ["venue_split", 5],\n  ["player_market", 5],')
+          if '["player_h2h", 4]' not in s:
+              s=s.replace('  ["h2h_market", 4],','  ["h2h_market", 4],\n  ["player_h2h", 4],')
+          if '["goalie_context", 1]' not in s:
+              s=s.replace('  ["advanced_context", 1],','  ["advanced_context", 1],\n  ["goalie_context", 1],')
+          p.write_text(s)
+          PY
+          node --check cloudflare-worker/src/betting-insight-engine.js
+          node --check cloudflare-worker/src/insight-portfolio.js
+          node --check cloudflare-worker/src/snapshot-market-context.js
+          node --check cloudflare-worker/src/player-market-insights.js
+          git diff --check
+      - name: Deterministic compact tests
+        run: |
+          node --input-type=module <<'JS'
+          import { evaluateSnapshotMarketContext } from './cloudflare-worker/src/snapshot-market-context.js';
+          import { evaluatePlayerMarketInsights } from './cloudflare-worker/src/player-market-insights.js';
+          import { selectInsightPortfolio } from './cloudflare-worker/src/insight-portfolio.js';
+          const game={game_pk:42,away_tri:'CAR',home_tri:'NYR',scheduled_start_utc:'2026-10-01T00:00:00Z'};
+          const rows=[];
+          for(const w of [5,10,20]){
+            rows.push({team_tri:'CAR',opponent_tri:'NYR',window_games:w,sample_size:w,league_teams:32,gf_pg:4,ga_pg:2,goal_diff_pg:2,total_pg:6,corsi_pct:60,fenwick_pct:58,p2_diff_pg:.5,rank_gf:1,rank_ga:2,rank_goal_diff:1,rank_total:10,rank_corsi:2,rank_fenwick:2,rank_p2_diff:4,advanced_sample_size:w,advanced_league_teams:32,xgf_pct_5v5:60,xgf60_5v5:3.4,xga60_5v5:2,corsi_pct_5v5:59,fenwick_pct_5v5:58,pdo_5v5:100,gsax_5v5:.2,rank_xgf_pct_5v5:1,rank_xgf60_5v5:2,rank_xga60_5v5:3,rank_corsi_pct_5v5:2,rank_fenwick_pct_5v5:2});
+            rows.push({team_tri:'NYR',opponent_tri:'CAR',window_games:w,sample_size:w,league_teams:32,gf_pg:2,ga_pg:4,goal_diff_pg:-2,total_pg:6,corsi_pct:40,fenwick_pct:42,p2_diff_pg:-.5,rank_gf:31,rank_ga:31,rank_goal_diff:32,rank_total:11,rank_corsi:31,rank_fenwick:31,rank_p2_diff:30,advanced_sample_size:w,advanced_league_teams:32,xgf_pct_5v5:40,xgf60_5v5:2,xga60_5v5:3.5,corsi_pct_5v5:41,fenwick_pct_5v5:42,pdo_5v5:99,gsax_5v5:-.3,rank_xgf_pct_5v5:31,rank_xgf60_5v5:31,rank_xga60_5v5:31,rank_corsi_pct_5v5:31,rank_fenwick_pct_5v5:31});
+          }
+          const teamCards=evaluateSnapshotMarketContext(game,rows);
+          if(!teamCards.some(c=>c.category==='league_rank' && c.market.subject==='CAR')) throw new Error('missing snapshot league rank');
+          if(!teamCards.some(c=>c.category==='advanced_context' && c.market.subject==='CAR' && c.market.side==='over')) throw new Error('missing advanced snapshot context');
+
+          const rolling=[{player_id:1,team_tri:'CAR',position_code:'C',window_key:'20',games:20,goals:10,assists:15,points:25,shots:70,games_with_goal:10,games_with_point:15,games_with_2plus_points:8,goals_pg:.5,points_pg:1.25,full_name_en:'Test Player'}];
+          const h2h=[{player_id:1,team_tri:'CAR',opponent_tri:'NYR',scope_key:'2Y',games:8,goals:4,assists:6,points:10,shots:30,games_with_goal:4,games_with_point:7,games_with_2plus_points:3,points_pg:1.25,full_name_en:'Test Player'}];
+          const pc=evaluatePlayerMarketInsights(game,rolling,h2h,[]);
+          const same=pc.filter(c=>c.market.type==='player_points' && c.market.line===0.5);
+          if(same.length<2) throw new Error('rolling and H2H evidence not both preserved');
+          const portfolio=selectInsightPortfolio(same,12);
+          if(portfolio.length!==1) throw new Error('global portfolio did not consolidate player exact market');
+          if(Number(portfolio[0].evidence_quality?.independent_support_count||0)<1) throw new Error('H2H not retained as support');
+          console.log('COMPACT_STAGE2_TEST_OK',teamCards.length,pc.length,portfolio[0].evidence_quality);
+          JS
+      - name: Full Worker dry run
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .compact-stage2-build
+      - name: Commit integration
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/betting-insight-engine.js cloudflare-worker/src/insight-portfolio.js
+          git commit -m 'Use compact snapshots and player aggregates in Stage 2'
+          git push origin HEAD:main
