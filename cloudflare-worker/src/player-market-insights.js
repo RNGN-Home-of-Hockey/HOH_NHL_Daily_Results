@@ -133,7 +133,7 @@ function opponentPlayerCards(game, rows) {
       value:`${row.games_with_point}/${games}`,
       title:`${name} набрал очки в ${row.games_with_point} из ${games} матчей против ${row.opponent_tri}`,
       explanation:`Opponent split собран из официальных NHL game logs за локальный двухсезонный архив.`,
-      evidence:{games,hits:Number(row.games_with_point),hit_rate:pointRate,points:Number(row.points),points_pg:Number(row.points_pg),opponent:row.opponent_tri,scope:"2Y",feature_layer:"player_opponent_splits_v1"},
+      evidence:{games,hits:Number(row.games_with_point),hit_rate:pointRate,points:Number(row.points),points_pg:Number(row.points_pg),team_tri:row.team_tri,opponent:row.opponent_tri,scope:"2Y",feature_layer:"player_opponent_splits_v1"},
       note:`${market.label} · WINLINE · ДЕМО-КЭФ ${market.odds.toFixed(2)} · промокод HOH`,
       market,
     });
@@ -176,7 +176,7 @@ function goalieContextCards(game, rows) {
       value:`${(sv*100).toFixed(1)}%`,
       title:`${name}: ${(sv*100).toFixed(1)}% отражённых бросков на отрезке ${games} матчей`,
       explanation:`Вратарская форма используется только как контекст к командному тоталу соперника, а не как самостоятельный прогноз.`,
-      evidence:{player_id:Number(row.player_id),games,starts,save_pct:sv,goals_against_pg:Number(row.goals_against_pg),feature_layer:"goalie_rolling_snapshots_v1"},
+      evidence:{player_id:Number(row.player_id),games,starts,save_pct:sv,goals_against_pg:Number(row.goals_against_pg),team_tri:row.team_tri,feature_layer:"goalie_rolling_snapshots_v1"},
       note:`${market.label} · WINLINE · ДЕМО-КЭФ ${market.odds.toFixed(2)} · промокод HOH`,
       market,
     });
@@ -197,26 +197,53 @@ function playerCard({game,row,window,name,category,type,score,eyebrow,value,titl
 }
 
 function selectPlayerPortfolio(cards, game) {
-  const bestByExact = new Map();
+  // Keep one candidate per independent category + exact market. The global
+  // portfolio later consolidates rolling + H2H into one card and preserves the
+  // second category as supporting evidence.
+  const bestByCategoryExact = new Map();
   for (const card of cards) {
     const market = card.market || {};
-    const key = `${market.type}:${market.subject}:${market.side}:${market.line ?? ""}`;
-    const current = bestByExact.get(key);
+    const key = `${card.category}:${market.type}:${market.subject}:${market.side}:${market.line ?? ""}`;
+    const current = bestByCategoryExact.get(key);
     const window = Number(card.evidence?.window || card.evidence?.games || 0);
     const currentWindow = Number(current?.evidence?.window || current?.evidence?.games || 0);
-    if (!current || Number(card.score || 0)>Number(current.score || 0) || (Number(card.score || 0)===Number(current.score || 0) && window>currentWindow)) bestByExact.set(key,card);
+    if (!current || Number(card.score || 0) > Number(current.score || 0) || (Number(card.score || 0) === Number(current.score || 0) && window > currentWindow)) {
+      bestByCategoryExact.set(key, card);
+    }
   }
-  const sorted=[...bestByExact.values()].sort((a,b)=>Number(b.score||0)-Number(a.score||0));
+
+  const grouped = new Map();
+  for (const card of bestByCategoryExact.values()) {
+    const market = card.market || {};
+    const exact = `${market.type}:${market.subject}:${market.side}:${market.line ?? ""}`;
+    if (!grouped.has(exact)) grouped.set(exact, []);
+    grouped.get(exact).push(card);
+  }
+
+  const candidates = [];
+  for (const group of grouped.values()) {
+    group.sort((a,b)=>categoryPriority(b.category)-categoryPriority(a.category) || Number(b.score||0)-Number(a.score||0));
+    candidates.push(...group.slice(0,2));
+  }
+  candidates.sort((a,b)=>Number(b.score||0)-Number(a.score||0));
+
   const selected=[];
   const perTeam=new Map();
-  for(const card of sorted){
+  for(const card of candidates){
     const team=card.evidence?.team_tri || teamForPlayerCard(card,game);
     const used=perTeam.get(team)||0;
-    if(used>=2) continue;
+    if(used>=5) continue;
     selected.push(card); perTeam.set(team,used+1);
-    if(selected.length>=5) break;
+    if(selected.length>=10) break;
   }
   return selected;
+}
+
+function categoryPriority(category) {
+  if (category === "player_market") return 3;
+  if (category === "player_h2h") return 2;
+  if (category === "goalie_context") return 1;
+  return 0;
 }
 
 function teamForPlayerCard(card, game) {
