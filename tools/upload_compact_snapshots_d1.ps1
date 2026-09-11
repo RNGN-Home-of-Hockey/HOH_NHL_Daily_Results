@@ -34,7 +34,7 @@ if (-not (Test-Path $ChunkDir)) { throw "Missing $ChunkDir. Run build_compact_sn
 
 # Only supplemental compact files. Never replay the 010-060 historical package here.
 $files = @(Get-ChildItem $ChunkDir -Filter '*.sql' -File | Where-Object {
-    $_.Name -match '^(070_players|080_team_snapshots|090_player_rolling|100_player_opponents|110_goalie_rolling|120_goalie_opponents|125_team_current|130_data_core_meta)_'
+    $_.Name -match '^(070_players|080_team_snapshots|090_player_rolling|100_player_opponents|110_goalie_rolling|120_goalie_opponents|125_team_current|130_data_core_meta|135_player_market_snapshots)_'
 } | Sort-Object Name)
 if ($files.Count -eq 0) { throw 'No compact supplemental D1 chunks were generated.' }
 
