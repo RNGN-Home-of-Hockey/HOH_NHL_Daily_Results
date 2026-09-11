@@ -98,6 +98,10 @@ jobs:
           if (!r || r.status !== 200 || !(await r.text()).includes('HOH NHL Control Center')) throw new Error('Control Center v2 shell failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/matchup'), {}, '/matchup');
           if (!r || r.status !== 200 || !(await r.text()).includes('MATCHUP LAB')) throw new Error('Matchup Lab shell failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/broadcast/operator'), {}, '/broadcast/operator');
+          if (!r || r.status !== 200 || !(await r.text()).includes('BROADCAST OPERATOR')) throw new Error('Broadcast Operator shell failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/broadcast/overlay'), {}, '/broadcast/overlay');
+          if (!r || r.status !== 200 || !(await r.text()).includes('HOME OF HOCKEY × WINLINE')) throw new Error('Broadcast overlay shell failed');
           const secret = 'test-secret';
           const req = new Request('https://example.test/api/telegram', {
             method:'POST',
@@ -116,6 +120,9 @@ jobs:
 
       - name: Market line evaluator
         run: node tests/validate_market_line_evaluator.mjs
+
+      - name: Broadcast Operator safety
+        run: node tests/validate_broadcast_operator.mjs
 
       - name: Worker dry run
         run: |
