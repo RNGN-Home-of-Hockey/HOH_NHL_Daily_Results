@@ -1,0 +1,75 @@
+name: Temporary fix compact player export
+on:
+  push:
+    paths:
+      - '.github/workflows/_tmp-fix-compact-player-export.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Patch D1-compatible player export and execute generated SQL
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/build_compact_snapshots.py')
+          s=p.read_text()
+          old='''    players = []\n    if active_ids:\n        marks = ",".join("?" for _ in active_ids)\n        players = [dict(r) for r in db.execute(f"SELECT * FROM players_compact_local WHERE player_id IN ({marks}) ORDER BY player_id", tuple(sorted(active_ids)))]\n\n    counts = {}\n    chunks = {}\n    counts["players"], chunks["players"] = write_chunks(\n        "070_players", "players", players, ["player_id"],\n        update_cols=["first_name_en","last_name_en","full_name_en","current_team_tri","position_code","sweater_number","shoots_catches","active","last_seen_game_start_utc","last_seen_game_pk"],\n        batch=200,\n    )'''
+          new='''    players = []\n    player_d1_cols = [\n        "player_id","first_name_en","last_name_en","full_name_en","current_team_tri",\n        "position_code","sweater_number","shoots_catches","active",\n    ]\n    if active_ids:\n        marks = ",".join("?" for _ in active_ids)\n        raw_players = [dict(r) for r in db.execute(\n            f"SELECT * FROM players_compact_local WHERE player_id IN ({marks}) ORDER BY player_id",\n            tuple(sorted(active_ids)),\n        )]\n        # last_seen_* is local bookkeeping only; production players does not expose it.\n        players = [{col: row.get(col) for col in player_d1_cols} for row in raw_players]\n\n    counts = {}\n    chunks = {}\n    counts["players"], chunks["players"] = write_chunks(\n        "070_players", "players", players, ["player_id"],\n        update_cols=player_d1_cols[1:],\n        batch=200,\n    )'''
+          if old not in s: raise SystemExit('player export anchor missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          python -m py_compile tools/build_compact_snapshots.py
+          python - <<'PY'
+          import importlib.util, sqlite3, tempfile
+          from pathlib import Path
+          spec=importlib.util.spec_from_file_location('m','tools/build_compact_snapshots.py')
+          m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          local=sqlite3.connect(':memory:'); local.row_factory=sqlite3.Row
+          local.executescript('''CREATE TABLE games(game_pk INTEGER PRIMARY KEY,season_id TEXT,game_type INTEGER,scheduled_start_utc TEXT,home_tri TEXT,away_tri TEXT); CREATE TABLE team_game_features(game_pk INTEGER,team_tri TEXT,scheduled_start_utc TEXT); CREATE TABLE team_game_advanced_features(game_pk INTEGER,team_tri TEXT);''')
+          m.create_local_schema(local)
+          local.execute("INSERT INTO players_compact_local VALUES(1,'Test','Player','Test Player','AAA','C',9,NULL,1,'2026-06-01T00:00:00Z',42)")
+          local.execute("INSERT INTO player_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(1,'AAA','C','20','2026-06-01T00:00:00Z',20,10,15,25,70,10,4,6,8,24000,2,10,15,8,.5,.75,1.25,3.5,1200,'NOW'))
+          local.execute("INSERT INTO player_opponent_splits_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(1,'AAA','BBB','2Y',8,4,6,10,30,4,7,3,.5,.75,1.25,3.75,'2026-05-01T00:00:00Z','NOW'))
+          local.execute("INSERT INTO goalie_rolling_snapshots_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(1,'AAA','20','2026-06-01T00:00:00Z',20,20,12,6,2,600,640,40,600/640,2,2,72000,3600,'NOW'))
+          local.execute("INSERT INTO goalie_opponent_splits_local VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(1,'AAA','BBB','2Y',8,8,5,2,1,240,256,16,240/256,2,1,'2026-05-01T00:00:00Z','NOW'))
+          local.commit()
+          with tempfile.TemporaryDirectory() as td:
+              m.CHUNK_ROOT=Path(td)
+              counts,chunks=m.export_supplemental_chunks(local)
+              assert counts['players']==1
+              sql='\n'.join(p.read_text() for p in sorted(Path(td).glob('*.sql')))
+              assert 'last_seen_game' not in sql, sql[:500]
+              prod=sqlite3.connect(':memory:')
+              prod.executescript('''
+              PRAGMA foreign_keys=ON;
+              CREATE TABLE teams(tri_code TEXT PRIMARY KEY,nhl_team_id INTEGER,franchise_id INTEGER,name_en TEXT NOT NULL,name_ru TEXT,location_en TEXT,active INTEGER NOT NULL DEFAULT 1,logo_url TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+              INSERT INTO teams(tri_code,name_en) VALUES('AAA','AAA'),('BBB','BBB');
+              CREATE TABLE players(player_id INTEGER PRIMARY KEY,first_name_en TEXT,last_name_en TEXT,full_name_en TEXT NOT NULL,full_name_ru TEXT,current_team_tri TEXT,position_code TEXT,sweater_number INTEGER,shoots_catches TEXT,active INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(current_team_tri) REFERENCES teams(tri_code));
+              CREATE TABLE games(game_pk INTEGER PRIMARY KEY,season_id TEXT,game_type INTEGER,scheduled_start_utc TEXT,game_state TEXT,home_tri TEXT,away_tri TEXT,home_score INTEGER,away_score INTEGER,current_period INTEGER,period_type TEXT,venue_name TEXT,last_synced_at TEXT DEFAULT CURRENT_TIMESTAMP);
+              INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score) VALUES(42,'20252026',2,'2026-06-02T00:00:00Z','OFF','BBB','AAA',2,3);
+              ''')
+              prod.executescript(Path('migrations/0006_compact_snapshots_players.sql').read_text())
+              prod.executescript(sql)
+              assert prod.execute('SELECT COUNT(*) FROM players').fetchone()[0]==1
+              assert prod.execute('SELECT COUNT(*) FROM player_rolling_snapshots').fetchone()[0]==1
+              assert prod.execute('SELECT COUNT(*) FROM player_opponent_splits').fetchone()[0]==1
+              assert prod.execute('SELECT COUNT(*) FROM goalie_rolling_snapshots').fetchone()[0]==1
+              assert prod.execute('SELECT COUNT(*) FROM goalie_opponent_splits').fetchone()[0]==1
+              print('GENERATED_D1_SQL_EXECUTES_OK',counts,chunks)
+          PY
+          git diff --check
+      - name: Commit fix
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add tools/build_compact_snapshots.py
+          git commit -m 'Export only production player columns to D1'
+          git push origin HEAD:main
