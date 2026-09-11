@@ -330,8 +330,8 @@ async function reserveNotification(db, key, userId, type, gamePk, payload) {
   const result = await db.prepare(`
     INSERT OR IGNORE INTO notification_log(
       notification_key,telegram_user_id,notification_type,subject_type,subject_key,game_pk,payload_json
-    ) VALUES(?,?,?,?,?,NULL,?);
-  `).bind(key,userId,type,"game",String(gamePk),payload).run();
+    ) VALUES(?,?,?,?,?,?,?);
+  `).bind(key,userId,type,"game",String(gamePk),gamePk,payload).run();
   return Number(result?.meta?.changes ?? result?.changes ?? 0) > 0;
 }
 
