@@ -1,0 +1,82 @@
+name: Stage2 Winline Adapter Integration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage2-winline-adapter-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Integrate optional provider market filter
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/betting-insight-engine.js')
+          s=p.read_text(encoding='utf-8')
+          imp='import { applyWinlineMarkets } from "./winline-market-adapter.js";\n'
+          if imp not in s:
+              anchor='import { buildMarketSplitInsights } from "./market-split-insights.js";\n'
+              if anchor not in s: raise SystemExit('import anchor missing')
+              s=s.replace(anchor,anchor+imp,1)
+          s=s.replace('export async function buildBettingInsights(db, game) {','export async function buildBettingInsights(db, game, options = {}) {',1)
+          old='  return selectInsightPortfolio(dedupe(insights), 12);'
+          new='''  const portfolio = selectInsightPortfolio(dedupe(insights), 12);\n  return applyWinlineMarkets(portfolio, options.provider_markets, {\n    now: options.now,\n    max_age_ms: options.market_max_age_ms,\n  });'''
+          if old not in s: raise SystemExit('return anchor missing')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          node --check cloudflare-worker/src/winline-market-adapter.js
+          node --check cloudflare-worker/src/betting-insight-engine.js
+          git diff --check
+      - name: Adapter exact-match tests
+        run: |
+          node --input-type=module <<'NODE'
+          import { applyWinlineMarkets, normalizeWinlineMarket, insightMarketKey } from './cloudflare-worker/src/winline-market-adapter.js';
+          const now='2026-09-11T05:40:00Z';
+          const card={id:'c1',score:91,title:'CAR trend',note:'demo',evidence:{window:20},market:{type:'team_total',subject:'CAR',side:'over',line:2.5,label:'CAR ИТБ 2.5',odds:1.84,odds_is_demo:true}};
+          const exact={provider:'winline',event_id:'e1',market_id:'m1',selection_id:'s1',market_type:'team_total',period:'GAME',subject:'car',side:'over',line:2.5,odds:1.91,status:'open',updated_at:'2026-09-11T05:39:00Z'};
+          const matched=applyWinlineMarkets([card],[exact],{now});
+          if(matched.length!==1) throw new Error('exact provider market did not match');
+          if(matched[0].market.odds!==1.91||matched[0].market.odds_is_demo!==false||matched[0].market.market_id!=='m1') throw new Error('real market fields not attached');
+          if(!matched[0].evidence.provider_market?.exact_market_match) throw new Error('exact match evidence missing');
+
+          const wrongLine={...exact,line:3.5,selection_id:'s2'};
+          if(applyWinlineMarkets([card],[wrongLine],{now}).length!==0) throw new Error('wrong line matched');
+          const wrongPeriod={...exact,period:'REG',selection_id:'s3'};
+          if(applyWinlineMarkets([card],[wrongPeriod],{now}).length!==0) throw new Error('REG market matched GAME evidence');
+          const stale={...exact,updated_at:'2026-09-11T05:30:00Z'};
+          if(applyWinlineMarkets([card],[stale],{now}).length!==0) throw new Error('stale market survived');
+          const closed={...exact,status:'closed'};
+          if(applyWinlineMarkets([card],[closed],{now}).length!==0) throw new Error('closed market survived');
+          if(applyWinlineMarkets([card],[],{now}).length!==0) throw new Error('explicit empty provider feed must fail closed');
+          if(applyWinlineMarkets([card],undefined,{now}).length!==1) throw new Error('demo fallback changed without provider feed');
+
+          const normalized=normalizeWinlineMarket(exact);
+          if(!normalized||normalized.subject!=='CAR'||normalized.period!=='GAME') throw new Error('normalization failed');
+          if(insightMarketKey(card.market)!=='team_total:GAME:CAR:over:2.50') throw new Error(`unexpected insight key ${insightMarketKey(card.market)}`);
+          console.log('WINLINE_ADAPTER_OK',matched[0].market);
+          NODE
+      - name: Full Worker dry run
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .stage2-winline-build
+          test -d .stage2-winline-build
+          echo STAGE2_WINLINE_WORKER_OK
+      - name: Commit integration
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/betting-insight-engine.js
+          git commit -m 'Integrate strict optional Winline market filtering'
+          git push origin HEAD:main
