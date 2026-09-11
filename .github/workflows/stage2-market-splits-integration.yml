@@ -1,0 +1,104 @@
+name: Stage2 Market Splits Integration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stage2-market-splits-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Integrate splits and safe fallbacks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/betting-insight-engine.js')
+          s=p.read_text(encoding='utf-8')
+
+          imp='import { buildMarketSplitInsights } from "./market-split-insights.js";\n'
+          if imp not in s:
+              anchor='import { selectInsightPortfolio } from "./insight-portfolio.js";\n'
+              if anchor not in s: raise SystemExit('import anchor missing')
+              s=s.replace(anchor,anchor+imp,1)
+
+          old='''  const featureInsights = await buildFeatureMarketInsights(db, game);\n  const universalMarketInsights = await buildUniversalMarketInsights(db, game);\n  const rollingRankInsights = await buildRollingLeagueRankInsights(db, game);\n  const advancedContextInsights = await buildAdvancedMarketContextInsights(db, game);'''
+          new='''  const featureInsights = await safeInsightBuild("feature_market", () => buildFeatureMarketInsights(db, game));\n  const universalMarketInsights = await safeInsightBuild("universal_market", () => buildUniversalMarketInsights(db, game));\n  const rollingRankInsights = await safeInsightBuild("rolling_rank", () => buildRollingLeagueRankInsights(db, game));\n  const advancedContextInsights = await safeInsightBuild("advanced_context", () => buildAdvancedMarketContextInsights(db, game));\n  const marketSplitInsights = await safeInsightBuild("market_splits", () => buildMarketSplitInsights(db, game));'''
+          if old not in s: raise SystemExit('build block anchor missing')
+          s=s.replace(old,new,1)
+
+          push='  insights.push(...marketSplitInsights);\n'
+          if push not in s:
+              anchor='  insights.push(...advancedContextInsights);\n'
+              if anchor not in s: raise SystemExit('push anchor missing')
+              s=s.replace(anchor,anchor+push,1)
+
+          helper='''\nasync function safeInsightBuild(label, factory) {\n  try {\n    const value = await factory();\n    return Array.isArray(value) ? value : [];\n  } catch (error) {\n    console.error(`betting insight module failed: ${label}`, error);\n    return [];\n  }\n}\n'''
+          if 'async function safeInsightBuild(' not in s:
+              anchor='\nfunction recentGamesStatement(db, team, before) {'
+              if anchor not in s: raise SystemExit('helper anchor missing')
+              s=s.replace(anchor,helper+anchor,1)
+
+          p.write_text(s,encoding='utf-8')
+          PY
+          node --check cloudflare-worker/src/market-split-insights.js
+          node --check cloudflare-worker/src/betting-insight-engine.js
+          git diff --check
+      - name: Pure venue and H2H tests
+        run: |
+          node --input-type=module <<'NODE'
+          import { evaluateVenueMarketSplits, evaluateH2HMarketSplits } from './cloudflare-worker/src/market-split-insights.js';
+
+          const game={game_pk:999,away_tri:'CAR',home_tri:'NYR',scheduled_start_utc:'2026-01-01T00:00:00Z'};
+          const make=(team,opp,isHome,gf,ga,diff,win)=>Array.from({length:20},(_,i)=>({
+            game_pk:2000+i+(team==='NYR'?100:0),team_tri:team,opponent_tri:opp,is_home:isHome,
+            scheduled_start_utc:`2025-12-${String(20-i).padStart(2,'0')}T00:00:00Z`,
+            final_goals_for:gf,final_goals_against:ga,total_goals:gf+ga,final_goal_diff:diff,final_win:win
+          }));
+          const venue=evaluateVenueMarketSplits(game,{
+            CAR:make('CAR','BOS',0,4,3,1,1),
+            NYR:make('NYR','NJD',1,3,4,-1,0),
+          });
+          const venueGT=venue.find(c=>c.market.type==='game_total'&&c.market.side==='over'&&c.market.line===5.5);
+          const carTT=venue.find(c=>c.market.type==='team_total'&&c.market.subject==='CAR'&&c.market.side==='over');
+          if(!venueGT||!carTT) throw new Error(`missing venue markets: ${JSON.stringify(venue.map(c=>c.market))}`);
+          if(venueGT.evidence.window!==20||carTT.evidence.window!==20) throw new Error('venue did not prefer stable 20-game split');
+
+          const h2h=Array.from({length:10},(_,i)=>({
+            game_pk:5000+i,team_tri:'CAR',opponent_tri:'NYR',is_home:i%2,
+            scheduled_start_utc:`2025-11-${String(20-i).padStart(2,'0')}T00:00:00Z`,
+            final_goals_for:4,final_goals_against:2,total_goals:6,final_goal_diff:2,final_win:1
+          }));
+          const h=evaluateH2HMarketSplits(game,h2h);
+          const carH2H=h.find(c=>c.market.type==='team_total'&&c.market.subject==='CAR'&&c.market.side==='over');
+          const nyrH2H=h.find(c=>c.market.type==='team_total'&&c.market.subject==='NYR'&&c.market.side==='under');
+          const carHC=h.find(c=>c.market.type==='handicap'&&c.market.subject==='CAR'&&c.market.line===-1.5);
+          if(!carH2H||!nyrH2H||!carHC) throw new Error(`H2H direction/line missing: ${JSON.stringify(h.map(c=>c.market))}`);
+          if(carH2H.evidence.window!==10||nyrH2H.evidence.window!==10||carHC.evidence.window!==10) throw new Error('H2H did not prefer 10-game sample');
+          console.log('MARKET_SPLITS_OK',{
+            venue:venue.map(c=>({market:c.market.label,score:c.score,window:c.evidence.window})),
+            h2h:h.map(c=>({market:c.market.label,score:c.score,window:c.evidence.window}))
+          });
+          NODE
+      - name: Full Worker dry run
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .stage2-splits-build
+          test -d .stage2-splits-build
+          echo STAGE2_SPLITS_WORKER_OK
+      - name: Commit integration
+        run: |
+          git config user.name 'znamteam-max'
+          git config user.email 'znamteam@gmail.com'
+          git add cloudflare-worker/src/betting-insight-engine.js
+          git commit -m 'Integrate venue and H2H market splits safely'
+          git push origin HEAD:main
