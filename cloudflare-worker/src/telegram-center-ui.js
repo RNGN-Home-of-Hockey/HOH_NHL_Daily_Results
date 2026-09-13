@@ -1,18 +1,149 @@
 const PATH = "/telegram-app";
 
-export function handleTelegramCenterUi(request, path) {
-  if (path !== PATH) return null;
-  if (request.method !== "GET") {
-    return json({ ok: false, error: "method_not_allowed" }, 405);
+const TEAMS = [
+  ["ANA","Анахайм"],["BOS","Бостон"],["BUF","Баффало"],["CGY","Калгари"],
+  ["CAR","Каролина"],["CHI","Чикаго"],["COL","Колорадо"],["CBJ","Коламбус"],
+  ["DAL","Даллас"],["DET","Детройт"],["EDM","Эдмонтон"],["FLA","Флорида"],
+  ["LAK","Лос-Анджелес"],["MIN","Миннесота"],["MTL","Монреаль"],["NSH","Нэшвилл"],
+  ["NJD","Нью-Джерси"],["NYI","Айлендерс"],["NYR","Рейнджерс"],["OTT","Оттава"],
+  ["PHI","Филадельфия"],["PIT","Питтсбург"],["SJS","Сан-Хосе"],["SEA","Сиэтл"],
+  ["STL","Сент-Луис"],["TBL","Тампа-Бэй"],["TOR","Торонто"],["UTA","Юта"],
+  ["VAN","Ванкувер"],["VGK","Вегас"],["WSH","Вашингтон"],["WPG","Виннипег"],
+];
+
+export function handleTelegramCenterUi(request, path, env = {}) {
+  if (path === PATH) {
+    if (request.method !== "GET") return json({ ok: false, error: "method_not_allowed" }, 405);
+    return new Response(APP_HTML, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        Pragma: "no-cache",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   }
-  return new Response(APP_HTML, {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store, no-cache, must-revalidate",
-      Pragma: "no-cache",
-      "X-Content-Type-Options": "nosniff",
+  if (path === "/api/telegram-app/bootstrap") {
+    if (request.method !== "GET") return json({ ok: false, error: "method_not_allowed" }, 405);
+    return centerBootstrap(request, env);
+  }
+  if (path === "/api/me/subscriptions" && request.method === "GET") {
+    return centerSubscriptions(request, env);
+  }
+  return null;
+}
+
+async function centerBootstrap(request, env) {
+  const auth = await centerTelegramAuth(request, env, false);
+  return json({
+    ok: true,
+    mode: auth.ok ? "telegram" : "guest",
+    user: auth.ok ? auth.user : null,
+    auth_error: auth.ok ? null : auth.error,
+    teams: TEAMS.map(([tri, name]) => ({ tri, name })),
+    capabilities: {
+      schedule: true,
+      live: true,
+      follows: Boolean(auth.ok && env.DB),
+      player_cards: Boolean(env.DB),
     },
   });
+}
+
+async function centerSubscriptions(request, env) {
+  if (!env.DB) return json({ ok: false, error: "missing_d1_binding" }, 503);
+  const auth = await centerTelegramAuth(request, env, true);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, 401);
+  try {
+    const result = await env.DB.prepare(`
+      SELECT s.subscription_id,s.subject_type,s.subject_key,
+             s.notify_pregame,s.notify_start,s.notify_goal,s.notify_assist,
+             s.notify_point,s.notify_period_end,s.notify_final,
+             CASE s.subject_type
+               WHEN 'player' THEN COALESCE(p.full_name_ru,p.full_name_en,s.subject_key)
+               WHEN 'team' THEN COALESCE(t.name_ru,t.name_en,s.subject_key)
+               WHEN 'game' THEN COALESCE(g.away_tri||' — '||g.home_tri,'Game #'||s.subject_key)
+               ELSE s.subject_key
+             END AS name
+      FROM subscriptions s
+      LEFT JOIN players p ON s.subject_type='player' AND p.player_id=CAST(s.subject_key AS INTEGER)
+      LEFT JOIN teams t ON s.subject_type='team' AND t.tri_code=s.subject_key
+      LEFT JOIN games g ON s.subject_type='game' AND g.game_pk=CAST(s.subject_key AS INTEGER)
+      WHERE s.telegram_user_id=?
+      ORDER BY CASE s.subject_type WHEN 'player' THEN 1 WHEN 'team' THEN 2 ELSE 3 END,s.subject_key;
+    `).bind(auth.user.id).all();
+    return json({ subscriptions: (result.results || []).map(serializeSubscription) });
+  } catch (error) {
+    console.error("telegram center subscriptions failed", error);
+    return json({ ok: false, error: "subscription_layer_not_ready", subscriptions: [] }, 503);
+  }
+}
+
+async function centerTelegramAuth(request, env, required) {
+  const initData = String(request.headers.get("x-telegram-init-data") || "").trim();
+  if (!initData) return required ? { ok: false, error: "missing_telegram_init_data" } : { ok: false, error: "guest" };
+  const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim();
+  if (!token) return { ok: false, error: "missing_telegram_center_token" };
+  try {
+    const params = new URLSearchParams(initData);
+    const providedHash = params.get("hash") || "";
+    const authDate = Number(params.get("auth_date") || 0);
+    const userRaw = params.get("user") || "";
+    params.delete("hash");
+    if (!providedHash || !authDate || !userRaw) return { ok: false, error: "invalid_telegram_init_data" };
+    const maxAgeRaw = Number(env.TELEGRAM_WEBAPP_MAX_AGE_SECONDS || 86400);
+    const maxAge = Number.isFinite(maxAgeRaw) ? Math.min(604800, Math.max(300, Math.floor(maxAgeRaw))) : 86400;
+    if (Math.abs(Math.floor(Date.now() / 1000) - authDate) > maxAge) return { ok: false, error: "telegram_init_data_expired" };
+    const dataCheck = [...params.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => `${k}=${v}`).join("\n");
+    const encoder = new TextEncoder();
+    const key1 = await crypto.subtle.importKey("raw", encoder.encode("WebAppData"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const secret = await crypto.subtle.sign("HMAC", key1, encoder.encode(token));
+    const key2 = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const digest = await crypto.subtle.sign("HMAC", key2, encoder.encode(dataCheck));
+    const calculated = bytesToHex(new Uint8Array(digest));
+    if (!(await safeTextEqual(calculated, providedHash.toLowerCase()))) return { ok: false, error: "telegram_signature_invalid" };
+    const user = JSON.parse(userRaw);
+    const id = Number(user.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return { ok: false, error: "telegram_user_invalid" };
+    return { ok: true, user: { id, username: user.username || null, first_name: user.first_name || null, last_name: user.last_name || null, language_code: user.language_code || null } };
+  } catch (error) {
+    console.error("telegram center init data validation failed", error);
+    return { ok: false, error: "telegram_init_data_invalid" };
+  }
+}
+
+function serializeSubscription(row) {
+  const type = String(row.subject_type || "");
+  const candidates = type === "player"
+    ? [["goal","notify_goal"],["assist","notify_assist"],["point","notify_point"]]
+    : type === "team"
+      ? [["start","notify_start"],["goal","notify_goal"],["final","notify_final"]]
+      : [["pregame","notify_pregame"],["start","notify_start"],["goal","notify_goal"],["period_end","notify_period_end"],["final","notify_final"]];
+  return {
+    id: Number(row.subscription_id),
+    type,
+    entity_id: String(row.subject_key || ""),
+    name: String(row.name || row.subject_key || ""),
+    events: candidates.filter(([,column]) => Number(row[column]) === 1).map(([event]) => event),
+  };
+}
+
+async function safeTextEqual(a, b) {
+  const encoder = new TextEncoder();
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(String(a))),
+    crypto.subtle.digest("SHA-256", encoder.encode(String(b))),
+  ]);
+  const aa = new Uint8Array(da);
+  const bb = new Uint8Array(db);
+  let diff = aa.length ^ bb.length;
+  const length = Math.min(aa.length, bb.length);
+  for (let index = 0; index < length; index += 1) diff |= aa[index] ^ bb[index];
+  return diff === 0;
+}
+
+function bytesToHex(bytes) {
+  return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 const APP_HTML = `<!doctype html>
