@@ -3,6 +3,7 @@ import { handleTeamCurrentUiRequest } from "./team-current-ui.js";
 import { handleTelegramMiniAppV2Ui } from "./telegram-mini-app-v2-ui.js";
 import { handleTelegramCenterUi } from "./telegram-center-ui.js";
 import { handleTelegramCenterDataRequest } from "./telegram-center-data.js";
+import { handleTelegramCenterInteractiveRequest } from "./telegram-center-interactive.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
@@ -20,6 +21,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const controlLowReadResponse = await handleControlLowReadRequest(request, env, path);
   if (controlLowReadResponse) return controlLowReadResponse;
+
+  const centerInteractiveResponse = await handleTelegramCenterInteractiveRequest(request.clone(), env, path);
+  if (centerInteractiveResponse) return centerInteractiveResponse;
 
   const centerDataResponse = await handleTelegramCenterDataRequest(request.clone(), env, path);
   if (centerDataResponse) return centerDataResponse;
@@ -56,7 +60,24 @@ export async function handleTeamCurrentRequest(request, env, path) {
   }
 
   const centerUiResponse = handleTelegramCenterUi(request, path, env);
-  if (centerUiResponse) return centerUiResponse;
+  if (centerUiResponse) {
+    if (path === "/telegram-app" && request.method === "GET") {
+      let body = await centerUiResponse.text();
+      if (!body.includes("/telegram-app/interactive.js")) {
+        body = body.replace("</body>", '<script src="/telegram-app/interactive.js"></script></body>');
+      }
+      return new Response(body, {
+        status:centerUiResponse.status,
+        headers:{
+          "Content-Type":"text/html; charset=utf-8",
+          "Cache-Control":"no-store, no-cache, must-revalidate",
+          "Pragma":"no-cache",
+          "X-Content-Type-Options":"nosniff",
+        },
+      });
+    }
+    return centerUiResponse;
+  }
 
   const miniAppV2Response = handleTelegramMiniAppV2Ui(request, path);
   if (miniAppV2Response) {
