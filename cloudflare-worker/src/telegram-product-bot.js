@@ -20,10 +20,18 @@ export async function handleTelegramProductBotRequest(request, env, path) {
   const provided = request.headers.get("x-telegram-bot-api-secret-token") || "";
   if (!expected) {
     console.log("telegram_center_webhook_missing_secret_config");
+    await recordCenterDiagnostic(env, {
+      stage: "webhook_rejected",
+      reason: "missing_secret_config",
+    });
     return json({ ok: false, error: "telegram_webhook_missing_secret_config" }, 401);
   }
   if (!provided || !(await secureEqual(provided, expected))) {
     console.log("telegram_center_webhook_secret_mismatch");
+    await recordCenterDiagnostic(env, {
+      stage: "webhook_rejected",
+      reason: "secret_mismatch",
+    });
     return json({ ok: false, error: "telegram_webhook_secret_mismatch" }, 401);
   }
 
@@ -32,6 +40,10 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     update = await request.json();
   } catch {
     console.log("telegram_center_webhook_invalid_json");
+    await recordCenterDiagnostic(env, {
+      stage: "webhook_rejected",
+      reason: "invalid_json",
+    });
     return json({ ok: false, error: "telegram_webhook_invalid_json" }, 400);
   }
 
@@ -43,6 +55,12 @@ export async function handleTelegramProductBotRequest(request, env, path) {
   });
 
   if (!message || message.chat?.type !== "private") {
+    await recordCenterDiagnostic(env, {
+      stage: "update_skipped",
+      reason: "unsupported_update",
+      has_message: Boolean(message),
+      chat_type: message?.chat?.type || null,
+    });
     return json({ ok: true, skipped: "unsupported_update" });
   }
 
@@ -53,32 +71,79 @@ export async function handleTelegramProductBotRequest(request, env, path) {
   });
 
   if (!["/start", "/menu", "/help", "/app"].includes(command)) {
+    await recordCenterDiagnostic(env, {
+      stage: "update_skipped",
+      reason: "private_command_not_handled",
+      command,
+    });
     return json({ ok: true, skipped: "private_command_not_handled" });
   }
 
   const chatId = message.chat?.id;
   if (!chatId) {
+    await recordCenterDiagnostic(env, {
+      stage: "update_skipped",
+      reason: "missing_chat",
+      command,
+    });
     return json({ ok: true, skipped: "missing_chat" });
   }
 
-  const result = await telegramRequest(env, "sendMessage", {
+  const centerText = "🏒 HOH NHL Center\n\nТвой персональный центр NHL:\n\n• игроки\n• команды\n• матчи\n• уведомления\n• статистика";
+  const miniApp = miniAppUrl(request, env);
+
+  const primary = await telegramRequest(env, "sendMessage", {
     chat_id: chatId,
-    text: "🏒 HOH NHL Center\n\nТвой персональный центр NHL:\n\n• игроки\n• команды\n• матчи\n• уведомления\n• статистика",
+    text: centerText,
     disable_web_page_preview: true,
     reply_markup: {
       inline_keyboard: [[
         {
           text: "🏒 Открыть HOH NHL Center",
-          web_app: { url: miniAppUrl(request, env) },
+          web_app: { url: miniApp },
         },
       ]],
     },
   });
 
   console.log("telegram_center_send_result", {
-    ok: result.ok,
-    status_code: result.status_code || null,
-    error: result.response?.description || result.error || null,
+    ok: primary.ok,
+    status_code: primary.status_code || null,
+    error: primary.response?.description || primary.error || null,
+  });
+
+  let fallback = null;
+  if (!primary.ok) {
+    fallback = await telegramRequest(env, "sendMessage", {
+      chat_id: chatId,
+      text: `${centerText}\n\nОткрыть приложение: ${miniApp}`,
+      disable_web_page_preview: true,
+    });
+    console.log("telegram_center_fallback_send_result", {
+      ok: fallback.ok,
+      status_code: fallback.status_code || null,
+      error: fallback.response?.description || fallback.error || null,
+    });
+  }
+
+  const delivered = primary.ok || Boolean(fallback?.ok);
+  const telegramError = delivered
+    ? null
+    : fallback?.response?.description ||
+      fallback?.error ||
+      primary.response?.description ||
+      primary.error ||
+      "telegram_send_failed";
+
+  await recordCenterDiagnostic(env, {
+    stage: "command_processed",
+    command,
+    primary_delivered: primary.ok,
+    fallback_attempted: Boolean(fallback),
+    fallback_delivered: Boolean(fallback?.ok),
+    delivered,
+    primary_error: primary.ok ? null : primary.response?.description || primary.error || "telegram_send_failed",
+    telegram_error: telegramError,
   });
 
   // Telegram only needs acknowledgement that the update was accepted.
@@ -86,8 +151,9 @@ export async function handleTelegramProductBotRequest(request, env, path) {
   return json({
     ok: true,
     action: "center_menu",
-    delivered: result.ok,
-    telegram_error: result.ok ? null : result.response?.description || result.error || "telegram_send_failed",
+    delivered,
+    fallback_used: Boolean(fallback),
+    telegram_error: telegramError,
   });
 }
 
@@ -140,11 +206,12 @@ async function centerStatus(request, env) {
   }
 
   const expectedWebhook = `${new URL(request.url).origin}/telegram/center`;
+  const lastEvent = await readCenterDiagnostic(env);
 
   return json({
     ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok,
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-13-v2",
+    runtime_marker: "telegram-center-2026-09-13-v3",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     mini_app_url: miniAppUrl(request, env),
@@ -152,6 +219,7 @@ async function centerStatus(request, env) {
     bot,
     webhook,
     webhook_matches_expected: webhook.ok ? webhook.url === expectedWebhook : false,
+    last_event: lastEvent,
   });
 }
 
@@ -213,6 +281,58 @@ async function telegramRequest(env, method, payload) {
     return {
       ok: false,
       error: `telegram_fetch_failed:${String(error?.message || error || "unknown")}`,
+    };
+  }
+}
+
+async function recordCenterDiagnostic(env, payload) {
+  if (!env.DB) {
+    return;
+  }
+  const safePayload = {
+    at: new Date().toISOString(),
+    ...payload,
+  };
+  try {
+    await env.DB.prepare(`
+      INSERT INTO data_core_meta (meta_key, meta_value, updated_at)
+      VALUES ('telegram_center_last_event', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(meta_key) DO UPDATE SET
+        meta_value = excluded.meta_value,
+        updated_at = CURRENT_TIMESTAMP;
+    `).bind(JSON.stringify(safePayload)).run();
+  } catch (error) {
+    console.log("telegram_center_diagnostic_write_failed", {
+      error: String(error?.message || error || "unknown"),
+    });
+  }
+}
+
+async function readCenterDiagnostic(env) {
+  if (!env.DB) {
+    return null;
+  }
+  try {
+    const row = await env.DB.prepare(
+      "SELECT meta_value, updated_at FROM data_core_meta WHERE meta_key='telegram_center_last_event' LIMIT 1;",
+    ).first();
+    if (!row) {
+      return null;
+    }
+    let value = null;
+    try {
+      value = JSON.parse(String(row.meta_value || "null"));
+    } catch {
+      value = { raw: String(row.meta_value || "") };
+    }
+    return {
+      ...value,
+      persisted_at: row.updated_at || null,
+    };
+  } catch (error) {
+    return {
+      stage: "diagnostic_read_failed",
+      error: String(error?.message || error || "unknown"),
     };
   }
 }
