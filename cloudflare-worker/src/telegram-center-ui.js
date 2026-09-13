@@ -33,7 +33,7 @@ const APP_HTML = `<!doctype html>
     <button class="tab active" data-tab="games">Матчи</button>
     <button class="tab" data-tab="teams">Команды</button>
     <button class="tab" data-tab="players">Игроки</button>
-    <button class="tab" data-tab="mine">Мои</button>
+    <button class="tab" data-tab="follows">Мои</button>
   </nav>
   <div class="toolbar" id="datebar"><button id="prev">‹</button><strong id="date"></strong><button id="next">›</button></div>
   <div class="filters hidden" id="playerFilters"><select id="teamSelect"><option value="">Все команды</option></select><input id="playerSearch" placeholder="Поиск игрока"></div>
