@@ -7,7 +7,7 @@ import { handleControlCenterRequest } from "./control-center.js";
 import { handleTelegramMiniAppRequest } from "./telegram-mini-app.js";
 import { handleTelegramProductBotRequest } from "./telegram-product-bot.js";
 import { handleTeamCurrentRequest } from "./team-current-routes.js";
-import { getLiveNotificationStatus, runLiveNotificationTick } from "./telegram-live-notifications.js";
+import { getCenterNotificationStatus, runCenterNotificationTick } from "./telegram-center-notification-engine.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -83,8 +83,8 @@ export default {
 
     if (liveNotificationsEnabled && env.DB) {
       ctx.waitUntil(
-        runLiveNotificationTick(env).catch((error) => {
-          console.error("scheduled Telegram live notification tick failed", error);
+        runCenterNotificationTick(env, { dryRun:false }).catch((error) => {
+          console.error("scheduled Telegram Center notification tick failed", error);
         }),
       );
     }
@@ -114,7 +114,7 @@ async function telegramNotificationStatusRoute(request, env) {
   if (request.method !== "GET") {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
   }
-  return jsonResponse(await getLiveNotificationStatus(env));
+  return jsonResponse(await getCenterNotificationStatus(env));
 }
 
 async function telegramNotificationTickRoute(request, env) {
@@ -127,10 +127,10 @@ async function telegramNotificationTickRoute(request, env) {
   const url = new URL(request.url);
   const dryRun = queryBool(url, "dry_run", true);
   try {
-    const result = await runLiveNotificationTick(env, { dryRun });
+    const result = await runCenterNotificationTick(env, { dryRun });
     return jsonResponse(result, result.ok ? 200 : 500);
   } catch (error) {
-    console.error("manual Telegram notification tick failed", error);
+    console.error("manual Telegram Center notification tick failed", error);
     return jsonResponse({ ok: false, error: "notification_tick_failed" }, 500);
   }
 }
@@ -206,29 +206,14 @@ async function persistentBackfillJobRoute(request, env) {
 }
 
 async function runScheduledCanary(env) {
-  if (!env.DB) {
-    return;
-  }
-
+  if (!env.DB) return;
   const status = await getBackfillStatus(env.DB, { season: CANARY_SEASON });
-  if (status.games >= CANARY_TARGET_GAMES) {
-    return;
-  }
-
-  await runBackfillStep(env.DB, {
-    season: CANARY_SEASON,
-    start_date: CANARY_START_DATE,
-    end_date: CANARY_END_DATE,
-    max_scan_days: 14,
-    dry_run: false,
-  });
+  if (status.games >= CANARY_TARGET_GAMES) return;
+  await runBackfillStep(env.DB, {season:CANARY_SEASON,start_date:CANARY_START_DATE,end_date:CANARY_END_DATE,max_scan_days:14,dry_run:false});
 }
 
 async function runScheduledFullBackfill(env) {
-  if (!env.DB) {
-    return;
-  }
-
+  if (!env.DB) return;
   await runPersistentBackfillTick(env.DB, {
     job_id: String(env.FULL_BACKFILL_JOB_ID || "").trim(),
     season: String(env.FULL_BACKFILL_SEASON || "").trim(),
@@ -241,9 +226,7 @@ async function runScheduledFullBackfill(env) {
 
 function fullBackfillStartReached(env) {
   const raw = String(env.FULL_BACKFILL_NOT_BEFORE_UTC || "").trim();
-  if (!raw) {
-    return true;
-  }
+  if (!raw) return true;
   const timestamp = Date.parse(raw);
   if (!Number.isFinite(timestamp)) {
     console.error("Backfill safety stop: FULL_BACKFILL_NOT_BEFORE_UTC is invalid");
@@ -254,17 +237,11 @@ function fullBackfillStartReached(env) {
 
 async function isManagementAuthorized(request, env) {
   const expected = String(env.MANAGEMENT_API_SECRET || "").trim();
-  if (!expected) {
-    return false;
-  }
+  if (!expected) return false;
   const authorization = request.headers.get("authorization") || "";
-  if (!authorization.startsWith("Bearer ")) {
-    return false;
-  }
+  if (!authorization.startsWith("Bearer ")) return false;
   const provided = authorization.slice("Bearer ".length).trim();
-  if (!provided) {
-    return false;
-  }
+  if (!provided) return false;
   return secureEqual(provided, expected);
 }
 
@@ -274,55 +251,35 @@ async function secureEqual(left, right) {
   const rightDigest = await crypto.subtle.digest("SHA-256", encoder.encode(right));
   const a = new Uint8Array(leftDigest);
   const b = new Uint8Array(rightDigest);
-  if (a.length !== b.length) {
-    return false;
-  }
+  if (a.length !== b.length) return false;
   let mismatch = 0;
-  for (let index = 0; index < a.length; index += 1) {
-    mismatch |= a[index] ^ b[index];
-  }
+  for (let index = 0; index < a.length; index += 1) mismatch |= a[index] ^ b[index];
   return mismatch === 0;
 }
 
 function queryBool(url, key, fallback) {
   const value = url.searchParams.get(key);
-  if (value === null) {
-    return fallback;
-  }
+  if (value === null) return fallback;
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
 function envFlag(value, fallback = false) {
-  if (value === undefined || value === null || value === "") {
-    return fallback;
-  }
+  if (value === undefined || value === null || value === "") return fallback;
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
 }
 
 function envInt(value, fallback, min, max) {
-  if (value === undefined || value === null || value === "") {
-    return fallback;
-  }
+  if (value === undefined || value === null || value === "") return fallback;
   const number = Number(value);
-  if (!Number.isSafeInteger(number) || number < min || number > max) {
-    return fallback;
-  }
+  if (!Number.isSafeInteger(number) || number < min || number > max) return fallback;
   return number;
 }
 
 function stripTrailingSlash(path) {
-  if (path === "/") {
-    return "";
-  }
+  if (path === "/") return "";
   return path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
 function jsonResponse(payload, status = 200) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
+  return new Response(JSON.stringify(payload), {status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}});
 }
