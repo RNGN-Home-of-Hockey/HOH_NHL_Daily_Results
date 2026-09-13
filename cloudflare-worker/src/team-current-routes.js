@@ -1,6 +1,7 @@
 import { loadTeamDetail, loadTeamRankings } from "./team-current-data.js";
 import { handleTeamCurrentUiRequest } from "./team-current-ui.js";
 import { handleTelegramMiniAppV2Ui } from "./telegram-mini-app-v2-ui.js";
+import { handleTelegramCenterUi } from "./telegram-center-ui.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
@@ -49,6 +50,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
     }
     return controlV2Response;
   }
+
+  const centerUiResponse = handleTelegramCenterUi(request, path);
+  if (centerUiResponse) return centerUiResponse;
 
   const miniAppV2Response = handleTelegramMiniAppV2Ui(request, path);
   if (miniAppV2Response) {
