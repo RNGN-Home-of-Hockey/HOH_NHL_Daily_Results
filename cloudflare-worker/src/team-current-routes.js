@@ -7,6 +7,7 @@ import { handleTelegramCenterInteractiveRequest } from "./telegram-center-intera
 import { handleTelegramCenterProfilesV2 } from "./telegram-center-profiles-v2.js";
 import { handleTelegramCenterHistoryV3 } from "./telegram-center-history-v3.js";
 import { handleTelegramCenterCatalogAdmin } from "./telegram-center-catalog-admin.js";
+import { handleTelegramCenterRosterAdmin } from "./telegram-center-roster-admin.js";
 import { handleTelegramCenterSubscriptionsV4 } from "./telegram-center-subscriptions-v4.js";
 import { handleTelegramCenterNotificationRoutes } from "./telegram-center-notification-routes.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
@@ -33,6 +34,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const centerNotificationResponse = await handleTelegramCenterNotificationRoutes(request.clone(), env, path);
   if (centerNotificationResponse) return centerNotificationResponse;
+
+  const centerRosterAdminResponse = await handleTelegramCenterRosterAdmin(request.clone(), env, path);
+  if (centerRosterAdminResponse) return centerRosterAdminResponse;
 
   const centerCatalogAdminResponse = await handleTelegramCenterCatalogAdmin(request.clone(), env, path);
   if (centerCatalogAdminResponse) return centerCatalogAdminResponse;
