@@ -5,6 +5,7 @@ import { handleTelegramCenterUi } from "./telegram-center-ui.js";
 import { handleTelegramCenterDataRequest } from "./telegram-center-data.js";
 import { handleTelegramCenterInteractiveRequest } from "./telegram-center-interactive.js";
 import { handleTelegramCenterProfilesV2 } from "./telegram-center-profiles-v2.js";
+import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
@@ -22,6 +23,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const controlLowReadResponse = await handleControlLowReadRequest(request, env, path);
   if (controlLowReadResponse) return controlLowReadResponse;
+
+  const winlineCenterResponse = await handleWinlineCenterIngest(request.clone(), env, path);
+  if (winlineCenterResponse) return winlineCenterResponse;
 
   const centerProfilesV2Response = await handleTelegramCenterProfilesV2(request.clone(), env, path);
   if (centerProfilesV2Response) return centerProfilesV2Response;
