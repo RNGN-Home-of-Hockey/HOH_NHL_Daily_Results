@@ -4,6 +4,7 @@ import { handleTelegramMiniAppV2Ui } from "./telegram-mini-app-v2-ui.js";
 import { handleTelegramCenterUi } from "./telegram-center-ui.js";
 import { handleTelegramCenterDataRequest } from "./telegram-center-data.js";
 import { handleTelegramCenterInteractiveRequest } from "./telegram-center-interactive.js";
+import { handleTelegramCenterProfilesV2 } from "./telegram-center-profiles-v2.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
@@ -21,6 +22,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const controlLowReadResponse = await handleControlLowReadRequest(request, env, path);
   if (controlLowReadResponse) return controlLowReadResponse;
+
+  const centerProfilesV2Response = await handleTelegramCenterProfilesV2(request.clone(), env, path);
+  if (centerProfilesV2Response) return centerProfilesV2Response;
 
   const centerInteractiveResponse = await handleTelegramCenterInteractiveRequest(request.clone(), env, path);
   if (centerInteractiveResponse) return centerInteractiveResponse;
@@ -63,8 +67,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (centerUiResponse) {
     if (path === "/telegram-app" && request.method === "GET") {
       let body = await centerUiResponse.text();
-      if (!body.includes("/telegram-app/interactive.js")) {
-        body = body.replace("</body>", '<script src="/telegram-app/interactive.js"></script></body>');
+      if (!body.includes("/telegram-app/profiles-v2.js")) {
+        body = body.replace("</body>", '<script src="/telegram-app/profiles-v2.js"></script></body>');
       }
       return new Response(body, {
         status:centerUiResponse.status,
