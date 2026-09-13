@@ -10,6 +10,13 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     return centerStatus(request, env);
   }
 
+  if (path === "/api/telegram/center/repair-webhook") {
+    if (request.method !== "POST") {
+      return json({ ok: false, error: "method_not_allowed" }, 405);
+    }
+    return repairCenterWebhook(request, env);
+  }
+
   if (!["/api/telegram/center", "/telegram/center"].includes(path) || request.method !== "POST") {
     return null;
   }
@@ -146,8 +153,6 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     telegram_error: telegramError,
   });
 
-  // Telegram only needs acknowledgement that the update was accepted.
-  // Do not make Telegram retry the same /start update if sendMessage itself fails.
   return json({
     ok: true,
     action: "center_menu",
@@ -211,16 +216,68 @@ async function centerStatus(request, env) {
   return json({
     ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok,
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-13-v3",
+    runtime_marker: "telegram-center-2026-09-13-v4",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     mini_app_url: miniAppUrl(request, env),
     expected_webhook_url: expectedWebhook,
+    repair_webhook_url: `${new URL(request.url).origin}/api/telegram/center/repair-webhook`,
     bot,
     webhook,
     webhook_matches_expected: webhook.ok ? webhook.url === expectedWebhook : false,
     last_event: lastEvent,
   });
+}
+
+async function repairCenterWebhook(request, env) {
+  const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim();
+  const secret = String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim();
+  if (!token) {
+    return json({ ok: false, error: "missing_telegram_center_token" }, 503);
+  }
+  if (!secret) {
+    return json({ ok: false, error: "missing_telegram_webhook_secret" }, 503);
+  }
+
+  const expectedWebhook = `${new URL(request.url).origin}/telegram/center`;
+  const setWebhook = await telegramRequest(env, "setWebhook", {
+    url: expectedWebhook,
+    secret_token: secret,
+    drop_pending_updates: false,
+    allowed_updates: ["message"],
+  });
+
+  if (!setWebhook.ok) {
+    await recordCenterDiagnostic(env, {
+      stage: "webhook_repair_failed",
+      error: setWebhook.response?.description || setWebhook.error || "telegram_set_webhook_failed",
+    });
+    return json({
+      ok: false,
+      action: "repair_webhook",
+      error: setWebhook.response?.description || setWebhook.error || "telegram_set_webhook_failed",
+    }, 502);
+  }
+
+  const webhookInfo = await telegramRequest(env, "getWebhookInfo", {});
+  const info = webhookInfo.ok ? webhookInfo.response?.result || {} : {};
+  const repaired = webhookInfo.ok && info.url === expectedWebhook;
+
+  await recordCenterDiagnostic(env, {
+    stage: "webhook_repaired",
+    repaired,
+    pending_update_count: Number(info.pending_update_count || 0),
+    last_error_message: info.last_error_message || null,
+  });
+
+  return json({
+    ok: repaired,
+    action: "repair_webhook",
+    expected_webhook_url: expectedWebhook,
+    actual_webhook_url: info.url || null,
+    pending_update_count: Number(info.pending_update_count || 0),
+    last_error_message: info.last_error_message || null,
+  }, repaired ? 200 : 502);
 }
 
 async function setupMiniAppButton(request, env) {
@@ -285,8 +342,29 @@ async function telegramRequest(env, method, payload) {
   }
 }
 
-async function recordCenterDiagnostic(env, payload) {
+async function ensureDiagnosticTable(env) {
   if (!env.DB) {
+    return false;
+  }
+  try {
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS data_core_meta (
+        meta_key TEXT PRIMARY KEY,
+        meta_value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `).run();
+    return true;
+  } catch (error) {
+    console.log("telegram_center_diagnostic_table_failed", {
+      error: String(error?.message || error || "unknown"),
+    });
+    return false;
+  }
+}
+
+async function recordCenterDiagnostic(env, payload) {
+  if (!env.DB || !(await ensureDiagnosticTable(env))) {
     return;
   }
   const safePayload = {
@@ -311,6 +389,9 @@ async function recordCenterDiagnostic(env, payload) {
 async function readCenterDiagnostic(env) {
   if (!env.DB) {
     return null;
+  }
+  if (!(await ensureDiagnosticTable(env))) {
+    return { stage: "diagnostic_table_unavailable" };
   }
   try {
     const row = await env.DB.prepare(
