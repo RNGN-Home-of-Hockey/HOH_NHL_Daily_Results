@@ -51,7 +51,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
     return controlV2Response;
   }
 
-  const centerUiResponse = handleTelegramCenterUi(request, path);
+  const centerUiResponse = handleTelegramCenterUi(request, path, env);
   if (centerUiResponse) return centerUiResponse;
 
   const miniAppV2Response = handleTelegramMiniAppV2Ui(request, path);
