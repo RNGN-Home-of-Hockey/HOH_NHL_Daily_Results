@@ -23,7 +23,7 @@ export async function handleTelegramProductBotRequest(request, env, path) {
 
   console.log("telegram_center_webhook_received", { path });
 
-  const expected = String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim();
+  const expected = await telegramWebhookSecret(env);
   const provided = request.headers.get("x-telegram-bot-api-secret-token") || "";
   if (!expected) {
     console.log("telegram_center_webhook_missing_secret_config");
@@ -211,27 +211,29 @@ async function centerStatus(request, env) {
   }
 
   const expectedWebhook = `${new URL(request.url).origin}/telegram/center`;
+  const webhookMatchesExpected = webhook.ok && webhook.url === expectedWebhook;
   const lastEvent = await readCenterDiagnostic(env);
 
   return json({
-    ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok,
+    ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok && webhookMatchesExpected,
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-13-v4",
+    runtime_marker: "telegram-center-2026-09-13-v5",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
+    webhook_secret_mode: "sha256_hex",
     mini_app_url: miniAppUrl(request, env),
     expected_webhook_url: expectedWebhook,
     repair_webhook_url: `${new URL(request.url).origin}/api/telegram/center/repair-webhook`,
     bot,
     webhook,
-    webhook_matches_expected: webhook.ok ? webhook.url === expectedWebhook : false,
+    webhook_matches_expected: webhookMatchesExpected,
     last_event: lastEvent,
   });
 }
 
 async function repairCenterWebhook(request, env) {
   const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim();
-  const secret = String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim();
+  const secret = await telegramWebhookSecret(env);
   if (!token) {
     return json({ ok: false, error: "missing_telegram_center_token" }, 503);
   }
@@ -273,6 +275,7 @@ async function repairCenterWebhook(request, env) {
   return json({
     ok: repaired,
     action: "repair_webhook",
+    secret_mode: "sha256_hex",
     expected_webhook_url: expectedWebhook,
     actual_webhook_url: info.url || null,
     pending_update_count: Number(info.pending_update_count || 0),
@@ -340,6 +343,15 @@ async function telegramRequest(env, method, payload) {
       error: `telegram_fetch_failed:${String(error?.message || error || "unknown")}`,
     };
   }
+}
+
+async function telegramWebhookSecret(env) {
+  const raw = String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function ensureDiagnosticTable(env) {
