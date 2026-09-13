@@ -7,14 +7,7 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     if (request.method !== "GET") {
       return json({ ok: false, error: "method_not_allowed" }, 405);
     }
-    return json({
-      ok: true,
-      service: "hoh-nhl-center",
-      runtime_marker: "telegram-center-2026-09-13-v1",
-      center_token_configured: Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim()),
-      webhook_secret_configured: Boolean(String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim()),
-      mini_app_url: miniAppUrl(request, env),
-    });
+    return centerStatus(request, env);
   }
 
   if (!["/api/telegram/center", "/telegram/center"].includes(path) || request.method !== "POST") {
@@ -95,6 +88,70 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     action: "center_menu",
     delivered: result.ok,
     telegram_error: result.ok ? null : result.response?.description || result.error || "telegram_send_failed",
+  });
+}
+
+async function centerStatus(request, env) {
+  const centerTokenConfigured = Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim());
+  const webhookSecretConfigured = Boolean(String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim());
+
+  let bot = { ok: false, error: "missing_telegram_center_token" };
+  let webhook = { ok: false, error: "missing_telegram_center_token" };
+
+  if (centerTokenConfigured) {
+    const [getMe, getWebhookInfo] = await Promise.all([
+      telegramRequest(env, "getMe", {}),
+      telegramRequest(env, "getWebhookInfo", {}),
+    ]);
+
+    if (getMe.ok) {
+      bot = {
+        ok: true,
+        id: getMe.response?.result?.id ?? null,
+        username: getMe.response?.result?.username || null,
+        first_name: getMe.response?.result?.first_name || null,
+      };
+    } else {
+      bot = {
+        ok: false,
+        status_code: getMe.status_code || null,
+        error: getMe.response?.description || getMe.error || "telegram_get_me_failed",
+      };
+    }
+
+    if (getWebhookInfo.ok) {
+      const info = getWebhookInfo.response?.result || {};
+      webhook = {
+        ok: true,
+        url: info.url || "",
+        pending_update_count: Number(info.pending_update_count || 0),
+        last_error_date: info.last_error_date || null,
+        last_error_message: info.last_error_message || null,
+        max_connections: info.max_connections || null,
+        has_custom_certificate: Boolean(info.has_custom_certificate),
+      };
+    } else {
+      webhook = {
+        ok: false,
+        status_code: getWebhookInfo.status_code || null,
+        error: getWebhookInfo.response?.description || getWebhookInfo.error || "telegram_get_webhook_info_failed",
+      };
+    }
+  }
+
+  const expectedWebhook = `${new URL(request.url).origin}/telegram/center`;
+
+  return json({
+    ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok,
+    service: "hoh-nhl-center",
+    runtime_marker: "telegram-center-2026-09-13-v2",
+    center_token_configured: centerTokenConfigured,
+    webhook_secret_configured: webhookSecretConfigured,
+    mini_app_url: miniAppUrl(request, env),
+    expected_webhook_url: expectedWebhook,
+    bot,
+    webhook,
+    webhook_matches_expected: webhook.ok ? webhook.url === expectedWebhook : false,
   });
 }
 
