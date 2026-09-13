@@ -7,6 +7,7 @@ import { handleTelegramCenterInteractiveRequest } from "./telegram-center-intera
 import { handleTelegramCenterProfilesV2 } from "./telegram-center-profiles-v2.js";
 import { handleTelegramCenterHistoryV3 } from "./telegram-center-history-v3.js";
 import { handleTelegramCenterCatalogAdmin } from "./telegram-center-catalog-admin.js";
+import { handleTelegramCenterSubscriptionsV4 } from "./telegram-center-subscriptions-v4.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -31,6 +32,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const centerCatalogAdminResponse = await handleTelegramCenterCatalogAdmin(request.clone(), env, path);
   if (centerCatalogAdminResponse) return centerCatalogAdminResponse;
+
+  const centerSubscriptionsV4Response = await handleTelegramCenterSubscriptionsV4(request.clone(), env, path);
+  if (centerSubscriptionsV4Response) return centerSubscriptionsV4Response;
 
   const centerHistoryV3Response = await handleTelegramCenterHistoryV3(request.clone(), env, path);
   if (centerHistoryV3Response) return centerHistoryV3Response;
@@ -79,20 +83,12 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (centerUiResponse) {
     if (path === "/telegram-app" && request.method === "GET") {
       let body = await centerUiResponse.text();
-      if (!body.includes("/telegram-app/profiles-v2.js")) {
-        body = body.replace("</body>", '<script src="/telegram-app/profiles-v2.js"></script></body>');
-      }
-      if (!body.includes("/telegram-app/history-v3.js")) {
-        body = body.replace("</body>", '<script src="/telegram-app/history-v3.js"></script></body>');
-      }
+      if (!body.includes("/telegram-app/profiles-v2.js")) body = body.replace("</body>", '<script src="/telegram-app/profiles-v2.js"></script></body>');
+      if (!body.includes("/telegram-app/history-v3.js")) body = body.replace("</body>", '<script src="/telegram-app/history-v3.js"></script></body>');
+      if (!body.includes("/telegram-app/subscriptions-v4.js")) body = body.replace("</body>", '<script src="/telegram-app/subscriptions-v4.js"></script></body>');
       return new Response(body, {
         status:centerUiResponse.status,
-        headers:{
-          "Content-Type":"text/html; charset=utf-8",
-          "Cache-Control":"no-store, no-cache, must-revalidate",
-          "Pragma":"no-cache",
-          "X-Content-Type-Options":"nosniff",
-        },
+        headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"},
       });
     }
     return centerUiResponse;
@@ -105,14 +101,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       for (const src of ["/telegram-app/game-follow.js","/telegram-app/preferences.js","/telegram-app/matchup.js"]) {
         if (!enhanced.includes(src)) enhanced = enhanced.replace("</body>", `<script src="${src}"></script></body>`);
       }
-      return new Response(enhanced, {
-        status:miniAppV2Response.status,
-        headers:{
-          "Content-Type":"text/html; charset=utf-8",
-          "Cache-Control":"public, max-age=120",
-          "X-Content-Type-Options":"nosniff",
-        },
-      });
+      return new Response(enhanced, {status:miniAppV2Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=120","X-Content-Type-Options":"nosniff"}});
     }
     return miniAppV2Response;
   }
@@ -122,42 +111,25 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   if (!["GET"].includes(request.method)) return null;
   if (!env.DB) {
-    if (path.startsWith("/api/control/teams") || path.startsWith("/api/telegram-app/teams")) {
-      return json({ ok:false,error:"missing_d1_binding" },503);
-    }
+    if (path.startsWith("/api/control/teams") || path.startsWith("/api/telegram-app/teams")) return json({ ok:false,error:"missing_d1_binding" },503);
     return null;
   }
 
   if (path === "/api/control/teams" || path === "/api/telegram-app/teams") {
     const window = normalizeWindow(new URL(request.url).searchParams.get("window"));
-    try {
-      const teams = await loadTeamRankings(env.DB, window);
-      return json({ ok:true,window,teams });
-    } catch (error) {
-      console.error("current team rankings failed", error);
-      return json({ ok:false,error:"current_team_layer_not_ready",teams:[] },503);
-    }
+    try { return json({ ok:true,window,teams:await loadTeamRankings(env.DB, window) }); }
+    catch (error) { console.error("current team rankings failed", error); return json({ ok:false,error:"current_team_layer_not_ready",teams:[] },503); }
   }
 
   const match = /^\/api\/(?:control|telegram-app)\/teams\/([A-Za-z]{3})$/.exec(path);
   if (match) {
     const tri = match[1].toUpperCase();
-    try {
-      const detail = await loadTeamDetail(env.DB, tri);
-      if (!detail) return json({ ok:false,error:"team_not_found" },404);
-      return json({ ok:true,...detail });
-    } catch (error) {
-      console.error("current team detail failed", error);
-      return json({ ok:false,error:"current_team_layer_not_ready" },503);
-    }
+    try { const detail = await loadTeamDetail(env.DB, tri); if (!detail) return json({ ok:false,error:"team_not_found" },404); return json({ ok:true,...detail }); }
+    catch (error) { console.error("current team detail failed", error); return json({ ok:false,error:"current_team_layer_not_ready" },503); }
   }
 
   return null;
 }
 
-function normalizeWindow(value) {
-  const n=Number(value);
-  return [5,10,20].includes(n)?n:20;
-}
-
+function normalizeWindow(value) { const n=Number(value); return [5,10,20].includes(n)?n:20; }
 function json(payload,status=200){return new Response(JSON.stringify(payload),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}})}
