@@ -6,6 +6,7 @@ import { handleTelegramCenterDataRequest } from "./telegram-center-data.js";
 import { handleTelegramCenterInteractiveRequest } from "./telegram-center-interactive.js";
 import { handleTelegramCenterProfilesV2 } from "./telegram-center-profiles-v2.js";
 import { handleTelegramCenterHistoryV3 } from "./telegram-center-history-v3.js";
+import { handleTelegramCenterCatalogAdmin } from "./telegram-center-catalog-admin.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -27,6 +28,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const winlineCenterResponse = await handleWinlineCenterIngest(request.clone(), env, path);
   if (winlineCenterResponse) return winlineCenterResponse;
+
+  const centerCatalogAdminResponse = await handleTelegramCenterCatalogAdmin(request.clone(), env, path);
+  if (centerCatalogAdminResponse) return centerCatalogAdminResponse;
 
   const centerHistoryV3Response = await handleTelegramCenterHistoryV3(request.clone(), env, path);
   if (centerHistoryV3Response) return centerHistoryV3Response;
