@@ -8,6 +8,7 @@ import { handleTelegramCenterProfilesV2 } from "./telegram-center-profiles-v2.js
 import { handleTelegramCenterHistoryV3 } from "./telegram-center-history-v3.js";
 import { handleTelegramCenterCatalogAdmin } from "./telegram-center-catalog-admin.js";
 import { handleTelegramCenterSubscriptionsV4 } from "./telegram-center-subscriptions-v4.js";
+import { handleTelegramCenterNotificationRoutes } from "./telegram-center-notification-routes.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -29,6 +30,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const winlineCenterResponse = await handleWinlineCenterIngest(request.clone(), env, path);
   if (winlineCenterResponse) return winlineCenterResponse;
+
+  const centerNotificationResponse = await handleTelegramCenterNotificationRoutes(request.clone(), env, path);
+  if (centerNotificationResponse) return centerNotificationResponse;
 
   const centerCatalogAdminResponse = await handleTelegramCenterCatalogAdmin(request.clone(), env, path);
   if (centerCatalogAdminResponse) return centerCatalogAdminResponse;
@@ -86,10 +90,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes("/telegram-app/profiles-v2.js")) body = body.replace("</body>", '<script src="/telegram-app/profiles-v2.js"></script></body>');
       if (!body.includes("/telegram-app/history-v3.js")) body = body.replace("</body>", '<script src="/telegram-app/history-v3.js"></script></body>');
       if (!body.includes("/telegram-app/subscriptions-v4.js")) body = body.replace("</body>", '<script src="/telegram-app/subscriptions-v4.js"></script></body>');
-      return new Response(body, {
-        status:centerUiResponse.status,
-        headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"},
-      });
+      return new Response(body, {status:centerUiResponse.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerUiResponse;
   }
@@ -98,9 +99,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (miniAppV2Response) {
     if (path === "/telegram-app" && request.method === "GET") {
       let enhanced = await miniAppV2Response.text();
-      for (const src of ["/telegram-app/game-follow.js","/telegram-app/preferences.js","/telegram-app/matchup.js"]) {
-        if (!enhanced.includes(src)) enhanced = enhanced.replace("</body>", `<script src="${src}"></script></body>`);
-      }
+      for (const src of ["/telegram-app/game-follow.js","/telegram-app/preferences.js","/telegram-app/matchup.js"]) if (!enhanced.includes(src)) enhanced = enhanced.replace("</body>", `<script src="${src}"></script></body>`);
       return new Response(enhanced, {status:miniAppV2Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=120","X-Content-Type-Options":"nosniff"}});
     }
     return miniAppV2Response;
