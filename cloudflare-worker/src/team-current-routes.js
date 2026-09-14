@@ -6,6 +6,7 @@ import { handleTelegramCenterDataRequest } from "./telegram-center-data.js";
 import { handleTelegramCenterInteractiveRequest } from "./telegram-center-interactive.js";
 import { handleTelegramCenterProfilesV2 } from "./telegram-center-profiles-v2.js";
 import { handleTelegramCenterHistoryV3 } from "./telegram-center-history-v3.js";
+import { handleCurrentSeasonTeamGuard } from "./telegram-center-current-season-guard.js";
 import { handleTelegramCenterCatalogAdmin } from "./telegram-center-catalog-admin.js";
 import { handleTelegramCenterRosterAdmin } from "./telegram-center-roster-admin.js";
 import { handleTelegramCenterSubscriptionsV4 } from "./telegram-center-subscriptions-v4.js";
@@ -55,6 +56,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const centerSubscriptionsV4Response = await handleTelegramCenterSubscriptionsV4(request.clone(), env, path);
   if (centerSubscriptionsV4Response) return centerSubscriptionsV4Response;
+
+  const currentSeasonGuardResponse = await handleCurrentSeasonTeamGuard(request.clone(), env, path);
+  if (currentSeasonGuardResponse) return currentSeasonGuardResponse;
 
   const centerHistoryV3Response = await handleTelegramCenterHistoryV3(request.clone(), env, path);
   if (centerHistoryV3Response) return centerHistoryV3Response;
