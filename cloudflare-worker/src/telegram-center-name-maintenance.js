@@ -1,4 +1,4 @@
-import fullNames from "../../ru_full_names.json";
+import fullNames from "../../ru_full_names.json" with { type: "json" };
 
 export async function runCenterNameMaintenance(env,{force=false}={}) {
   if (!env.DB) return {ok:false,error:"missing_d1_binding"};
