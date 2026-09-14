@@ -37,7 +37,14 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (winlineCenterResponse) return winlineCenterResponse;
 
   const centerV7Response = await handleTelegramCenterV7(request.clone(), env, path);
-  if (centerV7Response) return centerV7Response;
+  if (centerV7Response) {
+    if (path === "/telegram-app" && request.method === "GET") {
+      let body = await centerV7Response.text();
+      body = body.replace('data-tab="mine">Мои</button>', 'data-tab="follows">Мои</button>');
+      return new Response(body, {status:centerV7Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
+    }
+    return centerV7Response;
+  }
 
   const centerProductV6Response = await handleTelegramCenterProductV6(request.clone(), env, path);
   if (centerProductV6Response) return centerProductV6Response;
