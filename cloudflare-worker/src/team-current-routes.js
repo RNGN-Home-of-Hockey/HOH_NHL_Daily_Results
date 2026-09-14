@@ -11,6 +11,7 @@ import { handleTelegramCenterRosterAdmin } from "./telegram-center-roster-admin.
 import { handleTelegramCenterSubscriptionsV4 } from "./telegram-center-subscriptions-v4.js";
 import { handleTelegramCenterNotificationRoutes } from "./telegram-center-notification-routes.js";
 import { handleTelegramCenterProfileUiV5 } from "./telegram-center-profile-ui-v5.js";
+import { handleTelegramCenterProductV6 } from "./telegram-center-product-v6.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -32,6 +33,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const winlineCenterResponse = await handleWinlineCenterIngest(request.clone(), env, path);
   if (winlineCenterResponse) return winlineCenterResponse;
+
+  const centerProductV6Response = await handleTelegramCenterProductV6(request.clone(), env, path);
+  if (centerProductV6Response) return centerProductV6Response;
 
   const centerProfileV5Response = handleTelegramCenterProfileUiV5(request, path);
   if (centerProfileV5Response) return centerProfileV5Response;
@@ -99,6 +103,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes("/telegram-app/history-v3.js")) body = body.replace("</body>", '<script src="/telegram-app/history-v3.js"></script></body>');
       if (!body.includes("/telegram-app/subscriptions-v4.js")) body = body.replace("</body>", '<script src="/telegram-app/subscriptions-v4.js"></script></body>');
       if (!body.includes("/telegram-app/profile-v5.js")) body = body.replace("</body>", '<script src="/telegram-app/profile-v5.js"></script></body>');
+      if (!body.includes("/telegram-app/profile-v6.js")) body = body.replace("</body>", '<script src="/telegram-app/profile-v6.js"></script></body>');
       return new Response(body, {status:centerUiResponse.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerUiResponse;
