@@ -102,7 +102,6 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes("/telegram-app/profiles-v2.js")) body = body.replace("</body>", '<script src="/telegram-app/profiles-v2.js"></script></body>');
       if (!body.includes("/telegram-app/history-v3.js")) body = body.replace("</body>", '<script src="/telegram-app/history-v3.js"></script></body>');
       if (!body.includes("/telegram-app/subscriptions-v4.js")) body = body.replace("</body>", '<script src="/telegram-app/subscriptions-v4.js"></script></body>');
-      if (!body.includes("/telegram-app/profile-v5.js")) body = body.replace("</body>", '<script src="/telegram-app/profile-v5.js"></script></body>');
       if (!body.includes("/telegram-app/profile-v6.js")) body = body.replace("</body>", '<script src="/telegram-app/profile-v6.js"></script></body>');
       return new Response(body, {status:centerUiResponse.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
