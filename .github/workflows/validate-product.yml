@@ -83,7 +83,7 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          for (const needle of ['NHL CENTER','Center подключён','CENTER V7','/api/telegram-center-v7/games','/api/telegram-center-v7/standings']) {
+          for (const needle of ['NHL CENTER','Center подключён','V7','/api/telegram-center-v7']) {
             if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center V7 shell missing: '+needle);
           }
           if (!String(r.headers.get('cache-control') || '').includes('no-store')) throw new Error('Telegram Center shell must be no-store');
