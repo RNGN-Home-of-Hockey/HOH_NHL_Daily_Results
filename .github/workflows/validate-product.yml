@@ -83,8 +83,8 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          for (const needle of ['NHL CENTER','Center подключён','/api/telegram-app/bootstrap','/api/telegram-app/schedule']) {
-            if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center shell missing: '+needle);
+          for (const needle of ['NHL CENTER','Center подключён','CENTER V7','/api/telegram-center-v7/games','/api/telegram-center-v7/standings']) {
+            if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center V7 shell missing: '+needle);
           }
           if (!String(r.headers.get('cache-control') || '').includes('no-store')) throw new Error('Telegram Center shell must be no-store');
           if (mini.includes('<script src="/telegram-app/app.js"></script>')) throw new Error('Telegram Center must not depend on cached external app.js');
