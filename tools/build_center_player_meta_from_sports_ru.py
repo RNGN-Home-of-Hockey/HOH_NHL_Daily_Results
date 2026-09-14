@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Build Russian NHL player names for HOH NHL Center from Sports.ru roster pages.
+"""Build full Russian NHL player names for HOH products from Sports.ru rosters.
 
-Output is compatible with POST /api/telegram-center-admin/player-meta/import.
-The matcher is conservative: current NHL roster player is linked only when the
-Sports.ru row has a unique jersey-number + broad-position match.
+Outputs:
+- a rich payload compatible with POST /api/telegram-center-admin/player-meta/import;
+- a compact NHL player-id -> full Russian name JSON map reusable by the Center
+  and the daily Results Bot.
 
-No database write is performed by this script.
+The matcher is deliberately conservative: a current NHL roster player is linked
+only when Sports.ru yields a unique jersey-number + broad-position match.
 """
 from __future__ import annotations
 
@@ -103,8 +105,6 @@ def parse_sports_roster(html: str) -> list[SportsPlayer]:
     out: list[SportsPlayer] = []
     seen: set[tuple[int | None, str, str | None]] = set()
 
-    # Sports.ru currently renders roster rows as table-like text. Prefer DOM rows,
-    # but keep a text fallback because markup changes more often than content.
     for row in soup.find_all(["tr", "li", "div"]):
         text = " ".join(row.stripped_strings)
         if not text or not any(word in text.lower() for word in POS_RU):
@@ -130,7 +130,6 @@ def parse_sports_roster(html: str) -> list[SportsPlayer]:
     if out:
         return out
 
-    # Text fallback for simplified HTML/cached snapshots.
     text = "\n".join(soup.stripped_strings)
     pat = re.compile(r"(?m)^\s*(?:(\d{1,2})\s+)?([А-ЯЁ][А-Яа-яЁё'’-]+(?:\s+[А-ЯЁ][А-Яа-яЁё'’-]+){1,3})\s+\d{1,2}\s+\d{3}\s+\d{2,3}\s+(вратарь|защитник|нападающий)\s*$")
     for m in pat.finditer(text):
@@ -178,6 +177,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--teams", default=",".join(SPORTS_SLUGS), help="Comma-separated NHL tri-codes")
     ap.add_argument("--out", default="state/center_player_meta_sports_ru.json")
+    ap.add_argument("--full-names-out", default="ru_full_names.json", help="Reusable player-id -> full Russian name map")
     ap.add_argument("--sleep", type=float, default=0.15)
     ap.add_argument("--countries", action="store_true", help="Add provisional NHL birth-country codes (extra API calls)")
     args = ap.parse_args()
@@ -214,13 +214,14 @@ def main() -> int:
                 print(f"countries: {i}/{len(players)}", file=sys.stderr)
             time.sleep(max(0.0, args.sleep))
 
+    generated_at = datetime.now(timezone.utc).isoformat()
     for p in players:
         p.pop("number", None)
         p.pop("broad_position", None)
-        p["source_updated_at"] = datetime.now(timezone.utc).isoformat()
+        p["source_updated_at"] = generated_at
 
     payload = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": generated_at,
         "source": "sports.ru roster pages + NHL roster API",
         "players": players,
         "unresolved": unresolved,
@@ -228,8 +229,14 @@ def main() -> int:
     }
     path = Path(args.out)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"out": str(path), "teams": len(teams), "players": len(players), "unresolved": len(unresolved)}, ensure_ascii=False))
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    full_names = {str(p["player_id"]): p["full_name_ru"] for p in sorted(players, key=lambda x: int(x["player_id"])) if p.get("full_name_ru")}
+    names_path = Path(args.full_names_out)
+    names_path.parent.mkdir(parents=True, exist_ok=True)
+    names_path.write_text(json.dumps(full_names, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    print(json.dumps({"out": str(path), "full_names_out": str(names_path), "teams": len(teams), "players": len(players), "unresolved": len(unresolved)}, ensure_ascii=False))
     return 0
 
 
