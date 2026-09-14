@@ -15,6 +15,7 @@ import { handleTelegramCenterProfileUiV5 } from "./telegram-center-profile-ui-v5
 import { handleTelegramCenterProductV6 } from "./telegram-center-product-v6.js";
 import { handleTelegramCenterV7 } from "./telegram-center-v7.js";
 import { handleTelegramCenterV8Ui } from "./telegram-center-v8-ui.js";
+import { handleTelegramCenterV8BrandAssets } from "./telegram-center-v8-brand-assets.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -37,11 +38,15 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const winlineCenterResponse = await handleWinlineCenterIngest(request.clone(), env, path);
   if (winlineCenterResponse) return winlineCenterResponse;
 
+  const centerV8BrandResponse = handleTelegramCenterV8BrandAssets(request, path);
+  if (centerV8BrandResponse) return centerV8BrandResponse;
+
   const centerV8Response = handleTelegramCenterV8Ui(request, path);
   if (centerV8Response) {
     if (path === "/telegram-app" && request.method === "GET") {
       let body = await centerV8Response.text();
       body = body.replace('data-tab="mine">Мои</button>', 'data-tab="follows">Мои</button>');
+      if (!body.includes('/telegram-app/v8-brand.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v8-brand.css"></head>');
       return new Response(body, {status:centerV8Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerV8Response;
