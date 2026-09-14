@@ -9,6 +9,7 @@ import { handleTelegramProductBotRequest } from "./telegram-product-bot.js";
 import { handleTeamCurrentRequest } from "./team-current-routes.js";
 import { getCenterNotificationStatus, runCenterNotificationTick } from "./telegram-center-notification-engine.js";
 import { runCenterScheduleMaintenance } from "./telegram-center-schedule-maintenance.js";
+import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -86,6 +87,11 @@ export default {
       ctx.waitUntil(
         runCenterScheduleMaintenance(env).catch((error) => {
           console.error("scheduled Telegram Center schedule maintenance failed", error);
+        }),
+      );
+      ctx.waitUntil(
+        runCenterNameMaintenance(env).catch((error) => {
+          console.error("scheduled Telegram Center Russian-name maintenance failed", error);
         }),
       );
     }
