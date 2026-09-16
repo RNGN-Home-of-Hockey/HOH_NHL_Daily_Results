@@ -16,6 +16,7 @@ import { handleTelegramCenterProductV6 } from "./telegram-center-product-v6.js";
 import { handleTelegramCenterV7 } from "./telegram-center-v7.js";
 import { handleTelegramCenterV8Ui } from "./telegram-center-v8-ui.js";
 import { handleTelegramCenterV8BrandAssets } from "./telegram-center-v8-brand-assets.js";
+import { handleTelegramCenterV9Enhancer } from "./telegram-center-v9-enhancer.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -38,6 +39,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const winlineCenterResponse = await handleWinlineCenterIngest(request.clone(), env, path);
   if (winlineCenterResponse) return winlineCenterResponse;
 
+  const centerV9Response = await handleTelegramCenterV9Enhancer(request.clone(), env, path);
+  if (centerV9Response) return centerV9Response;
+
   const centerV8BrandResponse = handleTelegramCenterV8BrandAssets(request, path);
   if (centerV8BrandResponse) return centerV8BrandResponse;
 
@@ -47,6 +51,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
       let body = await centerV8Response.text();
       body = body.replace('data-tab="mine">Мои</button>', 'data-tab="follows">Мои</button>');
       if (!body.includes('/telegram-app/v8-brand.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v8-brand.css"></head>');
+      if (!body.includes('/telegram-app/v9.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v9.css"></head>');
+      if (!body.includes('/telegram-app/v9.js')) body = body.replace('</body>', '<script src="/telegram-app/v9.js"></script></body>');
       return new Response(body, {status:centerV8Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerV8Response;
