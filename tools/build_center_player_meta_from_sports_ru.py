@@ -29,7 +29,7 @@ from bs4 import BeautifulSoup
 
 NHL = "https://api-web.nhle.com/v1"
 SPORTS = "https://www.sports.ru"
-UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.1; +https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)"
+UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.2; +https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)"
 
 SPORTS_SLUGS = {
     "ANA": "hockey/club/anaheim-ducks",
@@ -108,6 +108,22 @@ def sports_team_url(tri: str) -> str:
     return f"{SPORTS}/{SPORTS_SLUGS[tri]}/team/"
 
 
+def clean_sports_name(name: str) -> str:
+    """Strip duplicate Latin labels from Sports.ru anchors such as 'Aatu Аату Рятю'."""
+    name = re.sub(r"\s+", " ", str(name or "")).strip()
+    if not name:
+        return ""
+    has_cyr = bool(re.search(r"[А-Яа-яЁё]", name))
+    has_latin = bool(re.search(r"[A-Za-z]", name))
+    if has_cyr and has_latin:
+        cyr_tokens = [token for token in name.split() if re.search(r"[А-Яа-яЁё]", token)]
+        if len(cyr_tokens) >= 2:
+            name = " ".join(cyr_tokens)
+    # Russian name cache must never keep an English duplicate in parentheses either.
+    name = re.sub(r"\s*\([A-Za-z][^)]*\)\s*$", "", name).strip()
+    return name
+
+
 def parse_sports_roster(html: str) -> list[SportsPlayer]:
     soup = BeautifulSoup(html, "html.parser")
     out: list[SportsPlayer] = []
@@ -120,11 +136,15 @@ def parse_sports_roster(html: str) -> list[SportsPlayer]:
         link = row.find("a", href=re.compile(r"/hockey/(?:person|player)/|/hockey/[^/]+/"))
         if not link:
             continue
-        name = " ".join(link.stripped_strings).strip()
+        raw_name = " ".join(link.stripped_strings).strip()
+        name = clean_sports_name(raw_name)
         if len(name.split()) < 2 or not re.search(r"[А-Яа-яЁё]", name):
             continue
         pos = next((code for ru, code in POS_RU.items() if ru in text.lower()), None)
-        before = text[: max(0, text.find(name))]
+        before_index = text.find(raw_name)
+        if before_index < 0:
+            before_index = text.find(name)
+        before = text[: max(0, before_index)]
         nums = re.findall(r"(?<!\d)(\d{1,2})(?!\d)", before)
         number = int(nums[-1]) if nums else None
         href = link.get("href")
@@ -141,7 +161,8 @@ def parse_sports_roster(html: str) -> list[SportsPlayer]:
     text = "\n".join(soup.stripped_strings)
     pat = re.compile(r"(?m)^\s*(?:(\d{1,2})\s+)?([А-ЯЁ][А-Яа-яЁё'’-]+(?:\s+[А-ЯЁ][А-Яа-яЁё'’-]+){1,3})\s+\d{1,2}\s+\d{3}\s+\d{2,3}\s+(вратарь|защитник|нападающий)\s*$")
     for m in pat.finditer(text):
-        out.append(SportsPlayer(int(m.group(1)) if m.group(1) else None, m.group(2).strip(), POS_RU[m.group(3)], None))
+        name = clean_sports_name(m.group(2))
+        out.append(SportsPlayer(int(m.group(1)) if m.group(1) else None, name, POS_RU[m.group(3)], None))
     return out
 
 
@@ -175,7 +196,6 @@ def latinize(text: str) -> str:
     raw = unicodedata.normalize("NFKD", "".join(out))
     raw = "".join(c for c in raw if not unicodedata.combining(c))
     raw = re.sub(r"[^a-z0-9]+", " ", raw).strip()
-    # Common Russian/English hockey-name transliteration differences.
     raw = raw.replace("kh", "h").replace("ts", "c").replace("iy", "i").replace("yy", "y")
     return re.sub(r"\s+", " ", raw)
 
@@ -212,9 +232,8 @@ def match_team(nhl_rows: list[dict[str, Any]], sports_rows: list[SportsPlayer]) 
     def accept(p: dict[str, Any], idx: int, method: str, score: float = 1.0) -> None:
         s = sports_rows[idx]
         used.add(idx)
-        matched.append({**p, "full_name_ru": s.name_ru, "sports_ru_url": s.url, "match_method": method, "match_score": round(score, 4)})
+        matched.append({**p, "full_name_ru": clean_sports_name(s.name_ru), "sports_ru_url": s.url, "match_method": method, "match_score": round(score, 4)})
 
-    # Pass 1: the old high-confidence rule.
     pending: list[dict[str, Any]] = []
     for p in nhl_rows:
         candidates = [i for i, s in enumerate(sports_rows) if i not in used and s.number == p["number"] and s.broad_position == p["broad_position"]]
@@ -223,7 +242,6 @@ def match_team(nhl_rows: list[dict[str, Any]], sports_rows: list[SportsPlayer]) 
         else:
             pending.append(p)
 
-    # Pass 2: transliterated full-name similarity, guarded by position and margin.
     still: list[dict[str, Any]] = []
     for p in pending:
         scored: list[tuple[float, int]] = []
@@ -242,7 +260,6 @@ def match_team(nhl_rows: list[dict[str, Any]], sports_rows: list[SportsPlayer]) 
         else:
             still.append(p)
 
-    # Pass 3: exact normalized surname + first initial where unique.
     for p in still:
         en = name_forms(p["full_name_en"])
         en_parts = en[0].split() if en else []
@@ -261,7 +278,7 @@ def match_team(nhl_rows: list[dict[str, Any]], sports_rows: list[SportsPlayer]) 
         if len(candidates) == 1:
             accept(p, candidates[0], "surname_initial", 0.90)
         else:
-            unresolved.append({**p, "candidate_names_ru": [sports_rows[i].name_ru for i in candidates[:5]]})
+            unresolved.append({**p, "candidate_names_ru": [clean_sports_name(sports_rows[i].name_ru) for i in candidates[:5]]})
 
     return matched, unresolved
 
@@ -314,6 +331,7 @@ def main() -> int:
     for p in players:
         p.pop("number", None)
         p.pop("broad_position", None)
+        p["full_name_ru"] = clean_sports_name(p.get("full_name_ru") or "")
         p["source_updated_at"] = generated_at
 
     payload = {
@@ -327,7 +345,11 @@ def main() -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    full_names = {str(p["player_id"]): p["full_name_ru"] for p in sorted(players, key=lambda x: int(x["player_id"])) if p.get("full_name_ru")}
+    full_names = {
+        str(p["player_id"]): clean_sports_name(p["full_name_ru"])
+        for p in sorted(players, key=lambda x: int(x["player_id"]))
+        if clean_sports_name(p.get("full_name_ru") or "")
+    }
     names_path = Path(args.full_names_out)
     names_path.parent.mkdir(parents=True, exist_ok=True)
     names_path.write_text(json.dumps(full_names, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
