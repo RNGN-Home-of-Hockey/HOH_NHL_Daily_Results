@@ -137,9 +137,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
     if(path==="/control"&&request.method==="GET"){
       let body=await controlV2Response.text();
       if(!body.includes("/control/nav.js"))body=body.replace("</body>",'<script src="/control/nav.js"></script></body>');
-      return new Response(body,{status:centerV2Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=120","X-Content-Type-Options":"nosniff"}});
+      return new Response(body,{status:controlV2Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=120","X-Content-Type-Options":"nosniff"}});
     }
-    return centerV2Response;
+    return controlV2Response;
   }
 
   const centerUiResponse = handleTelegramCenterUi(request, path, env);
