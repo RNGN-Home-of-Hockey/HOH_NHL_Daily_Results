@@ -9,6 +9,7 @@ on:
       - 'tools/**'
       - 'tests/**'
       - 'state/center_player_pronunciations_eliteprospects.json'
+      - 'state/hoh_youtube_media.json'
       - 'wrangler.jsonc'
       - 'package.json'
       - '.github/workflows/validate-product.yml'
@@ -42,7 +43,7 @@ jobs:
 
       - name: Python syntax and rank invariant
         run: |
-          python -m py_compile tools/build_compact_snapshots.py tools/build_current_team_snapshots.py tools/build_data_core_meta.py tools/build_center_player_pronunciations_from_eliteprospects.py
+          python -m py_compile tools/build_compact_snapshots.py tools/build_current_team_snapshots.py tools/build_data_core_meta.py tools/build_center_player_pronunciations_from_eliteprospects.py tools/build_hoh_youtube_media.py tools/analyze_center_player_name_fit.py
           python - <<'PY'
           import sys
           sys.path.insert(0, 'tools')
@@ -84,7 +85,7 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v9-polish.js','/telegram-app/v11.js']) {
+          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v9-polish.js','/telegram-app/v11.js','/telegram-app/v12.js']) {
             if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center shell missing: '+needle);
           }
           if (!mini.includes('data-tab="follows">Мои</button>')) throw new Error('Center subscription tab contract missing');
@@ -103,6 +104,14 @@ jobs:
           r = await handleTeamCurrentRequest(new Request('https://example.test/api/telegram-center-v11/pronunciation/8478864'), {}, '/api/telegram-center-v11/pronunciation/8478864');
           const kaprizovAudio = await r.json();
           if (!r || r.status !== 200 || !kaprizovAudio.available || kaprizovAudio.source !== 'eliteprospects_player_audio' || !String(kaprizovAudio.audio_url||'').includes('kirill_kaprizov.mp3')) throw new Error('Kaprizov Elite Prospects audio contract failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v12.js'), {}, '/telegram-app/v12.js');
+          const v12 = await r.text();
+          for (const needle of ['v12PhotoBadge','v12Audio','installSeasons','место\\s+обновится','/api/telegram-center-v12']) if (!r || r.status !== 200 || !v12.includes(needle)) throw new Error('Center V12 UI missing: '+needle);
+          r = await handleTeamCurrentRequest(new Request('https://example.test/api/telegram-center-v12/media'), {}, '/api/telegram-center-v12/media');
+          const media = await r.json();
+          if (!r || r.status !== 200 || !media.configured || !Array.isArray(media.items) || media.items.length !== 3) throw new Error('Center V12 media route failed');
+          if (media.items.filter(x=>x.kind==='short').length !== 2 || media.items.filter(x=>x.kind==='news').length !== 1) throw new Error('Center V12 media mix failed');
+          if (!media.items.every(x=>String(x.url||'').startsWith('https://www.youtube.com/') && String(x.thumb||'').startsWith('https://'))) throw new Error('Center V12 media links failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
           if (!r || r.status !== 200 || !(await r.text()).includes('gameFollowEnhancer')) throw new Error('Game-follow JS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/preferences.js'), {}, '/telegram-app/preferences.js');
@@ -128,6 +137,29 @@ jobs:
           const delegated = await handleTelegramProductBotRequest(req,{TELEGRAM_WEBHOOK_VERIFY_SECRET:secret},'/api/telegram');
           if (delegated !== null) throw new Error('Group Telegram update was intercepted');
           console.log('ROUTE_CONTRACTS_OK');
+          JS
+
+      - name: Kaprizov historical season smoke
+        run: |
+          node --input-type=module <<'JS'
+          import { handleTeamCurrentRequest } from './cloudflare-worker/src/team-current-routes.js';
+          const call = async path => {
+            let last;
+            for (let i=0;i<3;i++) {
+              const r=await handleTeamCurrentRequest(new Request('https://example.test'+path), {}, path);
+              const d=await r.json().catch(()=>({}));
+              if (r.ok) return d;
+              last=new Error(JSON.stringify(d));
+              await new Promise(res=>setTimeout(res,500*(i+1)));
+            }
+            throw last;
+          };
+          const seasons=await call('/api/telegram-center-v12/players/8478864/seasons');
+          if (!(seasons.seasons||[]).some(x=>x.season_id==='20252026')) throw new Error('Kaprizov 2025/26 season missing');
+          const prev=await call('/api/telegram-center-v12/players/8478864/season/20252026');
+          if (!prev.stats || Number(prev.stats.games_played||0)<1 || Number(prev.stats.points||0)<1) throw new Error('Kaprizov historical stats missing');
+          if (!/^[A-Z]{3}$/.test(String(prev.team_tri||''))) throw new Error('Kaprizov historical team missing');
+          console.log('KAPRIZOV_HISTORY_OK', prev.season, prev.team_tri, prev.stats);
           JS
 
       - name: Telegram notification rules
