@@ -19,6 +19,7 @@ import { handleTelegramCenterV8BrandAssets } from "./telegram-center-v8-brand-as
 import { handleTelegramCenterV9Enhancer } from "./telegram-center-v9-enhancer.js";
 import { handleTelegramCenterV9Polish } from "./telegram-center-v9-polish.js";
 import { handleTelegramCenterV11Polish } from "./telegram-center-v11-polish.js";
+import { handleTelegramCenterV12Polish } from "./telegram-center-v12-polish.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -50,6 +51,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const centerV11PolishResponse = handleTelegramCenterV11Polish(request, path);
   if (centerV11PolishResponse) return centerV11PolishResponse;
 
+  const centerV12PolishResponse = await handleTelegramCenterV12Polish(request, env, path);
+  if (centerV12PolishResponse) return centerV12PolishResponse;
+
   const centerV8BrandResponse = handleTelegramCenterV8BrandAssets(request, path);
   if (centerV8BrandResponse) return centerV8BrandResponse;
 
@@ -63,6 +67,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes('/telegram-app/v9.js')) body = body.replace('</body>', '<script src="/telegram-app/v9.js"></script></body>');
       if (!body.includes('/telegram-app/v9-polish.js')) body = body.replace('</body>', '<script src="/telegram-app/v9-polish.js"></script></body>');
       if (!body.includes('/telegram-app/v11.js')) body = body.replace('</body>', '<script src="/telegram-app/v11.js"></script></body>');
+      if (!body.includes('/telegram-app/v12.js')) body = body.replace('</body>', '<script src="/telegram-app/v12.js"></script></body>');
       return new Response(body, {status:centerV8Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerV8Response;
