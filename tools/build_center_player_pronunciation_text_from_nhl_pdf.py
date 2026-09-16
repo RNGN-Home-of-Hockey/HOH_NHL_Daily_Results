@@ -84,6 +84,31 @@ def build_index(lines: list[str]) -> dict[str,str]:
     return idx
 
 
+def contains_words(haystack: str, needle: str) -> bool:
+    return f" {needle} " in f" {haystack} "
+
+
+def match_pronunciation(idx: dict[str,str], first: str, last: str) -> tuple[str|None,str]:
+    first_n, last_n = norm(first), norm(last)
+    exact = norm(f"{last} {first}")
+    if exact in idx:
+        return idx[exact], "exact"
+
+    # Extra surname components are common in NHL data/PDF differences, e.g.
+    # Emil Lilleberg vs. Martinsen Lilleberg Emil. Require both first and last.
+    strong = [v for k,v in idx.items() if contains_words(k,last_n) and contains_words(k,first_n)]
+    if len(strong)==1:
+        return strong[0], "first_last_unique"
+
+    # Public NHL APIs sometimes use a nickname/initials while the official guide uses
+    # the legal first name (J.J. Moser vs Janis Moser). A surname-only fallback is used
+    # only when that surname occurs exactly once in the entire official guide.
+    surname = [v for k,v in idx.items() if contains_words(k,last_n)]
+    if len(surname)==1:
+        return surname[0], "unique_surname_alias"
+    return None, "unresolved"
+
+
 def main() -> int:
     ap=argparse.ArgumentParser()
     ap.add_argument("--out",default="state/center_player_pronunciation_text_nhl.json")
@@ -92,25 +117,21 @@ def main() -> int:
     players=roster(s)
     lines=pdf_lines(s)
     idx=build_index(lines)
-    mapped={}; unresolved=[]
+    mapped={}; unresolved=[]; methods={}
     for p in players:
-        key=norm(f"{p['last_name']} {p['first_name']}")
-        pron=idx.get(key)
-        if not pron:
-            # Some PDF rows omit punctuation/diacritics differently; normalized prefix matching is safe when unique.
-            candidates=[v for k,v in idx.items() if k==key or k.startswith(key+' ') or key.startswith(k+' ')]
-            if len(candidates)==1:
-                pron=candidates[0]
+        pron,method=match_pronunciation(idx,p["first_name"],p["last_name"])
         if pron:
+            methods[method]=methods.get(method,0)+1
             mapped[str(p['player_id'])]={
                 "player_id":p["player_id"],"full_name_en":p["full_name_en"],"team_tri":p["team_tri"],
                 "pronunciation_text":pron,"pronunciation_source":"official_nhl_2025_26_pdf","source_url":GUIDE_URL,
+                "match_method":method,
             }
         else:
             unresolved.append(p)
-    payload={"source":"official_nhl_2025_26_pronunciation_guide","source_url":GUIDE_URL,"matched":len(mapped),"roster_players":len(players),"players":mapped,"unresolved":unresolved}
+    payload={"source":"official_nhl_2025_26_pronunciation_guide","source_url":GUIDE_URL,"matched":len(mapped),"roster_players":len(players),"match_methods":methods,"players":mapped,"unresolved":unresolved}
     out=Path(args.out); out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(payload,ensure_ascii=False,indent=2,sort_keys=True)+"\n",encoding="utf-8")
-    print(json.dumps({"out":str(out),"matched":len(mapped),"roster_players":len(players),"unresolved":len(unresolved)},ensure_ascii=False),flush=True)
+    print(json.dumps({"out":str(out),"matched":len(mapped),"roster_players":len(players),"unresolved":len(unresolved),"match_methods":methods},ensure_ascii=False),flush=True)
     return 0
 
 
