@@ -5,8 +5,90 @@
     "kind": "news",
     "url": "https://www.youtube.com/watch?v=mjDYO1uaw7E",
     "title": "HOME OF HOCKEY NEWS",
-    "thumb": "https://i.ytimg.com/vi/mjDYO1uaw7E/hq720.jpg"
+    "thumb": "https://i.ytimg.com/vi/mjDYO1uaw7E/hq720.jpg",
+    "view_count": 0
   },
-  "shorts_top10": [],
-  "updated_at": null
+  "shorts_top10": [
+    {
+      "id": "lE6HsW_lO3A",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/lE6HsW_lO3A",
+      "title": "🥤 Ovechkin drinks Coke right during games?! #shorts",
+      "thumb": "https://i.ytimg.com/vi/lE6HsW_lO3A/hq720.jpg",
+      "view_count": 544000
+    },
+    {
+      "id": "qpl6TBYZ6kk",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/qpl6TBYZ6kk",
+      "title": "🥶 Плюс сто к ауре! #shorts",
+      "thumb": "https://i.ytimg.com/vi/qpl6TBYZ6kk/hq720.jpg",
+      "view_count": 1400
+    },
+    {
+      "id": "PWS0j-pab8k",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/PWS0j-pab8k",
+      "title": "🤯 Что делает Овечкин...?  #shorts",
+      "thumb": "https://i.ytimg.com/vi/PWS0j-pab8k/hq720.jpg",
+      "view_count": 3700
+    },
+    {
+      "id": "EdW_k6Yv60s",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/EdW_k6Yv60s",
+      "title": "🤩 Великий в деле! #shorts",
+      "thumb": "https://i.ytimg.com/vi/EdW_k6Yv60s/hq720.jpg",
+      "view_count": 1700
+    },
+    {
+      "id": "4Zqd87BfPk8",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/4Zqd87BfPk8",
+      "title": "🥲 ASMR конца сезона... #shorts",
+      "thumb": "https://i.ytimg.com/vi/4Zqd87BfPk8/hq720.jpg",
+      "view_count": 132
+    },
+    {
+      "id": "sgYGqUNa6Lc",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/sgYGqUNa6Lc",
+      "title": "😡 Ну почему судьи не дали им подраться?! #shorts",
+      "thumb": "https://i.ytimg.com/vi/sgYGqUNa6Lc/hq720.jpg",
+      "view_count": 5800
+    },
+    {
+      "id": "OuZ48CZZe9M",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/OuZ48CZZe9M",
+      "title": "🤣 После ЭТОГО им забили... #shorts",
+      "thumb": "https://i.ytimg.com/vi/OuZ48CZZe9M/hq720.jpg",
+      "view_count": 3000
+    },
+    {
+      "id": "4Z0U1rksbEA",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/4Z0U1rksbEA",
+      "title": "🤣 Мартен Сен-Луи точно фанат Леонардо Ди Каприо... #shorts",
+      "thumb": "https://i.ytimg.com/vi/4Z0U1rksbEA/hq720.jpg",
+      "view_count": 1200
+    },
+    {
+      "id": "dneld6G5cDc",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/dneld6G5cDc",
+      "title": "🤩 Вы точно их видели! #shorts",
+      "thumb": "https://i.ytimg.com/vi/dneld6G5cDc/hq720.jpg",
+      "view_count": 4800
+    },
+    {
+      "id": "C5vDDyYoQAw",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/C5vDDyYoQAw",
+      "title": "🤔 Как выглядит один день из жизни арбитра НХЛ? #shorts",
+      "thumb": "https://i.ytimg.com/vi/C5vDDyYoQAw/hq720.jpg",
+      "view_count": 3700
+    }
+  ],
+  "updated_at": "2026-09-16T18:20:07.186572+00:00"
 }
