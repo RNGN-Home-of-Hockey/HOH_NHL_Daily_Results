@@ -1,0 +1,59 @@
+name: Refresh Center player salaries
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "37 5 * * 3"
+  push:
+    paths:
+      - "tools/build_center_player_salary_from_puckpedia.py"
+      - ".github/workflows/center-player-salary.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: center-player-salary
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install scraper dependencies
+        run: python -m pip install --disable-pip-version-check requests beautifulsoup4
+      - name: Build PuckPedia salary cache
+        run: python tools/build_center_player_salary_from_puckpedia.py --sleep 0.15 --out player_salary_2026_27.json
+      - name: Validate salary cache
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('player_salary_2026_27.json').read_text(encoding='utf-8'))
+          players=data.get('players') or {}
+          errors=[k for k,v in (data.get('teams') or {}).items() if isinstance(v,dict) and v.get('error')]
+          print({'salary_players':len(players),'team_errors':len(errors)})
+          if len(players) < 350:
+              raise SystemExit(f'refusing weak salary cache: only {len(players)} players')
+          if len(errors) > 8:
+              raise SystemExit(f'refusing weak salary cache: {len(errors)} team fetch errors')
+          PY
+      - name: Commit refreshed salary cache
+        run: |
+          if git diff --quiet -- player_salary_2026_27.json; then
+            echo "No salary changes"
+            exit 0
+          fi
+          git config user.name "HOH Center Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add player_salary_2026_27.json
+          git commit -m "Refresh PuckPedia NHL player salaries"
+          git pull --rebase origin main
+          git push origin HEAD:main
