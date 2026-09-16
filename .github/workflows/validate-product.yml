@@ -8,6 +8,7 @@ on:
       - 'migrations/**'
       - 'tools/**'
       - 'tests/**'
+      - 'state/center_player_pronunciations_eliteprospects.json'
       - 'wrangler.jsonc'
       - 'package.json'
       - '.github/workflows/validate-product.yml'
@@ -41,7 +42,7 @@ jobs:
 
       - name: Python syntax and rank invariant
         run: |
-          python -m py_compile tools/build_compact_snapshots.py tools/build_current_team_snapshots.py tools/build_data_core_meta.py
+          python -m py_compile tools/build_compact_snapshots.py tools/build_current_team_snapshots.py tools/build_data_core_meta.py tools/build_center_player_pronunciations_from_eliteprospects.py
           python - <<'PY'
           import sys
           sys.path.insert(0, 'tools')
@@ -83,7 +84,7 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v9-polish.js']) {
+          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v9-polish.js','/telegram-app/v11.js']) {
             if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center shell missing: '+needle);
           }
           if (!mini.includes('data-tab="follows">Мои</button>')) throw new Error('Center subscription tab contract missing');
@@ -96,6 +97,12 @@ jobs:
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9-polish.js'), {}, '/telegram-app/v9-polish.js');
           const polish = await r.text();
           if (!r || r.status !== 200 || !polish.includes('fixMine') || !polish.includes('fixProfile')) throw new Error('Center V9 polish route failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v11.js'), {}, '/telegram-app/v11.js');
+          const v11 = await r.text();
+          if (!r || r.status !== 200 || !v11.includes('v11Audio') || !v11.includes('hoh-center-v11-expanded-subscriptions')) throw new Error('Center V11 UI route failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/api/telegram-center-v11/pronunciation/8478864'), {}, '/api/telegram-center-v11/pronunciation/8478864');
+          const kaprizovAudio = await r.json();
+          if (!r || r.status !== 200 || !kaprizovAudio.available || kaprizovAudio.source !== 'eliteprospects_player_audio' || !String(kaprizovAudio.audio_url||'').includes('kirill_kaprizov.mp3')) throw new Error('Kaprizov Elite Prospects audio contract failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
           if (!r || r.status !== 200 || !(await r.text()).includes('gameFollowEnhancer')) throw new Error('Game-follow JS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/preferences.js'), {}, '/telegram-app/preferences.js');
