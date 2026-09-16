@@ -6,8 +6,9 @@ Outputs:
 - a compact NHL player-id -> full Russian name JSON map reusable by the Center
   and the daily Results Bot.
 
-The matcher is deliberately conservative: a current NHL roster player is linked
-only when Sports.ru yields a unique jersey-number + broad-position match.
+Matching stays conservative, but is no longer limited to sweater number. It uses
+number/position first and then Russian-to-Latin name similarity with uniqueness
+and confidence-margin guards. Sports.ru remains the source of the Russian name.
 """
 from __future__ import annotations
 
@@ -16,8 +17,10 @@ import json
 import re
 import sys
 import time
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +29,7 @@ from bs4 import BeautifulSoup
 
 NHL = "https://api-web.nhle.com/v1"
 SPORTS = "https://www.sports.ru"
-UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.0; +https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)"
+UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.1; +https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)"
 
 SPORTS_SLUGS = {
     "ANA": "hockey/club/anaheim-ducks",
@@ -64,6 +67,11 @@ SPORTS_SLUGS = {
 }
 
 POS_RU = {"вратарь": "G", "защитник": "D", "нападающий": "F"}
+CYR = {
+    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z","и":"i","й":"i",
+    "к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f",
+    "х":"kh","ц":"ts","ч":"ch","ш":"sh","щ":"shch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya",
+}
 
 
 @dataclass
@@ -160,16 +168,101 @@ def provisional_country(session: requests.Session, player_id: int) -> str | None
         return None
 
 
+def latinize(text: str) -> str:
+    out = []
+    for ch in str(text or "").lower().replace("ё", "е"):
+        out.append(CYR.get(ch, ch))
+    raw = unicodedata.normalize("NFKD", "".join(out))
+    raw = "".join(c for c in raw if not unicodedata.combining(c))
+    raw = re.sub(r"[^a-z0-9]+", " ", raw).strip()
+    # Common Russian/English hockey-name transliteration differences.
+    raw = raw.replace("kh", "h").replace("ts", "c").replace("iy", "i").replace("yy", "y")
+    return re.sub(r"\s+", " ", raw)
+
+
+def name_forms(text: str) -> list[str]:
+    n = latinize(text)
+    if not n:
+        return []
+    parts = n.split()
+    forms = [n]
+    if len(parts) >= 2:
+        forms.append(" ".join(reversed(parts)))
+    return list(dict.fromkeys(forms))
+
+
+def similarity(left: str, right: str) -> float:
+    best = 0.0
+    for a in name_forms(left):
+        for b in name_forms(right):
+            best = max(best, SequenceMatcher(None, a, b).ratio())
+            ap, bp = a.split(), b.split()
+            if ap and bp:
+                last = SequenceMatcher(None, ap[-1], bp[-1]).ratio()
+                first = SequenceMatcher(None, ap[0], bp[0]).ratio()
+                best = max(best, 0.68 * last + 0.32 * first)
+    return best
+
+
 def match_team(nhl_rows: list[dict[str, Any]], sports_rows: list[SportsPlayer]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     matched: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []
+    used: set[int] = set()
+
+    def accept(p: dict[str, Any], idx: int, method: str, score: float = 1.0) -> None:
+        s = sports_rows[idx]
+        used.add(idx)
+        matched.append({**p, "full_name_ru": s.name_ru, "sports_ru_url": s.url, "match_method": method, "match_score": round(score, 4)})
+
+    # Pass 1: the old high-confidence rule.
+    pending: list[dict[str, Any]] = []
     for p in nhl_rows:
-        candidates = [s for s in sports_rows if s.number == p["number"] and s.broad_position == p["broad_position"]]
+        candidates = [i for i, s in enumerate(sports_rows) if i not in used and s.number == p["number"] and s.broad_position == p["broad_position"]]
         if len(candidates) == 1:
-            s = candidates[0]
-            matched.append({**p, "full_name_ru": s.name_ru, "sports_ru_url": s.url})
+            accept(p, candidates[0], "number_position")
         else:
-            unresolved.append({**p, "candidate_names_ru": [s.name_ru for s in candidates]})
+            pending.append(p)
+
+    # Pass 2: transliterated full-name similarity, guarded by position and margin.
+    still: list[dict[str, Any]] = []
+    for p in pending:
+        scored: list[tuple[float, int]] = []
+        for i, s in enumerate(sports_rows):
+            if i in used or s.broad_position != p["broad_position"]:
+                continue
+            score = similarity(p["full_name_en"], s.name_ru)
+            if p.get("number") is not None and s.number == p.get("number"):
+                score = min(1.0, score + 0.08)
+            scored.append((score, i))
+        scored.sort(reverse=True)
+        best = scored[0] if scored else (0.0, -1)
+        second = scored[1][0] if len(scored) > 1 else 0.0
+        if best[0] >= 0.80 and best[0] - second >= 0.055:
+            accept(p, best[1], "name_similarity", best[0])
+        else:
+            still.append(p)
+
+    # Pass 3: exact normalized surname + first initial where unique.
+    for p in still:
+        en = name_forms(p["full_name_en"])
+        en_parts = en[0].split() if en else []
+        candidates: list[int] = []
+        if len(en_parts) >= 2:
+            ef, el = en_parts[0][0], en_parts[-1]
+            for i, s in enumerate(sports_rows):
+                if i in used or s.broad_position != p["broad_position"]:
+                    continue
+                for form in name_forms(s.name_ru):
+                    sp = form.split()
+                    if len(sp) >= 2 and sp[0][:1] == ef and SequenceMatcher(None, sp[-1], el).ratio() >= 0.90:
+                        candidates.append(i)
+                        break
+        candidates = list(dict.fromkeys(candidates))
+        if len(candidates) == 1:
+            accept(p, candidates[0], "surname_initial", 0.90)
+        else:
+            unresolved.append({**p, "candidate_names_ru": [sports_rows[i].name_ru for i in candidates[:5]]})
+
     return matched, unresolved
 
 
@@ -198,8 +291,11 @@ def main() -> int:
             hit, miss = match_team(nhl_rows, sports_rows)
             players.extend(hit)
             unresolved.extend({"team": tri, **x} for x in miss)
-            team_summary[tri] = {"nhl": len(nhl_rows), "sports": len(sports_rows), "matched": len(hit), "unresolved": len(miss), "sports_url": sports_team_url(tri)}
-            print(f"{tri}: NHL {len(nhl_rows)} / Sports {len(sports_rows)} / matched {len(hit)} / unresolved {len(miss)}", file=sys.stderr)
+            methods: dict[str, int] = {}
+            for p in hit:
+                methods[p.get("match_method") or "unknown"] = methods.get(p.get("match_method") or "unknown", 0) + 1
+            team_summary[tri] = {"nhl": len(nhl_rows), "sports": len(sports_rows), "matched": len(hit), "unresolved": len(miss), "methods": methods, "sports_url": sports_team_url(tri)}
+            print(f"{tri}: NHL {len(nhl_rows)} / Sports {len(sports_rows)} / matched {len(hit)} / unresolved {len(miss)} / {methods}", file=sys.stderr)
         except Exception as exc:
             team_summary[tri] = {"error": str(exc), "sports_url": sports_team_url(tri)}
             print(f"{tri}: ERROR {exc}", file=sys.stderr)
