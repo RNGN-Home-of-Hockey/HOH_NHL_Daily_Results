@@ -1,0 +1,23 @@
+name: Audit Center player name fit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/analyze_center_player_name_fit.py'
+      - 'ru_full_names.json'
+      - '.github/workflows/center-name-fit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check pillow
+      - run: python tools/analyze_center_player_name_fit.py
