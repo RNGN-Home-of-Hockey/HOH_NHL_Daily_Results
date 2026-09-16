@@ -55,15 +55,19 @@ jobs:
               sample=list(non_cyr.items())[:10]
               raise SystemExit(f'refusing non-Cyrillic Russian names: {sample}')
           PY
-      - name: Commit refreshed cache
+      - name: Commit refreshed name cache
         run: |
-          if git diff --quiet -- ru_full_names.json state/center_player_meta_sports_ru.json; then
+          # The rich state payload contains a generated timestamp and is diagnostic only.
+          # Commit only the deterministic name map so unrelated concurrent product commits
+          # cannot create rebase conflicts in the generated state file.
+          git checkout -- state/center_player_meta_sports_ru.json || true
+          if git diff --quiet -- ru_full_names.json; then
             echo "No player-name changes"
             exit 0
           fi
           git config user.name "HOH Center Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add ru_full_names.json state/center_player_meta_sports_ru.json
+          git add ru_full_names.json
           git commit -m "Refresh Sports.ru Russian NHL player names"
           git pull --rebase origin main
           git push origin HEAD:main
