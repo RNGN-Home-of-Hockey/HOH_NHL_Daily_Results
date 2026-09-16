@@ -1,0 +1,51 @@
+name: Refresh Center player pronunciations
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 1'
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install collector dependencies
+        run: python -m pip install --disable-pip-version-check requests beautifulsoup4
+      - name: Build official NHL pronunciation cache
+        run: python tools/build_center_player_pronunciations_from_nhl.py --sleep 0.15 --out state/center_player_pronunciations_nhl.json
+      - name: Validate pronunciation cache
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('state/center_player_pronunciations_nhl.json').read_text(encoding='utf-8'))
+          matched=int(p.get('matched') or 0)
+          print({'matched':matched,'teams':len(p.get('teams') or {})})
+          if matched < 5:
+              raise SystemExit('refusing unexpectedly weak NHL pronunciation cache')
+          for row in (p.get('players') or {}).values():
+              u=str(row.get('pronunciation_url') or '')
+              if not u.startswith('https://'):
+                  raise SystemExit('invalid pronunciation URL')
+          PY
+      - name: Commit refreshed pronunciation cache
+        run: |
+          if git diff --quiet -- state/center_player_pronunciations_nhl.json; then
+            echo "No pronunciation changes"
+            exit 0
+          fi
+          git config user.name "HOH Center Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/center_player_pronunciations_nhl.json
+          git commit -m "Refresh official NHL player pronunciations"
+          git pull --rebase origin main
+          git push origin HEAD:main
