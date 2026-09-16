@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build the 2026-27 NHL cap-hit/AAV cache for HOH Center.
+"""Build the 2026-27 NHL salary/AAV cache for HOH Center.
 
-PuckPedia blocks GitHub-hosted runners with HTTP 403, so the automated cache uses
-HighDanger's server-rendered 2026-27 contract table and matches those factual AAV
-values to NHL player IDs from the official NHL roster API.
+The cache is matched to official NHL player IDs. MarkerZone exposes a public
+server-rendered 2026-27 salary table with both single-season cash salary and cap
+hit. The product sorts by AAV/cap hit by default and can still expose cash salary.
 """
 from __future__ import annotations
 
@@ -21,14 +21,15 @@ import requests
 from bs4 import BeautifulSoup
 
 NHL = "https://api-web.nhle.com/v1"
-SOURCE_URL = "https://highdanger.com/nhl-contracts"
-SOURCE_NAME = "HighDanger 2026-27 NHL contracts (AAV)"
-UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.1; +https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)"
+SOURCE_URL = "https://www.markerzone.com/hockey/stats/nhl/salaries.php?a=168"
+SOURCE_NAME = "MarkerZone NHL salaries 2026-27"
+UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.2; +https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)"
 SEASON = "2026-27"
 TEAMS = (
     "ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA","LAK","MIN","MTL","NSH",
     "NJD","NYI","NYR","OTT","PHI","PIT","SJS","SEA","STL","TBL","TOR","UTA","VAN","VGK","WSH","WPG",
 )
+TEAM_ALIASES = {"LV":"VGK","MON":"MTL"}
 
 
 def localized(value: Any) -> str:
@@ -42,22 +43,24 @@ def localized(value: Any) -> str:
 def norm(text: str) -> str:
     s = unicodedata.normalize("NFKD", str(text or ""))
     s = "".join(c for c in s if not unicodedata.combining(c)).lower()
-    s = s.replace("stutzle", "stuetzle")
+    aliases = {
+        "alexis lafreniere":"alexis lafreniere",
+        "tim stutzle":"tim stutzle",
+        "kristopher letang":"kris letang",
+        "janis jerome moser":"j j moser",
+        "john jason peterka":"jj peterka",
+    }
     s = re.sub(r"[^a-z0-9]+", " ", s).strip()
-    return re.sub(r"\s+", " ", s)
+    s = re.sub(r"\s+", " ", s)
+    return aliases.get(s, s)
 
 
-def money(text: str) -> int | None:
-    m = re.search(r"\$\s*([0-9][0-9,]*(?:\.\d+)?)\s*([MK])?", str(text or ""), re.I)
-    if not m:
+def parse_int_money(text: str) -> int | None:
+    raw = re.sub(r"[^0-9]", "", str(text or ""))
+    if not raw:
         return None
-    value = float(m.group(1).replace(",", ""))
-    suffix = (m.group(2) or "").upper()
-    if suffix == "M":
-        value *= 1_000_000
-    elif suffix == "K":
-        value *= 1_000
-    return int(round(value))
+    value = int(raw)
+    return value if 100_000 <= value <= 30_000_000 else None
 
 
 def nhl_roster(session: requests.Session, tri: str) -> list[dict[str, Any]]:
@@ -70,12 +73,7 @@ def nhl_roster(session: requests.Session, tri: str) -> list[dict[str, Any]]:
             full = " ".join(x for x in (localized(p.get("firstName")), localized(p.get("lastName"))) if x).strip()
             if not full:
                 continue
-            out.append({
-                "player_id": int(p["id"]),
-                "name": full,
-                "key": norm(full),
-                "nhl_team": tri,
-            })
+            out.append({"player_id":int(p["id"]),"name":full,"key":norm(full),"nhl_team":tri})
     return out
 
 
@@ -95,66 +93,88 @@ def load_nhl_pool(session: requests.Session, sleep: float) -> list[dict[str, Any
     return list(by_id.values())
 
 
-def contract_rows(session: requests.Session) -> list[dict[str, Any]]:
+def normalize_team(value: str) -> str:
+    team = re.sub(r"[^A-Z]", "", str(value or "").upper())
+    team = TEAM_ALIASES.get(team, team)
+    return team if team in TEAMS else ""
+
+
+def source_rows(session: requests.Session) -> list[dict[str, Any]]:
     r = session.get(SOURCE_URL, timeout=35)
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
-    rows: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, int]] = set()
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str,int,int]] = set()
 
-    for tr in soup.find_all("tr"):
-        cells = [re.sub(r"\s+", " ", td.get_text(" ", strip=True)).strip() for td in tr.find_all(["td", "th"])]
-        if len(cells) < 6:
+    # MarkerZone player rows are server-rendered. Anchor text is the player name;
+    # the row contains team plus the final two monetary columns: salary, cap hit.
+    for link in soup.find_all("a", href=True):
+        name = re.sub(r"\s+", " ", link.get_text(" ", strip=True)).strip()
+        if len(name.split()) < 2 or not re.search(r"[A-Za-z]", name):
             continue
-        amount_idx = next((i for i, cell in enumerate(cells) if "$" in cell and money(cell)), None)
-        if amount_idx is None:
+        href = str(link.get("href") or "")
+        if "player" not in href.lower() and "fiche" not in href.lower():
             continue
-        # Current table columns: rank, player, team, position, age, AAV, expires.
-        name = cells[1] if len(cells) > 1 else ""
-        team = cells[2].upper() if len(cells) > 2 else ""
-        amount = money(cells[amount_idx])
-        if not name or len(name.split()) < 2 or not amount or amount < 100_000 or amount > 30_000_000:
+        row = link.find_parent("tr") or link.find_parent("div")
+        if not row:
             continue
-        if team not in TEAMS:
-            team = ""
-        link = None
-        player_link = tr.find("a", href=True)
-        if player_link:
-            link = requests.compat.urljoin(SOURCE_URL, player_link.get("href") or "")
-        key = (norm(name), team, amount)
+        cells = [re.sub(r"\s+", " ", x.get_text(" ", strip=True)).strip() for x in row.find_all(["td","th"])]
+        row_text = re.sub(r"\s+", " ", row.get_text(" ", strip=True)).strip()
+        team = ""
+        for candidate in re.findall(r"(?<![A-Z])([A-Z]{2,3})(?![A-Z])", row_text.upper()):
+            normalized = normalize_team(candidate)
+            if normalized:
+                team = normalized
+                break
+        amounts: list[int] = []
+        for cell in cells:
+            value = parse_int_money(cell)
+            if value is not None:
+                amounts.append(value)
+        if len(amounts) < 2:
+            # Fallback: MarkerZone sometimes renders monetary cells without a clean td split.
+            for m in re.finditer(r"(?<!\d)(\d{1,2}(?:[\s\u00a0]\d{3}){1,2})(?!\d)", row_text):
+                value = parse_int_money(m.group(1))
+                if value is not None:
+                    amounts.append(value)
+        if len(amounts) < 2:
+            continue
+        salary_cash, cap_hit = amounts[-2], amounts[-1]
+        key = (norm(name), salary_cash, cap_hit)
         if key in seen:
             continue
         seen.add(key)
-        rows.append({
-            "name": name,
-            "key": norm(name),
-            "team": team,
-            "cap_hit": amount,
-            "aav": amount,
-            "url": link or SOURCE_URL,
+        out.append({
+            "name":name,"key":norm(name),"team":team,
+            "salary_cash":salary_cash,"cap_hit":cap_hit,"aav":cap_hit,
+            "url":requests.compat.urljoin(SOURCE_URL, href),
         })
 
-    if len(rows) < 350:
-        # Defensive fallback for a layout that renders rows without <td> cells.
-        text = "\n".join(soup.stripped_strings)
-        line_re = re.compile(
-            r"(?m)^\s*\d+\s+([A-Z][A-Za-zÀ-ž.'’-]+(?:\s+[A-Z][A-Za-zÀ-ž.'’-]+){1,3})\s+"
-            r"(ANA|BOS|BUF|CGY|CAR|CHI|COL|CBJ|DAL|DET|EDM|FLA|LAK|MIN|MTL|NSH|NJD|NYI|NYR|OTT|PHI|PIT|SJS|SEA|STL|TBL|TOR|UTA|VAN|VGK|WSH|WPG)\s+"
-            r"(?:C|LW|RW|D|G)\s+(?:\d+|—)\s+(\$[0-9.]+[MK])",
-            re.I,
-        )
-        for m in line_re.finditer(text):
-            name, team, amount_text = m.group(1).strip(), m.group(2).upper(), m.group(3)
-            amount = money(amount_text)
-            if not amount:
+    # Layout-independent fallback using the row text around player anchors.
+    if len(out) < 350:
+        for row in soup.find_all(["tr","div"]):
+            text = re.sub(r"\s+", " ", row.get_text(" ", strip=True)).strip()
+            m = re.search(r"(?:^|\s)\d+\s*[-.]?\s*([A-Z][A-Za-zÀ-ž.'’-]+(?:\s+[A-Z][A-Za-zÀ-ž.'’-]+){1,3})\s*\((?:C|LW|RW|D|G)\)", text)
+            if not m:
                 continue
-            key = (norm(name), team, amount)
+            name = m.group(1).strip()
+            amounts = [parse_int_money(x) for x in re.findall(r"(?<!\d)(\d{1,2}(?:[\s\u00a0]\d{3}){1,2})(?!\d)", text)]
+            amounts = [x for x in amounts if x]
+            if len(amounts) < 2:
+                continue
+            team = ""
+            for candidate in re.findall(r"(?<![A-Z])([A-Z]{2,3})(?![A-Z])", text.upper()):
+                normalized = normalize_team(candidate)
+                if normalized:
+                    team = normalized
+                    break
+            salary_cash, cap_hit = amounts[-2], amounts[-1]
+            key = (norm(name), salary_cash, cap_hit)
             if key in seen:
                 continue
             seen.add(key)
-            rows.append({"name": name, "key": norm(name), "team": team, "cap_hit": amount, "aav": amount, "url": SOURCE_URL})
-
-    return rows
+            out.append({"name":name,"key":norm(name),"team":team,"salary_cash":salary_cash,"cap_hit":cap_hit,"aav":cap_hit,"url":SOURCE_URL})
+    return out
 
 
 def match(pool: list[dict[str, Any]], rows: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
@@ -163,81 +183,59 @@ def match(pool: list[dict[str, Any]], rows: list[dict[str, Any]]) -> tuple[dict[
     by_key: dict[str, list[dict[str, Any]]] = {}
     for p in pool:
         by_key.setdefault(p["key"], []).append(p)
-
-    used_players: set[int] = set()
+    used: set[int] = set()
     pending: list[dict[str, Any]] = []
+
     for row in rows:
-        candidates = [p for p in by_key.get(row["key"], []) if p["player_id"] not in used_players]
+        candidates = [p for p in by_key.get(row["key"], []) if p["player_id"] not in used]
         same_team = [p for p in candidates if row["team"] and p["nhl_team"] == row["team"]]
-        chosen = same_team[0] if len(same_team) == 1 else (candidates[0] if len(candidates) == 1 else None)
+        chosen = same_team[0] if len(same_team)==1 else (candidates[0] if len(candidates)==1 else None)
         if chosen:
-            used_players.add(chosen["player_id"])
-            result[str(chosen["player_id"])] = {**row, "nhl_name": chosen["name"], "match_method": "exact_name"}
+            used.add(chosen["player_id"])
+            result[str(chosen["player_id"])] = {**row,"nhl_name":chosen["name"],"match_method":"exact_name"}
         else:
             pending.append(row)
 
-    available = [p for p in pool if p["player_id"] not in used_players]
+    available = [p for p in pool if p["player_id"] not in used]
     for row in pending:
-        candidates = [p for p in available if not row["team"] or p["nhl_team"] == row["team"]]
-        scored = sorted(((SequenceMatcher(None, row["key"], p["key"]).ratio(), p) for p in candidates), key=lambda x: x[0], reverse=True)
-        best = scored[0] if scored else (0.0, None)
-        second = scored[1][0] if len(scored) > 1 else 0.0
-        if best[1] and best[0] >= 0.93 and best[0] - second >= 0.035:
-            p = best[1]
-            used_players.add(p["player_id"])
-            available = [x for x in available if x["player_id"] != p["player_id"]]
-            result[str(p["player_id"])] = {**row, "nhl_name": p["name"], "match_method": "fuzzy_name", "match_score": round(best[0], 4)}
+        candidates = [p for p in available if not row["team"] or p["nhl_team"]==row["team"]]
+        if not candidates:
+            candidates = available
+        scored = sorted(((SequenceMatcher(None,row["key"],p["key"]).ratio(),p) for p in candidates),key=lambda x:x[0],reverse=True)
+        best = scored[0] if scored else (0.0,None)
+        second = scored[1][0] if len(scored)>1 else 0.0
+        if best[1] and best[0]>=0.91 and best[0]-second>=0.035:
+            p=best[1];used.add(p["player_id"]);available=[x for x in available if x["player_id"]!=p["player_id"]]
+            result[str(p["player_id"])]={**row,"nhl_name":p["name"],"match_method":"fuzzy_name","match_score":round(best[0],4)}
         else:
-            unresolved.append({"full_name_en": row["name"], "team": row["team"], "aav": row["aav"], "best_score": round(best[0], 4)})
+            unresolved.append({"full_name_en":row["name"],"team":row["team"],"salary_cash":row["salary_cash"],"aav":row["aav"],"best_score":round(best[0],4)})
     return result, unresolved
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="player_salary_2026_27.json")
-    ap.add_argument("--sleep", type=float, default=0.10)
-    args = ap.parse_args()
-
-    session = requests.Session()
-    session.headers.update({"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"})
-    pool = load_nhl_pool(session, args.sleep)
-    rows = contract_rows(session)
-    matched, unresolved = match(pool, rows)
-
-    players: dict[str, Any] = {}
-    by_team: dict[str, dict[str, int]] = {tri: {"source": 0, "matched": 0} for tri in TEAMS}
-    for row in rows:
-        if row["team"] in by_team:
-            by_team[row["team"]]["source"] += 1
-    for pid, row in matched.items():
-        if row["team"] in by_team:
-            by_team[row["team"]]["matched"] += 1
-        players[pid] = {
-            "team": row["team"],
-            "full_name_en": row["name"],
-            "nhl_name": row.get("nhl_name"),
-            "cap_hit": int(row["cap_hit"]),
-            "aav": int(row["aav"]),
-            "source_url": row["url"],
-            "match_method": row.get("match_method"),
-            "match_score": row.get("match_score"),
+    ap=argparse.ArgumentParser()
+    ap.add_argument("--out",default="player_salary_2026_27.json")
+    ap.add_argument("--sleep",type=float,default=0.10)
+    args=ap.parse_args()
+    session=requests.Session();session.headers.update({"User-Agent":UA,"Accept-Language":"en-US,en;q=0.9"})
+    pool=load_nhl_pool(session,args.sleep)
+    rows=source_rows(session)
+    matched,unresolved=match(pool,rows)
+    players:dict[str,Any]={}
+    for pid,row in matched.items():
+        players[pid]={
+            "team":row["team"],"full_name_en":row["name"],"nhl_name":row.get("nhl_name"),
+            "salary_cash":int(row["salary_cash"]),"cap_hit":int(row["cap_hit"]),"aav":int(row["aav"]),
+            "source_url":row["url"],"match_method":row.get("match_method"),"match_score":row.get("match_score"),
         }
-
-    payload = {
-        "season": SEASON,
-        "source": SOURCE_NAME,
-        "source_url": SOURCE_URL,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "nhl_pool": len(pool),
-        "source_contracts": len(rows),
-        "players": players,
-        "unresolved": unresolved,
-        "teams": by_team,
+    payload={
+        "season":SEASON,"source":SOURCE_NAME,"source_url":SOURCE_URL,"generated_at":datetime.now(timezone.utc).isoformat(),
+        "nhl_pool":len(pool),"source_contracts":len(rows),"players":players,"unresolved":unresolved,
     }
-    Path(args.out).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"nhl_pool": len(pool), "source_contracts": len(rows), "players": len(players), "unresolved": len(unresolved), "teams": len(by_team)}))
+    Path(args.out).write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    print(json.dumps({"nhl_pool":len(pool),"source_contracts":len(rows),"players":len(players),"unresolved":len(unresolved)}))
     return 0
 
 
-if __name__ == "__main__":
+if __name__=="__main__":
     raise SystemExit(main())
