@@ -43,7 +43,7 @@ jobs:
           PY
       - name: Commit refreshed pronunciation cache
         run: |
-          if git diff --quiet -- state/center_player_pronunciations_nhl.json; then
+          if [ -z "$(git status --porcelain -- state/center_player_pronunciations_nhl.json)" ]; then
             echo "No pronunciation changes"
             exit 0
           fi
