@@ -83,12 +83,19 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7']) {
-            if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center V8 shell missing: '+needle);
+          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v9-polish.js']) {
+            if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center shell missing: '+needle);
           }
-          if (!mini.includes('data-tab="follows">Мои</button>')) throw new Error('Center V8 subscription tab contract missing');
+          if (!mini.includes('data-tab="follows">Мои</button>')) throw new Error('Center subscription tab contract missing');
           if (!String(r.headers.get('cache-control') || '').includes('no-store')) throw new Error('Telegram Center shell must be no-store');
           if (mini.includes('<script src="/telegram-app/app.js"></script>')) throw new Error('Telegram Center must not depend on cached external app.js');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9.css'), {}, '/telegram-app/v9.css');
+          if (!r || r.status !== 200 || !(await r.text()).includes('.monthModal')) throw new Error('Center V9 CSS route failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9.js'), {}, '/telegram-app/v9.js');
+          if (!r || r.status !== 200 || !(await r.text()).includes('openMonthCalendar')) throw new Error('Center V9 JS route failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9-polish.js'), {}, '/telegram-app/v9-polish.js');
+          const polish = await r.text();
+          if (!r || r.status !== 200 || !polish.includes('fixMine') || !polish.includes('fixProfile')) throw new Error('Center V9 polish route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
           if (!r || r.status !== 200 || !(await r.text()).includes('gameFollowEnhancer')) throw new Error('Game-follow JS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/preferences.js'), {}, '/telegram-app/preferences.js');
