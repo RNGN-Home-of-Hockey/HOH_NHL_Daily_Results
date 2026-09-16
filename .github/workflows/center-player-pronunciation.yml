@@ -2,6 +2,10 @@ name: Refresh Center player pronunciations
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'tools/build_center_player_pronunciations_from_nhl.py'
+      - '.github/workflows/center-player-pronunciation.yml'
   schedule:
     - cron: '17 5 * * 1'
 
