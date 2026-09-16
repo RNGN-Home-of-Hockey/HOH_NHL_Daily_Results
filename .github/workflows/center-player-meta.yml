@@ -35,16 +35,25 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import re
           from pathlib import Path
           payload=json.loads(Path('state/center_player_meta_sports_ru.json').read_text(encoding='utf-8'))
           names=json.loads(Path('ru_full_names.json').read_text(encoding='utf-8'))
           matched=len(payload.get('players') or [])
           errors=[k for k,v in (payload.get('teams') or {}).items() if isinstance(v,dict) and v.get('error')]
-          print({'matched':matched,'team_errors':len(errors),'full_names':len(names)})
+          mixed={pid:name for pid,name in names.items() if re.search(r'[А-Яа-яЁё]', str(name)) and re.search(r'[A-Za-z]', str(name))}
+          non_cyr={pid:name for pid,name in names.items() if not re.search(r'[А-Яа-яЁё]', str(name))}
+          print({'matched':matched,'team_errors':len(errors),'full_names':len(names),'mixed_script':len(mixed),'non_cyrillic':len(non_cyr)})
           if matched < 500:
               raise SystemExit(f'refusing weak Sports.ru cache: only {matched} matched players')
           if len(errors) > 8:
               raise SystemExit(f'refusing weak Sports.ru cache: {len(errors)} team fetch errors')
+          if mixed:
+              sample=list(mixed.items())[:10]
+              raise SystemExit(f'refusing mixed-script Russian names: {sample}')
+          if non_cyr:
+              sample=list(non_cyr.items())[:10]
+              raise SystemExit(f'refusing non-Cyrillic Russian names: {sample}')
           PY
       - name: Commit refreshed cache
         run: |
