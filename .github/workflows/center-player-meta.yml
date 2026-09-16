@@ -41,7 +41,7 @@ jobs:
           matched=len(payload.get('players') or [])
           errors=[k for k,v in (payload.get('teams') or {}).items() if isinstance(v,dict) and v.get('error')]
           print({'matched':matched,'team_errors':len(errors),'full_names':len(names)})
-          if matched < 300:
+          if matched < 500:
               raise SystemExit(f'refusing weak Sports.ru cache: only {matched} matched players')
           if len(errors) > 8:
               raise SystemExit(f'refusing weak Sports.ru cache: {len(errors)} team fetch errors')
