@@ -12,16 +12,7 @@ CHANNEL = "https://www.youtube.com/@homeofhockey-yt"
 NEWS_ID = "mjDYO1uaw7E"
 
 
-def thumb_for(info: dict, video_id: str) -> str:
-    thumbs = info.get("thumbnails") or []
-    for item in reversed(thumbs):
-        url = str((item or {}).get("url") or "")
-        if url:
-            return url
-    return f"https://i.ytimg.com/vi/{video_id}/hq720.jpg"
-
-
-def normalize(info: dict, kind: str) -> dict | None:
+def normalize_flat(info: dict, kind: str) -> dict | None:
     vid = str(info.get("id") or "").strip()
     if len(vid) != 11:
         return None
@@ -31,13 +22,26 @@ def normalize(info: dict, kind: str) -> dict | None:
         "kind": kind,
         "url": f"https://www.youtube.com/{'shorts/' if kind == 'short' else 'watch?v='}{vid}",
         "title": title,
-        "thumb": thumb_for(info, vid),
+        # YouTube's public image CDN is stable even when the video metadata endpoint
+        # challenges GitHub-hosted runners with an anti-bot screen.
+        "thumb": f"https://i.ytimg.com/vi/{vid}/hq720.jpg",
         "view_count": int(info.get("view_count") or 0),
     }
 
 
-def extract(ydl: yt_dlp.YoutubeDL, url: str) -> dict:
-    info = ydl.extract_info(url, download=False)
+def extract_flat(url: str, playlistend: int = 50) -> dict:
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": True,
+        "playlistend": playlistend,
+        "socket_timeout": 20,
+        "retries": 3,
+        "extractor_retries": 3,
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
     if not isinstance(info, dict):
         raise RuntimeError(f"Unexpected yt-dlp payload for {url}")
     return info
@@ -48,61 +52,38 @@ def main() -> int:
     ap.add_argument("--out", default="state/hoh_youtube_media.json")
     args = ap.parse_args()
 
-    common = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "socket_timeout": 20,
-        "retries": 3,
-        "extractor_retries": 3,
-    }
-    with yt_dlp.YoutubeDL({**common, "extract_flat": True, "playlistend": 50}) as flat:
-        shorts_info = extract(flat, CHANNEL + "/shorts?view=0&sort=p&flow=grid")
-        flat_entries = [x for x in (shorts_info.get("entries") or []) if isinstance(x, dict)]
+    shorts_info = extract_flat(CHANNEL + "/shorts?view=0&sort=p&flow=grid", 50)
+    flat_entries = [x for x in (shorts_info.get("entries") or []) if isinstance(x, dict)]
 
-    # The popular Shorts tab is already ordered by YouTube. Enrich its first ten
-    # entries individually so the cache contains stable titles/thumbnails/views.
-    top_ids: list[str] = []
-    for item in flat_entries:
-        vid = str(item.get("id") or "").strip()
-        if len(vid) == 11 and vid not in top_ids:
-            top_ids.append(vid)
-        if len(top_ids) >= 10:
-            break
-    if len(top_ids) < 2:
-        raise RuntimeError(f"Only {len(top_ids)} Shorts found on {CHANNEL}")
-
+    # The channel's Popular Shorts page is already ordered by YouTube. We deliberately
+    # avoid per-video metadata requests here: GitHub Actions is frequently challenged by
+    # YouTube's bot screen, while flat channel extraction remains available.
     shorts: list[dict] = []
-    with yt_dlp.YoutubeDL(common) as full:
-        for vid in top_ids:
-            try:
-                item = normalize(extract(full, f"https://www.youtube.com/shorts/{vid}"), "short")
-                if item:
-                    shorts.append(item)
-            except Exception as exc:
-                print(f"short metadata failed {vid}: {exc}")
-        news = normalize(extract(full, f"https://www.youtube.com/watch?v={NEWS_ID}"), "news")
+    seen: set[str] = set()
+    for raw in flat_entries:
+        item = normalize_flat(raw, "short")
+        if not item or item["id"] in seen:
+            continue
+        seen.add(item["id"])
+        shorts.append(item)
+        if len(shorts) >= 10:
+            break
+    if len(shorts) < 2:
+        raise RuntimeError(f"Only {len(shorts)} Shorts found on {CHANNEL}")
 
-    if len(shorts) < 2:
-        # Flat metadata is still enough to render clickable screenshot cards.
-        shorts = [normalize(x, "short") for x in flat_entries[:10]]
-        shorts = [x for x in shorts if x]
-    if len(shorts) < 2:
-        raise RuntimeError("Need at least two cached Shorts")
-    if not news:
-        news = {
-            "id": NEWS_ID,
-            "kind": "news",
-            "url": f"https://www.youtube.com/watch?v={NEWS_ID}",
-            "title": "HOME OF HOCKEY NEWS",
-            "thumb": f"https://i.ytimg.com/vi/{NEWS_ID}/hq720.jpg",
-            "view_count": 0,
-        }
+    news = {
+        "id": NEWS_ID,
+        "kind": "news",
+        "url": f"https://www.youtube.com/watch?v={NEWS_ID}",
+        "title": "HOME OF HOCKEY NEWS",
+        "thumb": f"https://i.ytimg.com/vi/{NEWS_ID}/hq720.jpg",
+        "view_count": 0,
+    }
 
     payload = {
         "channel": "@homeofhockey-yt",
         "news": news,
-        "shorts_top10": shorts[:10],
+        "shorts_top10": shorts,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     out = Path(args.out)
