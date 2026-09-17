@@ -6,6 +6,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/deploy-cloudflare.yml'
+      - 'cloudflare-worker/src/**'
+      - 'migrations/**'
+      - 'wrangler.jsonc'
+      - 'package.json'
 
 permissions:
   contents: read
