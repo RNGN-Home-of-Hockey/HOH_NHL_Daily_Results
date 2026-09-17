@@ -1,0 +1,55 @@
+name: Fix VK archive backfill pagination
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vk-backfill-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Patch VK maintenance
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('cloudflare-worker/src/telegram-center-vk-maintenance.js')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('const PAGE_SIZE = 200;', 'const PAGE_SIZE = 100;\nconst BACKFILL_PAGES_PER_TICK = 5;\nconst META_ALGO = "hoh_vk_video_backfill_algo";\nconst BACKFILL_ALGO = "v3-root-pagination-100";', 1)
+
+          anchor='''  const token=String(env.VK_ACCESS_TOKEN||"").trim();\n  if (!token) return {ok:false,skipped:true,error:"missing_vk_access_token"};\n\n  try {'''
+          replacement='''  const token=String(env.VK_ACCESS_TOKEN||"").trim();\n  if (!token) return {ok:false,skipped:true,error:"missing_vk_access_token"};\n\n  try {\n    const algoMeta=await loadMeta(env.DB,META_ALGO);\n    if(String(algoMeta?.meta_value||"")!==BACKFILL_ALGO){\n      await saveMeta(env.DB,META_CURSOR,"0");\n      await saveMeta(env.DB,META_DONE,"0");\n      await saveMeta(env.DB,META_ALGO,BACKFILL_ALGO);\n      forceBackfill=true;\n    }'''
+          if anchor not in s:
+              raise RuntimeError('auth/run anchor not found')
+          s=s.replace(anchor,replacement,1)
+
+          pattern=re.compile(r'''    if \(!done \|\| forceBackfill\) \{.*?\n    \}\n\n    const result=''', re.S)
+          block='''    if (!done || forceBackfill) {\n      if (forceBackfill) {\n        offset=0;\n        await saveMeta(env.DB,META_CURSOR,"0");\n        await saveMeta(env.DB,META_DONE,"0");\n      }\n      let pages=0;\n      let seen=0,stored=0,eligible=0,mapped=0,ambiguous=0,unmatched=0;\n      let totalAvailable=0;\n      let oldestSeen=null;\n      let complete=false;\n      while(pages<BACKFILL_PAGES_PER_TICK&&!complete){\n        const page=(offset===0&&pages===0)?first:await fetchVkPage(token,offset);\n        const items=page.items||[];\n        const one=await ingestPage(env,items,{offset,mode:"backfill"});\n        seen+=Number(one.seen||0); stored+=Number(one.stored||0); eligible+=Number(one.eligible||0);\n        mapped+=Number(one.mapped||0); ambiguous+=Number(one.ambiguous||0); unmatched+=Number(one.unmatched||0);\n        totalAvailable=Number(page.count||totalAvailable||0);\n        const dates=items.map(x=>Number(x.date||x.adding_date||0)).filter(n=>Number.isFinite(n)&&n>0);\n        const oldest=dates.length?Math.min(...dates):Infinity;\n        if(oldest!==Infinity)oldestSeen=oldestSeen===null?oldest:Math.min(oldestSeen,oldest);\n        complete=items.length===0 || offset+items.length>=totalAvailable || (oldest!==Infinity&&oldest<HISTORICAL_NOT_BEFORE);\n        if(complete){\n          await saveMeta(env.DB,META_DONE,"1");\n        }else{\n          offset+=items.length;\n          await saveMeta(env.DB,META_CURSOR,String(offset));\n        }\n        pages++;\n      }\n      backfill={mode:"backfill",pages,seen,stored,eligible,mapped,ambiguous,unmatched,total_available:totalAvailable,next_offset:complete?null:offset,complete,oldest_unix:oldestSeen};\n    }\n\n    const result='''
+          s2,n=pattern.subn(block,s,count=1)
+          if n!=1:
+              raise RuntimeError(f'backfill block replacement count={n}')
+          p.write_text(s2,encoding='utf-8')
+          PY
+      - name: Verify syntax and changes
+        run: |
+          node --check cloudflare-worker/src/telegram-center-vk-maintenance.js
+          grep -q 'PAGE_SIZE = 100' cloudflare-worker/src/telegram-center-vk-maintenance.js
+          grep -q 'BACKFILL_PAGES_PER_TICK = 5' cloudflare-worker/src/telegram-center-vk-maintenance.js
+          grep -q 'v3-root-pagination-100' cloudflare-worker/src/telegram-center-vk-maintenance.js
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '4189826+github-actions[bot]@users.noreply.github.com'
+          git add cloudflare-worker/src/telegram-center-vk-maintenance.js
+          git commit -m 'Fix VK archive pagination and restart backfill'
+          git pull --rebase origin main
+          git push origin main
