@@ -3,6 +3,42 @@ PRAGMA foreign_keys = ON;
 -- Canonical NHL regular-season + playoff games for 2024/25 and 2025/26.
 -- Generated from api-web.nhle.com club season schedules; safe to reapply through ON CONFLICT.
 
+-- Seed the 32 team keys so this migration also succeeds on a fresh validation database.
+INSERT INTO teams (tri_code,name_en) VALUES
+  ('ANA','Anaheim Ducks'),
+  ('BOS','Boston Bruins'),
+  ('BUF','Buffalo Sabres'),
+  ('CAR','Carolina Hurricanes'),
+  ('CBJ','Columbus Blue Jackets'),
+  ('CGY','Calgary Flames'),
+  ('CHI','Chicago Blackhawks'),
+  ('COL','Colorado Avalanche'),
+  ('DAL','Dallas Stars'),
+  ('DET','Detroit Red Wings'),
+  ('EDM','Edmonton Oilers'),
+  ('FLA','Florida Panthers'),
+  ('LAK','Los Angeles Kings'),
+  ('MIN','Minnesota Wild'),
+  ('MTL','Montreal Canadiens'),
+  ('NJD','New Jersey Devils'),
+  ('NSH','Nashville Predators'),
+  ('NYI','New York Islanders'),
+  ('NYR','New York Rangers'),
+  ('OTT','Ottawa Senators'),
+  ('PHI','Philadelphia Flyers'),
+  ('PIT','Pittsburgh Penguins'),
+  ('SEA','Seattle Kraken'),
+  ('SJS','San Jose Sharks'),
+  ('STL','St. Louis Blues'),
+  ('TBL','Tampa Bay Lightning'),
+  ('TOR','Toronto Maple Leafs'),
+  ('UTA','Utah Hockey Club'),
+  ('VAN','Vancouver Canucks'),
+  ('VGK','Vegas Golden Knights'),
+  ('WPG','Winnipeg Jets'),
+  ('WSH','Washington Capitals')
+ON CONFLICT(tri_code) DO NOTHING;
+
 INSERT INTO games (game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score)
 VALUES
   (2024020001,'20242025',2,'2024-10-04T17:00:00Z','OFF','BUF','NJD',1,4),
