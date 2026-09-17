@@ -1,0 +1,50 @@
+name: Center V14 roster audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare-worker/src/telegram-center-v13-teams.js'
+      - '.github/workflows/center-v14-roster-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check all 32 current NHL rosters
+        run: |
+          node <<'JS'
+          const teams=['ANA','BOS','BUF','CGY','CAR','CHI','COL','CBJ','DAL','DET','EDM','FLA','LAK','MIN','MTL','NSH','NJD','NYI','NYR','OTT','PHI','PIT','SJS','SEA','STL','TBL','TOR','UTA','VAN','VGK','WSH','WPG'];
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function load(tri){
+            let last='';
+            for(let attempt=1;attempt<=3;attempt++){
+              try{
+                const r=await fetch(`https://api-web.nhle.com/v1/roster/${tri}/current`,{headers:{Accept:'application/json','User-Agent':'HOH-Center-V14-Roster-Audit/1'}});
+                if(!r.ok) throw new Error(`HTTP ${r.status}`);
+                const d=await r.json();
+                const rows=[...(d.forwards||[]),...(d.defensemen||[]),...(d.goalies||[])];
+                if(rows.length<15) throw new Error(`only ${rows.length} players`);
+                return rows.length;
+              }catch(e){last=String(e.message||e);if(attempt<3)await sleep(500*attempt)}
+            }
+            throw new Error(`${tri}: ${last}`);
+          }
+          const results={};
+          const failures=[];
+          for(const tri of teams){
+            try{results[tri]=await load(tri);console.log(`${tri}: ${results[tri]} players`)}
+            catch(e){failures.push(String(e.message||e));console.error(String(e.message||e))}
+          }
+          console.log('ROSTER_COUNTS',JSON.stringify(results));
+          if(Object.keys(results).length!==32||failures.length)throw new Error(`Roster audit failed: ${failures.join('; ')}`);
+          console.log('ALL_32_ROSTERS_OK');
+          JS
