@@ -20,10 +20,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Wire V15 routes and UI
+      - name: Wire V15 routes and repair core UI
         run: |
           python <<'PY'
           from pathlib import Path
+          import json
 
           p = Path('cloudflare-worker/src/team-current-routes.js')
           s = p.read_text(encoding='utf-8')
@@ -78,8 +79,19 @@ jobs:
               if not inserted:
                   raise RuntimeError('V13 HTML injection anchor not found')
               s = ''.join(lines)
-
           p.write_text(s, encoding='utf-8')
+
+          core = Path('cloudflare-worker/src/telegram-center-v15-core-ui.js')
+          c = core.read_text(encoding='utf-8')
+          start = "s.textContent=`\n"
+          end = "\n`;document.head.appendChild(s)}"
+          if start in c and end in c:
+              a = c.index(start) + len(start)
+              b = c.index(end, a)
+              css = c[a:b]
+              replacement = 's.textContent=' + json.dumps(css, ensure_ascii=False) + ';document.head.appendChild(s)}'
+              c = c[:c.index(start)] + replacement + c[b+len(end):]
+              core.write_text(c, encoding='utf-8')
           PY
       - name: Verify syntax and wiring
         run: |
@@ -98,6 +110,6 @@ jobs:
           if git diff --quiet; then echo "Already wired"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cloudflare-worker/src/team-current-routes.js
-          git commit -m "Wire Center V15 UI and data routes"
+          git add cloudflare-worker/src/team-current-routes.js cloudflare-worker/src/telegram-center-v15-core-ui.js
+          git commit -m "Wire Center V15 and fix core UI syntax"
           git push
