@@ -1,4 +1,4 @@
-name: Wire Center V15
+name: Wire Center V15/V16
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Wire V15 routes and repair core UI
+      - name: Wire V15/V16 routes and UI
         run: |
           python <<'PY'
           from pathlib import Path
@@ -41,6 +41,13 @@ jobs:
               if import_anchor not in s:
                   raise RuntimeError('V13 import anchor not found')
               s = s.replace(import_anchor, import_anchor + imports, 1)
+
+          v16_import = 'import { handleTelegramCenterV16Hotfix } from "./telegram-center-v16-hotfix.js";\n'
+          if 'handleTelegramCenterV16Hotfix' not in s:
+              anchor = 'import { handleTelegramCenterV15PlayerUi } from "./telegram-center-v15-player-ui.js";\n'
+              if anchor not in s:
+                  raise RuntimeError('V15 player import anchor not found')
+              s = s.replace(anchor, anchor + v16_import, 1)
 
           route_anchor = (
               '  const centerV13Response = await handleTelegramCenterV13Teams(request, env, path);\n'
@@ -63,6 +70,19 @@ jobs:
                   raise RuntimeError('V13 route anchor not found')
               s = s.replace(route_anchor, route_anchor + routes, 1)
 
+          if 'centerV16HotfixResponse' not in s:
+              anchor = (
+                  '  const centerV15PlayerUiResponse = handleTelegramCenterV15PlayerUi(request, path);\n'
+                  '  if (centerV15PlayerUiResponse) return centerV15PlayerUiResponse;\n'
+              )
+              add = (
+                  '\n  const centerV16HotfixResponse = handleTelegramCenterV16Hotfix(request, path);\n'
+                  '  if (centerV16HotfixResponse) return centerV16HotfixResponse;\n'
+              )
+              if anchor not in s:
+                  raise RuntimeError('V15 route anchor not found')
+              s = s.replace(anchor, anchor + add, 1)
+
           if '/telegram-app/v15-core.js' not in s:
               lines = s.splitlines(True)
               inserted = False
@@ -79,6 +99,20 @@ jobs:
               if not inserted:
                   raise RuntimeError('V13 HTML injection anchor not found')
               s = ''.join(lines)
+
+          if '/telegram-app/v16.js' not in s:
+              lines = s.splitlines(True)
+              inserted = False
+              for i, line in enumerate(lines):
+                  if "/telegram-app/v15-player.js" in line and "body.includes" in line:
+                      indent = line[:len(line)-len(line.lstrip())]
+                      lines[i+1:i+1] = [indent + "if (!body.includes('/telegram-app/v16.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v16.js\"></script></body>');\n"]
+                      inserted = True
+                      break
+              if not inserted:
+                  raise RuntimeError('V15 HTML injection anchor not found')
+              s = ''.join(lines)
+
           p.write_text(s, encoding='utf-8')
 
           core = Path('cloudflare-worker/src/telegram-center-v15-core-ui.js')
@@ -100,11 +134,14 @@ jobs:
           node --check cloudflare-worker/src/telegram-center-v15-core-ui.js
           node --check cloudflare-worker/src/telegram-center-v15-team-ui.js
           node --check cloudflare-worker/src/telegram-center-v15-player-ui.js
+          node --check cloudflare-worker/src/telegram-center-v16-hotfix.js
           node --check cloudflare-worker/src/team-current-routes.js
           grep -q 'handleTelegramCenterV15TeamData' cloudflare-worker/src/team-current-routes.js
+          grep -q 'handleTelegramCenterV16Hotfix' cloudflare-worker/src/team-current-routes.js
           grep -q '/telegram-app/v15-core.js' cloudflare-worker/src/team-current-routes.js
           grep -q '/telegram-app/v15-team.js' cloudflare-worker/src/team-current-routes.js
           grep -q '/telegram-app/v15-player.js' cloudflare-worker/src/team-current-routes.js
+          grep -q '/telegram-app/v16.js' cloudflare-worker/src/team-current-routes.js
       - name: Worker dry run
         run: |
           npm install --no-audit --no-fund
@@ -115,5 +152,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add cloudflare-worker/src/team-current-routes.js cloudflare-worker/src/telegram-center-v15-core-ui.js
-          git commit -m "Wire Center V15 and fix core UI syntax"
+          git commit -m "Wire Center V16 hotfix"
           git push
