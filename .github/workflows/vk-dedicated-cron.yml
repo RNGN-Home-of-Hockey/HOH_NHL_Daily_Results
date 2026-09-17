@@ -1,0 +1,77 @@
+name: Isolate VK archive cron
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vk-dedicated-cron.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Isolate VK sync on its own cron
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          wr=Path('wrangler.jsonc')
+          w=wr.read_text(encoding='utf-8')
+          old='"crons": ["*/5 * * * *"]'
+          new='"crons": ["*/5 * * * *", "*/2 * * * *"]'
+          if old in w:
+              w=w.replace(old,new,1)
+          elif new not in w:
+              raise RuntimeError('wrangler cron anchor not found')
+          wr.write_text(w,encoding='utf-8')
+
+          p=Path('cloudflare-worker/src/worker-entry.js')
+          s=p.read_text(encoding='utf-8')
+          marker='''  async scheduled(controller, env, ctx) {\n    const canaryEnabled'''
+          repl='''  async scheduled(controller, env, ctx) {\n    const cron = String(controller?.cron || "");\n    if (cron === "*/2 * * * *") {\n      if (env.DB) {\n        ctx.waitUntil(\n          runVkBroadcastMaintenance(env).catch((error) => {\n            console.error("dedicated HOH VK broadcast maintenance failed", error);\n          }),\n        );\n      }\n      return;\n    }\n\n    const canaryEnabled'''
+          if marker in s:
+              s=s.replace(marker,repl,1)
+          elif 'cron === "*/2 * * * *"' not in s:
+              raise RuntimeError('scheduled handler anchor not found')
+
+          old_block='''      ctx.waitUntil(\n        runVkBroadcastMaintenance(env).catch((error) => {\n          console.error("scheduled HOH VK broadcast maintenance failed", error);\n        }),\n      );\n'''
+          # Remove only the legacy VK call from the regular */5 invocation. The dedicated block uses a different error string.
+          if old_block in s:
+              s=s.replace(old_block,'',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Verify patch
+        run: |
+          node --check cloudflare-worker/src/worker-entry.js
+          grep -q 'cron === "*/2 \* \* \* \*"' cloudflare-worker/src/worker-entry.js
+          grep -q '"*/2 * * * *"' wrangler.jsonc
+          test "$(grep -c 'scheduled HOH VK broadcast maintenance failed' cloudflare-worker/src/worker-entry.js || true)" = "0"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Commit dedicated cron
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '4189826+github-actions[bot]@users.noreply.github.com'
+          git add wrangler.jsonc cloudflare-worker/src/worker-entry.js
+          if ! git diff --cached --quiet; then
+            git commit -m 'Run VK archive sync on dedicated cron'
+            git pull --rebase origin main
+            git push origin main
+          fi
+      - name: Deploy dedicated cron
+        run: npx wrangler deploy
+      - name: Verify triggers
+        run: |
+          echo 'Dedicated VK cron deployed. The next */2 trigger will advance the archive independently of the normal */5 maintenance.'
