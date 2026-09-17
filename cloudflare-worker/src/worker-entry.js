@@ -10,7 +10,7 @@ import { handleTeamCurrentRequest } from "./team-current-routes.js";
 import { getCenterNotificationStatus, runCenterNotificationTick } from "./telegram-center-notification-engine.js";
 import { runCenterScheduleMaintenance } from "./telegram-center-schedule-maintenance.js";
 import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js";
-import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance.js";
+import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
 
 const CANARY_SEASON = "20242025";
