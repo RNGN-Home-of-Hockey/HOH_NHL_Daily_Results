@@ -47,7 +47,6 @@ jobs:
               raise RuntimeError('scheduled handler anchor not found')
 
           old_block='''      ctx.waitUntil(\n        runVkBroadcastMaintenance(env).catch((error) => {\n          console.error("scheduled HOH VK broadcast maintenance failed", error);\n        }),\n      );\n'''
-          # Remove only the legacy VK call from the regular */5 invocation. The dedicated block uses a different error string.
           if old_block in s:
               s=s.replace(old_block,'',1)
           p.write_text(s,encoding='utf-8')
@@ -55,9 +54,9 @@ jobs:
       - name: Verify patch
         run: |
           node --check cloudflare-worker/src/worker-entry.js
-          grep -q 'cron === "*/2 \* \* \* \*"' cloudflare-worker/src/worker-entry.js
-          grep -q '"*/2 * * * *"' wrangler.jsonc
-          test "$(grep -c 'scheduled HOH VK broadcast maintenance failed' cloudflare-worker/src/worker-entry.js || true)" = "0"
+          grep -Fq 'cron === "*/2 * * * *"' cloudflare-worker/src/worker-entry.js
+          grep -Fq '"*/2 * * * *"' wrangler.jsonc
+          test "$(grep -Fc 'scheduled HOH VK broadcast maintenance failed' cloudflare-worker/src/worker-entry.js || true)" = "0"
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Commit dedicated cron
