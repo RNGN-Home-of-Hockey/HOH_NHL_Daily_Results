@@ -82,4 +82,4 @@ async function call(method,token,params){
   return body?.response||{};
 }
 
-// Deployment marker: archive pagination v3 uses 100-item pages and resumes from the actual returned count.
+// Deployment marker: dedicated */2 VK archive cron + 100-item pagination v3.
