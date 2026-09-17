@@ -29,6 +29,7 @@ import { handleTelegramCenterV15PlayerUi } from "./telegram-center-v15-player-ui
 import { handleTelegramCenterV16Hotfix } from "./telegram-center-v16-hotfix.js";
 import { handleTelegramCenterV17PlayerData } from "./telegram-center-v17-player-data.js";
 import { handleTelegramCenterV17Hotfix } from "./telegram-center-v17-hotfix.js";
+import { handleTelegramCenterV18PlayerLastGame } from "./telegram-center-v18-player-lastgame.js";
 import { handleTelegramCenterV18VkData } from "./telegram-center-v18-vk-data.js";
 import { handleTelegramCenterV18VkUi } from "./telegram-center-v18-vk-ui.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
@@ -89,6 +90,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const centerV17HotfixResponse = handleTelegramCenterV17Hotfix(request, path);
   if (centerV17HotfixResponse) return centerV17HotfixResponse;
 
+  const centerV18PlayerLastGameResponse = await handleTelegramCenterV18PlayerLastGame(request.clone(), env, path);
+  if (centerV18PlayerLastGameResponse) return centerV18PlayerLastGameResponse;
   const centerV18VkDataResponse = await handleTelegramCenterV18VkData(request.clone(), env, path);
   if (centerV18VkDataResponse) return centerV18VkDataResponse;
   const centerV18VkUiResponse = handleTelegramCenterV18VkUi(request, path);
