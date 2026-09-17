@@ -157,6 +157,13 @@ async function bulkUpsertBroadcasts(db,records){
 
 async function bulkUpsertMappings(db,mappings){
   const payload=JSON.stringify(mappings);
+  // A source video is unique. If a later, better matcher moves it to another game,
+  // remove the stale relation first so the UNIQUE(source_key) constraint cannot block correction.
+  await db.prepare(`
+    DELETE FROM game_vk_broadcasts
+    WHERE source_key IN (SELECT json_extract(value,'$.source_key') FROM json_each(?))
+      AND game_pk NOT IN (SELECT CAST(json_extract(value,'$.game_pk') AS INTEGER) FROM json_each(?));
+  `).bind(payload,payload).run();
   await db.prepare(`
     INSERT INTO game_vk_broadcasts (game_pk,source_key,match_method,match_confidence,matched_at,updated_at)
     SELECT CAST(json_extract(value,'$.game_pk') AS INTEGER),json_extract(value,'$.source_key'),json_extract(value,'$.match_method'),

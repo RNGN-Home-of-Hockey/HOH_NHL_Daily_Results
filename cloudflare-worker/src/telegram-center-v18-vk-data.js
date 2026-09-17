@@ -122,16 +122,57 @@ async function playerLastGame(env, playerId) {
 
 async function vkStatus(env) {
   try {
-    const [broadcasts,mapped,games] = await Promise.all([
+    const [broadcasts,historical,seasons,rawAudit,metaRows] = await Promise.all([
       env.DB.prepare(`SELECT COUNT(*) n,MAX(updated_at) updated_at FROM vk_broadcasts;`).first(),
-      env.DB.prepare(`SELECT COUNT(*) n,MAX(updated_at) updated_at FROM game_vk_broadcasts;`).first(),
-      env.DB.prepare(`SELECT COUNT(*) n FROM games WHERE CAST(season_id AS TEXT) IN ('20242025','20252026') AND game_type IN (2,3);`).first(),
+      env.DB.prepare(`
+        SELECT COUNT(*) target_games,
+               SUM(CASE WHEN m.game_pk IS NOT NULL THEN 1 ELSE 0 END) mapped_games,
+               SUM(CASE WHEN m.game_pk IS NULL THEN 1 ELSE 0 END) unmapped_games
+        FROM games g LEFT JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
+        WHERE CAST(g.season_id AS TEXT) IN ('20242025','20252026') AND g.game_type IN (2,3);
+      `).first(),
+      env.DB.prepare(`
+        SELECT CAST(g.season_id AS TEXT) season_id,COUNT(*) target_games,
+               SUM(CASE WHEN m.game_pk IS NOT NULL THEN 1 ELSE 0 END) mapped_games
+        FROM games g LEFT JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
+        WHERE CAST(g.season_id AS TEXT) IN ('20242025','20252026') AND g.game_type IN (2,3)
+        GROUP BY CAST(g.season_id AS TEXT) ORDER BY season_id;
+      `).all(),
+      env.DB.prepare(`
+        SELECT COUNT(*) raw_unmapped,
+               SUM(CASE WHEN b.parsed_home_tri IS NOT NULL AND b.parsed_away_tri IS NOT NULL THEN 1 ELSE 0 END) parsed_unmapped
+        FROM vk_broadcasts b LEFT JOIN game_vk_broadcasts m ON m.source_key=b.source_key
+        WHERE m.source_key IS NULL;
+      `).first(),
+      env.DB.prepare(`
+        SELECT meta_key,meta_value,updated_at FROM data_core_meta
+        WHERE meta_key IN ('hoh_vk_video_backfill_offset','hoh_vk_video_backfill_done','hoh_vk_video_last_sync_json','hoh_vk_video_last_error');
+      `).all(),
     ]);
-    return json({ok:true,schema_ready:true,broadcasts:Number(broadcasts?.n||0),mapped:Number(mapped?.n||0),target_games:Number(games?.n||0),updated_at:mapped?.updated_at||broadcasts?.updated_at||null});
+    const meta=Object.fromEntries((metaRows.results||[]).map(x=>[x.meta_key,{value:x.meta_value,updated_at:x.updated_at}]));
+    const target=Number(historical?.target_games||0), mapped=Number(historical?.mapped_games||0);
+    return json({
+      ok:true,schema_ready:true,
+      broadcasts:Number(broadcasts?.n||0),
+      target_games:target,mapped_games:mapped,unmapped_games:Number(historical?.unmapped_games||0),
+      coverage_pct:target?Math.round(mapped*10000/target)/100:0,
+      seasons:(seasons.results||[]).map(x=>({season_id:x.season_id,target_games:Number(x.target_games||0),mapped_games:Number(x.mapped_games||0),coverage_pct:Number(x.target_games||0)?Math.round(Number(x.mapped_games||0)*10000/Number(x.target_games||0))/100:0})),
+      raw_unmapped:Number(rawAudit?.raw_unmapped||0),parsed_unmapped:Number(rawAudit?.parsed_unmapped||0),
+      backfill:{offset:Number(meta.hoh_vk_video_backfill_offset?.value||0),done:String(meta.hoh_vk_video_backfill_done?.value||'')==='1'},
+      last_sync:parseMetaJson(meta.hoh_vk_video_last_sync_json?.value),
+      last_error:parseMetaJson(meta.hoh_vk_video_last_error?.value),
+      updated_at:broadcasts?.updated_at||null,
+    });
   } catch (error) {
-    if (isMissingVkSchema(error)) return json({ok:true,schema_ready:false,broadcasts:0,mapped:0,target_games:0,error:"vk_schema_not_applied"});
-    return json({ok:false,error:"vk_status_failed",detail:errorText(error)},503);
+    if (isMissingVkSchema(error)) return json({ok:true,schema_ready:false,broadcasts:0,target_games:0,mapped_games:0,error:'vk_schema_not_applied'});
+    return json({ok:false,error:'vk_status_failed',detail:errorText(error)},503);
   }
+}
+
+function parseMetaJson(value){
+  const s=String(value||'').trim();
+  if(!s)return null;
+  try{return JSON.parse(s)}catch{return s}
 }
 
 async function loadBroadcast(db, gamePk) {
