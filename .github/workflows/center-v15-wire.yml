@@ -105,6 +105,10 @@ jobs:
           grep -q '/telegram-app/v15-core.js' cloudflare-worker/src/team-current-routes.js
           grep -q '/telegram-app/v15-team.js' cloudflare-worker/src/team-current-routes.js
           grep -q '/telegram-app/v15-player.js' cloudflare-worker/src/team-current-routes.js
+      - name: Worker dry run
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .validation-build
       - name: Commit wiring
         run: |
           if git diff --quiet; then echo "Already wired"; exit 0; fi
