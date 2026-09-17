@@ -1,0 +1,73 @@
+name: Wire Center V15
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/center-v15-wire.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Wire V15 routes and UI
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/team-current-routes.js')
+          s=p.read_text(encoding='utf-8')
+          anchor='import { handleTelegramCenterV13Teams } from "./telegram-center-v13-teams.js";\n'
+          adds='''import { handleTelegramCenterV15TeamData } from "./telegram-center-v15-team-data.js";\nimport { handleTelegramCenterV15PlayerData } from "./telegram-center-v15-player-data.js";\nimport { handleTelegramCenterV15CoreUi } from "./telegram-center-v15-core-ui.js";\nimport { handleTelegramCenterV15TeamUi } from "./telegram-center-v15-team-ui.js";\nimport { handleTelegramCenterV15PlayerUi } from "./telegram-center-v15-player-ui.js";\n'''
+          if 'handleTelegramCenterV15TeamData' not in s:
+              assert anchor in s
+              s=s.replace(anchor,anchor+adds)
+          route_anchor='''  const centerV13Response = await handleTelegramCenterV13Teams(request, env, path);\n  if (centerV13Response) return centerV13Response;\n\n'''
+          routes='''  const centerV15TeamDataResponse = await handleTelegramCenterV15TeamData(request.clone(), env, path);\n  if (centerV15TeamDataResponse) return centerV15TeamDataResponse;\n\n  const centerV15PlayerDataResponse = await handleTelegramCenterV15PlayerData(request.clone(), env, path);\n  if (centerV15PlayerDataResponse) return centerV15PlayerDataResponse;\n\n  const centerV15CoreUiResponse = handleTelegramCenterV15CoreUi(request, path);\n  if (centerV15CoreUiResponse) return centerV15CoreUiResponse;\n  const centerV15TeamUiResponse = handleTelegramCenterV15TeamUi(request, path);\n  if (centerV15TeamUiResponse) return centerV15TeamUiResponse;\n  const centerV15PlayerUiResponse = handleTelegramCenterV15PlayerUi(request, path);\n  if (centerV15PlayerUiResponse) return centerV15PlayerUiResponse;\n\n'''
+          if 'centerV15TeamDataResponse' not in s:
+              assert route_anchor in s
+              s=s.replace(route_anchor,route_anchor+routes)
+          inject="""      if (!body.includes('/telegram-app/v13.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v13.js\"></script></body>');\n"""
+          v15="""      if (!body.includes('/telegram-app/v15-core.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v15-core.js\"></script></body>');\n      if (!body.includes('/telegram-app/v15-team.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v15-team.js\"></script></body>');\n      if (!body.includes('/telegram-app/v15-player.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v15-player.js\"></script></body>');\n"""
+          if '/telegram-app/v15-core.js' not in s:
+              assert inject in s
+              s=s.replace(inject,inject+v15)
+          p.write_text(s,encoding='utf-8')
+
+          vp=Path('.github/workflows/validate-product.yml')
+          v=vp.read_text(encoding='utf-8')
+          shell="'/telegram-app/v9-polish.js','/telegram-app/v11.js','/telegram-app/v12.js','/telegram-app/v13.js'"
+          if '/telegram-app/v15-core.js' not in v and shell in v:
+              v=v.replace(shell,"'/telegram-app/v9-polish.js','/telegram-app/v11.js','/telegram-app/v12.js','/telegram-app/v13.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v15-player.js'")
+          needle="""          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v13.js'), {}, '/telegram-app/v13.js');\n"""
+          test="""          for (const path of ['/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v15-player.js']) {\n            r = await handleTeamCurrentRequest(new Request('https://example.test'+path), {}, path);\n            const code = await r.text();\n            if (!r || r.status !== 200 || !code.includes('HOHV15')) throw new Error('Center V15 UI route failed: '+path);\n            new Function(code);\n          }\n"""
+          if 'Center V15 UI route failed' not in v:
+              assert needle in v
+              v=v.replace(needle,test+needle)
+          vp.write_text(v,encoding='utf-8')
+          PY
+      - name: Verify syntax
+        run: |
+          node --check cloudflare-worker/src/telegram-center-v15-team-data.js
+          node --check cloudflare-worker/src/telegram-center-v15-player-data.js
+          node --check cloudflare-worker/src/telegram-center-v15-core-ui.js
+          node --check cloudflare-worker/src/telegram-center-v15-team-ui.js
+          node --check cloudflare-worker/src/telegram-center-v15-player-ui.js
+          node --check cloudflare-worker/src/team-current-routes.js
+      - name: Commit wiring
+        run: |
+          if git diff --quiet; then echo "Already wired"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cloudflare-worker/src/team-current-routes.js .github/workflows/validate-product.yml
+          git commit -m "Wire Center V15 UI and data routes"
+          git push
