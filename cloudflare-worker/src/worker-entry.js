@@ -11,6 +11,7 @@ import { getCenterNotificationStatus, runCenterNotificationTick } from "./telegr
 import { runCenterScheduleMaintenance } from "./telegram-center-schedule-maintenance.js";
 import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance.js";
+import { handleVkOauthHelper } from "./vk-oauth-helper.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -21,6 +22,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = stripTrailingSlash(url.pathname);
+
+    const vkOauthResponse = handleVkOauthHelper(request, path);
+    if (vkOauthResponse) return vkOauthResponse;
 
     const telegramProductResponse = await handleTelegramProductBotRequest(request.clone(), env, path);
     if (telegramProductResponse) {
