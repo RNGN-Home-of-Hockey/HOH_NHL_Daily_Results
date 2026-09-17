@@ -81,3 +81,5 @@ async function call(method,token,params){
   if(body?.error)throw new Error(`VK ${method} ${body.error.error_code||"error"}: ${body.error.error_msg||"unknown"}`);
   return body?.response||{};
 }
+
+// Deployment marker: archive pagination v3 uses 100-item pages and resumes from the actual returned count.
