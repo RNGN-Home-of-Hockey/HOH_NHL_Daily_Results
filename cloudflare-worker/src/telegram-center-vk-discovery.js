@@ -3,6 +3,7 @@ import { resolveVkAccessToken } from "./telegram-center-vk-auth.js";
 const API_BASE="https://api.vk.com/method/";
 const VERSION="5.199";
 const OWNER=-227682170;
+const SYSTEM_ALBUM_IDS=[-1,-2,-3,-4,-5,-6,-7,-8,-9,-10];
 
 export async function getVkArchiveDiscovery(env){
   if(!env?.DB)return {ok:false,error:"missing_d1_binding"};
@@ -25,25 +26,45 @@ export async function getVkArchiveDiscovery(env){
 
 async function discoverWithToken(token){
   const root=await call("video.get",token,{owner_id:OWNER,count:1,offset:0,extended:0});
-  const albumsResp=await call("video.getAlbums",token,{owner_id:OWNER,count:100,offset:0,extended:1,need_system:1});
-  const albums=Array.isArray(albumsResp?.items)?albumsResp.items:[];
+  let albumError=null;
+  let albumsResp={count:0,items:[]};
+  try{
+    albumsResp=await call("video.getAlbums",token,{owner_id:OWNER,count:100,offset:0,extended:1,need_system:1});
+  }catch(error){
+    albumError=String(error?.message||error);
+  }
+
   const rows=[];
+  const albums=Array.isArray(albumsResp?.items)?albumsResp.items:[];
   for(const album of albums){
     const id=Number(album?.id);
     if(!Number.isFinite(id))continue;
     try{
       const page=await call("video.get",token,{owner_id:OWNER,album_id:id,count:1,offset:0,extended:0});
-      rows.push({id,title:String(album?.title||album?.name||""),count:Number(page?.count||0),updated_time:album?.updated_time||null});
+      rows.push({id,title:String(album?.title||album?.name||""),count:Number(page?.count||0),updated_time:album?.updated_time||null,source:"getAlbums"});
     }catch(error){
-      rows.push({id,title:String(album?.title||album?.name||""),count:null,error:String(error?.message||error)});
+      rows.push({id,title:String(album?.title||album?.name||""),count:null,error:String(error?.message||error),source:"getAlbums"});
     }
   }
-  rows.sort((a,b)=>(Number(b.count||-1)-Number(a.count||-1))||a.id-b.id);
+
+  const known=new Set(rows.map(x=>x.id));
+  for(const id of SYSTEM_ALBUM_IDS){
+    if(known.has(id))continue;
+    try{
+      const page=await call("video.get",token,{owner_id:OWNER,album_id:id,count:1,offset:0,extended:0});
+      rows.push({id,title:"system",count:Number(page?.count||0),source:"probe"});
+    }catch(error){
+      rows.push({id,title:"system",count:null,error:String(error?.message||error),source:"probe"});
+    }
+  }
+
+  rows.sort((a,b)=>(Number(b.count??-1)-Number(a.count??-1))||a.id-b.id);
   return {
     ok:true,
     owner_id:OWNER,
     root_count:Number(root?.count||0),
     album_count:Number(albumsResp?.count||albums.length),
+    album_error:albumError,
     albums:rows,
     generated_at:new Date().toISOString(),
   };
