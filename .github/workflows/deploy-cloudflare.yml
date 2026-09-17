@@ -35,7 +35,7 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Apply pending D1 migrations
-        run: npx wrangler d1 migrations apply hoh-data-core --remote --yes
+        run: npx wrangler d1 migrations apply hoh-data-core --remote
       - name: Deploy Worker
         run: npx wrangler deploy
       - name: Verify production VK API
