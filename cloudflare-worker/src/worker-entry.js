@@ -11,6 +11,7 @@ import { getCenterNotificationStatus, runCenterNotificationTick } from "./telegr
 import { runCenterScheduleMaintenance } from "./telegram-center-schedule-maintenance.js";
 import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
+import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
 
 const CANARY_SEASON = "20242025";
@@ -25,6 +26,11 @@ export default {
 
     const vkOauthResponse = handleVkOauthHelper(request, path);
     if (vkOauthResponse) return vkOauthResponse;
+
+    if (path === "/api/telegram-center-v18/vk/discovery") {
+      if (request.method !== "GET") return jsonResponse({ok:false,error:"method_not_allowed"},405);
+      return jsonResponse(await getVkArchiveDiscovery(env));
+    }
 
     const telegramProductResponse = await handleTelegramProductBotRequest(request.clone(), env, path);
     if (telegramProductResponse) {
