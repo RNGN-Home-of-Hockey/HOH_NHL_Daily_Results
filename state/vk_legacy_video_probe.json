@@ -1,0 +1,117 @@
+{
+  "oid": "-227682170",
+  "cookies": [
+    {
+      "name": "remixlang",
+      "domain": ".vk.com"
+    },
+    {
+      "name": "remixstlid",
+      "domain": ".vk.com"
+    },
+    {
+      "name": "remixstid",
+      "domain": ".vk.com"
+    },
+    {
+      "name": "remixlgck",
+      "domain": ".vk.com"
+    },
+    {
+      "name": "remixua",
+      "domain": ".vk.com"
+    }
+  ],
+  "tests": [
+    {
+      "label": "legacy_get_0",
+      "status": 200,
+      "final": "https://vk.com/al_video.php?act=load_videos_silent&al=1&offset=0&oid=-227682170",
+      "len": 821,
+      "video_tokens": [],
+      "ids": [],
+      "titles": [],
+      "preview": "{\"payload\":[\"8\",[\"\\\"����������� ������\\\"\",\"false\",\"false\"]],\"static\":\"dist\\/web\\/chunks\\/vkcom-kit.73ba4ea5.js,dist\\/web\\/chunks\\/vkcom-kit.2bd10179.css,dist\\/web\\/chunks\\/react.ace9d4c8.js,dist\\/web\\/chunks\\/architecture-mobx.cfc7b16b.js,dist\\/web\\/chunks\\/vkui.f428153d.js,dist\\/web\\/chunks\\/state-management.7904bc66.js,dist\\/web\\/chunks\\/audioplayer-lib.361fac26.css,dist\\/web\\/chunks\\/audioplayer-lib.a9ea9947.js,dist\\/web\\/chunks\\/common.ffca1610.js,dist\\/web\\/chunks\\/common.evergreen.482d5599.js,dist\\/web\\/common_web.d998a9fe.js,dist\\/web\\/common_web.cc22fe29.css\",\"rawStatic\":\"dist\\/web\\/common_web.js\",\"statsMeta\":{\"platform\":\"web2\",\"st\":false,\"id\":0,\"time\":1789647343,\"hash\":\"yIlnC0mZOy3dIZZXYB1bwuszzikvXQnZbojCzKD7NiT\",\"reloadVersion\":42},\"loaderVersion\":\"213114292729\",\"langVersion\":8,\"vkEnv\":\"production\"}"
+    },
+    {
+      "label": "legacy_post_0",
+      "status": 200,
+      "final": "https://vk.com/al_video.php",
+      "len": 821,
+      "video_tokens": [],
+      "ids": [],
+      "titles": [],
+      "preview": "{\"payload\":[\"8\",[\"\\\"����������� ������\\\"\",\"false\",\"false\"]],\"static\":\"dist\\/web\\/chunks\\/vkcom-kit.73ba4ea5.js,dist\\/web\\/chunks\\/vkcom-kit.2bd10179.css,dist\\/web\\/chunks\\/react.ace9d4c8.js,dist\\/web\\/chunks\\/architecture-mobx.cfc7b16b.js,dist\\/web\\/chunks\\/vkui.f428153d.js,dist\\/web\\/chunks\\/state-management.7904bc66.js,dist\\/web\\/chunks\\/audioplayer-lib.361fac26.css,dist\\/web\\/chunks\\/audioplayer-lib.a9ea9947.js,dist\\/web\\/chunks\\/common.ffca1610.js,dist\\/web\\/chunks\\/common.evergreen.482d5599.js,dist\\/web\\/common_web.d998a9fe.js,dist\\/web\\/common_web.cc22fe29.css\",\"rawStatic\":\"dist\\/web\\/common_web.js\",\"statsMeta\":{\"platform\":\"web2\",\"st\":false,\"id\":0,\"time\":1789647344,\"hash\":\"XQZiimGaNAbGCRTHHyjf9UHROfar3huztgwVCJ06KVo\",\"reloadVersion\":42},\"loaderVersion\":\"213114292729\",\"langVersion\":8,\"vkEnv\":\"production\"}"
+    },
+    {
+      "label": "mobile_0",
+      "status": 200,
+      "final": "https://m.vk.com/videos-227682170?offset=0",
+      "len": 205,
+      "video_tokens": [],
+      "ids": [],
+      "titles": [],
+      "preview": "{\"location\":\"https:\\/\\/m.vkvideo.ru\\/videos-227682170?offset=0\",\"replace\":0,\"hard\":1,\"version\":\"44903d1cb86fa81377cf744e26ee10f474592d2a6e720d3e588afadeced304bd\",\"rv\":245671,\"type\":1,\"notifications\":false}"
+    },
+    {
+      "label": "legacy_get_40",
+      "status": 200,
+      "final": "https://vk.com/al_video.php?act=load_videos_silent&al=1&offset=40&oid=-227682170",
+      "len": 821,
+      "video_tokens": [],
+      "ids": [],
+      "titles": [],
+      "preview": "{\"payload\":[\"8\",[\"\\\"����������� ������\\\"\",\"false\",\"false\"]],\"static\":\"dist\\/web\\/chunks\\/vkcom-kit.73ba4ea5.js,dist\\/web\\/chunks\\/vkcom-kit.2bd10179.css,dist\\/web\\/chunks\\/react.ace9d4c8.js,dist\\/web\\/chunks\\/architecture-mobx.cfc7b16b.js,dist\\/web\\/chunks\\/vkui.f428153d.js,dist\\/web\\/chunks\\/state-management.7904bc66.js,dist\\/web\\/chunks\\/audioplayer-lib.361fac26.css,dist\\/web\\/chunks\\/audioplayer-lib.a9ea9947.js,dist\\/web\\/chunks\\/common.ffca1610.js,dist\\/web\\/chunks\\/common.evergreen.482d5599.js,dist\\/web\\/common_web.d998a9fe.js,dist\\/web\\/common_web.cc22fe29.css\",\"rawStatic\":\"dist\\/web\\/common_web.js\",\"statsMeta\":{\"platform\":\"web2\",\"st\":false,\"id\":0,\"time\":1789647345,\"hash\":\"tEDe5w9Us0UUrfWTw6zgpNNtEcXj42Ss8cryzjYe9Iz\",\"reloadVersion\":42},\"loaderVersion\":\"213114292729\",\"langVersion\":8,\"vkEnv\":\"production\"}"
+    },
+    {
+      "label": "legacy_post_40",
+      "status": 200,
+      "final": "https://vk.com/al_video.php",
+      "len": 821,
+      "video_tokens": [],
+      "ids": [],
+      "titles": [],
+      "preview": "{\"payload\":[\"8\",[\"\\\"����������� ������\\\"\",\"false\",\"false\"]],\"static\":\"dist\\/web\\/chunks\\/vkcom-kit.73ba4ea5.js,dist\\/web\\/chunks\\/vkcom-kit.2bd10179.css,dist\\/web\\/chunks\\/react.ace9d4c8.js,dist\\/web\\/chunks\\/architecture-mobx.cfc7b16b.js,dist\\/web\\/chunks\\/vkui.f428153d.js,dist\\/web\\/chunks\\/state-management.7904bc66.js,dist\\/web\\/chunks\\/audioplayer-lib.361fac26.css,dist\\/web\\/chunks\\/audioplayer-lib.a9ea9947.js,dist\\/web\\/chunks\\/common.ffca1610.js,dist\\/web\\/chunks\\/common.evergreen.482d5599.js,dist\\/web\\/common_web.d998a9fe.js,dist\\/web\\/common_web.cc22fe29.css\",\"rawStatic\":\"dist\\/web\\/common_web.js\",\"statsMeta\":{\"platform\":\"web2\",\"st\":false,\"id\":0,\"time\":1789647345,\"hash\":\"tEDe5w9Us0UUrfWTw6zgpNNtEcXj42Ss8cryzjYe9Iz\",\"reloadVersion\":42},\"loaderVersion\":\"213114292729\",\"langVersion\":8,\"vkEnv\":\"production\"}"
+    },
+    {
+      "label": "mobile_40",
+      "status": 200,
+      "final": "https://m.vk.com/videos-227682170?offset=40",
+      "len": 206,
+      "video_tokens": [],
+      "ids": [],
+      "titles": [],
+      "preview": "{\"location\":\"https:\\/\\/m.vkvideo.ru\\/videos-227682170?offset=40\",\"replace\":0,\"hard\":1,\"version\":\"44903d1cb86fa81377cf744e26ee10f474592d2a6e720d3e588afadeced304bd\",\"rv\":245671,\"type\":1,\"notifications\":false}"
+    },
+    {
+      "label": "legacy_get_100",
+      "status": 200,
+      "final": "https://vk.com/al_video.php?act=load_videos_silent&al=1&offset=100&oid=-227682170",
+      "len": 821,
+      "video_tokens": [],
+      "ids": [],
+      "titles": [],
+      "preview": "{\"payload\":[\"8\",[\"\\\"����������� ������\\\"\",\"false\",\"false\"]],\"static\":\"dist\\/web\\/chunks\\/vkcom-kit.73ba4ea5.js,dist\\/web\\/chunks\\/vkcom-kit.2bd10179.css,dist\\/web\\/chunks\\/react.ace9d4c8.js,dist\\/web\\/chunks\\/architecture-mobx.cfc7b16b.js,dist\\/web\\/chunks\\/vkui.f428153d.js,dist\\/web\\/chunks\\/state-management.7904bc66.js,dist\\/web\\/chunks\\/audioplayer-lib.361fac26.css,dist\\/web\\/chunks\\/audioplayer-lib.a9ea9947.js,dist\\/web\\/chunks\\/common.ffca1610.js,dist\\/web\\/chunks\\/common.evergreen.482d5599.js,dist\\/web\\/common_web.d998a9fe.js,dist\\/web\\/common_web.cc22fe29.css\",\"rawStatic\":\"dist\\/web\\/common_web.js\",\"statsMeta\":{\"platform\":\"web2\",\"st\":false,\"id\":0,\"time\":1789647347,\"hash\":\"ACpnc91HzuajMQIRuX2t47rNcz5yrU94HBCEHxwnz8s\",\"reloadVersion\":42},\"loaderVersion\":\"213114292729\",\"langVersion\":8,\"vkEnv\":\"production\"}"
+    },
+    {
+      "label": "legacy_post_100",
+      "status": 200,
+      "final": "https://vk.com/al_video.php",
+      "len": 821,
+      "video_tokens": [],
+      "ids": [],
+      "titles": [],
+      "preview": "{\"payload\":[\"8\",[\"\\\"����������� ������\\\"\",\"false\",\"false\"]],\"static\":\"dist\\/web\\/chunks\\/vkcom-kit.73ba4ea5.js,dist\\/web\\/chunks\\/vkcom-kit.2bd10179.css,dist\\/web\\/chunks\\/react.ace9d4c8.js,dist\\/web\\/chunks\\/architecture-mobx.cfc7b16b.js,dist\\/web\\/chunks\\/vkui.f428153d.js,dist\\/web\\/chunks\\/state-management.7904bc66.js,dist\\/web\\/chunks\\/audioplayer-lib.361fac26.css,dist\\/web\\/chunks\\/audioplayer-lib.a9ea9947.js,dist\\/web\\/chunks\\/common.ffca1610.js,dist\\/web\\/chunks\\/common.evergreen.482d5599.js,dist\\/web\\/common_web.d998a9fe.js,dist\\/web\\/common_web.cc22fe29.css\",\"rawStatic\":\"dist\\/web\\/common_web.js\",\"statsMeta\":{\"platform\":\"web2\",\"st\":false,\"id\":0,\"time\":1789647347,\"hash\":\"ACpnc91HzuajMQIRuX2t47rNcz5yrU94HBCEHxwnz8s\",\"reloadVersion\":42},\"loaderVersion\":\"213114292729\",\"langVersion\":8,\"vkEnv\":\"production\"}"
+    },
+    {
+      "label": "mobile_100",
+      "status": 200,
+      "final": "https://m.vk.com/videos-227682170?offset=100",
+      "len": 207,
+      "video_tokens": [],
+      "ids": [],
+      "titles": [],
+      "preview": "{\"location\":\"https:\\/\\/m.vkvideo.ru\\/videos-227682170?offset=100\",\"replace\":0,\"hard\":1,\"version\":\"44903d1cb86fa81377cf744e26ee10f474592d2a6e720d3e588afadeced304bd\",\"rv\":245671,\"type\":1,\"notifications\":false}"
+    }
+  ]
+}
