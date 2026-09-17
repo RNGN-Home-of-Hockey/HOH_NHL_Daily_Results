@@ -1,0 +1,67 @@
+name: Wire Center V17
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/center-v17-wire.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Wire V17 routes and UI
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/team-current-routes.js')
+          s=p.read_text(encoding='utf-8')
+          imp_anchor='import { handleTelegramCenterV16Hotfix } from "./telegram-center-v16-hotfix.js";\n'
+          imports=('import { handleTelegramCenterV17PlayerData } from "./telegram-center-v17-player-data.js";\n'
+                   'import { handleTelegramCenterV17Hotfix } from "./telegram-center-v17-hotfix.js";\n')
+          if 'handleTelegramCenterV17PlayerData' not in s:
+              if imp_anchor not in s: raise RuntimeError('V16 import anchor missing')
+              s=s.replace(imp_anchor,imp_anchor+imports,1)
+          route_anchor=('  const centerV16HotfixResponse = handleTelegramCenterV16Hotfix(request, path);\n'
+                        '  if (centerV16HotfixResponse) return centerV16HotfixResponse;\n')
+          routes=('\n  const centerV17PlayerDataResponse = await handleTelegramCenterV17PlayerData(request.clone(), env, path);\n'
+                  '  if (centerV17PlayerDataResponse) return centerV17PlayerDataResponse;\n'
+                  '  const centerV17HotfixResponse = handleTelegramCenterV17Hotfix(request, path);\n'
+                  '  if (centerV17HotfixResponse) return centerV17HotfixResponse;\n')
+          if 'centerV17PlayerDataResponse' not in s:
+              if route_anchor not in s: raise RuntimeError('V16 route anchor missing')
+              s=s.replace(route_anchor,route_anchor+routes,1)
+          if '/telegram-app/v17.js' not in s:
+              anchor='      if (!body.includes(\'/telegram-app/v16.js\')) body = body.replace(\'</body>\', \'<script src="/telegram-app/v16.js"></script></body>\');\n'
+              line='      if (!body.includes(\'/telegram-app/v17.js\')) body = body.replace(\'</body>\', \'<script src="/telegram-app/v17.js"></script></body>\');\n'
+              if anchor not in s: raise RuntimeError('V16 HTML anchor missing')
+              s=s.replace(anchor,anchor+line,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Verify syntax and wiring
+        run: |
+          node --check cloudflare-worker/src/telegram-center-v17-player-data.js
+          node --check cloudflare-worker/src/telegram-center-v17-hotfix.js
+          node --check cloudflare-worker/src/team-current-routes.js
+          grep -q 'handleTelegramCenterV17PlayerData' cloudflare-worker/src/team-current-routes.js
+          grep -q 'handleTelegramCenterV17Hotfix' cloudflare-worker/src/team-current-routes.js
+          grep -q '/telegram-app/v17.js' cloudflare-worker/src/team-current-routes.js
+      - name: Worker dry run
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .validation-build
+      - name: Commit wiring
+        run: |
+          if git diff --quiet; then echo 'Already wired'; exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cloudflare-worker/src/team-current-routes.js
+          git commit -m 'Wire Center V17 player fixes'
+          git push
