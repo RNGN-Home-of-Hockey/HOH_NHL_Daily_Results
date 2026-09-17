@@ -1,7 +1,10 @@
 const VK_API = "https://api.vk.com/method/video.get";
 const VK_VERSION = "5.199";
 const VK_OWNER_ID = -227682170;
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 100;
+const BACKFILL_PAGES_PER_TICK = 5;
+const META_ALGO = "hoh_vk_video_backfill_algo";
+const BACKFILL_ALGO = "v3-root-pagination-100";
 const META_CURSOR = "hoh_vk_video_backfill_offset";
 const META_DONE = "hoh_vk_video_backfill_done";
 const META_LAST_SYNC = "hoh_vk_video_last_sync_json";
@@ -44,6 +47,13 @@ export async function runVkBroadcastMaintenance(env,{forceBackfill=false}={}) {
   if (!token) return {ok:false,skipped:true,error:"missing_vk_access_token"};
 
   try {
+    const algoMeta=await loadMeta(env.DB,META_ALGO);
+    if(String(algoMeta?.meta_value||"")!==BACKFILL_ALGO){
+      await saveMeta(env.DB,META_CURSOR,"0");
+      await saveMeta(env.DB,META_DONE,"0");
+      await saveMeta(env.DB,META_ALGO,BACKFILL_ALGO);
+      forceBackfill=true;
+    }
     const first=await fetchVkPage(token,0);
     const current=await ingestPage(env,first.items||[],{offset:0,mode:"latest"});
 
@@ -54,19 +64,36 @@ export async function runVkBroadcastMaintenance(env,{forceBackfill=false}={}) {
     let backfill={skipped:true,offset,reason:done&&!forceBackfill?"complete":"not_run"};
 
     if (!done || forceBackfill) {
-      if (forceBackfill && done) {
+      if (forceBackfill) {
         offset=0;
+        await saveMeta(env.DB,META_CURSOR,"0");
         await saveMeta(env.DB,META_DONE,"0");
       }
-      const page=offset===0?first:await fetchVkPage(token,offset);
-      backfill=await ingestPage(env,page.items||[],{offset,mode:"backfill"});
-      const dates=(page.items||[]).map(x=>Number(x.date||x.adding_date||0)).filter(n=>Number.isFinite(n)&&n>0);
-      const oldest=dates.length?Math.min(...dates):Infinity;
-      const exhausted=(page.items||[]).length<PAGE_SIZE || offset+(page.items||[]).length>=Number(page.count||0) || (oldest!==Infinity && oldest<HISTORICAL_NOT_BEFORE);
-      const nextOffset=exhausted?offset:offset+PAGE_SIZE;
-      await saveMeta(env.DB,META_CURSOR,String(nextOffset));
-      if (exhausted) await saveMeta(env.DB,META_DONE,"1");
-      backfill={...backfill,total_available:Number(page.count||0),next_offset:exhausted?null:nextOffset,complete:exhausted,oldest_unix:oldest===Infinity?null:oldest};
+      let pages=0;
+      let seen=0,stored=0,eligible=0,mapped=0,ambiguous=0,unmatched=0;
+      let totalAvailable=0;
+      let oldestSeen=null;
+      let complete=false;
+      while(pages<BACKFILL_PAGES_PER_TICK&&!complete){
+        const page=(offset===0&&pages===0)?first:await fetchVkPage(token,offset);
+        const items=page.items||[];
+        const one=await ingestPage(env,items,{offset,mode:"backfill"});
+        seen+=Number(one.seen||0); stored+=Number(one.stored||0); eligible+=Number(one.eligible||0);
+        mapped+=Number(one.mapped||0); ambiguous+=Number(one.ambiguous||0); unmatched+=Number(one.unmatched||0);
+        totalAvailable=Number(page.count||totalAvailable||0);
+        const dates=items.map(x=>Number(x.date||x.adding_date||0)).filter(n=>Number.isFinite(n)&&n>0);
+        const oldest=dates.length?Math.min(...dates):Infinity;
+        if(oldest!==Infinity)oldestSeen=oldestSeen===null?oldest:Math.min(oldestSeen,oldest);
+        complete=items.length===0 || offset+items.length>=totalAvailable || (oldest!==Infinity&&oldest<HISTORICAL_NOT_BEFORE);
+        if(complete){
+          await saveMeta(env.DB,META_DONE,"1");
+        }else{
+          offset+=items.length;
+          await saveMeta(env.DB,META_CURSOR,String(offset));
+        }
+        pages++;
+      }
+      backfill={mode:"backfill",pages,seen,stored,eligible,mapped,ambiguous,unmatched,total_available:totalAvailable,next_offset:complete?null:offset,complete,oldest_unix:oldestSeen};
     }
 
     const result={ok:true,owner_id:VK_OWNER_ID,current,backfill,finished_at:new Date().toISOString()};
