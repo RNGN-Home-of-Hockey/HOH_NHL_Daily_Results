@@ -1,0 +1,283 @@
+{
+  "group_id": 227682170,
+  "pages": [
+    {
+      "url": "https://vk.com/nhl_home_of_hockey",
+      "status": 200,
+      "final_url": "https://vk.com/nhl_home_of_hockey",
+      "len": 142615,
+      "methods": [
+        "utils.resolveScreenName",
+        "groups.getById",
+        "users.get",
+        "users.get"
+      ],
+      "prefetch": [
+        {
+          "method": "utils.resolveScreenName",
+          "request": {
+            "screen_name": "nhl_home_of_hockey"
+          },
+          "version": "5.289",
+          "error": null,
+          "response": {
+            "object_id": 227682170,
+            "type": "group"
+          }
+        },
+        {
+          "method": "groups.getById",
+          "request": {
+            "fields": "is_member,member_status,is_closed,can_see_members,can_post,can_suggest,can_upload_video,can_upload_story,can_upload_clip,community_channel_id,leave_mode,enabled_features,cover,photo_avg_color,has_photo,crop_photo,tabs,main_album_id,can_message,is_government_organization,is_yclients_tooltip_active,verified,donut_block,donut_payment_info,friends,contacts,show_suggestions,has_suggestions,audio_curator_id,menu,is_group_displayed,is_messages_blocked,is_hidden_from_feed,is_subscribed,is_favorite,online_status,event_organizer,ban_info,videos_count,invited_by,audio_artist_id,deactivated_type,deactivated_message,age_mark,a_plus_mark,description,rating,phone,site,is_site_displayed,channel_button,is_business,addresses,start_date,finish_date,is_work_group,action_button,is_market_online_booking_action_button_enabled,is_market_cart_enabled,has_stories,warning_notification,is_event,status,category1_name,members_count,yclients_repeat_records,trust_mark,market,strikes_info,strikes_restrictions,market_shop_conditions_state,app_button,city,is_business_category,is_manual_marked_business,admin_level,channel_info,has_group_channel,wall,create_date,video_lives_data,content_sections_data",
+            "group_ids": 227682170
+          },
+          "version": "5.289",
+          "error": null,
+          "response": {
+            "groups": [
+              {
+                "id": 227682170,
+                "description": "��� ��� ������: � ��� ��� ����� ������ ��� � ������������ �� ������� � ��������!\n\n�� �������� ��������������, ������� � ������������: rngn.commercial@gmail.com\n\nTelegram: t.me/home_of_hockey  \nYouTube: youtube.com/@homeofhockey-yt  \nInstagram*: instagram.com/home.of_hockey  \nRutube: rutube.ru/channel/51987875/  \n\n* ��������� �� ���������� ��\n\n����� ��������� �����������: �4968033233",
+                "members_count": 93755,
+                "cover": {
+                  "enabled": 1,
+                  "images": [
+                    {
+                      "url": "https://sun9-27.userapi.com/impf/xKFCWFKOjmWp2GzU4x24VO6uRYjNroZEEfzcXQ/Uo_YNkTXJOU.jpg?size=200x80&quality=95&crop=0,0,1920,767&sign=1f786883d20df3f76a5d48d894d7040a&c_uniq_tag=KtuEr1yiULJmYQoNZwaU9cH89F--PBkmroFDR61zHwg&type=cover_group",
+                      "width": 200,
+                      "height": 80
+                    },
+                    {
+                      "url": "https://sun9-27.userapi.com/impf/xKFCWFKOjmWp2GzU4x24VO6uRYjNroZEEfzcXQ/Uo_YNkTXJOU.jpg?size=400x160&quality=95&crop=0,0,1920,767&sign=84042c5599c9672abfcaa732b1e935c4&c_uniq_tag=GC_bljbgVUBgfsht4NI8shM-V9pALbaP5GvXPlhuIao&type=cover_group",
+                      "width": 400,
+                      "height": 160
+                    },
+                    {
+                      "url": "https://sun9-27.userapi.com/impf/xKFCWFKOjmWp2GzU4x24VO6uRYjNroZEEfzcXQ/Uo_YNkTXJOU.jpg?size=911x364&quality=95&crop=0,0,1920,767&sign=5df89c00c7335e39c5877674c4e0a01d&c_uniq_tag=2mMnrysfATyd19_oEkrqYjnbG1-4ctHfxXLsri86CEo&type=cover_group",
+                      "width": 911,
+                      "height": 364
+                    },
+                    {
+                      "url": "https://sun9-27.userapi.com/impf/xKFCWFKOjmWp2GzU4x24VO6uRYjNroZEEfzcXQ/Uo_YNkTXJOU.jpg?size=1080x432&quality=95&crop=0,0,1920,767&sign=ba80a69bc88b81f42d01af577c2cf4f2&c_uniq_tag=im3U3QADo5a5CqbsgT6fQ3J60ilBHiDlUpJ0oTDnMCI&type=cover_group",
+                      "width": 1080,
+                      "height": 432
+                    },
+                    {
+                      "url": "https://sun9-27.userapi.com/impf/xKFCWFKOjmWp2GzU4x24VO6uRYjNroZEEfzcXQ/Uo_YNkTXJOU.jpg?size=1920x768&quality=95&crop=0,0,1920,767&sign=f44fb877e6ef891de4907e41c2f6eb92&c_uniq_tag=9Vv-7hS4tdoisgmjyhgymXTh57WS7vCaj_1yxDmzLVw&type=cover_group",
+                      "width": 1920,
+                      "height": 768
+                    }
+                  ]
+                },
+                "video_lives_data": {
+                  "has_live_block": false,
+                  "has_badge": false
+                },
+                "photo_avg_color": "#FC6B12",
+                "has_photo": 1,
+                "crop_photo": {
+                  "photo": {
+                    "album_id": -6,
+                    "date": 1781510347,
+                    "id": 457253375,
+                    "owner_id": -227682170,
+                    "thumb_hash": "ZssGHwYINzh7h4hwdXp3Z4d4cl/o94UO",
+                    "sizes": [
+                      {
+                        "height": 72,
+                        "type": "s",
+                        "width": 72,
+                        "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk&cs=72x0"
+                      },
+                      {
+                        "height": 160,
+                        "type": "m",
+                        "width": 160,
+                        "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk&cs=160x0"
+                      },
+                      {
+                        "height": 640,
+                        "type": "x",
+                        "width": 640,
+                        "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk&cs=640x0"
+                      },
+                      {
+                        "height": 1000,
+                        "type": "y",
+                        "width": 1000,
+                        "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk&cs=1000x0"
+                      },
+                      {
+                        "height": 108,
+                        "type": "o",
+                        "width": 108,
+                        "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk&cs=108x0"
+                      },
+                      {
+                        "height": 240,
+                        "type": "p",
+                        "width": 240,
+                        "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk&cs=240x0"
+                      },
+                      {
+                        "height": 360,
+                        "type": "q",
+                        "width": 360,
+                        "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk&cs=360x0"
+                      },
+                      {
+                        "height": 540,
+                        "type": "r",
+                        "width": 540,
+                        "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk&cs=540x0"
+                      },
+                      {
+                        "height": 1000,
+                        "type": "base",
+                        "width": 1000,
+                        "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk"
+                      }
+                    ],
+                    "square_crop": "0,0,1000",
+                    "text": "",
+                    "user_id": 100,
+                    "web_view_token": "7f241427be450336a6",
+                    "has_tags": false,
+                    "orig_photo": {
+                      "height": 1000,
+                      "type": "base",
+                      "url": "https://sun9-28.userapi.com/s/v1/ig2/cdH5plLB6l5ynTnkMeykF56a6UrRHd0EEfjuhTyCsd-5M5GeoMnFvxI1jJunMMRrMgMVUz5ym99qqpspcSaIno_N.jpg?quality=95&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720,1000x1000&from=bu&u=IxTauukrnOWLVvSgrowWBpaWvjjVR9sGKk3DBSLbvyk",
+                      "width": 1000
+                    }
+                  },
+                  "crop": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "x2": 100.0,
+                    "y2": 100.0
+                  },
+                  "rect": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "x2": 100.0,
+                    "y2": 100.0
+                  }
+                },
+                "status": "��� ����� ��� �� �������!",
+                "contacts": [
+                  {
+                    "desc": "�� �������� ��������������, ������� � ������������",
+                    "email": "rngn.commercial@gmail.com",
+                    "contact_id": 2000000001
+                  }
+                ],
+                "site": "",
+                "is_site_displayed": true,
+                "age_mark": 1,
+                "addresses": {
+                  "is_enabled": false,
+                  "has_addresses": false
+                },
+                "can_see_members": true,
+                "is_business": "0",
+                "trust_mark": 0,
+                "show_suggestions": "never",
+                "is_government_organization": false,
+                "tabs": [
+                  {
+                    "name": "wall",
+                    "main_type": "wall",
+                    "main_type_count": 11458
+                  },
+                  {
+                    "name": "videos",
+                    "main_type": "videos",
+                    "main_type_count": 6283,
+                    "show_more": true
+                  },
+                  {
+                    "name": "short_videos",
+                    "main_type": "short_videos",
+                    "main_type_count": 387,
+                    "show_more": true
+                  }
+                ],
+                "a_plus_mark": {
+                  "rkn_url": "https://gosuslugi.ru/snet/6798cd5c58ab2221b0f08bec"
+                },
+                "name": "HOME OF HOCKEY | ���������� ���",
+                "screen_name": "nhl_home_of_hockey",
+                "is_closed": 0,
+                "type": "group",
+                "verified": 0,
+                "photo_50": "https://sun1-28.userapi.com/s/v1/ig2/Nmn-hfZAAUvXSqg2FwFxzjWRrGLUeb59aSv4kFw8sHRU7eX6z18jhRH78ESMspVMUu8SND6ceWRqHiUIc1nssumf.jpg?quality=95&crop=0,0,1000,1000&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720&ava=1&u=EvEZ86ms49WYVlBv4SGtqwdcTm4HBitz4FwAJaLbsPI&cs=50x50",
+                "photo_100": "https://sun1-28.userapi.com/s/v1/ig2/Nmn-hfZAAUvXSqg2FwFxzjWRrGLUeb59aSv4kFw8sHRU7eX6z18jhRH78ESMspVMUu8SND6ceWRqHiUIc1nssumf.jpg?quality=95&crop=0,0,1000,1000&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720&ava=1&u=EvEZ86ms49WYVlBv4SGtqwdcTm4HBitz4FwAJaLbsPI&cs=100x100",
+                "photo_200": "https://sun1-28.userapi.com/s/v1/ig2/Nmn-hfZAAUvXSqg2FwFxzjWRrGLUeb59aSv4kFw8sHRU7eX6z18jhRH78ESMspVMUu8SND6ceWRqHiUIc1nssumf.jpg?quality=95&crop=0,0,1000,1000&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720&ava=1&u=EvEZ86ms49WYVlBv4SGtqwdcTm4HBitz4FwAJaLbsPI&cs=200x200",
+                "photo_base": "https://sun1-28.userapi.com/s/v1/ig2/Nmn-hfZAAUvXSqg2FwFxzjWRrGLUeb59aSv4kFw8sHRU7eX6z18jhRH78ESMspVMUu8SND6ceWRqHiUIc1nssumf.jpg?quality=95&crop=0,0,1000,1000&as=32x32,48x48,72x72,108x108,160x160,240x240,360x360,480x480,540x540,640x640,720x720&ava=1&u=EvEZ86ms49WYVlBv4SGtqwdcTm4HBitz4FwAJaLbsPI"
+              }
+            ],
+            "profiles": []
+          }
+        },
+        {
+          "method": "users.get",
+          "request": {
+            "fields": "id,domain,screen_name,photo_50,first_name,mobile_phone"
+          },
+          "version": "5.289",
+          "error": null,
+          "response": []
+        },
+        {
+          "method": "users.get",
+          "request": {
+            "fields": "domain,first_name,photo_100,photo_200"
+          },
+          "version": "5.289",
+          "error": null,
+          "response": []
+        }
+      ]
+    },
+    {
+      "url": "https://vk.com/videos-227682170",
+      "status": 200,
+      "final_url": "https://vk.com/videos-227682170",
+      "len": 277030,
+      "methods": [],
+      "prefetch": []
+    },
+    {
+      "url": "https://vk.com/video/@nhl_home_of_hockey",
+      "status": 200,
+      "final_url": "https://vk.com/video/@nhl_home_of_hockey",
+      "len": 276363,
+      "methods": [],
+      "prefetch": []
+    },
+    {
+      "url": "https://vk.com/video/nhl_home_of_hockey",
+      "status": 200,
+      "final_url": "https://vkvideo.ru/nhl_home_of_hockey",
+      "len": 274723,
+      "methods": [],
+      "prefetch": []
+    },
+    {
+      "url": "https://m.vk.com/videos-227682170",
+      "status": 200,
+      "final_url": "https://m.vk.com/videos-227682170",
+      "len": 109763,
+      "methods": [],
+      "prefetch": []
+    },
+    {
+      "url": "https://m.vk.com/video/@nhl_home_of_hockey",
+      "status": 200,
+      "final_url": "https://m.vkvideo.ru/@nhl_home_of_hockey",
+      "len": 128310,
+      "methods": [],
+      "prefetch": []
+    }
+  ]
+}
