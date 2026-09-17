@@ -1,0 +1,37 @@
+name: Build two-season D1 game migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/build_two_season_game_migration.py'
+      - 'state/nhl_games_2024_2026.json'
+      - '.github/workflows/build-two-season-game-migration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python tools/build_two_season_game_migration.py
+      - name: Verify expected count
+        run: |
+          grep -q "nhl_two_season_catalog','2792'" migrations/0017_nhl_two_season_games.sql
+      - name: Commit migration safely
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add migrations/0017_nhl_two_season_games.sql
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Add canonical 2792-game NHL catalog migration"
+          git pull --rebase origin main
+          git push
