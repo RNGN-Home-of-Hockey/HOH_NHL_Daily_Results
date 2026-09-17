@@ -1,0 +1,37 @@
+name: Probe HOH VK Video browser
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/probe_vkvideo_browser.mjs'
+      - '.github/workflows/vkvideo-browser-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Probe VK Video archive in Chromium
+        run: node tools/probe_vkvideo_browser.mjs
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/vkvideo_browser_probe.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Capture HOH VK Video browser probe"
+          git push
