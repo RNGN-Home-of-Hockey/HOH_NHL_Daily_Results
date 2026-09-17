@@ -29,6 +29,8 @@ import { handleTelegramCenterV15PlayerUi } from "./telegram-center-v15-player-ui
 import { handleTelegramCenterV16Hotfix } from "./telegram-center-v16-hotfix.js";
 import { handleTelegramCenterV17PlayerData } from "./telegram-center-v17-player-data.js";
 import { handleTelegramCenterV17Hotfix } from "./telegram-center-v17-hotfix.js";
+import { handleTelegramCenterV18VkData } from "./telegram-center-v18-vk-data.js";
+import { handleTelegramCenterV18VkUi } from "./telegram-center-v18-vk-ui.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -87,6 +89,11 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const centerV17HotfixResponse = handleTelegramCenterV17Hotfix(request, path);
   if (centerV17HotfixResponse) return centerV17HotfixResponse;
 
+  const centerV18VkDataResponse = await handleTelegramCenterV18VkData(request.clone(), env, path);
+  if (centerV18VkDataResponse) return centerV18VkDataResponse;
+  const centerV18VkUiResponse = handleTelegramCenterV18VkUi(request, path);
+  if (centerV18VkUiResponse) return centerV18VkUiResponse;
+
   const centerV8BrandResponse = handleTelegramCenterV8BrandAssets(request, path);
   if (centerV8BrandResponse) return centerV8BrandResponse;
 
@@ -107,6 +114,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes('/telegram-app/v15-player.js')) body = body.replace('</body>', '<script src="/telegram-app/v15-player.js"></script></body>');
       if (!body.includes('/telegram-app/v16.js')) body = body.replace('</body>', '<script src="/telegram-app/v16.js"></script></body>');
       if (!body.includes('/telegram-app/v17.js')) body = body.replace('</body>', '<script src="/telegram-app/v17.js"></script></body>');
+      if (!body.includes('/telegram-app/v18.js')) body = body.replace('</body>', '<script src="/telegram-app/v18.js"></script></body>');
       return new Response(body, {status:centerV8Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerV8Response;
