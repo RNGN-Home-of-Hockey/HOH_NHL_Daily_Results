@@ -27,6 +27,8 @@ import { handleTelegramCenterV15CoreUi } from "./telegram-center-v15-core-ui.js"
 import { handleTelegramCenterV15TeamUi } from "./telegram-center-v15-team-ui.js";
 import { handleTelegramCenterV15PlayerUi } from "./telegram-center-v15-player-ui.js";
 import { handleTelegramCenterV16Hotfix } from "./telegram-center-v16-hotfix.js";
+import { handleTelegramCenterV17PlayerData } from "./telegram-center-v17-player-data.js";
+import { handleTelegramCenterV17Hotfix } from "./telegram-center-v17-hotfix.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -80,6 +82,11 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const centerV16HotfixResponse = handleTelegramCenterV16Hotfix(request, path);
   if (centerV16HotfixResponse) return centerV16HotfixResponse;
 
+  const centerV17PlayerDataResponse = await handleTelegramCenterV17PlayerData(request.clone(), env, path);
+  if (centerV17PlayerDataResponse) return centerV17PlayerDataResponse;
+  const centerV17HotfixResponse = handleTelegramCenterV17Hotfix(request, path);
+  if (centerV17HotfixResponse) return centerV17HotfixResponse;
+
   const centerV8BrandResponse = handleTelegramCenterV8BrandAssets(request, path);
   if (centerV8BrandResponse) return centerV8BrandResponse;
 
@@ -99,6 +106,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes('/telegram-app/v15-team.js')) body = body.replace('</body>', '<script src="/telegram-app/v15-team.js"></script></body>');
       if (!body.includes('/telegram-app/v15-player.js')) body = body.replace('</body>', '<script src="/telegram-app/v15-player.js"></script></body>');
       if (!body.includes('/telegram-app/v16.js')) body = body.replace('</body>', '<script src="/telegram-app/v16.js"></script></body>');
+      if (!body.includes('/telegram-app/v17.js')) body = body.replace('</body>', '<script src="/telegram-app/v17.js"></script></body>');
       return new Response(body, {status:centerV8Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerV8Response;
