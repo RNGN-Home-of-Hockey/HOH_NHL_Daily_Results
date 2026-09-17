@@ -21,6 +21,11 @@ import { handleTelegramCenterV9Polish } from "./telegram-center-v9-polish.js";
 import { handleTelegramCenterV11Polish } from "./telegram-center-v11-polish.js";
 import { handleTelegramCenterV12Polish } from "./telegram-center-v12-polish.js";
 import { handleTelegramCenterV13Teams } from "./telegram-center-v13-teams.js";
+import { handleTelegramCenterV15TeamData } from "./telegram-center-v15-team-data.js";
+import { handleTelegramCenterV15PlayerData } from "./telegram-center-v15-player-data.js";
+import { handleTelegramCenterV15CoreUi } from "./telegram-center-v15-core-ui.js";
+import { handleTelegramCenterV15TeamUi } from "./telegram-center-v15-team-ui.js";
+import { handleTelegramCenterV15PlayerUi } from "./telegram-center-v15-player-ui.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -58,6 +63,19 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const centerV13Response = await handleTelegramCenterV13Teams(request, env, path);
   if (centerV13Response) return centerV13Response;
 
+  const centerV15TeamDataResponse = await handleTelegramCenterV15TeamData(request.clone(), env, path);
+  if (centerV15TeamDataResponse) return centerV15TeamDataResponse;
+
+  const centerV15PlayerDataResponse = await handleTelegramCenterV15PlayerData(request.clone(), env, path);
+  if (centerV15PlayerDataResponse) return centerV15PlayerDataResponse;
+
+  const centerV15CoreUiResponse = handleTelegramCenterV15CoreUi(request, path);
+  if (centerV15CoreUiResponse) return centerV15CoreUiResponse;
+  const centerV15TeamUiResponse = handleTelegramCenterV15TeamUi(request, path);
+  if (centerV15TeamUiResponse) return centerV15TeamUiResponse;
+  const centerV15PlayerUiResponse = handleTelegramCenterV15PlayerUi(request, path);
+  if (centerV15PlayerUiResponse) return centerV15PlayerUiResponse;
+
   const centerV8BrandResponse = handleTelegramCenterV8BrandAssets(request, path);
   if (centerV8BrandResponse) return centerV8BrandResponse;
 
@@ -73,6 +91,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes('/telegram-app/v11.js')) body = body.replace('</body>', '<script src="/telegram-app/v11.js"></script></body>');
       if (!body.includes('/telegram-app/v12.js')) body = body.replace('</body>', '<script src="/telegram-app/v12.js"></script></body>');
       if (!body.includes('/telegram-app/v13.js')) body = body.replace('</body>', '<script src="/telegram-app/v13.js"></script></body>');
+      if (!body.includes('/telegram-app/v15-core.js')) body = body.replace('</body>', '<script src="/telegram-app/v15-core.js"></script></body>');
+      if (!body.includes('/telegram-app/v15-team.js')) body = body.replace('</body>', '<script src="/telegram-app/v15-team.js"></script></body>');
+      if (!body.includes('/telegram-app/v15-player.js')) body = body.replace('</body>', '<script src="/telegram-app/v15-player.js"></script></body>');
       return new Response(body, {status:centerV8Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerV8Response;
