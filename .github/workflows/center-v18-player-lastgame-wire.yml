@@ -1,0 +1,69 @@
+name: Wire Center V18 player last appearance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare-worker/src/telegram-center-v18-player-lastgame.js'
+      - '.github/workflows/center-v18-player-lastgame-wire.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Wire strict player last appearance
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          p=Path('cloudflare-worker/src/team-current-routes.js')
+          s=p.read_text(encoding='utf-8')
+          anchor='import { handleTelegramCenterV18VkData } from "./telegram-center-v18-vk-data.js";\n'
+          imp='import { handleTelegramCenterV18PlayerLastGame } from "./telegram-center-v18-player-lastgame.js";\n'
+          if 'handleTelegramCenterV18PlayerLastGame' not in s:
+            if anchor not in s: raise RuntimeError('V18 data import anchor missing')
+            s=s.replace(anchor,imp+anchor,1)
+          route_anchor='  const centerV18VkDataResponse = await handleTelegramCenterV18VkData(request.clone(), env, path);\n'
+          route=('  const centerV18PlayerLastGameResponse = await handleTelegramCenterV18PlayerLastGame(request.clone(), env, path);\n'
+                 '  if (centerV18PlayerLastGameResponse) return centerV18PlayerLastGameResponse;\n')
+          if 'centerV18PlayerLastGameResponse' not in s:
+            if route_anchor not in s: raise RuntimeError('V18 data route anchor missing')
+            s=s.replace(route_anchor,route+route_anchor,1)
+          p.write_text(s,encoding='utf-8')
+
+          ui=Path('cloudflare-worker/src/telegram-center-v18-vk-ui.js')
+          u=ui.read_text(encoding='utf-8')
+          old="const block=document.createElement('section');block.className='v18PlayerLast';block.innerHTML='<div class=\"v18PlayerLastTitle\">Последний матч '+esc(teamName)+':</div>"
+          new="const playerName=String(d.player?.full_name_ru||d.player?.full_name_en||'Игрок').trim();const block=document.createElement('section');block.className='v18PlayerLast';block.innerHTML='<div class=\"v18PlayerLastTitle\">'+esc(playerName)+'. Последний матч '+esc(teamName)+':</div>"
+          if 'playerName=String(d.player?.full_name_ru' not in u:
+            if old not in u: raise RuntimeError('player last-game label anchor missing')
+            u=u.replace(old,new,1)
+          ui.write_text(u,encoding='utf-8')
+          PY
+      - name: Verify and dry run
+        run: |
+          node --check cloudflare-worker/src/telegram-center-v18-player-lastgame.js
+          node --check cloudflare-worker/src/telegram-center-v18-vk-ui.js
+          node --check cloudflare-worker/src/team-current-routes.js
+          grep -q 'handleTelegramCenterV18PlayerLastGame' cloudflare-worker/src/team-current-routes.js
+          grep -q 'Последний матч' cloudflare-worker/src/telegram-center-v18-vk-ui.js
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .validation-build
+      - name: Commit wiring safely
+        run: |
+          if git diff --quiet; then echo "Already wired"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cloudflare-worker/src/team-current-routes.js cloudflare-worker/src/telegram-center-v18-vk-ui.js
+          git commit -m "Use actual player appearance for V18 last game"
+          git pull --rebase origin main
+          git push
