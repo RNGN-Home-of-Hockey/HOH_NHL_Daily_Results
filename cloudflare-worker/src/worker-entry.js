@@ -82,6 +82,18 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    const cron = String(controller?.cron || "");
+    if (cron === "*/2 * * * *") {
+      if (env.DB) {
+        ctx.waitUntil(
+          runVkBroadcastMaintenance(env).catch((error) => {
+            console.error("dedicated HOH VK broadcast maintenance failed", error);
+          }),
+        );
+      }
+      return;
+    }
+
     const canaryEnabled = envFlag(env.BACKFILL_CANARY_ENABLED, false);
     const fullBackfillEnabled = envFlag(env.FULL_BACKFILL_ENABLED, false);
     const liveNotificationsEnabled = envFlag(env.TELEGRAM_LIVE_NOTIFICATIONS_ENABLED, false);
@@ -103,11 +115,6 @@ export default {
       ctx.waitUntil(
         runCenterNameMaintenance(env).catch((error) => {
           console.error("scheduled Telegram Center Russian-name maintenance failed", error);
-        }),
-      );
-      ctx.waitUntil(
-        runVkBroadcastMaintenance(env).catch((error) => {
-          console.error("scheduled HOH VK broadcast maintenance failed", error);
         }),
       );
     }

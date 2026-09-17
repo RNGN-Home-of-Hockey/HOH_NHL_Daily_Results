@@ -7,7 +7,7 @@
     "enabled": true
   },
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["*/5 * * * *", "*/2 * * * *"]
   },
   "d1_databases": [
     {
