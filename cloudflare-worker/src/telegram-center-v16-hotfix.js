@@ -1,0 +1,53 @@
+const PATH="/telegram-app/v16.js";
+
+export function handleTelegramCenterV16Hotfix(request,path){
+  if(path!==PATH)return null;
+  if(request.method!=="GET")return new Response("method_not_allowed",{status:405});
+  return new Response(V16_JS,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","X-Content-Type-Options":"nosniff"}});
+}
+
+const V16_JS=String.raw`(function(){
+'use strict';
+const H=window.HOHV15;if(!H)return;
+const V16=window.HOHV16=window.HOHV16||{};
+V16.homeBusy=false;V16.lastPlayer=0;
+
+const FLAG={
+RUS:['#d9dce4','#7188af','#c66f78'],CAN:['#c56d77','#dddfe5','#c56d77'],USA:['#c37282','#dddfe5','#6f82a7'],SWE:['#7295b4','#cdbd69','#7295b4'],FIN:['#d9dce4','#6f84aa','#d9dce4'],CZE:['#d9dce4','#c7737b','#7183a6'],SVK:['#d9dce4','#7287ae','#c9727b'],CHE:['#c66f78','#dddfe5','#c66f78'],DEU:['#999da6','#c66f78','#c5ae69'],LVA:['#a96d76','#dddfe5','#a96d76'],NOR:['#c4717c','#dddfe5','#6f80a3'],DNK:['#c66e78','#dddfe5','#c66e78'],AUT:['#c9737c','#dddfe5','#c9737c'],FRA:['#7088ae','#dddfe5','#c8737b'],GBR:['#7181a4','#dddfe5','#c2747b'],KAZ:['#73a8b7','#cbb86a','#73a8b7'],SVN:['#d9dce4','#748cac','#c87178'],BLR:['#c57078','#dddfe5','#78a087']};
+function esc(v){return H.esc?H.esc(v):String(v==null?'':v)}
+function logo(t){return H.teamLogo?H.teamLogo(t):('https://assets.nhle.com/logos/nhl/svg/'+String(t||'').toUpperCase()+'_light.svg')}
+function portrait(p,mini=false){const code=String(p.primary_country_code||p.country_code||'').toUpperCase().slice(0,3),c=FLAG[code]||['#b8bcc7','#d7d9df','#9ba1af'],letters=code.split('').map((x,i)=>'<span style="color:'+c[i%3]+'">'+esc(x)+'</span>').join('');return '<div class="v15Portrait v16Portrait '+(mini?'mini':'')+'"><img class="teamGhost" src="'+esc(p.team_logo||logo(p.current_team_tri||p.team_tri))+'" alt=""><img class="person" src="'+esc(p.headshot||p.photo||'')+'" alt=""><div class="v15Country v16Country">'+letters+'</div></div>'}
+H.portrait=portrait;
+
+function css(){if(document.getElementById('v16css'))return;const s=document.createElement('style');s.id='v16css';s.textContent=`
+/* Old media stays mounted so V12 stops reinserting it, but it is never visible. */
+#view>.mediaShelf,#view>.v12Media{display:none!important}
+#view>.v15Media{display:grid!important}
+.v16Portrait{width:92px!important;height:92px!important;flex:0 0 92px!important;overflow:hidden!important;position:relative!important}
+.v16Portrait .person{position:absolute!important;left:8px!important;bottom:0!important;width:84px!important;height:84px!important;object-fit:contain!important;z-index:3!important;margin:0!important}
+.v16Portrait .teamGhost{position:absolute!important;right:1px!important;top:10px!important;width:62px!important;height:62px!important;object-fit:contain!important;z-index:1!important;opacity:.76!important;margin:0!important}
+.v16Country{position:absolute!important;left:2px!important;top:10px!important;z-index:4!important;font:900 9px/1 Arial!important;letter-spacing:0!important;text-shadow:0 1px 2px #0008!important;background:none!important;color:inherit!important;opacity:.88!important;pointer-events:none!important}
+.v16Country span{display:block!important;height:9px!important;line-height:9px!important;background:none!important;-webkit-text-fill-color:currentColor!important}
+.v16Portrait.mini{width:48px!important;height:48px!important;flex-basis:48px!important}.v16Portrait.mini .person{width:45px!important;height:45px!important;left:3px!important}.v16Portrait.mini .teamGhost{width:34px!important;height:34px!important;top:4px!important}.v16Portrait.mini .v16Country{top:4px!important;left:0!important;font-size:6px!important}.v16Portrait.mini .v16Country span{height:6px!important;line-height:6px!important}
+.v15HeadInfo button:not(#v15Audio){display:none!important}.v15HeadInfo .v11Audio,.v15HeadInfo .v12Audio{display:none!important}
+.v15Audio{width:30px!important;height:30px!important;min-width:30px!important;max-width:30px!important;flex:0 0 30px!important;margin:0!important;padding:0!important;transform:none!important}
+.v15Media{grid-template-columns:.7fr .7fr 1.7fr!important;gap:6px!important;margin:0 0 12px!important}.v15MediaPic{height:122px!important}.v15MediaTitle{font-size:7px!important}.v15Ribbon{display:block!important;background:#ff5a00!important;color:#fff!important}
+@media(max-width:390px){.v16Portrait{width:88px!important;height:88px!important;flex-basis:88px!important}.v16Portrait .person{width:80px!important;height:80px!important}.v16Portrait .teamGhost{width:58px!important;height:58px!important}.v15MediaPic{height:116px!important}}
+`;document.head.appendChild(s)}
+
+function title(x){let s=String(x||'HOME OF HOCKEY').replace(/#\w+/g,'').trim();return s.length>44?s.slice(0,41)+'…':s}
+function card(x){const news=x.kind==='news';return '<a class="v15MediaCard '+(news?'news':'short')+'" href="'+esc(x.url)+'" target="_blank" rel="noopener"><div class="v15MediaPic"><img src="'+esc(x.thumb||'')+'" alt=""><span class="v15Play">▶</span>'+(news?'<span class="v15Ribbon">СВЕЖИЙ NEWS</span>':'')+'</div><div class="v15MediaTitle">'+esc(title(x.title))+'</div></a>'}
+function dedupeHome(){const root=H.view?.();if(!root)return;const all=[...root.querySelectorAll(':scope > .v15Media')];all.slice(1).forEach(x=>x.remove())}
+async function stableHome(){if(H.state.profile||H.currentTab()!=='games'||!H.tabsVisible())return;const root=H.view?.();if(!root)return;dedupeHome();if(root.querySelector(':scope > .v15Media')||V16.homeBusy)return;V16.homeBusy=true;try{const d=await H.api(H.V12+'/media?v16='+Date.now()),items=d.items||[],shorts=items.filter(x=>x.kind==='short').slice(0,2),news=items.find(x=>x.kind==='news');if(shorts.length<2||!news)return;const box=document.createElement('section');box.className='v15Media';box.dataset.v16='1';box.innerHTML='<div class="v15MediaHead"><b>HOME OF HOCKEY</b><span>YouTube</span></div>'+shorts.map(card).join('')+card(news);const toolbar=root.querySelector('.toolbar');toolbar?root.insertBefore(box,toolbar):root.prepend(box)}catch(e){console.warn('V16 media',e)}finally{V16.homeBusy=false;dedupeHome()}}
+
+const originalRun=H.runCore;
+H.runCore=function(){css();if(!H.state.profile&&H.currentTab()==='games'&&H.tabsVisible()){document.querySelector('.brand')?.remove();document.querySelector('.status')?.remove();const t=document.querySelector('.tab[data-tab="games"]');if(t)t.textContent='Главное';stableHome();dedupeHome();return}if(typeof originalRun==='function')return originalRun()};
+
+function inferOldPlayer(){if(H.state.profile||document.querySelector('.v15Profile'))return;const head=document.querySelector('.profileHead.player');if(!head||typeof H.openPlayer!=='function')return;const img=head.querySelector('img'),src=String(img?.src||img?.getAttribute('src')||''),m=src.match(/\/(\d{6,})\.(?:png|jpe?g|webp)(?:\?|$)/i);const id=Number(m?.[1]||head.dataset.playerId||0);if(!id||V16.lastPlayer===id)return;V16.lastPlayer=id;H.openPlayer(id).finally(()=>setTimeout(()=>{V16.lastPlayer=0},600))}
+function cleanPlayer(){const p=document.querySelector('.v15Profile');if(!p)return;p.querySelectorAll('.v15HeadInfo button').forEach(b=>{if(b.id!=='v15Audio')b.remove()});const head=p.querySelector('.v15Head'),old=head?.querySelector('.v15Portrait:not(.v16Portrait)');if(old){const person=old.querySelector('.person'),team=old.querySelector('.teamGhost'),country=old.querySelector('.v15Country'),code=String(country?.textContent||'').replace(/\s/g,'').slice(0,3);const data={headshot:person?.getAttribute('src')||'',team_logo:team?.getAttribute('src')||'',primary_country_code:code};const tmp=document.createElement('div');tmp.innerHTML=portrait(data,false);old.replaceWith(tmp.firstElementChild)}}
+function version(){document.querySelectorAll('.v15Version').forEach(x=>x.textContent='V16')}
+function tick(){css();version();dedupeHome();cleanPlayer();inferOldPlayer();if(!H.state.profile&&H.currentTab()==='games'&&H.tabsVisible())stableHome()}
+let timer;new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(tick,70)}).observe(document.documentElement,{subtree:true,childList:true});
+document.addEventListener('click',e=>{if(e.target.closest?.('.tab'))setTimeout(tick,90)},true);
+setTimeout(tick,0);setTimeout(tick,250);setTimeout(tick,800);
+})();`;
