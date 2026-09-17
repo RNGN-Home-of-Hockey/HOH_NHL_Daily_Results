@@ -47,7 +47,10 @@ jobs:
         run: |
           set -euo pipefail
           sleep 5
-          URL='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram-center-v18/vk/status'
-          echo "GET $URL"
-          curl --fail-with-body --retry 5 --retry-delay 2 --max-time 30 "$URL"
+          BASE='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram-center-v18/vk'
+          echo '=== STATUS ==='
+          curl --fail-with-body --retry 5 --retry-delay 2 --max-time 30 "$BASE/status"
+          echo
+          echo '=== DISCOVERY ==='
+          curl --fail-with-body --retry 5 --retry-delay 2 --max-time 60 "$BASE/discovery"
           echo
