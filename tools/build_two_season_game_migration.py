@@ -5,6 +5,17 @@ from pathlib import Path
 SRC=Path('state/nhl_games_2024_2026.json')
 OUT=Path('migrations/0017_nhl_two_season_games.sql')
 
+TEAM_NAMES={
+    'ANA':'Anaheim Ducks','BOS':'Boston Bruins','BUF':'Buffalo Sabres','CAR':'Carolina Hurricanes',
+    'CBJ':'Columbus Blue Jackets','CGY':'Calgary Flames','CHI':'Chicago Blackhawks','COL':'Colorado Avalanche',
+    'DAL':'Dallas Stars','DET':'Detroit Red Wings','EDM':'Edmonton Oilers','FLA':'Florida Panthers',
+    'LAK':'Los Angeles Kings','MIN':'Minnesota Wild','MTL':'Montreal Canadiens','NJD':'New Jersey Devils',
+    'NSH':'Nashville Predators','NYI':'New York Islanders','NYR':'New York Rangers','OTT':'Ottawa Senators',
+    'PHI':'Philadelphia Flyers','PIT':'Pittsburgh Penguins','SEA':'Seattle Kraken','SJS':'San Jose Sharks',
+    'STL':'St. Louis Blues','TBL':'Tampa Bay Lightning','TOR':'Toronto Maple Leafs','UTA':'Utah Hockey Club',
+    'VAN':'Vancouver Canucks','VGK':'Vegas Golden Knights','WPG':'Winnipeg Jets','WSH':'Washington Capitals',
+}
+
 def q(v):
     if v is None:return 'NULL'
     if isinstance(v,(int,float)):return str(v)
@@ -12,7 +23,9 @@ def q(v):
 
 d=json.loads(SRC.read_text(encoding='utf-8'))
 rows=[x for x in d.get('games',[]) if int(x.get('game_type') or 0) in (2,3)]
-lines=['PRAGMA foreign_keys = ON;','', '-- Canonical NHL regular-season + playoff games for 2024/25 and 2025/26.', '-- Generated from api-web.nhle.com club season schedules; safe to reapply through ON CONFLICT.','']
+lines=['PRAGMA foreign_keys = ON;','', '-- Canonical NHL regular-season + playoff games for 2024/25 and 2025/26.', '-- Generated from api-web.nhle.com club season schedules; safe to reapply through ON CONFLICT.','', '-- Seed the 32 team keys so this migration also succeeds on a fresh validation database.', 'INSERT INTO teams (tri_code,name_en) VALUES']
+team_values=[f"  ({q(tri)},{q(name)})" for tri,name in sorted(TEAM_NAMES.items())]
+lines += [',\n'.join(team_values), 'ON CONFLICT(tri_code) DO NOTHING;', '']
 for i in range(0,len(rows),150):
     chunk=rows[i:i+150]
     values=[]
