@@ -38,23 +38,17 @@ jobs:
               'import { handleTelegramCenterV15PlayerUi } from "./telegram-center-v15-player-ui.js";\n'
           )
           if 'handleTelegramCenterV15TeamData' not in s:
-              if import_anchor not in s:
-                  raise RuntimeError('V13 import anchor not found')
+              if import_anchor not in s: raise RuntimeError('V13 import anchor not found')
               s = s.replace(import_anchor, import_anchor + imports, 1)
 
           v16_import = 'import { handleTelegramCenterV16Hotfix } from "./telegram-center-v16-hotfix.js";\n'
           if 'handleTelegramCenterV16Hotfix' not in s:
               anchor = 'import { handleTelegramCenterV15PlayerUi } from "./telegram-center-v15-player-ui.js";\n'
-              if anchor not in s:
-                  raise RuntimeError('V15 player import anchor not found')
+              if anchor not in s: raise RuntimeError('V15 player import anchor not found')
               s = s.replace(anchor, anchor + v16_import, 1)
 
-          route_anchor = (
-              '  const centerV13Response = await handleTelegramCenterV13Teams(request, env, path);\n'
-              '  if (centerV13Response) return centerV13Response;\n'
-          )
-          routes = (
-              '\n  const centerV15TeamDataResponse = await handleTelegramCenterV15TeamData(request.clone(), env, path);\n'
+          route_anchor = ('  const centerV13Response = await handleTelegramCenterV13Teams(request, env, path);\n' '  if (centerV13Response) return centerV13Response;\n')
+          routes = ('\n  const centerV15TeamDataResponse = await handleTelegramCenterV15TeamData(request.clone(), env, path);\n'
               '  if (centerV15TeamDataResponse) return centerV15TeamDataResponse;\n\n'
               '  const centerV15PlayerDataResponse = await handleTelegramCenterV15PlayerData(request.clone(), env, path);\n'
               '  if (centerV15PlayerDataResponse) return centerV15PlayerDataResponse;\n\n'
@@ -63,69 +57,49 @@ jobs:
               '  const centerV15TeamUiResponse = handleTelegramCenterV15TeamUi(request, path);\n'
               '  if (centerV15TeamUiResponse) return centerV15TeamUiResponse;\n'
               '  const centerV15PlayerUiResponse = handleTelegramCenterV15PlayerUi(request, path);\n'
-              '  if (centerV15PlayerUiResponse) return centerV15PlayerUiResponse;\n'
-          )
+              '  if (centerV15PlayerUiResponse) return centerV15PlayerUiResponse;\n')
           if 'centerV15TeamDataResponse' not in s:
-              if route_anchor not in s:
-                  raise RuntimeError('V13 route anchor not found')
+              if route_anchor not in s: raise RuntimeError('V13 route anchor not found')
               s = s.replace(route_anchor, route_anchor + routes, 1)
 
           if 'centerV16HotfixResponse' not in s:
-              anchor = (
-                  '  const centerV15PlayerUiResponse = handleTelegramCenterV15PlayerUi(request, path);\n'
-                  '  if (centerV15PlayerUiResponse) return centerV15PlayerUiResponse;\n'
-              )
-              add = (
-                  '\n  const centerV16HotfixResponse = handleTelegramCenterV16Hotfix(request, path);\n'
-                  '  if (centerV16HotfixResponse) return centerV16HotfixResponse;\n'
-              )
-              if anchor not in s:
-                  raise RuntimeError('V15 route anchor not found')
+              anchor = ('  const centerV15PlayerUiResponse = handleTelegramCenterV15PlayerUi(request, path);\n' '  if (centerV15PlayerUiResponse) return centerV15PlayerUiResponse;\n')
+              add = ('\n  const centerV16HotfixResponse = handleTelegramCenterV16Hotfix(request, path);\n' '  if (centerV16HotfixResponse) return centerV16HotfixResponse;\n')
+              if anchor not in s: raise RuntimeError('V15 route anchor not found')
               s = s.replace(anchor, anchor + add, 1)
 
           if '/telegram-app/v15-core.js' not in s:
-              lines = s.splitlines(True)
-              inserted = False
-              for i, line in enumerate(lines):
+              lines=s.splitlines(True); inserted=False
+              for i,line in enumerate(lines):
                   if "/telegram-app/v13.js" in line and "body.includes" in line:
-                      indent = line[:len(line)-len(line.lstrip())]
-                      lines[i+1:i+1] = [
-                          indent + "if (!body.includes('/telegram-app/v15-core.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v15-core.js\"></script></body>');\n",
-                          indent + "if (!body.includes('/telegram-app/v15-team.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v15-team.js\"></script></body>');\n",
-                          indent + "if (!body.includes('/telegram-app/v15-player.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v15-player.js\"></script></body>');\n",
-                      ]
-                      inserted = True
-                      break
-              if not inserted:
-                  raise RuntimeError('V13 HTML injection anchor not found')
-              s = ''.join(lines)
+                      indent=line[:len(line)-len(line.lstrip())]
+                      lines[i+1:i+1]=[
+                          indent+"if (!body.includes('/telegram-app/v15-core.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v15-core.js\"></script></body>');\n",
+                          indent+"if (!body.includes('/telegram-app/v15-team.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v15-team.js\"></script></body>');\n",
+                          indent+"if (!body.includes('/telegram-app/v15-player.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v15-player.js\"></script></body>');\n"]
+                      inserted=True; break
+              if not inserted: raise RuntimeError('V13 HTML injection anchor not found')
+              s=''.join(lines)
 
           if '/telegram-app/v16.js' not in s:
-              lines = s.splitlines(True)
-              inserted = False
-              for i, line in enumerate(lines):
+              lines=s.splitlines(True); inserted=False
+              for i,line in enumerate(lines):
                   if "/telegram-app/v15-player.js" in line and "body.includes" in line:
-                      indent = line[:len(line)-len(line.lstrip())]
-                      lines[i+1:i+1] = [indent + "if (!body.includes('/telegram-app/v16.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v16.js\"></script></body>');\n"]
-                      inserted = True
-                      break
-              if not inserted:
-                  raise RuntimeError('V15 HTML injection anchor not found')
-              s = ''.join(lines)
+                      indent=line[:len(line)-len(line.lstrip())]
+                      lines[i+1:i+1]=[indent+"if (!body.includes('/telegram-app/v16.js')) body = body.replace('</body>', '<script src=\"/telegram-app/v16.js\"></script></body>');\n"]
+                      inserted=True; break
+              if not inserted: raise RuntimeError('V15 HTML injection anchor not found')
+              s=''.join(lines)
+          p.write_text(s,encoding='utf-8')
 
-          p.write_text(s, encoding='utf-8')
-
-          core = Path('cloudflare-worker/src/telegram-center-v15-core-ui.js')
-          c = core.read_text(encoding='utf-8')
-          start = "s.textContent=`\n"
-          end = "\n`;document.head.appendChild(s)}"
-          if start in c and end in c:
-              a = c.index(start) + len(start)
-              b = c.index(end, a)
-              css = c[a:b]
-              replacement = 's.textContent=' + json.dumps(css, ensure_ascii=False) + ';document.head.appendChild(s)}'
-              c = c[:c.index(start)] + replacement + c[b+len(end):]
-              core.write_text(c, encoding='utf-8')
+          for file in ['cloudflare-worker/src/telegram-center-v15-core-ui.js','cloudflare-worker/src/telegram-center-v16-hotfix.js']:
+              q=Path(file); c=q.read_text(encoding='utf-8')
+              start="s.textContent=`\n"; end="\n`;document.head.appendChild(s)}"
+              if start in c and end in c:
+                  a=c.index(start)+len(start); b=c.index(end,a); css=c[a:b]
+                  repl='s.textContent='+json.dumps(css,ensure_ascii=False)+';document.head.appendChild(s)}'
+                  c=c[:c.index(start)]+repl+c[b+len(end):]
+                  q.write_text(c,encoding='utf-8')
           PY
       - name: Verify syntax and wiring
         run: |
@@ -136,11 +110,7 @@ jobs:
           node --check cloudflare-worker/src/telegram-center-v15-player-ui.js
           node --check cloudflare-worker/src/telegram-center-v16-hotfix.js
           node --check cloudflare-worker/src/team-current-routes.js
-          grep -q 'handleTelegramCenterV15TeamData' cloudflare-worker/src/team-current-routes.js
           grep -q 'handleTelegramCenterV16Hotfix' cloudflare-worker/src/team-current-routes.js
-          grep -q '/telegram-app/v15-core.js' cloudflare-worker/src/team-current-routes.js
-          grep -q '/telegram-app/v15-team.js' cloudflare-worker/src/team-current-routes.js
-          grep -q '/telegram-app/v15-player.js' cloudflare-worker/src/team-current-routes.js
           grep -q '/telegram-app/v16.js' cloudflare-worker/src/team-current-routes.js
       - name: Worker dry run
         run: |
@@ -151,6 +121,6 @@ jobs:
           if git diff --quiet; then echo "Already wired"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cloudflare-worker/src/team-current-routes.js cloudflare-worker/src/telegram-center-v15-core-ui.js
-          git commit -m "Wire Center V16 hotfix"
+          git add cloudflare-worker/src/team-current-routes.js cloudflare-worker/src/telegram-center-v15-core-ui.js cloudflare-worker/src/telegram-center-v16-hotfix.js
+          git commit -m "Wire Center V16 and repair hotfix syntax"
           git push
