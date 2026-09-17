@@ -1,0 +1,33 @@
+name: Probe HOH VK legacy video endpoints
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/probe_vk_legacy_video.py'
+      - '.github/workflows/vk-legacy-video-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python tools/probe_vk_legacy_video.py
+      - name: Commit result safely
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/vk_legacy_video_probe.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Capture HOH VK legacy video probe"
+          git pull --rebase origin main
+          git push
