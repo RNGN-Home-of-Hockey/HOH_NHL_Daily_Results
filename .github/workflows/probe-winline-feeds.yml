@@ -23,19 +23,56 @@ jobs:
             'prematch_mainsports','live_mainsports',
             'prematch_mainsports_eng','live_mainsports_eng'
           ];
+          const urls={
+            prematch:'https://back.winline.ru/banners/prematch',
+            live:'https://back.winline.ru/banners/live',
+            prematcheng:'https://back.winline.ru/banners/prematcheng',
+            liveeng:'https://back.winline.ru/banners/liveeng',
+            prematch_mainsports:'https://back.winline.ru/banners/prematch_mainsports',
+            live_mainsports:'https://back.winline.ru/banners/live_mainsports',
+            prematch_mainsports_eng:'https://back.winline.ru/banners/prematch_mainsports_eng',
+            live_mainsports_eng:'https://back.winline.ru/banners/live_mainsports_eng'
+          };
+          const decode=s=>String(s||'').replaceAll('&quot;','"').replaceAll('&amp;','&').replaceAll('&lt;','<').replaceAll('&gt;','>');
+          const attrs=tag=>Object.fromEntries([...String(tag||'').matchAll(/([A-Za-z0-9_]+)="([^"]*)"/g)].map(m=>[m[1],decode(m[2])]));
+          function xmlSummary(xml){
+            const sports=[...xml.matchAll(/<Sport\b([^>]*)>([\s\S]*?)<\/Sport>/gi)];
+            const out={sport_count:sports.length,hockey:null};
+            for(const sm of sports){
+              const sa=attrs(sm[1]);
+              if(!/хокке|ice hockey|hockey/i.test(sa.Name||''))continue;
+              const body=sm[2],countries=[...body.matchAll(/<Country\b([^>]*)>([\s\S]*?)<\/Country>/gi)];
+              const tournaments=[];let hockeyMatches=0;
+              for(const cm of countries){
+                const ca=attrs(cm[1]);
+                for(const tm of cm[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
+                  const ta=attrs(tm[1]),matches=[...tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)];
+                  hockeyMatches+=matches.length;
+                  const isNhl=/^(?:нхл|nhl)$/i.test(String(ta.Name||'').trim())||/national hockey league/i.test(String(ta.Name||''));
+                  if(!isNhl)continue;
+                  const sample=matches.slice(0,12).map(mm=>{
+                    const ma=attrs(mm[1]);
+                    const lines=[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1]));
+                    const main=lines.filter(x=>/1x2|3-way|победитель матча|money line|исход/i.test(x.freetext||'')).slice(0,10);
+                    return {...ma,markets:main};
+                  });
+                  tournaments.push({country:ca.Name,country_id:ca.Id,name:ta.Name,id:ta.Id,matches:matches.length,sample});
+                }
+              }
+              out.hockey={name:sa.Name,id:sa.Id,countries:countries.length,matches:hockeyMatches,nhl_tournaments:tournaments,nhl_matches:tournaments.reduce((n,x)=>n+x.matches,0)};
+            }
+            return out;
+          }
           for(const feed of feeds){
-            const r=await fetch(base+'?feed='+encodeURIComponent(feed),{headers:{accept:'application/json'}});
-            const d=await r.json();
-            const p=d.probe||{};
+            const pr=await fetch(base+'?feed='+encodeURIComponent(feed),{headers:{accept:'application/json'}});
+            const pd=await pr.json(),p=pd.probe||{};
+            const direct=await fetch(urls[feed],{headers:{accept:'application/xml,text/xml,*/*','user-agent':'HOH-NHL-Center feed analysis'}});
+            const xml=await direct.text();
             console.log('\n=== '+feed+' ===');
             console.log(JSON.stringify({
-              status:p.status,ok:p.ok,content_type:p.content_type,bytes:p.bytes,
-              json:p.json,root_type:p.root_type,root_length:p.root_length,top_keys:p.top_keys,
-              visited_nodes:p.visited_nodes,key_counts:p.key_counts,
-              hockey_hits:(p.hockey_hits||[]).slice(0,20),
-              samples:(p.samples||[]).slice(0,12),
-              raw_head:String(p.raw_head||'').slice(0,1200),
-              error:p.error
+              worker_status:p.status,worker_ok:p.ok,worker_bytes:p.bytes,
+              direct_status:direct.status,direct_bytes:new TextEncoder().encode(xml).length,
+              xml:xmlSummary(xml)
             },null,2));
           }
           JS
