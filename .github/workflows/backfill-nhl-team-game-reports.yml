@@ -1,0 +1,92 @@
+name: Backfill NHL Team Game Reports
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backfill-nhl-team-game-reports.yml'
+      - 'tools/backfill_nhl_team_game_reports.py'
+      - 'migrations/0022_nhl_team_game_reports.sql'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nhl-team-game-reports
+  cancel-in-progress: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 2; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID'; exit 2; }
+
+      - name: Install Wrangler
+        run: npm install --no-audit --no-fund
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply hoh-data-core --remote
+
+      - name: Download official NHL team game reports
+        run: python tools/backfill_nhl_team_game_reports.py --workers 6
+
+      - name: Upload team game reports to D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(local-data/nhl-team-game-reports/sql/team_game_data_*.sql)
+          test ${#files[@]} -gt 0 || { echo 'No generated team-game SQL files'; exit 3; }
+          for file in "${files[@]}"; do
+            echo "IMPORT $file"
+            npx wrangler d1 execute hoh-data-core --remote --file "$file"
+          done
+          npx wrangler d1 execute hoh-data-core --remote --file local-data/nhl-team-game-reports/sql/team_game_meta.sql
+
+      - name: Verify team game report coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT season_id,game_type,report_name,
+                   COUNT(*) AS rows,
+                   COUNT(DISTINCT game_pk) AS games,
+                   COUNT(DISTINCT team_tri) AS teams
+            FROM nhl_team_game_report_rows
+            GROUP BY season_id,game_type,report_name
+            ORDER BY season_id,game_type,report_name;
+            SELECT season_id,game_type,
+                   COUNT(DISTINCT game_pk) AS games,
+                   COUNT(*) AS rows
+            FROM nhl_team_game_report_rows
+            GROUP BY season_id,game_type
+            ORDER BY season_id,game_type;
+          "
+
+      - name: Save collection summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhl-team-game-reports-summary
+          path: local-data/nhl-team-game-reports/summary.json
+          retention-days: 30
