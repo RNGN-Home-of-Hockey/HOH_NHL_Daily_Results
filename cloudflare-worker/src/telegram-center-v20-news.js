@@ -4,9 +4,10 @@ const USER_AGENT="Mozilla/5.0 (compatible; HOH-NHL-Center/20; +news-indexer)";
 const HOME_MIN_INTERVAL_MS=10*60*1000;
 const PLAYER_BATCH=4;
 const MAX_PLAYER_PAGE=20;
+const SPORTS_SLUG_OVERRIDES=new Map([[8471214,"alexander-ovechkin"]]);
 
-const POLITICAL_RE=/(един(?:ая|ой|ую)\s+росси(?:я|и|ю)|путин|кремл|президент|правительств|депутат|сенатор|конгресс|выбор|предвыбор|парт(?:ия|ии|ию)|политик|боев(?:ые|ых)?\s+действ|войн|украин|нато|санкц|въезд\s+в\s+[а-я]|латви|госдум|мид\b|\bмок\b|отстранени.{0,40}росси|допуск.{0,40}росси|иихф.{0,40}росси|российск[\s\S]{0,100}(?:допуст|допуск|отстран|участв)[\s\S]{0,100}(?:турнир|кубок\s+мира|олимпи)|(?:турнир|кубок\s+мира|олимпи)[\s\S]{0,100}российск[\s\S]{0,100}(?:допуст|допуск|отстран|участв)|патриот(?:изм|ическ)|гражданин\s+россии|подданн)/iu;
-const OFF_ICE_RE=/(футбол|рпл|баскетбол|втб|мма|ufc|динамо\s+махачкал|помидор|день\s+рождения|вечерин|семь[яи]|сын\b|дочь\b|жена\b|отпуск|ресторан|автомобил|мода|кино|концерт)/iu;
+const POLITICAL_RE=/(един(?:ая|ой|ую)\s+росси(?:я|и|ю)|путин|кремл|президент|правительств|депутат|сенатор|конгресс|выбор|предвыбор|парт(?:ия|ии|ию)|политик|боев(?:ые|ых)?\s+действ|войн|украин|нато|санкц|въезд\s+в\s+[а-я]|латви|госдум|мид\b|\bмок\b|отстранени.{0,40}росси|допуск.{0,40}росси|иихф.{0,40}росси|российск[\s\S]{0,100}(?:допуст|допуск|отстран|участв)[\s\S]{0,100}(?:турнир|куб(?:ок|ке|ка)\\s+мира|олимпи)|(?:турнир|куб(?:ок|ке|ка)\\s+мира|олимпи)[\s\S]{0,100}российск[\s\S]{0,100}(?:допуст|допуск|отстран|участв)|патриот(?:изм|ическ)|гражданин\s+россии|подданн)/iu;
+const OFF_ICE_RE=/(футбол|рпл|баскетбол|втб|мма|ufc|dota|дота|киберспорт|видеоигр|месси|динамо\s+махачкал|помидор|день\s+рождения|вечерин|семь[яи]|сын\b|дочь\b|жена\b|отпуск|ресторан|автомобил|мода|кино|концерт)/iu;
 const HOCKEY_RE=/(нхл|nhl|хокке|матч|игр[аы]|сезон|гол|шайб|очк|передач|ассист|брос|кубок\s+стэнли|плей-офф|драфт|контракт|клуб|команд|тренер|форвард|защитник|вратар|звено|ворот|рекорд|капитан|трансфер|обмен|состав|трениров|лига|овертайм|буллит|силов)/iu;
 
 export async function handleTelegramCenterV20News(request,env,path){
@@ -205,7 +206,7 @@ async function ensureSinglePlayerSource(db,playerId){
   if(exists)return;
   const p=await db.prepare("SELECT player_id,full_name_en FROM players WHERE player_id=? LIMIT 1").bind(playerId).first();
   if(!p?.full_name_en)return;
-  const slug=playerSlug(p.full_name_en);if(!slug)return;
+  const slug=SPORTS_SLUG_OVERRIDES.get(Number(playerId))||playerSlug(p.full_name_en);if(!slug)return;
   await db.prepare("INSERT OR IGNORE INTO sports_player_sources(player_id,sports_slug,source_url,next_page,backfill_done) VALUES(?,?,?,1,0)")
     .bind(playerId,slug,`https://www.sports.ru/hockey/person/${slug}/news/`).run();
 }
@@ -230,7 +231,7 @@ async function ensurePlayerSources(db){
   `).all();
   const stmts=[];
   for(const p of rows.results||[]){
-    const slug=playerSlug(p.full_name_en);
+    const slug=SPORTS_SLUG_OVERRIDES.get(Number(p.player_id))||playerSlug(p.full_name_en);
     if(!slug)continue;
     stmts.push(db.prepare(`
       INSERT OR IGNORE INTO sports_player_sources(player_id,sports_slug,source_url,next_page,backfill_done)
