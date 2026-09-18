@@ -1,0 +1,101 @@
+name: Backfill Licensed Historical NHL Odds
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backfill-historical-nhl-odds.yml'
+      - 'tools/backfill_historical_odds_theoddsapi.py'
+      - 'tools/materialize_historical_odds.sql'
+      - 'migrations/0027_historical_odds.sql'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hoh-d1-bulk-import
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Validate backfill plan without API calls
+        run: python tools/backfill_historical_odds_theoddsapi.py --dry-run
+
+  backfill:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$THE_ODDS_API_KEY" || { echo 'Missing THE_ODDS_API_KEY'; exit 2; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 2; }
+
+      - name: Install Wrangler
+        run: npm install --no-audit --no-fund
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply hoh-data-core --remote
+
+      - name: Download licensed historical NHL closing consensus
+        run: python tools/backfill_historical_odds_theoddsapi.py
+
+      - name: Upload historical odds
+        run: npx wrangler d1 execute hoh-data-core --remote --file local-data/historical-odds/historical_odds.sql
+
+      - name: Materialize outcome and team trends
+        run: npx wrangler d1 execute hoh-data-core --remote --file tools/materialize_historical_odds.sql
+
+      - name: Verify historical odds coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT source,market_key,COUNT(*) AS games,
+                   ROUND(AVG(bookmaker_count),1) AS avg_books,
+                   MIN(bookmaker_count) AS min_books,
+                   MAX(bookmaker_count) AS max_books
+            FROM historical_odds_closing
+            GROUP BY source,market_key;
+            SELECT season_id,game_type,COUNT(*) AS games,
+                   SUM(away_underdog_win) AS away_underdog_wins,
+                   SUM(high_price_away_win) AS away_wins_at_3plus
+            FROM historical_odds_game_features
+            GROUP BY season_id,game_type
+            ORDER BY season_id,game_type;
+            SELECT team_tri,games,away_underdog_games,away_underdog_wins,
+                   away_high_price_wins,ROUND(flat_away_roi_pct,1) AS away_roi
+            FROM historical_odds_team_trends
+            WHERE scope_key='2Y'
+            ORDER BY away_high_price_wins DESC,away_underdog_wins DESC
+            LIMIT 15;
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: historical-nhl-odds-backfill-summary
+          path: local-data/historical-odds/summary.json
+          retention-days: 30
