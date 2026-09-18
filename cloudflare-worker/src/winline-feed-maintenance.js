@@ -26,7 +26,8 @@ export async function runWinlineFeedMaintenance(env,{force=false,nowMs=Date.now(
   const cadenceMs=cadenceFor(next?.scheduled_start_utc,nowMs);
   const state=await loadState(env.DB);
   const lastAt=Date.parse(String(state?.fetched_at||""));
-  const due=force||!Number.isFinite(lastAt)||nowMs-lastAt>=cadenceMs;
+  const retryAfterSchedule=Boolean(next)&&Number(state?.mapped_events||0)===0&&Number(state?.unmapped_events||0)>0;
+  const due=force||retryAfterSchedule||!Number.isFinite(lastAt)||nowMs-lastAt>=cadenceMs;
   if(!due){
     return {ok:true,skipped:true,reason:"cadence",cadence_minutes:Math.round(cadenceMs/60000),next_game:next||null,last_fetch_at:state?.fetched_at||null,next_due_at:new Date(lastAt+cadenceMs).toISOString()};
   }

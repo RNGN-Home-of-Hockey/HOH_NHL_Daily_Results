@@ -110,11 +110,20 @@ export default {
     }
 
     if (env.DB) {
-      ctx.waitUntil(
-        runCenterScheduleMaintenance(env).catch((error) => {
+      ctx.waitUntil((async () => {
+        try {
+          await runCenterScheduleMaintenance(env);
+        } catch (error) {
           console.error("scheduled Telegram Center schedule maintenance failed", error);
-        }),
-      );
+        }
+        if (envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
+          try {
+            await runWinlineFeedMaintenance(env);
+          } catch (error) {
+            console.error("scheduled Winline NHL feed maintenance failed", error);
+          }
+        }
+      })());
       ctx.waitUntil(
         runCenterNameMaintenance(env).catch((error) => {
           console.error("scheduled Telegram Center Russian-name maintenance failed", error);
@@ -130,13 +139,6 @@ export default {
           console.error("scheduled Sports.ru NHL news maintenance failed", error);
         }),
       );
-      if (envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
-        ctx.waitUntil(
-          runWinlineFeedMaintenance(env).catch((error) => {
-            console.error("scheduled Winline NHL feed maintenance failed", error);
-          }),
-        );
-      }
     }
 
     if (liveNotificationsEnabled && env.DB) {
