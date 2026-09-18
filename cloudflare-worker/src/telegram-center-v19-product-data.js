@@ -89,8 +89,12 @@ async function gameDetail(env, gamePk) {
       WHERE g.game_pk=? LIMIT 1;
     `).bind(gamePk).first();
     if(!game)return json({ok:false,error:"game_not_found"},404);
-    const [broadcast,winline]=await Promise.all([loadBroadcast(env.DB,gamePk),loadCanonicalWinline(env.DB,game)]);
-    return json({ok:true,version:"V19",game:decorateGame(game),broadcast,winline});
+    const [broadcast,winline,historicalOdds]=await Promise.all([
+      loadBroadcast(env.DB,gamePk),
+      loadCanonicalWinline(env.DB,game),
+      loadHistoricalOdds(env.DB,game),
+    ]);
+    return json({ok:true,version:"V19",game:decorateGame(game),broadcast,winline,historical_odds:historicalOdds});
   }catch(error){
     if(isMissingVkSchema(error))return json({ok:false,error:"vk_schema_not_applied",detail:errorText(error)},503);
     return json({ok:false,error:"game_detail_failed",detail:errorText(error)},503);
@@ -103,6 +107,34 @@ async function loadBroadcast(db,gamePk){
     FROM game_vk_broadcasts m JOIN vk_broadcasts b ON b.source_key=m.source_key
     WHERE m.game_pk=? LIMIT 1;
   `).bind(gamePk).first();
+}
+
+async function loadHistoricalOdds(db,game){
+  try{
+    const row=await db.prepare(`
+      SELECT o.source,o.market_key,o.home_odds,o.draw_odds,o.away_odds,o.overround_pct,
+             f.regulation_result
+      FROM historical_odds_closing o
+      LEFT JOIN historical_odds_game_features f
+        ON f.game_pk=o.game_pk AND f.source=o.source AND f.market_key=o.market_key
+      WHERE o.game_pk=? AND o.market_key='regular_time_1x2'
+      ORDER BY CASE WHEN o.source='user_excel_consensus_2seasons' THEN 0 ELSE 1 END,o.updated_at DESC
+      LIMIT 1;
+    `).bind(game.game_pk).first();
+    if(!row)return null;
+    const result=String(row.regulation_result||"").toUpperCase();
+    return {
+      source:row.source,
+      market_key:row.market_key,
+      overround_pct:Number.isFinite(Number(row.overround_pct))?Number(row.overround_pct):null,
+      markets:[
+        {outcome_key:"home",label:"П1",odds:Number(row.home_odds),winner:result==="1"},
+        {outcome_key:"draw",label:"X",odds:Number(row.draw_odds),winner:result==="X"},
+        {outcome_key:"away",label:"П2",odds:Number(row.away_odds),winner:result==="2"},
+      ].filter(x=>Number.isFinite(x.odds)),
+      settled_outcome:result||null,
+    };
+  }catch{return null}
 }
 
 async function loadCanonicalWinline(db,game){
