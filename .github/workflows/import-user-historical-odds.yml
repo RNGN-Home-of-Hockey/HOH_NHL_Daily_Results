@@ -1,0 +1,99 @@
+name: Import User Historical NHL Odds
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-user-historical-odds.yml'
+      - 'tools/import_user_excel_historical_odds.py'
+      - 'tools/materialize_historical_odds.sql'
+      - 'migrations/0027_historical_odds.sql'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hoh-d1-bulk-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 2; }
+
+      - name: Install Wrangler
+        run: npm install --no-audit --no-fund
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply hoh-data-core --remote
+
+      - name: Normalize and match uploaded Excel odds
+        run: python tools/import_user_excel_historical_odds.py
+
+      - name: Import 2792 historical odds rows
+        run: npx wrangler d1 execute hoh-data-core --remote --file local-data/historical-odds-user/historical_odds_user.sql
+
+      - name: Materialize historical market features and trends
+        run: npx wrangler d1 execute hoh-data-core --remote --file tools/materialize_historical_odds.sql
+
+      - name: Verify coverage and source-result agreement
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT source,market_key,COUNT(*) AS games,
+                   MIN(home_odds) AS min_1,MAX(home_odds) AS max_1,
+                   MIN(draw_odds) AS min_x,MAX(draw_odds) AS max_x,
+                   MIN(away_odds) AS min_2,MAX(away_odds) AS max_2
+            FROM historical_odds_closing
+            WHERE source='user_excel_consensus_2seasons'
+            GROUP BY source,market_key;
+            SELECT season_id,game_type,COUNT(*) AS games,
+                   SUM(CASE WHEN regulation_result='1' THEN 1 ELSE 0 END) AS result_1,
+                   SUM(CASE WHEN regulation_result='X' THEN 1 ELSE 0 END) AS result_x,
+                   SUM(CASE WHEN regulation_result='2' THEN 1 ELSE 0 END) AS result_2
+            FROM historical_odds_game_features
+            WHERE source='user_excel_consensus_2seasons'
+            GROUP BY season_id,game_type
+            ORDER BY season_id,game_type;
+            SELECT COUNT(*) AS result_mismatches
+            FROM historical_odds_game_features f
+            JOIN historical_odds_closing o
+              ON o.game_pk=f.game_pk AND o.source=f.source AND o.market_key=f.market_key
+            WHERE f.source='user_excel_consensus_2seasons'
+              AND json_extract(o.raw_summary_json,'$.source_result') <> f.regulation_result;
+            SELECT team_tri,games,away_underdog_games,away_underdog_wins,
+                   away_high_price_wins,ROUND(flat_away_roi_pct,1) AS away_roi_pct
+            FROM historical_odds_team_trends
+            WHERE source='user_excel_consensus_2seasons'
+              AND market_key='regular_time_1x2'
+              AND scope_key='2Y'
+            ORDER BY away_high_price_wins DESC,away_underdog_wins DESC
+            LIMIT 15;
+          "
+
+      - name: Save import summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-historical-odds-import-summary
+          path: local-data/historical-odds-user/summary.json
+          retention-days: 30
