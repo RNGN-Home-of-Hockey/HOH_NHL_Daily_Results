@@ -1,6 +1,15 @@
 name: Validate HOH product
 
 on:
+  pull_request:
+    paths:
+      - 'cloudflare-worker/**'
+      - 'migrations/**'
+      - 'tools/**'
+      - 'tests/**'
+      - 'wrangler.jsonc'
+      - 'package.json'
+      - '.github/workflows/validate-product.yml'
   push:
     branches: [main]
     paths:
