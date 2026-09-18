@@ -1,11 +1,11 @@
 const API="/api/telegram-center-v20";
 const NHL_PAGE="https://www.sports.ru/hockey/tournament/nhl/";
-const USER_AGENT="HOH-NHL-Center/20 news-indexer";
+const USER_AGENT="Mozilla/5.0 (compatible; HOH-NHL-Center/20; +news-indexer)";
 const HOME_MIN_INTERVAL_MS=10*60*1000;
 const PLAYER_BATCH=4;
 const MAX_PLAYER_PAGE=20;
 
-const POLITICAL_RE=/(един(?:ая|ой|ую)\s+росси(?:я|и|ю)|путин|кремл|президент|правительств|депутат|сенатор|конгресс|выбор|предвыбор|парт(?:ия|ии|ию)|политик|боев(?:ые|ых)?\s+действ|войн|украин|нато|санкц|въезд\s+в\s+[а-я]|латви|госдум|мид\b|\bмок\b|отстранени.{0,30}росси|допуск.{0,30}росси|иихф.{0,30}росси|российск.{0,50}(?:допуст|допуск|отстран|участв).{0,50}(?:турнир|кубок\s+мира|олимпи)|(?:турнир|кубок\s+мира|олимпи).{0,50}российск.{0,50}(?:допуст|допуск|отстран|участв)|патриот(?:изм|ическ)|гражданин\s+россии|подданн)/iu;
+const POLITICAL_RE=/(един(?:ая|ой|ую)\s+росси(?:я|и|ю)|путин|кремл|президент|правительств|депутат|сенатор|конгресс|выбор|предвыбор|парт(?:ия|ии|ию)|политик|боев(?:ые|ых)?\s+действ|войн|украин|нато|санкц|въезд\s+в\s+[а-я]|латви|госдум|мид\b|\bмок\b|отстранени.{0,40}росси|допуск.{0,40}росси|иихф.{0,40}росси|российск[\s\S]{0,100}(?:допуст|допуск|отстран|участв)[\s\S]{0,100}(?:турнир|кубок\s+мира|олимпи)|(?:турнир|кубок\s+мира|олимпи)[\s\S]{0,100}российск[\s\S]{0,100}(?:допуст|допуск|отстран|участв)|патриот(?:изм|ическ)|гражданин\s+россии|подданн)/iu;
 const OFF_ICE_RE=/(футбол|рпл|баскетбол|втб|мма|ufc|динамо\s+махачкал|помидор|день\s+рождения|вечерин|семь[яи]|сын\b|дочь\b|жена\b|отпуск|ресторан|автомобил|мода|кино|концерт)/iu;
 const HOCKEY_RE=/(нхл|nhl|хокке|матч|игр[аы]|сезон|гол|шайб|очк|передач|ассист|брос|кубок\s+стэнли|плей-офф|драфт|контракт|клуб|команд|тренер|форвард|защитник|вратар|звено|ворот|рекорд|капитан|трансфер|обмен|состав|трениров|лига|овертайм|буллит|силов)/iu;
 
@@ -402,7 +402,7 @@ function cleanText(v){return decodeEntities(String(v||"").replace(/<script\b[\s\
 function decodeEntities(v){return String(v||"").replace(/&nbsp;|&#160;/gi," ").replace(/&amp;/gi,"&").replace(/&quot;/gi,'"').replace(/&#39;|&apos;/gi,"'").replace(/&lt;/gi,"<").replace(/&gt;/gi,">").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n)||32))}
 function norm(v){return cleanText(v).toLocaleLowerCase("ru").replaceAll("ё","е")}
 async function fetchText(url){
-  const r=await fetch(url,{headers:{Accept:"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","User-Agent":USER_AGENT}});
+  const r=await fetch(url,{headers:{Accept:"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Language":"ru-RU,ru;q=0.9,en;q=0.6","User-Agent":USER_AGENT}});
   if(!r.ok)throw new Error("HTTP "+r.status+" "+url);
   return r.text();
 }
