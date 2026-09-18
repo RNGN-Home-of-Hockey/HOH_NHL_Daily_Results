@@ -54,12 +54,51 @@ jobs:
           echo '=== DISCOVERY ==='
           curl --fail-with-body --retry 5 --retry-delay 2 --max-time 60 "$BASE/discovery"
           echo
-          echo '=== V19 PRODUCT STATUS ==='
-          curl --fail-with-body --retry 5 --retry-delay 2 --max-time 90 'https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram-center-v19/status'
-          echo
-          echo '=== V19 ARCHIVE SMOKE ==='
-          curl --fail-with-body --retry 5 --retry-delay 2 --max-time 60 'https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram-center-v19/broadcasts?from=2025-04-01&to=2025-04-07'
-          echo
-          echo '=== V19 SHELL ==='
-          curl --fail-with-body --retry 5 --retry-delay 2 --max-time 30 'https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app' | grep -q '/telegram-app/v19.js'
-          echo 'V19 production smoke OK'
+          echo '=== V19 PRODUCT SMOKE ==='
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const get=async(path,timeout=90000)=>{
+            const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);
+            try{
+              const r=await fetch(base+path,{headers:{accept:'application/json'}});
+              const d=await r.json().catch(()=>({}));
+              if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+JSON.stringify(d));
+              return d;
+            }finally{clearTimeout(t)}
+          };
+          const status=await get('/api/telegram-center-v19/status',120000);
+          if(!status.roster_complete||status.teams_with_roster!==32)throw new Error('rosters incomplete '+JSON.stringify(status.missing_or_short_rosters||status.teams));
+          const must=['WSH','BOS','DAL','COL','LAK','MTL','NSH','STL','SEA','TOR','PHI','FLA','UTA'];
+          for(const tri of must){
+            const d=await get('/api/telegram-center-v17/players?team='+tri+'&limit=250');
+            if((d.players||[]).length<15)throw new Error(tri+' roster too short: '+(d.players||[]).length);
+            const bad=(d.players||[]).find(p=>!p.player_id||!p.full_name_en||!p.full_name_ru||p.current_team_tri!==tri);
+            if(bad)throw new Error(tri+' incomplete player '+JSON.stringify(bad));
+            console.log('ROSTER_OK',tri,(d.players||[]).length);
+          }
+          const ruSearch=await get('/api/telegram-center-v17/players?q='+encodeURIComponent('Овечкин')+'&limit=20');
+          const ovi=(ruSearch.players||[]).find(p=>Number(p.player_id)===8471214);
+          if(!ovi)throw new Error('Russian player search failed for Ovechkin');
+          const player=await get('/api/telegram-center-v17/players/8471214');
+          if(!player.player?.full_name_ru||!player.player?.team_logo||!player.player?.primary_country_code)throw new Error('Ovechkin profile metadata incomplete');
+          const audio=await get('/api/telegram-center-v11/pronunciation/8471214');
+          console.log('PLAYER_OK',player.player.full_name_ru,player.player.primary_country_code,'audio',Boolean(audio.available),'pronunciation',player.player.pronunciation_text||null);
+          const regular=await get('/api/telegram-center-v19/broadcasts?from=2025-04-01&to=2025-04-07');
+          if(!(regular.games||[]).length)throw new Error('regular archive empty');
+          const oldVk=(regular.games||[]).find(g=>g.vk?.web_url||g.vk?.app_url);
+          if(!oldVk)throw new Error('archive VK deeplink missing in regular smoke window');
+          const playoffs=await get('/api/telegram-center-v19/broadcasts?from=2025-05-01&to=2025-05-07');
+          const playoff=(playoffs.games||[]).find(g=>g.is_playoff);
+          if(!playoff)throw new Error('playoff archive distinction missing');
+          const match=await get('/api/telegram-center-v19/games/'+playoff.game_pk);
+          if(!match.game?.is_playoff)throw new Error('playoff match detail flag missing');
+          console.log('ARCHIVE_OK','regular',regular.games.length,'playoffs',playoffs.games.length,'vk_game',oldVk.game_pk,'playoff_game',playoff.game_pk,'odds_source',match.winline?.source||'none');
+          const shell=await fetch(base+'/telegram-app',{cache:'no-store'}).then(r=>r.text());
+          if(!shell.includes('/telegram-app/v19.js'))throw new Error('V19 script missing from production shell');
+          const ui=await fetch(base+'/telegram-app/v19.js',{cache:'no-store'}).then(r=>r.text());
+          for(const needle of ["data-tab='broadcasts'","v19Audio","aspect-ratio:16/9","v19Country","v19Playoff"]){
+            if(!ui.includes(needle))throw new Error('V19 UI contract missing '+needle);
+          }
+          if(ui.includes('new MutationObserver'))throw new Error('V19 unexpectedly added MutationObserver');
+          console.log('V19_PRODUCTION_SMOKE_OK',JSON.stringify({active_players:status.active_players,snapshots:status.winline_snapshots,snapshot_games:status.winline_snapshot_games}));
+          JS
