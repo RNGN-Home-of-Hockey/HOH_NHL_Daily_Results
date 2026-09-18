@@ -1,0 +1,58 @@
+name: Materialize NHL Schedule Load
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/materialize-nhl-schedule-load.yml'
+      - 'tools/materialize_schedule_load.py'
+      - 'migrations/0026_schedule_load.sql'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hoh-d1-bulk-import
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Wrangler
+        run: npm install --no-audit --no-fund
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply hoh-data-core --remote
+      - name: Build schedule load
+        run: python tools/materialize_schedule_load.py
+      - name: Upload schedule load
+        run: npx wrangler d1 execute hoh-data-core --remote --file local-data/schedule-load/schedule_load.sql
+      - name: Verify schedule load
+        run: |
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT season_id,game_type,COUNT(*) AS rows,
+                   SUM(is_back_to_back) AS b2b,
+                   SUM(is_3_in_4) AS three_in_four,
+                   SUM(is_4_in_6) AS four_in_six,
+                   SUM(CASE WHEN current_road_trip_game>=3 THEN 1 ELSE 0 END) AS road3plus
+            FROM team_schedule_load
+            GROUP BY season_id,game_type
+            ORDER BY season_id,game_type;
+          "
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nhl-schedule-load-summary
+          path: local-data/schedule-load/summary.json
+          retention-days: 30
