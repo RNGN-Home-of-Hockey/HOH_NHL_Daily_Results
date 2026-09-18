@@ -117,6 +117,11 @@ export default {
           console.error("scheduled Telegram Center Russian-name maintenance failed", error);
         }),
       );
+      ctx.waitUntil(
+        runVkBroadcastMaintenance(env).catch((error) => {
+          console.error("scheduled HOH VK broadcast maintenance failed", error);
+        }),
+      );
     }
 
     if (liveNotificationsEnabled && env.DB) {
