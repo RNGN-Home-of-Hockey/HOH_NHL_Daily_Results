@@ -11,6 +11,7 @@ import { getCenterNotificationStatus, runCenterNotificationTick } from "./telegr
 import { runCenterScheduleMaintenance } from "./telegram-center-schedule-maintenance.js";
 import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js";
 import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
+import { runSportsRuNewsMaintenance } from "./telegram-center-v20-news.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
@@ -126,6 +127,11 @@ export default {
       ctx.waitUntil(
         runCenterRosterMaintenance(env).catch((error) => {
           console.error("scheduled Telegram Center roster maintenance failed", error);
+        }),
+      );
+      ctx.waitUntil(
+        runSportsRuNewsMaintenance(env).catch((error) => {
+          console.error("scheduled Sports.ru NHL news maintenance failed", error);
         }),
       );
     }
