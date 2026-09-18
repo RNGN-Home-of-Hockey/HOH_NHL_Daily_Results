@@ -169,17 +169,23 @@ async function ingestPage(env,items,{offset,mode}){
   await bulkUpsertBroadcasts(env.DB,records);
 
   const eligible=records.filter(x=>x.parsed_home_tri&&x.parsed_away_tri&&(x.scheduled_at||x.published_at));
-  const games=await loadCandidateGames(env.DB,eligible);
+  let matchable=eligible,alreadyMapped=0;
+  if(mode==="latest"&&eligible.length){
+    const mapped=await loadMappedSourceKeys(env.DB,eligible);
+    matchable=eligible.filter(x=>!mapped.has(x.source_key));
+    alreadyMapped=eligible.length-matchable.length;
+  }
+  const games=await loadCandidateGames(env.DB,matchable);
   const mappings=[];
   let ambiguous=0,unmatched=0;
-  for(const record of eligible){
+  for(const record of matchable){
     const match=matchFromCandidates(games,record.parsed_home_tri,record.parsed_away_tri,record.scheduled_at||record.published_at,record);
     if(match.kind==="matched")mappings.push({game_pk:match.game_pk,source_key:record.source_key,match_method:match.method,match_confidence:match.confidence});
     else if(match.kind==="ambiguous")ambiguous++;
     else unmatched++;
   }
   if(mappings.length)await bulkUpsertMappings(env.DB,mappings);
-  return {mode,offset,seen:(items||[]).length,stored:records.length,eligible:eligible.length,mapped:mappings.length,ambiguous,unmatched};
+  return {mode,offset,seen:(items||[]).length,stored:records.length,eligible:eligible.length,already_mapped:alreadyMapped,matched_now:mappings.length,mapped:alreadyMapped+mappings.length,ambiguous,unmatched};
 }
 
 async function bulkUpsertBroadcasts(db,records){
@@ -225,6 +231,14 @@ async function bulkUpsertMappings(db,mappings){
   `).bind(payload).run();
 }
 
+async function loadMappedSourceKeys(db,records){
+  if(!records.length)return new Set();
+  const keys=records.map(x=>String(x.source_key||"")).filter(Boolean);
+  if(!keys.length)return new Set();
+  const placeholders=keys.map(()=>"?").join(",");
+  const rows=await db.prepare("SELECT source_key FROM game_vk_broadcasts WHERE source_key IN ("+placeholders+");").bind(...keys).all();
+  return new Set((rows.results||[]).map(x=>String(x.source_key||"")).filter(Boolean));
+}
 async function loadCandidateGames(db,records){
   const times=records.map(x=>Date.parse(x.scheduled_at||x.published_at||"")).filter(Number.isFinite);
   if(!times.length)return [];

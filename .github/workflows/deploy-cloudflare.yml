@@ -74,7 +74,10 @@ jobs:
             if((d.players||[]).length<15)throw new Error(tri+' roster too short: '+(d.players||[]).length);
             const bad=(d.players||[]).find(p=>!p.player_id||!p.full_name_en||!p.full_name_ru||p.current_team_tri!==tri);
             if(bad)throw new Error(tri+' incomplete player '+JSON.stringify(bad));
-            console.log('ROSTER_OK',tri,(d.players||[]).length);
+            const nhl=await fetch('https://api-web.nhle.com/v1/roster/'+tri+'/current',{headers:{accept:'application/json','user-agent':'HOH-V19-production-smoke'}}).then(async r=>{if(!r.ok)throw new Error('NHL roster '+tri+' HTTP '+r.status);return r.json()});
+            const liveCount=['forwards','defensemen','goalies'].reduce((n,k)=>n+(Array.isArray(nhl?.[k])?nhl[k].length:0),0);
+            if(liveCount>=15&&(d.players||[]).length!==liveCount)throw new Error(tri+' roster mismatch app='+(d.players||[]).length+' nhl='+liveCount);
+            console.log('ROSTER_OK',tri,(d.players||[]).length,'nhl_live',liveCount);
           }
           const ruSearch=await get('/api/telegram-center-v17/players?q='+encodeURIComponent('Овечкин')+'&limit=20');
           const ovi=(ruSearch.players||[]).find(p=>Number(p.player_id)===8471214);
@@ -83,6 +86,8 @@ jobs:
           if(!player.player?.full_name_ru||!player.player?.team_logo||!player.player?.primary_country_code)throw new Error('Ovechkin profile metadata incomplete');
           const audio=await get('/api/telegram-center-v11/pronunciation/8471214');
           console.log('PLAYER_OK',player.player.full_name_ru,player.player.primary_country_code,'audio',Boolean(audio.available),'pronunciation',player.player.pronunciation_text||null);
+          const winlineStatus=await get('/api/winline/center/status');
+          console.log('WINLINE_STATUS',JSON.stringify({events:winlineStatus.events,markets:winlineStatus.markets,active_markets:winlineStatus.active_markets,snapshots:winlineStatus.snapshots,snapshot_games:winlineStatus.snapshot_games,latest_market_update:winlineStatus.latest_market_update}));
           const regular=await get('/api/telegram-center-v19/broadcasts?from=2025-04-01&to=2025-04-07');
           if(!(regular.games||[]).length)throw new Error('regular archive empty');
           const oldVk=(regular.games||[]).find(g=>g.vk?.web_url||g.vk?.app_url);

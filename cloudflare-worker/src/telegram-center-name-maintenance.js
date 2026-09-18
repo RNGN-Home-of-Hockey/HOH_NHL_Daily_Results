@@ -7,14 +7,9 @@ export async function runCenterNameMaintenance(env,{force=false}={}) {
 
   const version=cacheVersion(entries);
   const key="center_player_names_ru_version";
-  const [last,countRow]=await Promise.all([
-    env.DB.prepare(`SELECT meta_value FROM data_core_meta WHERE meta_key=? LIMIT 1;`).bind(key).first().catch(()=>null),
-    env.DB.prepare(`SELECT COUNT(*) AS c FROM player_profile_meta WHERE full_name_ru IS NOT NULL AND TRIM(full_name_ru)<>'';`).first().catch(()=>({c:0})),
-  ]);
-  const storedCount=Number(countRow?.c||0);
-  const healthyCount=Math.floor(entries.length*0.9);
-  if(!force&&String(last?.meta_value||"")===version&&storedCount>=healthyCount){
-    return {ok:true,skipped:true,reason:"unchanged",names:entries.length,stored:storedCount,version};
+  const last=await env.DB.prepare(`SELECT meta_value FROM data_core_meta WHERE meta_key=? LIMIT 1;`).bind(key).first().catch(()=>null);
+  if(!force&&String(last?.meta_value||"")===version){
+    return {ok:true,skipped:true,reason:"unchanged",names:entries.length,version};
   }
 
   let written=0;
@@ -37,7 +32,7 @@ export async function runCenterNameMaintenance(env,{force=false}={}) {
     INSERT INTO data_core_meta (meta_key,meta_value,updated_at) VALUES (?,?,CURRENT_TIMESTAMP)
     ON CONFLICT(meta_key) DO UPDATE SET meta_value=excluded.meta_value,updated_at=CURRENT_TIMESTAMP;
   `).bind(key,version).run();
-  return {ok:true,skipped:false,names:entries.length,written,stored_before:storedCount,version};
+  return {ok:true,skipped:false,names:entries.length,written,version};
 }
 
 function cacheVersion(entries){let hash=2166136261;for(const [id,name] of entries){const text=`${id}:${name}\n`;for(let i=0;i<text.length;i++){hash^=text.charCodeAt(i);hash=Math.imul(hash,16777619)}}return `fnv1a-${(hash>>>0).toString(16)}-${entries.length}`}

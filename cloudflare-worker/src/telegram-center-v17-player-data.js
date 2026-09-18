@@ -34,13 +34,15 @@ async function players(request,env){
     for(const d of r.results||[]){const id=Number(d.player_id),prev=map.get(id)||{},sal=(salaryCache?.players||{})[String(id)]||{};map.set(id,{...prev,...d,player_id:id,full_name_ru:d.full_name_ru||prev.full_name_ru||fullNames?.[String(id)]||fallbackRuName(d.full_name_en||prev.full_name_en)||null,salary_aav:numOrNull(sal?.aav??sal?.cap_hit??prev.salary_aav),salary_cash:numOrNull(sal?.salary_cash??prev.salary_cash)});}
   }catch{}
 
+  let liveIds=null;
   if(team){
     const live=await liveRoster(team).catch(()=>[]);
+    if(live.length>=15)liveIds=new Set(live.map(d=>Number(d.player_id)).filter(Number.isSafeInteger));
     for(const d of live){const id=Number(d.player_id),prev=map.get(id)||{},sal=(salaryCache?.players||{})[String(id)]||{};map.set(id,{...prev,...d,full_name_ru:prev.full_name_ru||fullNames?.[String(id)]||fallbackRuName(d.full_name_en||prev.full_name_en)||null,salary_aav:numOrNull(sal?.aav??sal?.cap_hit??prev.salary_aav),salary_cash:numOrNull(sal?.salary_cash??prev.salary_cash)});}
   }
 
   const qq=q.toLocaleLowerCase('ru');
-  const arr=[...map.values()].filter(p=>(!team||up(p.current_team_tri)===team)&&(!qq||String(p.full_name_en||"").toLowerCase().includes(qq)||String(p.full_name_ru||"").toLocaleLowerCase('ru').includes(qq))).map(decorate).sort(sortPlayers).slice(0,limit);
+  const arr=[...map.values()].filter(p=>(!team||(liveIds?liveIds.has(Number(p.player_id)):up(p.current_team_tri)===team))&&(!qq||String(p.full_name_en||"").toLowerCase().includes(qq)||String(p.full_name_ru||"").toLocaleLowerCase('ru').includes(qq))).map(decorate).sort(sortPlayers).slice(0,limit);
   return json({ok:true,players:arr,total:arr.length,source:team?"d1+salary+pronunciation+live_roster":"d1+salary+pronunciation"});
 }
 
