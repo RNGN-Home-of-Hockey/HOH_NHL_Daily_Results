@@ -1,0 +1,47 @@
+name: Debug 2026-27 Schedule
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/debug-202627-schedule.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Probe NHL season endpoint
+        run: |
+          node --input-type=module <<'JS'
+          for (const tri of ['BOS','TOR','UTA']) {
+            const url='https://api-web.nhle.com/v1/club-schedule-season/'+tri+'/20262027';
+            const r=await fetch(url,{headers:{accept:'application/json','user-agent':'HOH-schedule-debug'}});
+            const text=await r.text();
+            let d={}; try{d=JSON.parse(text)}catch{}
+            console.log('NHL',tri,'status',r.status,'games',Array.isArray(d.games)?d.games.length:null,'head',text.slice(0,300));
+            if(Array.isArray(d.games)&&d.games.length)console.log('NHL_SAMPLE',tri,JSON.stringify({first:d.games[0],last:d.games.at(-1)}));
+          }
+          JS
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Inspect remote D1 schedule
+        run: |
+          echo '=== SEASONS ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "SELECT season_id,COUNT(*) games,MIN(scheduled_start_utc) first_start,MAX(scheduled_start_utc) last_start FROM games GROUP BY season_id ORDER BY season_id;"
+          echo '=== FUTURE ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "SELECT COUNT(*) future_games,MIN(scheduled_start_utc) next_start FROM games WHERE scheduled_start_utc > '2026-09-18T10:00:00Z';"
+          echo '=== 20262027 SAMPLE ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "SELECT game_pk,season_id,game_type,scheduled_start_utc,home_tri,away_tri,game_state FROM games WHERE season_id='20262027' ORDER BY scheduled_start_utc LIMIT 25;"
+          echo '=== META ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "SELECT meta_key,meta_value,updated_at FROM data_core_meta WHERE meta_key LIKE 'center_schedule_sync:%' ORDER BY meta_key;"
