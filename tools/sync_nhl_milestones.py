@@ -56,14 +56,22 @@ def main():
       "current_value","remaining_value","games_played","goals","assists","points","wins","shutouts","toi_minutes",
       "source_row_id","payload_json","fetched_at")
     values=[("(" + ",".join(q(r.get(c)) for c in cols) + ")") for r in rows]
-    sql="""DELETE FROM nhl_milestone_watch;
-INSERT INTO nhl_milestone_watch (%s) VALUES
-%s;
-INSERT INTO data_core_meta(meta_key,meta_value,updated_at) VALUES
+    statements=["DELETE FROM nhl_milestone_watch;"]
+    current=[];used=0
+    header="INSERT INTO nhl_milestone_watch ("+",".join(cols)+") VALUES\n"
+    for value in values:
+        size=len(value.encode("utf-8"))+2
+        if current and (len(current)>=50 or used+size>55_000):
+            statements.append(header+",\\n".join(current)+";")
+            current=[];used=0
+        current.append(value);used+=size
+    if current:
+        statements.append(header+",\\n".join(current)+";")
+    statements.append("""INSERT INTO data_core_meta(meta_key,meta_value,updated_at) VALUES
 ('nhl_milestones.rows','%s',CURRENT_TIMESTAMP),
 ('nhl_milestones.last_fetch','%s',CURRENT_TIMESTAMP)
-ON CONFLICT(meta_key) DO UPDATE SET meta_value=excluded.meta_value,updated_at=CURRENT_TIMESTAMP;
-"""%(",".join(cols),",\n".join(values),len(rows),fetched.replace("'","''"))
+ON CONFLICT(meta_key) DO UPDATE SET meta_value=excluded.meta_value,updated_at=CURRENT_TIMESTAMP;"""%(len(rows),fetched.replace("'","''")))
+    sql="\\n".join(statements)
     out=Path("local-data/nhl-milestones");out.mkdir(parents=True,exist_ok=True)
     (out/"milestones.sql").write_text(sql,encoding="utf-8")
     summary={
