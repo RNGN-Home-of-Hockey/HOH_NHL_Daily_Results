@@ -54,3 +54,12 @@ jobs:
           echo '=== DISCOVERY ==='
           curl --fail-with-body --retry 5 --retry-delay 2 --max-time 60 "$BASE/discovery"
           echo
+          echo '=== V19 PRODUCT STATUS ==='
+          curl --fail-with-body --retry 5 --retry-delay 2 --max-time 90 'https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram-center-v19/status'
+          echo
+          echo '=== V19 ARCHIVE SMOKE ==='
+          curl --fail-with-body --retry 5 --retry-delay 2 --max-time 60 'https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram-center-v19/broadcasts?from=2025-04-01&to=2025-04-07'
+          echo
+          echo '=== V19 SHELL ==='
+          curl --fail-with-body --retry 5 --retry-delay 2 --max-time 30 'https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app' | grep -q '/telegram-app/v19.js'
+          echo 'V19 production smoke OK'
