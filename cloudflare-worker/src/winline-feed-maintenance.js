@@ -26,8 +26,8 @@ export async function runWinlineFeedMaintenance(env,{force=false,nowMs=Date.now(
   const cadenceMs=cadenceFor(next?.scheduled_start_utc,nowMs);
   const state=await loadState(env.DB);
   const lastAt=Date.parse(String(state?.fetched_at||""));
-  const retryAfterSchedule=Boolean(next)&&Number(state?.mapped_events||0)===0&&Number(state?.unmapped_events||0)>0;
-  const due=force||retryAfterSchedule||!Number.isFinite(lastAt)||nowMs-lastAt>=cadenceMs;
+  const retryUnmapped=Number(state?.mapped_events||0)===0&&Number(state?.unmapped_events||0)>0;
+  const due=force||retryUnmapped||!Number.isFinite(lastAt)||nowMs-lastAt>=cadenceMs;
   if(!due){
     return {ok:true,skipped:true,reason:"cadence",cadence_minutes:Math.round(cadenceMs/60000),next_game:next||null,last_fetch_at:state?.fetched_at||null,next_due_at:new Date(lastAt+cadenceMs).toISOString()};
   }
@@ -42,7 +42,12 @@ export async function runWinlineFeedMaintenance(env,{force=false,nowMs=Date.now(
 
   const feedBytes=new TextEncoder().encode(text).length;
   const events=parseNhlPrematch(text);
-  const mapped=await mapEventsToGames(env.DB,events);
+  let mapped=await mapEventsToGames(env.DB,events);
+  let nhlFallbackGames=0;
+  if(mapped.unmatched.length){
+    nhlFallbackGames=await ensureNhlGamesForEvents(env.DB,mapped.unmatched);
+    if(nhlFallbackGames>0)mapped=await mapEventsToGames(env.DB,events);
+  }
   const result=await persistMapped(env.DB,mapped.matched,now.toISOString());
   const finishedAt=new Date().toISOString();
   const payload={
@@ -53,6 +58,7 @@ export async function runWinlineFeedMaintenance(env,{force=false,nowMs=Date.now(
     mapped_events:mapped.matched.length,
     unmapped_events:mapped.unmatched.length,
     unmapped:mapped.unmatched.slice(0,20),
+    nhl_fallback_games:nhlFallbackGames,
     events_written:result.events_written,
     markets_written:result.markets_written,
     snapshot_rows_written:result.snapshot_rows_written,
@@ -152,6 +158,66 @@ async function mapEventsToGames(db,events){
     matched.push({...event,game_pk:Number(best.g.game_pk),home_tri:best.g.home_tri,away_tri:best.g.away_tri,scheduled_start_utc:best.g.scheduled_start_utc,time_diff_minutes:Math.round(best.diff/60000),team1_is_home:Boolean(best.direct)});
   }
   return {matched,unmatched};
+}
+
+async function ensureNhlGamesForEvents(db,events){
+  if(!events.length)return 0;
+  const days=new Set();
+  for(const event of events){
+    const t=Date.parse(String(event.starts_at||""));if(!Number.isFinite(t))continue;
+    for(const offset of [-1,0,1])days.add(new Date(t+offset*86400000).toISOString().slice(0,10));
+  }
+  const unique=new Map();
+  await Promise.all([...days].map(async day=>{
+    try{
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+      try{
+        const r=await fetch("https://api-web.nhle.com/v1/schedule/"+day,{signal:controller.signal,headers:{accept:"application/json","user-agent":"HOH-Winline-NHL-map/1.0"}});
+        if(!r.ok)return;
+        const d=await r.json();
+        for(const week of Array.isArray(d?.gameWeek)?d.gameWeek:[]){
+          for(const g of Array.isArray(week?.games)?week.games:[])if(g?.id)unique.set(Number(g.id),g);
+        }
+      }finally{clearTimeout(timer)}
+    }catch{}
+  }));
+  const needed=new Map();
+  for(const event of events){
+    const t1=triForName(event.team1),t2=triForName(event.team2),wt=Date.parse(String(event.starts_at||""));
+    if(!t1||!t2||!Number.isFinite(wt))continue;
+    let best=null;
+    for(const g of unique.values()){
+      const home=String(g?.homeTeam?.abbrev||"").toUpperCase(),away=String(g?.awayTeam?.abbrev||"").toUpperCase(),gt=Date.parse(String(g?.startTimeUTC||""));
+      if(!Number.isFinite(gt))continue;
+      const same=(home===t1&&away===t2)||(home===t2&&away===t1),diff=Math.abs(gt-wt);
+      if(same&&diff<=MAX_MATCH_DRIFT_MS&&(!best||diff<best.diff))best={g,diff};
+    }
+    if(best)needed.set(Number(best.g.id),best.g);
+  }
+  if(!needed.size)return 0;
+  const stmts=[];
+  for(const g of needed.values()){
+    const game=normalizeNhlGame(g);if(!game)continue;
+    stmts.push(db.prepare(`
+      INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,current_period,period_type,venue_name,last_synced_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(game_pk) DO UPDATE SET
+        season_id=excluded.season_id,game_type=excluded.game_type,scheduled_start_utc=excluded.scheduled_start_utc,
+        game_state=excluded.game_state,home_tri=excluded.home_tri,away_tri=excluded.away_tri,
+        home_score=excluded.home_score,away_score=excluded.away_score,current_period=excluded.current_period,
+        period_type=excluded.period_type,venue_name=COALESCE(excluded.venue_name,games.venue_name),last_synced_at=CURRENT_TIMESTAMP;
+    `).bind(game.game_pk,game.season_id,game.game_type,game.scheduled_start_utc,game.game_state,game.home_tri,game.away_tri,game.home_score,game.away_score,game.current_period,game.period_type,game.venue_name));
+  }
+  if(stmts.length)await db.batch(stmts);
+  return stmts.length;
+}
+
+function normalizeNhlGame(g){
+  const id=Number(g?.id),home=String(g?.homeTeam?.abbrev||"").toUpperCase(),away=String(g?.awayTeam?.abbrev||"").toUpperCase(),start=String(g?.startTimeUTC||"");
+  if(!Number.isSafeInteger(id)||!home||!away||!start)return null;
+  const num=v=>v===null||v===undefined||v===""?null:Number.isFinite(Number(v))?Number(v):null;
+  const localized=v=>typeof v==="string"?v:(v?.default||v?.en||null);
+  return {game_pk:id,season_id:String(g?.season||""),game_type:num(g?.gameType),scheduled_start_utc:start,game_state:String(g?.gameState||"FUT").toUpperCase(),home_tri:home,away_tri:away,home_score:num(g?.homeTeam?.score),away_score:num(g?.awayTeam?.score),current_period:num(g?.periodDescriptor?.number),period_type:g?.periodDescriptor?.periodType||g?.gameOutcome?.lastPeriodType||null,venue_name:localized(g?.venue)};
 }
 
 async function persistMapped(db,items,capturedAt){
