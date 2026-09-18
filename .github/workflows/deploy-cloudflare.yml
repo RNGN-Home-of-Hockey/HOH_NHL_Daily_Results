@@ -106,4 +106,30 @@ jobs:
           }
           if(ui.includes('new MutationObserver'))throw new Error('V19 unexpectedly added MutationObserver');
           console.log('V19_PRODUCTION_SMOKE_OK',JSON.stringify({active_players:status.active_players,snapshots:status.winline_snapshots,snapshot_games:status.winline_snapshot_games}));
+
+          const news=await get('/api/telegram-center-v20/news/home?limit=10',120000);
+          if(!Array.isArray(news.news)||news.news.length<10)throw new Error('V20 home news has fewer than 10 items: '+JSON.stringify(news));
+          const forbidden=/(един(?:ая|ой|ую)\\s+росси(?:я|и|ю)|путин|кремл|предвыбор|конгресс|санкц|украин|латви)/i;
+          const badNews=news.news.find(x=>forbidden.test(String(x.title||'')));
+          if(badNews)throw new Error('V20 politics filter leaked: '+badNews.title);
+          const oviNews=await get('/api/telegram-center-v20/players/8471214/news?limit=100',120000);
+          if(!Array.isArray(oviNews.news)||oviNews.news.length<1)throw new Error('V20 Ovechkin news backfill empty');
+          const badOvi=oviNews.news.find(x=>forbidden.test(String(x.title||''))||/(помидор|футбол|рпл)/i.test(String(x.title||'')));
+          if(badOvi)throw new Error('V20 Ovechkin filter leaked: '+badOvi.title);
+          const firstNews=news.news[0];
+          const detail=await get('/api/telegram-center-v20/news/'+firstNews.news_id,90000);
+          if(!detail.news?.title)throw new Error('V20 news detail failed');
+          const comments=await get('/api/telegram-center-v20/news/'+firstNews.news_id+'/comments');
+          if(!Array.isArray(comments.comments))throw new Error('V20 comments GET failed');
+          const unauth=await fetch(base+'/api/telegram-center-v20/news/'+firstNews.news_id+'/comments',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:'smoke'})});
+          if(unauth.status!==401)throw new Error('V20 comments POST must require Telegram auth, got '+unauth.status);
+          const shell20=await fetch(base+'/telegram-app',{cache:'no-store'}).then(r=>r.text());
+          if(!shell20.includes('/telegram-app/v20.js'))throw new Error('V20 script missing from production shell');
+          const ui20=await fetch(base+'/telegram-app/v20.js',{cache:'no-store'}).then(r=>r.text());
+          for(const needle of ['СВЕЖЕЕ В НХЛ','v20PlayerNews','v20CommentSend']){
+            if(!ui20.includes(needle))throw new Error('V20 UI contract missing '+needle);
+          }
+          if(ui20.includes('sports.ru/'))throw new Error('V20 UI exposes source links');
+          const newsStatus=await get('/api/telegram-center-v20/news/status');
+          console.log('V20_NEWS_SMOKE_OK',JSON.stringify({home:news.news.length,ovechkin:oviNews.news.length,total:newsStatus.news,players:newsStatus.players_with_news,comments:newsStatus.comments}));
           JS
