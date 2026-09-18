@@ -101,23 +101,30 @@ def seconds(value):
     return None
 
 
-def team_tri(row):
+def team_tri(row, team_id_map=None):
     for key in ("teamAbbrev", "teamAbbrevs", "teamTriCode", "triCode"):
         value = row.get(key)
         if value:
             tri = str(value).strip().upper()
             if 2 < len(tri) < 5:
                 return tri
+    if team_id_map:
+        try:
+            return team_id_map.get(int(row.get("teamId")))
+        except (TypeError, ValueError):
+            pass
     return None
 
 
-def normalize_interval(row):
+def normalize_interval(row, team_id_map=None):
+    if row.get("eventDescription") not in (None, ""):
+        return None
     try:
         period = int(row.get("period"))
         player_id = int(row.get("playerId"))
     except (TypeError, ValueError):
         return None
-    tri = team_tri(row)
+    tri = team_tri(row, team_id_map)
     if not tri:
         return None
     start = seconds(row.get("startTime"))
@@ -180,11 +187,25 @@ def fetch_game(game, timeout, attempts):
     payload = fetch_json(url, timeout, attempts)
     data = payload.get("data") if isinstance(payload, dict) else None
     data = data if isinstance(data, list) else []
+    team_id_map = {}
+    if data and not any(team_tri(row) for row in data if isinstance(row, dict)):
+        pbp_url = f"https://api-web.nhle.com/v1/gamecenter/{game['game_pk']}/play-by-play"
+        try:
+            meta = fetch_json(pbp_url, timeout, attempts)
+            home = meta.get("homeTeam") or {}
+            away = meta.get("awayTeam") or {}
+            if home.get("id") is not None:
+                team_id_map[int(home["id"])] = str(home.get("abbrev") or game["home_tri"]).upper()
+            if away.get("id") is not None:
+                team_id_map[int(away["id"])] = str(away.get("abbrev") or game["away_tri"]).upper()
+        except Exception:
+            team_id_map = {}
+
     intervals = []
     for raw in data:
         if not isinstance(raw, dict):
             continue
-        row = normalize_interval(raw)
+        row = normalize_interval(raw, team_id_map)
         if row:
             intervals.append(row)
 
