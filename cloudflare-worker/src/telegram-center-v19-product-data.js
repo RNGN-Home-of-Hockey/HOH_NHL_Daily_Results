@@ -1,0 +1,179 @@
+import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
+
+const API = "/api/telegram-center-v19";
+const FINAL_STATES = new Set(["FINAL", "OFF"]);
+const MIN_ARCHIVE_DATE = "2024-09-01";
+const MAX_RANGE_DAYS = 93;
+
+export async function handleTelegramCenterV19ProductData(request, env, path) {
+  if (!path.startsWith(API)) return null;
+  if (!env?.DB) return json({ ok:false, error:"missing_d1_binding" }, 503);
+  if (request.method !== "GET") return json({ ok:false, error:"method_not_allowed" }, 405);
+
+  if (path === `${API}/status`) return productStatus(env);
+  if (path === `${API}/broadcasts`) return broadcasts(request, env);
+  const game = new RegExp(`^${API}/games/(\\d+)$`).exec(path);
+  if (game) return gameDetail(env, Number(game[1]));
+  return json({ ok:false, error:"not_found" }, 404);
+}
+
+async function productStatus(env) {
+  const maintenance = await runCenterRosterMaintenance(env).catch(error => ({ok:false,error:errorText(error)}));
+  try {
+    const [rows, total, snapshots] = await Promise.all([
+      env.DB.prepare(`SELECT current_team_tri team_tri,COUNT(*) players FROM players WHERE COALESCE(active,1)=1 AND current_team_tri IS NOT NULL GROUP BY current_team_tri ORDER BY current_team_tri;`).all(),
+      env.DB.prepare(`SELECT COUNT(*) players FROM players WHERE COALESCE(active,1)=1;`).first(),
+      env.DB.prepare(`SELECT COUNT(*) snapshots,COUNT(DISTINCT game_pk) games FROM winline_market_snapshots;`).first().catch(()=>({snapshots:0,games:0})),
+    ]);
+    const teams=(rows.results||[]).map(x=>({team_tri:x.team_tri,players:Number(x.players||0)}));
+    return json({ok:true,version:"V19",roster_maintenance:maintenance,active_players:Number(total?.players||0),teams_with_roster:teams.length,roster_complete:teams.length===32&&teams.every(x=>x.players>0),teams,winline_snapshots:Number(snapshots?.snapshots||0),winline_snapshot_games:Number(snapshots?.games||0)});
+  } catch (error) {
+    return json({ok:false,error:"product_status_failed",detail:errorText(error)},503);
+  }
+}
+
+async function broadcasts(request, env) {
+  const u=new URL(request.url);
+  const from=cleanDate(u.searchParams.get("from")||MIN_ARCHIVE_DATE);
+  const to=cleanDate(u.searchParams.get("to")||from);
+  if(!from||!to)return json({ok:false,error:"invalid_date_range"},400);
+  if(from<MIN_ARCHIVE_DATE)return json({ok:false,error:"archive_before_minimum",minimum:MIN_ARCHIVE_DATE},400);
+  const span=Math.round((Date.parse(to+"T00:00:00Z")-Date.parse(from+"T00:00:00Z"))/86400000);
+  if(!Number.isFinite(span)||span<0||span>MAX_RANGE_DAYS)return json({ok:false,error:"range_too_large",max_days:MAX_RANGE_DAYS},400);
+  try{
+    const rows=await env.DB.prepare(`
+      SELECT date(datetime(g.scheduled_start_utc,'-8 hours')) calendar_date,
+             g.game_pk,g.season_id,g.game_type,g.scheduled_start_utc,g.game_state,g.home_tri,g.away_tri,g.home_score,g.away_score,g.period_type,g.venue_name,
+             ht.name_en home_name_en,ht.name_ru home_name_ru,ht.logo_url home_logo,
+             at.name_en away_name_en,at.name_ru away_name_ru,at.logo_url away_logo,
+             b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status
+      FROM games g
+      LEFT JOIN teams ht ON ht.tri_code=g.home_tri
+      LEFT JOIN teams at ON at.tri_code=g.away_tri
+      LEFT JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
+      LEFT JOIN vk_broadcasts b ON b.source_key=m.source_key
+      WHERE date(datetime(g.scheduled_start_utc,'-8 hours')) BETWEEN ? AND ?
+        AND g.game_type IN (1,2,3)
+      ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC;
+    `).bind(from,to).all();
+    const games=(rows.results||[]).map(decorateArchiveGame);
+    const map=new Map();
+    for(const g of games){const d=map.get(g.calendar_date)||{date:g.calendar_date,count:0,regular:0,playoffs:0,preseason:0,vk:0};d.count++;if(g.game_type===3)d.playoffs++;else if(g.game_type===2)d.regular++;else if(g.game_type===1)d.preseason++;if(g.vk)d.vk++;map.set(g.calendar_date,d)}
+    return json({ok:true,version:"V19",minimum_date:MIN_ARCHIVE_DATE,from,to,days:[...map.values()],games});
+  }catch(error){
+    if(isMissingVkSchema(error))return json({ok:false,error:"vk_schema_not_applied",detail:errorText(error)},503);
+    return json({ok:false,error:"broadcast_archive_failed",detail:errorText(error)},503);
+  }
+}
+
+async function gameDetail(env, gamePk) {
+  if (!Number.isSafeInteger(gamePk) || gamePk<=0) return json({ok:false,error:"invalid_game_pk"},400);
+  try{
+    const game=await env.DB.prepare(`
+      SELECT g.game_pk,g.season_id,g.game_type,g.scheduled_start_utc,g.game_state,g.home_tri,g.away_tri,g.home_score,g.away_score,g.period_type,g.venue_name,
+             ht.name_en home_name_en,ht.name_ru home_name_ru,ht.logo_url home_logo,
+             at.name_en away_name_en,at.name_ru away_name_ru,at.logo_url away_logo
+      FROM games g
+      LEFT JOIN teams ht ON ht.tri_code=g.home_tri
+      LEFT JOIN teams at ON at.tri_code=g.away_tri
+      WHERE g.game_pk=? LIMIT 1;
+    `).bind(gamePk).first();
+    if(!game)return json({ok:false,error:"game_not_found"},404);
+    const [broadcast,winline]=await Promise.all([loadBroadcast(env.DB,gamePk),loadCanonicalWinline(env.DB,game)]);
+    return json({ok:true,version:"V19",game:decorateGame(game),broadcast,winline});
+  }catch(error){
+    if(isMissingVkSchema(error))return json({ok:false,error:"vk_schema_not_applied",detail:errorText(error)},503);
+    return json({ok:false,error:"game_detail_failed",detail:errorText(error)},503);
+  }
+}
+
+async function loadBroadcast(db,gamePk){
+  return db.prepare(`
+    SELECT b.source_key,b.source_kind,b.owner_id,b.video_id,b.title,b.published_at,b.scheduled_at,b.status,b.web_url,b.app_url,b.thumbnail_url,b.duration_seconds,m.match_method,m.match_confidence,m.matched_at
+    FROM game_vk_broadcasts m JOIN vk_broadcasts b ON b.source_key=m.source_key
+    WHERE m.game_pk=? LIMIT 1;
+  `).bind(gamePk).first();
+}
+
+async function loadCanonicalWinline(db,game){
+  const event=await db.prepare(`SELECT winline_event_id,game_pk,status,starts_at,deeplink,updated_at FROM winline_events WHERE game_pk=? LIMIT 1;`).bind(game.game_pk).first().catch(()=>null);
+  if(!event)return {event:null,source:"none",captured_at:null,market_type:null,markets:[],settled_outcome:null};
+  const final=FINAL_STATES.has(up(game.game_state));
+  let rows=[],source="current",capturedAt=null;
+  if(final){
+    try{
+      const snap=await db.prepare(`
+        SELECT MAX(captured_at) captured_at FROM winline_market_snapshots
+        WHERE game_pk=? AND is_live=0 AND captured_at<=?;
+      `).bind(game.game_pk,game.scheduled_start_utc).first();
+      if(snap?.captured_at){
+        const r=await db.prepare(`
+          SELECT winline_market_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,captured_at updated_at
+          FROM winline_market_snapshots WHERE game_pk=? AND captured_at=? AND is_live=0 AND odds IS NOT NULL
+          ORDER BY winline_market_id ASC;
+        `).bind(game.game_pk,snap.captured_at).all();
+        rows=r.results||[];source="historical_pregame";capturedAt=snap.captured_at;
+      }
+    }catch{}
+    if(!rows.length){
+      const safe=await db.prepare(`
+        SELECT winline_market_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,updated_at
+        FROM winline_markets WHERE winline_event_id=? AND is_live=0 AND odds IS NOT NULL AND updated_at<=?
+        ORDER BY updated_at DESC,winline_market_id ASC LIMIT 80;
+      `).bind(event.winline_event_id,game.scheduled_start_utc).all().catch(()=>({results:[]}));
+      rows=safe.results||[];if(rows.length){source="safe_current_pregame";capturedAt=rows[0]?.updated_at||null}
+    }
+  }else{
+    const r=await db.prepare(`
+      SELECT winline_market_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,updated_at
+      FROM winline_markets WHERE winline_event_id=? AND active=1 AND odds IS NOT NULL
+      ORDER BY is_live ASC,updated_at DESC,winline_market_id ASC LIMIT 80;
+    `).bind(event.winline_event_id).all().catch(()=>({results:[]}));
+    rows=r.results||[];capturedAt=rows[0]?.updated_at||null;
+  }
+  const canonical=canonicalMarket(rows,game);
+  const settled=final?settledOutcome(game,canonical.keys):null;
+  return {event,source,captured_at:capturedAt,market_type:canonical.market_type,markets:canonical.rows.map(x=>({...x,winner:Boolean(settled&&x.outcome_key===settled)})),settled_outcome:settled};
+}
+
+function canonicalMarket(rows,game){
+  const groups=new Map();
+  for(const raw of rows||[]){const key=String(raw.market_type||"");if(!groups.has(key))groups.set(key,[]);groups.get(key).push({...raw,outcome_key:outcomeKey(raw,game)})}
+  let best={score:-1,market_type:null,rows:[],keys:new Set()};
+  for(const [marketType,list] of groups){
+    const dedupe=new Map();for(const x of list){const k=x.outcome_key||String(x.outcome_name||x.winline_market_id);if(!dedupe.has(k))dedupe.set(k,x)}
+    const vals=[...dedupe.values()],keys=new Set(vals.map(x=>x.outcome_key).filter(Boolean));
+    let score=0;if(keys.has("home"))score+=4;if(keys.has("away"))score+=4;if(keys.has("draw"))score+=5;if(keys.size>=2)score+=3;if(keys.size===3)score+=4;if(/1x2|3.?way|regular|60|основ|исход|match.?result/i.test(marketType))score+=3;score-=vals.some(x=>Number(x.is_live)===1)?1:0;
+    if(score>best.score)best={score,market_type:marketType,rows:vals,keys};
+  }
+  const order={home:1,draw:2,away:3};best.rows.sort((a,b)=>(order[a.outcome_key]||9)-(order[b.outcome_key]||9));return best;
+}
+
+function outcomeKey(row,game){
+  const sk=up(row.subject_key),name=String(row.outcome_name||"").trim().toLowerCase(),type=String(row.market_type||"").toLowerCase();
+  if(sk&&sk===up(game.home_tri))return "home";if(sk&&sk===up(game.away_tri))return "away";
+  if(/(^|\s)(draw|x|ничья|н)(\s|$)/i.test(name)||name==="х")return "draw";
+  if(/home|хозя|п1|(^|\s)1(\s|$)/i.test(name))return "home";
+  if(/away|гост|п2|(^|\s)2(\s|$)/i.test(name))return "away";
+  if(/1x2|3.?way|regular|60|основ|исход/i.test(type)){if(name==="1")return "home";if(name==="x")return "draw";if(name==="2")return "away"}
+  return null;
+}
+
+function settledOutcome(game,keys){
+  const hs=Number(game.home_score),as=Number(game.away_score);if(!Number.isFinite(hs)||!Number.isFinite(as))return null;
+  if(keys?.has("draw")&&["OT","SO"].includes(up(game.period_type)))return "draw";
+  if(hs>as)return "home";if(as>hs)return "away";return keys?.has("draw")?"draw":null;
+}
+
+function decorateArchiveGame(x){
+  return {calendar_date:x.calendar_date,game_pk:Number(x.game_pk),season_id:x.season_id,game_type:Number(x.game_type),is_playoff:Number(x.game_type)===3,scheduled_start_utc:x.scheduled_start_utc,game_state:x.game_state,home_score:x.home_score,away_score:x.away_score,period_type:x.period_type,venue_name:x.venue_name,
+    home:{tri:x.home_tri,name_ru:x.home_name_ru,name_en:x.home_name_en,logo:x.home_logo||teamLogo(x.home_tri)},away:{tri:x.away_tri,name_ru:x.away_name_ru,name_en:x.away_name_en,logo:x.away_logo||teamLogo(x.away_tri)},
+    vk:x.source_key?{source_key:x.source_key,title:x.vk_title,web_url:x.vk_url,app_url:x.vk_app_url,thumbnail_url:x.vk_thumbnail,status:x.vk_status}:null};
+}
+function decorateGame(x){return {...x,game_pk:Number(x.game_pk),game_type:Number(x.game_type),is_playoff:Number(x.game_type)===3,home:{tri:x.home_tri,name_ru:x.home_name_ru,name_en:x.home_name_en,logo:x.home_logo||teamLogo(x.home_tri)},away:{tri:x.away_tri,name_ru:x.away_name_ru,name_en:x.away_name_en,logo:x.away_logo||teamLogo(x.away_tri)}}}
+function teamLogo(tri){return tri?`https://assets.nhle.com/logos/nhl/svg/${up(tri)}_light.svg`:""}
+function cleanDate(v){const s=String(v||"").trim();return /^20\d\d-\d\d-\d\d$/.test(s)?s:""}
+function up(v){return String(v||"").trim().toUpperCase()}
+function isMissingVkSchema(error){return /no such table:\s*(vk_broadcasts|game_vk_broadcasts)/i.test(errorText(error))}
+function errorText(error){return String(error?.message||error||"unknown_error")}
+function json(payload,status=200){return new Response(JSON.stringify(payload),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}})}
