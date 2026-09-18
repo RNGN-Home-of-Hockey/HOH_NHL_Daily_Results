@@ -50,6 +50,27 @@ jobs:
            AND ABS(julianday(COALESCE(b.scheduled_at,b.published_at))-julianday(u.scheduled_start_utc)) <= 3
           ORDER BY u.scheduled_start_utc,u.game_pk,delta_hours
           LIMIT 1000;"
+      - name: Unmatched counts by team
+        run: |
+          npx wrangler d1 execute hoh-data-core --remote --command "
+          WITH u AS (
+            SELECT g.home_tri,g.away_tri
+            FROM games g LEFT JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
+            WHERE CAST(g.season_id AS TEXT) IN ('20242025','20252026')
+              AND g.game_type IN (2,3) AND m.game_pk IS NULL
+          ), teams AS (
+            SELECT home_tri tri FROM u UNION ALL SELECT away_tri tri FROM u
+          )
+          SELECT tri,COUNT(*) unmatched_games FROM teams GROUP BY tri ORDER BY unmatched_games DESC,tri;"
+      - name: Raw Rangers Islanders VK titles
+        run: |
+          npx wrangler d1 execute hoh-data-core --remote --command "
+          SELECT source_key,title,scheduled_at,published_at,parsed_home_tri,parsed_away_tri
+          FROM vk_broadcasts
+          WHERE (title LIKE '%Рейндж%' OR title LIKE '%рейндж%' OR title LIKE '%Айленд%' OR title LIKE '%айленд%')
+            AND COALESCE(scheduled_at,published_at) >= '2025-09-01'
+          ORDER BY COALESCE(scheduled_at,published_at) ASC
+          LIMIT 500;"
       - name: Unmatched games only
         run: |
           npx wrangler d1 execute hoh-data-core --remote --command "
