@@ -6,7 +6,7 @@ const VK_OWNER_ID = -227682170;
 const PAGE_SIZE = 100;
 const BACKFILL_PAGES_PER_TICK = 5;
 const META_ALGO = "hoh_vk_video_backfill_algo";
-const BACKFILL_ALGO = "v3-root-pagination-100";
+const BACKFILL_ALGO = "v4-ny-alias-title-date";
 const META_CURSOR = "hoh_vk_video_backfill_offset";
 const META_DONE = "hoh_vk_video_backfill_done";
 const META_LAST_SYNC = "hoh_vk_video_last_sync_json";
@@ -20,8 +20,8 @@ const TEAM_ALIASES = {
   COL:["colorado","avalanche","колорадо","эвеланш","аваланш"], CBJ:["columbus","blue jackets","коламбус","блю джекетс"], DAL:["dallas","stars","даллас","старз"],
   DET:["detroit","red wings","детройт","ред уингз"], EDM:["edmonton","oilers","эдмонтон","ойлерз"], FLA:["florida","panthers","флорида","пантерз"],
   LAK:["los angeles","la kings","kings","лос анджелес","кингз"], MIN:["minnesota","wild","миннесота","уайлд"], MTL:["montreal","canadiens","монреаль","канадиенс"],
-  NSH:["nashville","predators","нэшвилл","предаторз"], NJD:["new jersey","devils","нью джерси","дэвилз"], NYI:["new york islanders","islanders","айлендерс","нью йорк айлендерс"],
-  NYR:["new york rangers","rangers","рейнджерс","нью йорк рейнджерс"], OTT:["ottawa","senators","оттава","сенаторз"], PHI:["philadelphia","flyers","филадельфия","флайерз"],
+  NSH:["nashville","predators","нэшвилл","предаторз"], NJD:["new jersey","devils","нью джерси","дэвилз"], NYI:["new york islanders","islanders","айлендерс","айлендерз","нью йорк айлендерс","нью йорк айлендерз"],
+  NYR:["new york rangers","rangers","рейнджерс","рейнджерз","рэйнджерс","рэйнджерз","нью йорк рейнджерс","нью йорк рейнджерз"], OTT:["ottawa","senators","оттава","сенаторз"], PHI:["philadelphia","flyers","филадельфия","флайерз"],
   PIT:["pittsburgh","penguins","питтсбург","пингвинз"], SJS:["san jose","sharks","сан хосе","шаркс"], SEA:["seattle","kraken","сиэтл","кракен"],
   STL:["st louis","blues","сент луис","блюз"], TBL:["tampa bay","lightning","тампа","лайтнинг"], TOR:["toronto","maple leafs","торонто","мэйпл лифс","мейпл лифс"],
   UTA:["utah","utah hockey club","mammoth","hockey club","юта","маммот"], VAN:["vancouver","canucks","ванкувер","кэнакс","канакс"], VGK:["vegas","golden knights","вегас","голден найтс"],
@@ -207,9 +207,12 @@ async function bulkUpsertMappings(db,mappings){
   // remove the stale relation first so the UNIQUE(source_key) constraint cannot block correction.
   await db.prepare(`
     DELETE FROM game_vk_broadcasts
-    WHERE source_key IN (SELECT json_extract(value,'$.source_key') FROM json_each(?))
-      AND game_pk NOT IN (SELECT CAST(json_extract(value,'$.game_pk') AS INTEGER) FROM json_each(?));
-  `).bind(payload,payload).run();
+    WHERE EXISTS (
+      SELECT 1 FROM json_each(?) j
+      WHERE json_extract(j.value,'$.source_key')=game_vk_broadcasts.source_key
+        AND CAST(json_extract(j.value,'$.game_pk') AS INTEGER)<>game_vk_broadcasts.game_pk
+    );
+  `).bind(payload).run();
   await db.prepare(`
     INSERT INTO game_vk_broadcasts (game_pk,source_key,match_method,match_confidence,matched_at,updated_at)
     SELECT CAST(json_extract(value,'$.game_pk') AS INTEGER),json_extract(value,'$.source_key'),json_extract(value,'$.match_method'),
@@ -239,8 +242,15 @@ async function loadCandidateGames(db,records){
 function matchFromCandidates(games,a,b,dateIso,record){
   const t=Date.parse(dateIso||"");
   if(!Number.isFinite(t))return {kind:"unmatched"};
-  const scored=(games||[])
-    .filter(g=>((g.home_tri===a&&g.away_tri===b)||(g.home_tri===b&&g.away_tri===a)))
+  const pair=(games||[]).filter(g=>((g.home_tri===a&&g.away_tri===b)||(g.home_tri===b&&g.away_tri===a)));
+  const titleDay=explicitTitleDay(record?.title||"");
+  if(titleDay){
+    const exact=pair.filter(g=>String(g.scheduled_start_utc||"").slice(0,10)===titleDay);
+    if(exact.length===1){
+      return {kind:"matched",game_pk:Number(exact[0].game_pk),confidence:1,method:"title_teams_calendar_date"};
+    }
+  }
+  const scored=pair
     .map(g=>({g,d:Math.abs(Date.parse(g.scheduled_start_utc)-t)}))
     .filter(x=>Number.isFinite(x.d)&&x.d<=MATCH_WINDOW_MS)
     .sort((x,y)=>x.d-y.d||Number(x.g.game_pk)-Number(y.g.game_pk));
@@ -253,6 +263,14 @@ function matchFromCandidates(games,a,b,dateIso,record){
   if(duration>=90*60)confidence=Math.min(1,confidence+.003);
   if(/прямой эфир|трансляц|live|полный матч/.test(title))confidence=Math.min(1,confidence+.002);
   return {kind:"matched",game_pk:Number(scored[0].g.game_pk),confidence,method:"title_teams_time"};
+}
+function explicitTitleDay(title){
+  const text=String(title||"");
+  let m=text.match(/(?<!\d)([0-3]?\d)[.\-/]([01]?\d)[.\-/](20\d{2})(?!\d)/);
+  if(m)return `${m[3]}-${String(Number(m[2])).padStart(2,"0")}-${String(Number(m[1])).padStart(2,"0")}`;
+  m=text.match(/(?<!\d)(20\d{2})[.\-/]([01]?\d)[.\-/]([0-3]?\d)(?!\d)/);
+  if(m)return `${m[1]}-${String(Number(m[2])).padStart(2,"0")}-${String(Number(m[3])).padStart(2,"0")}`;
+  return null;
 }
 
 function parseTeams(title){
