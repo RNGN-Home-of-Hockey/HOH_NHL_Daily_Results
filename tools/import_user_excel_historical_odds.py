@@ -22,7 +22,9 @@ TEAM={
 }
 
 def load_source():
-    raw=gzip.decompress(base64.b64decode(DATA_B64)).decode("utf-8")
+    blob="".join(DATA_B64.split())
+    blob += "=" * (-len(blob) % 4)
+    raw=gzip.decompress(base64.b64decode(blob)).decode("utf-8")
     return list(csv.DictReader(io.StringIO(raw)))
 
 def load_games():
