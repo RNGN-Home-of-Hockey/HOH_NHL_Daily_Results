@@ -5,7 +5,7 @@ const HOME_MIN_INTERVAL_MS=10*60*1000;
 const PLAYER_BATCH=4;
 const MAX_PLAYER_PAGE=20;
 
-const POLITICAL_RE=/(единая\s+россия|путин|кремл|президент|правительств|депутат|сенатор|конгресс|выбор|предвыбор|парт(?:ия|ии|ию)|политик|боев(?:ые|ых)?\s+действ|войн|украин|нато|санкц|въезд\s+в\s+[а-я]|латви|госдум|мид\b|патриот(?:изм|ическ)|гражданин\s+россии|подданн)/iu;
+const POLITICAL_RE=/(един(?:ая|ой|ую)\s+росси(?:я|и|ю)|путин|кремл|президент|правительств|депутат|сенатор|конгресс|выбор|предвыбор|парт(?:ия|ии|ию)|политик|боев(?:ые|ых)?\s+действ|войн|украин|нато|санкц|въезд\s+в\s+[а-я]|латви|госдум|мид\b|\bмок\b|отстранени.{0,30}росси|допуск.{0,30}росси|иихф.{0,30}росси|патриот(?:изм|ическ)|гражданин\s+россии|подданн)/iu;
 const OFF_ICE_RE=/(футбол|рпл|динамо\s+махачкал|помидор|день\s+рождения|вечерин|семь[яи]|сын\b|дочь\b|жена\b|отпуск|ресторан|автомобил|мода|кино|концерт)/iu;
 const HOCKEY_RE=/(нхл|nhl|хокке|матч|игр[аы]|сезон|гол|шайб|очк|передач|ассист|брос|кубок\s+стэнли|плей-офф|драфт|контракт|клуб|команд|тренер|форвард|защитник|вратар|звено|ворот|рекорд|капитан|трансфер|обмен|состав|трениров|лига|овертайм|буллит|силов)/iu;
 
@@ -168,7 +168,14 @@ async function manualSync(request,env){
 async function scanNhlMain(env){
   let html;
   try{html=await fetchText(NHL_PAGE)}catch(error){return {ok:false,error:"sports_main_fetch_failed",detail:errorText(error),stored:0,politics:0}}
-  const items=extractHtmlNews(html,NHL_PAGE).slice(0,60);
+  let items=extractHtmlNews(html,NHL_PAGE).slice(0,60);
+  const rssUrl=discoverRssUrl(html,NHL_PAGE);
+  if(rssUrl){
+    try{
+      const rssItems=extractSportsRss(await fetchText(rssUrl));
+      items=mergeFeedMetadata(items,rssItems);
+    }catch{}
+  }
   const players=await activePlayerNames(env.DB);
   let stored=0,politics=0,duplicate=0;
   for(let i=0;i<items.length&&stored<30;i++){
@@ -247,10 +254,18 @@ async function scanOnePlayerSource(env,src){
   const url=page===1?src.source_url:src.source_url+`page${page}/`;
   let html;
   try{html=await fetchText(url)}catch(error){
-    await env.DB.prepare("UPDATE sports_player_sources SET backfill_done=1,last_scanned_at=CURRENT_TIMESTAMP,last_error=?,updated_at=CURRENT_TIMESTAMP WHERE player_id=?").bind(errorText(error).slice(0,300),src.player_id).run();
-    return {stored:0,politics:0,off_ice:0,errors:1};
+    const permanent=/HTTP\s+404\b/i.test(errorText(error));
+    await env.DB.prepare("UPDATE sports_player_sources SET backfill_done=?,last_scanned_at=CURRENT_TIMESTAMP,last_error=?,updated_at=CURRENT_TIMESTAMP WHERE player_id=?")
+      .bind(permanent?1:0,errorText(error).slice(0,300),src.player_id).run();
+    return {stored:0,politics:0,off_ice:0,errors:1,permanent};
   }
-  const items=extractHtmlNews(html,url);
+  let items=extractHtmlNews(html,url);
+  if(page===1){
+    const rssUrl=discoverRssUrl(html,url);
+    if(rssUrl){
+      try{items=mergeFeedMetadata(items,extractSportsRss(await fetchText(rssUrl)))}catch{}
+    }
+  }
   let stored=0,politics=0,offIce=0;
   for(const item of items){
     const combined=item.title+" "+(item.body_text||"");
@@ -330,10 +345,28 @@ function extractHtmlNews(html,base){
   return out;
 }
 
+function discoverRssUrl(html,base){
+  const tags=String(html||"").match(/<link\b[^>]*>/gi)||[];
+  for(const t of tags){
+    if(!/application\/rss\+xml|application\/atom\+xml/i.test(t))continue;
+    const m=/href=(["'])([^"']+)\1/i.exec(t);if(!m)continue;
+    try{return new URL(decodeEntities(m[2]),base).toString()}catch{}
+  }
+  return null;
+}
+
+function mergeFeedMetadata(pageItems,rssItems){
+  const map=new Map((rssItems||[]).map(x=>[canonicalUrl(x.source_url),x]));
+  return (pageItems||[]).map(x=>{
+    const r=map.get(canonicalUrl(x.source_url));
+    return r?{...x,body_text:r.body_text||x.body_text,published_at:r.published_at||x.published_at,source_key:r.source_key||x.source_key}:x;
+  });
+}
+
 export function extractSportsRss(xml){
   const out=[];
   for(const block of String(xml||"").match(/<item\b[\s\S]*?<\/item>/gi)||[]){
-    const title=tag(block,"title"),link=tag(block,"link"),guid=tag(block,"guid"),desc=tag(block,"content:encoded")||tag(block,"description"),pub=tag(block,"pubDate");
+    const title=tag(block,"title"),link=tag(block,"link"),guid=tag(block,"guid"),desc=tag(block,"description")||tag(block,"content:encoded"),pub=tag(block,"pubDate");
     if(!title||!link)continue;
     out.push({source_key:cleanText(guid)||canonicalUrl(link),source_url:canonicalUrl(link),title:cleanText(title),body_text:cleanText(desc).slice(0,5000)||null,published_at:validDate(pub)});
   }
