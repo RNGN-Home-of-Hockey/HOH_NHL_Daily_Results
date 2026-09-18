@@ -10,7 +10,7 @@ export async function runCenterScheduleMaintenance(env,{now=null,force=false}={}
   const season = currentSeasonId(clock);
 
   const rosterResult=await refreshRostersIfDue(env,clock,force);
-  if(rosterResult && !rosterResult.skipped)return rosterResult;
+  if(rosterResult && rosterResult.ok===false)return rosterResult;
 
   const intervalMinutes = envInt(env.CENTER_SCHEDULE_SYNC_INTERVAL_MINUTES, DEFAULT_INTERVAL_MINUTES, 30, 1440);
   const metaKey = `center_schedule_sync:${season}`;
