@@ -26,7 +26,10 @@ import urllib.parse
 import urllib.request
 from collections import defaultdict
 
+from bs4 import BeautifulSoup
+
 BASE = "https://api.nhle.com/stats/rest/en/shiftcharts"
+HTML_BASE = "https://www.nhl.com/scores/htmlreports"
 UA = "HOH-NHL-Shiftcharts/1.0"
 GAME_SQL = Path("migrations/0017_nhl_two_season_games.sql")
 SEASONS = {"20242025", "20252026"}
@@ -146,6 +149,100 @@ def normalize_interval(row, team_id_map=None):
     }
 
 
+
+def fetch_text(url, timeout, attempts):
+    last = None
+    for attempt in range(1, attempts + 1):
+        try:
+            req = urllib.request.Request(
+                url, headers={"Accept": "text/html,*/*", "User-Agent": UA}
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                return response.read().decode("utf-8", errors="replace")
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+            last = exc
+            if isinstance(exc, urllib.error.HTTPError) and exc.code not in {429, 500, 502, 503, 504}:
+                raise
+            if attempt < attempts:
+                time.sleep(min(6.0, 0.5 * (2 ** (attempt - 1))))
+    raise RuntimeError(str(last))
+
+
+def boxscore_roster_maps(game, timeout, attempts):
+    url = f"https://api-web.nhle.com/v1/gamecenter/{game['game_pk']}/boxscore"
+    box = fetch_json(url, timeout, attempts)
+    pbg = box.get("playerByGameStats") or {}
+    maps = {}
+    for side, tri in (("homeTeam", game["home_tri"]), ("awayTeam", game["away_tri"])):
+        jersey = {}
+        team = pbg.get(side) or {}
+        for group in ("forwards", "defense", "goalies"):
+            for player in team.get(group) or []:
+                try:
+                    number = int(player.get("sweaterNumber"))
+                    pid = int(player.get("playerId"))
+                except (TypeError, ValueError):
+                    continue
+                jersey[number] = pid
+        maps[tri] = jersey
+    return maps
+
+
+def html_shift_url(game, prefix):
+    serial = str(game["game_pk"])[4:]
+    return f"{HTML_BASE}/{game['season_id']}/{prefix}{serial}.HTM"
+
+
+def parse_html_shift_report(html, tri, jersey_to_pid):
+    soup = BeautifulSoup(html, "html.parser")
+    header_re = re.compile(r"^(\d{1,2})\s+(.{2,80},\s*.{2,80})$")
+    shift_re = re.compile(
+        r"^(\d+)\s+(\d+)\s+(\d{1,2}:\d{2})\s*/\s*\d{1,2}:\d{2}\s+"
+        r"(\d{1,2}:\d{2})\s*/\s*\d{1,2}:\d{2}(?:\s+\d{1,2}:\d{2})?"
+    )
+    current_pid = None
+    rows = []
+    for tr in soup.find_all("tr"):
+        cells = [cell.get_text(" ", strip=True) for cell in tr.find_all(["td", "th"])]
+        text = " ".join(part for part in cells if part).replace("\xa0", " ").strip()
+        if not text:
+            continue
+
+        header = header_re.fullmatch(text)
+        if header and "/" not in text:
+            number = int(header.group(1))
+            current_pid = jersey_to_pid.get(number)
+            continue
+
+        if current_pid is None:
+            continue
+        shift = shift_re.match(text)
+        if not shift:
+            continue
+        _, period_raw, start_raw, end_raw = shift.groups()
+        start = seconds(start_raw)
+        end = seconds(end_raw)
+        if start is None or end is None or end <= start:
+            continue
+        rows.append({
+            "period": int(period_raw),
+            "start": start,
+            "end": end,
+            "duration": end - start,
+            "player_id": current_pid,
+            "team_tri": tri,
+        })
+    return rows
+
+
+def fetch_html_shift_intervals(game, timeout, attempts):
+    rosters = boxscore_roster_maps(game, timeout, attempts)
+    rows = []
+    for prefix, tri in (("TH", game["home_tri"]), ("TV", game["away_tri"])):
+        html = fetch_text(html_shift_url(game, prefix), timeout, attempts)
+        rows.extend(parse_html_shift_report(html, tri, rosters.get(tri, {})))
+    return rows
+
 def merge_intervals(rows):
     by_period = defaultdict(list)
     for row in rows:
@@ -209,6 +306,18 @@ def fetch_game(game, timeout, attempts):
         if row:
             intervals.append(row)
 
+    source = "nhl_shiftcharts"
+    fallback_used = False
+    if not intervals:
+        try:
+            html_intervals = fetch_html_shift_intervals(game, timeout, attempts)
+        except Exception:
+            html_intervals = []
+        if html_intervals:
+            intervals = html_intervals
+            source = "nhl_html_shift_report"
+            fallback_used = True
+
     players = defaultdict(list)
     for row in intervals:
         players[(row["team_tri"], row["player_id"])].append(row)
@@ -233,7 +342,7 @@ def fetch_game(game, timeout, attempts):
                 "first_shift_second": first[1],
                 "last_period": last[0],
                 "last_shift_second": last[1],
-                "source": "nhl_shiftcharts",
+                "source": source,
             }
         )
 
@@ -264,6 +373,7 @@ def fetch_game(game, timeout, attempts):
         "player_rows": game_rows,
         "pair_rows": pair_rows,
         "url": url,
+        "fallback_used": fallback_used,
     }
 
 
@@ -435,6 +545,8 @@ def main():
     pair_game_rows = []
     failures = []
     raw_shifts = 0
+    fallback_games = 0
+    empty_games = []
 
     with cf.ThreadPoolExecutor(max_workers=workers) as pool:
         future_map = {
@@ -450,6 +562,10 @@ def main():
                 raw_shifts += result["raw_shifts"]
                 player_rows.extend(result["player_rows"])
                 pair_game_rows.extend(result["pair_rows"])
+                if result.get("fallback_used"):
+                    fallback_games += 1
+                if not result["player_rows"]:
+                    empty_games.append(game["game_pk"])
             except Exception as exc:
                 failures.append({"game_pk": game["game_pk"], "error": str(exc)})
             if completed % 100 == 0 or completed == len(games):
@@ -469,6 +585,9 @@ def main():
         "games_requested": len(games),
         "games_ok": len(games) - len(failures),
         "games_failed": len(failures),
+        "games_with_shifts": len(games) - len(failures) - len(empty_games),
+        "html_fallback_games": fallback_games,
+        "empty_shift_games": empty_games,
         "raw_shift_rows": raw_shifts,
         "player_game_rows": len(player_rows),
         "pair_snapshot_rows": len(pair_rows),
