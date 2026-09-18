@@ -41,5 +41,9 @@ jobs:
             if(line.length>=3&&line.some(x=>x.outcome==='home')&&line.some(x=>x.outcome==='draw')&&line.some(x=>x.outcome==='away'))good++;
           }
           if(good!==games.length)throw new Error('Only '+good+'/'+games.length+' games have complete 1-X-2');
-          console.log('WINLINE_PRODUCTION_SYNC_OK',JSON.stringify({events:status.events,markets:status.markets,snapshots:status.snapshots,games:good,cadence_minutes:status.feed_sync?.cadence_minutes,next_due_at:status.feed_sync?.next_due_at}));
+          const broadcasts=await get('/api/telegram-center-v19/broadcasts?from=2026-09-29&to=2026-10-03');
+          const cards=(broadcasts.games||[]).filter(g=>g.winline&&Number.isFinite(Number(g.winline.p1))&&Number.isFinite(Number(g.winline.x))&&Number.isFinite(Number(g.winline.p2)));
+          console.log('BROADCAST_ODDS',JSON.stringify(cards.map(g=>({game_pk:g.game_pk,away:g.away?.tri,home:g.home?.tri,p1:g.winline.p1,x:g.winline.x,p2:g.winline.p2}))));
+          if(cards.length<17)throw new Error('Only '+cards.length+' broadcast cards have complete Winline odds');
+          console.log('WINLINE_PRODUCTION_SYNC_OK',JSON.stringify({events:status.events,markets:status.markets,snapshots:status.snapshots,games:good,broadcast_cards:cards.length,cadence_minutes:status.feed_sync?.cadence_minutes,next_due_at:status.feed_sync?.next_due_at}));
           JS
