@@ -331,7 +331,7 @@ ON CONFLICT(game_pk,player_id) DO UPDATE SET
 """
     pair_header = """INSERT INTO nhl_player_pair_toi (
   scope_key,team_tri,player1_id,player2_id,games_together,shared_toi_seconds,
-  shared_toi_seconds_pg,last_game_pk,last_game_utc,computed_at
+  shared_toi_seconds_pg,last_game_pk,last_game_utc
 ) VALUES
 """
     pair_tail = """
