@@ -119,6 +119,11 @@ export default {
         }),
       );
       ctx.waitUntil(
+        runVkBroadcastMaintenance(env).catch((error) => {
+          console.error("scheduled HOH VK broadcast maintenance failed", error);
+        }),
+      );
+      ctx.waitUntil(
         runCenterRosterMaintenance(env).catch((error) => {
           console.error("scheduled Telegram Center roster maintenance failed", error);
         }),
