@@ -1,0 +1,41 @@
+name: Probe Winline Feeds
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-winline-feeds.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe all Winline feeds through production Worker
+        run: |
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/winline/feed-probe';
+          const feeds=[
+            'prematch','live','prematcheng','liveeng',
+            'prematch_mainsports','live_mainsports',
+            'prematch_mainsports_eng','live_mainsports_eng'
+          ];
+          for(const feed of feeds){
+            const r=await fetch(base+'?feed='+encodeURIComponent(feed),{headers:{accept:'application/json'}});
+            const d=await r.json();
+            const p=d.probe||{};
+            console.log('\n=== '+feed+' ===');
+            console.log(JSON.stringify({
+              status:p.status,ok:p.ok,content_type:p.content_type,bytes:p.bytes,
+              json:p.json,root_type:p.root_type,root_length:p.root_length,top_keys:p.top_keys,
+              visited_nodes:p.visited_nodes,key_counts:p.key_counts,
+              hockey_hits:(p.hockey_hits||[]).slice(0,20),
+              samples:(p.samples||[]).slice(0,12),
+              raw_head:String(p.raw_head||'').slice(0,1200),
+              error:p.error
+            },null,2));
+          }
+          JS
