@@ -63,6 +63,25 @@ jobs:
               }
             }
           }
+          const marketSummary=new Map();
+          const marketSamples=new Map();
+          for(const cm of sport[2].matchAll(/<Country\\b([^>]*)>([\\s\\S]*?)<\\/Country>/gi)){
+            for(const tm of cm[2].matchAll(/<Tournament\\b([^>]*)>([\\s\\S]*?)<\\/Tournament>/gi)){
+              const ta=attrs(tm[1]);
+              if(String(ta.Id)!=='142'&&!/^NHL$/i.test(String(ta.Name||'').trim()))continue;
+              for(const mm of tm[2].matchAll(/<Match\\b([^>]*)>([\\s\\S]*?)<\\/Match>/gi)){
+                const ma=attrs(mm[1]);
+                for(const lm of mm[2].matchAll(/<line\\b([^>]*)>/gi)){
+                  const a=attrs(lm[1]),name=String(a.freetext||'(no freetext)').trim();
+                  marketSummary.set(name,(marketSummary.get(name)||0)+1);
+                  if(!marketSamples.has(name))marketSamples.set(name,{match:ma.Team1+' - '+ma.Team2,attrs:a});
+                }
+              }
+            }
+          }
+          const marketRows=[...marketSummary].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(([name,count])=>({name,count,sample:marketSamples.get(name)}));
+          console.log('NHL_MARKET_TYPE_COUNT',marketRows.length);
+          console.log('NHL_MARKET_ROWS',JSON.stringify(marketRows));
           console.log('WINLINE_NHL_EVENTS',events.length);
           if(events.length!==17)console.log('NOTE expected 17 from prior probe, current feed now has',events.length);
 
