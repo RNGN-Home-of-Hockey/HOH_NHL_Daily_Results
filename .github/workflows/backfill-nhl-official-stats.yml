@@ -67,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(local-data/nhl-official-reports/sql/official_*.sql)
+          files=(local-data/nhl-official-reports/sql/official_data_*.sql)
           test ${#files[@]} -gt 0 || { echo 'No generated SQL files'; exit 3; }
           for file in "${files[@]}"; do
             echo "IMPORT $file"
