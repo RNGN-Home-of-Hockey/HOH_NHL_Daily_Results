@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/backfill-nhl-official-stats.yml'
       - 'tools/backfill_nhl_official_reports.py'
+      - 'tools/materialize_two_season_h2h.sql'
       - 'migrations/0020_h2h_and_official_reports.sql'
 
 permissions:
@@ -47,6 +48,9 @@ jobs:
 
       - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply hoh-data-core --remote
+
+      - name: Materialize two-season H2H
+        run: npx wrangler d1 execute hoh-data-core --remote --file tools/materialize_two_season_h2h.sql
 
       - name: Download official NHL reports
         run: |
