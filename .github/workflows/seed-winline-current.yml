@@ -77,7 +77,7 @@ jobs:
             matched++;
             const g=best.g,pk=Number(g.id),home=g.homeTeam.abbrev,away=g.awayTeam.abbrev,eventId=String(ma.Id);
             sql.push(`INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,current_period,period_type,venue_name,last_synced_at)
-              VALUES(${pk},${q(String(g.season||''))},${num(g.gameType)},${q(g.startTimeUTC)},${q(String(g.gameState||'FUT'))},${q(home)},${q(away)},NULL,NULL,NULL,NULL,${q(g.venue?.default||null)},CURRENT_TIMESTAMP)
+              VALUES(${pk},${q(String(g.season||''))},${num(g.gameType)},${q(g.startTimeUTC)},${q(String(g.gameState||'FUT'))},${q(home)},${q(away)},0,0,NULL,NULL,${q(g.venue?.default||null)},CURRENT_TIMESTAMP)
               ON CONFLICT(game_pk) DO UPDATE SET season_id=excluded.season_id,game_type=excluded.game_type,scheduled_start_utc=excluded.scheduled_start_utc,game_state=excluded.game_state,home_tri=excluded.home_tri,away_tri=excluded.away_tri,venue_name=COALESCE(excluded.venue_name,games.venue_name),last_synced_at=CURRENT_TIMESTAMP;`);
             sql.push(`INSERT INTO winline_events(winline_event_id,game_pk,status,starts_at,deeplink,raw_json,updated_at)
               VALUES(${q(eventId)},${pk},'prematch',${q(ma.MatchDate)},${q(ma.MatchUrl||null)},${q(JSON.stringify({source:'prematch_mainsports_eng',team1:ma.Team1,team2:ma.Team2,bid:ma.BID||null}))},CURRENT_TIMESTAMP)
