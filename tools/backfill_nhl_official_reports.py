@@ -25,17 +25,21 @@ DEFAULT_GAME_TYPES=(2,3)
 
 REPORTS={
     "team":(
-        "summary","faceoffpercentages","faceoffwins","goalsForAgainst",
-        "outshootopponent","powerplay","penaltykill","pointspergame",
-        "realtime","shootout","shotattemptsagainst",
+        "summary","faceoffpercentages","faceoffwins","daysbetweengames",
+        "goalsagainstbystrength","goalsbyperiod","goalsforbystrength","leadingtrailing",
+        "outshootoutshotby","penalties","penaltykill","penaltykilltime",
+        "powerplay","powerplaytime","realtime","scoretrailfirst","shootout",
+        "summaryshooting","percentages","shottype","goalgames",
     ),
     "skater":(
-        "summary","realtime","powerplay","penaltykill","puckpossessions",
+        "summary","realtime","powerplay","penaltykill","puckPossessions",
         "summaryshooting","percentages","scoringRates","scoringpergame",
-        "shottype","timeonice","faceoffpercentages",
+        "shottype","timeonice","faceoffpercentages","faceoffwins",
+        "goalsForAgainst","penalties","penaltyShots","shootout",
     ),
     "goalie":(
-        "summary","advanced","daysrest","savesByStrength","startedVsRelieved","shootout",
+        "summary","advanced","daysrest","savesByStrength","startedVsRelieved",
+        "shootout","penaltyShots",
     ),
 }
 
@@ -132,27 +136,70 @@ def fetch_report(task,timeout,attempts,fetched_at):
         "report":report,"rows":len(data),"url":url,"sql_rows":rows,
     }
 
-def write_chunks(out_dir,rows,chunk_size,seasons):
-    sql_dir=out_dir/"sql"
-    sql_dir.mkdir(parents=True,exist_ok=True)
-    for old in sql_dir.glob("*.sql"):old.unlink()
-    for start in range(0,len(rows),chunk_size):
-        chunk=rows[start:start+chunk_size]
-        statement="""INSERT INTO nhl_official_stat_reports (
+def make_insert_statement(rows):
+    return """INSERT INTO nhl_official_stat_reports (
   season_id,game_type,entity_type,report_name,row_key,team_tri,player_id,payload_json,fetched_at
 ) VALUES
-"""+",\n".join(chunk)+"""
+""" + ",\n".join(rows) + """
 ON CONFLICT(season_id,game_type,entity_type,report_name,row_key) DO UPDATE SET
   team_tri=excluded.team_tri,
   player_id=excluded.player_id,
   payload_json=excluded.payload_json,
   fetched_at=excluded.fetched_at;
 """
-        (sql_dir/f"official_{start//chunk_size:04d}.sql").write_text(statement,encoding="utf-8")
+
+def write_chunks(out_dir,rows,chunk_size,seasons):
+    """Write a few import files containing many byte-bounded INSERT statements.
+
+    D1 rejects an individual oversized SQLite statement. Row payload sizes vary a
+    lot between NHL reports, so bounding by row count alone is unsafe.
+    """
+    sql_dir=out_dir/"sql"
+    sql_dir.mkdir(parents=True,exist_ok=True)
+    for old in sql_dir.glob("*.sql"):old.unlink()
+
+    max_rows=max(10,chunk_size)
+    max_statement_bytes=60_000
+    max_file_bytes=2_000_000
+    statements=[]
+    current=[]
+    current_bytes=0
+
+    for row in rows:
+        row_bytes=len(row.encode("utf-8"))+2
+        if current and (len(current)>=max_rows or current_bytes+row_bytes>max_statement_bytes):
+            statements.append(make_insert_statement(current))
+            current=[]
+            current_bytes=0
+        current.append(row)
+        current_bytes+=row_bytes
+    if current:
+        statements.append(make_insert_statement(current))
+
+    data_files=[]
+    file_parts=[]
+    file_bytes=0
+    file_index=0
+    for statement in statements:
+        size=len(statement.encode("utf-8"))+1
+        if file_parts and file_bytes+size>max_file_bytes:
+            path=sql_dir/f"official_data_{file_index:03d}.sql"
+            path.write_text("\n".join(file_parts),encoding="utf-8")
+            data_files.append(path)
+            file_index+=1
+            file_parts=[]
+            file_bytes=0
+        file_parts.append(statement)
+        file_bytes+=size
+    if file_parts:
+        path=sql_dir/f"official_data_{file_index:03d}.sql"
+        path.write_text("\n".join(file_parts),encoding="utf-8")
+        data_files.append(path)
+
     meta=f"""INSERT INTO data_core_meta(meta_key,meta_value,updated_at) VALUES
 ('nhl_official_reports.rows','{len(rows)}',CURRENT_TIMESTAMP),
 ('nhl_official_reports.seasons','{",".join(seasons)}',CURRENT_TIMESTAMP),
-('nhl_official_reports.version','1',CURRENT_TIMESTAMP)
+('nhl_official_reports.version','2',CURRENT_TIMESTAMP)
 ON CONFLICT(meta_key) DO UPDATE SET meta_value=excluded.meta_value,updated_at=CURRENT_TIMESTAMP;
 """
     (sql_dir/"official_meta.sql").write_text(meta,encoding="utf-8")
