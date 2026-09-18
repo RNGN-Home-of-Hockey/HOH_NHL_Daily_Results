@@ -49,12 +49,19 @@ async function broadcasts(request, env) {
              g.game_pk,g.season_id,g.game_type,g.scheduled_start_utc,g.game_state,g.home_tri,g.away_tri,g.home_score,g.away_score,g.period_type,g.venue_name,
              ht.name_en home_name_en,ht.name_ru home_name_ru,ht.logo_url home_logo,
              at.name_en away_name_en,at.name_ru away_name_ru,at.logo_url away_logo,
-             b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status
+             b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status,
+             we.winline_event_id winline_event_id,
+             w1.odds winline_p1, wx.odds winline_x, w2.odds winline_p2,
+             COALESCE(w1.deeplink,wx.deeplink,w2.deeplink,we.deeplink) winline_deeplink
       FROM games g
       LEFT JOIN teams ht ON ht.tri_code=g.home_tri
       LEFT JOIN teams at ON at.tri_code=g.away_tri
       LEFT JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
       LEFT JOIN vk_broadcasts b ON b.source_key=m.source_key
+      LEFT JOIN winline_events we ON we.game_pk=g.game_pk
+      LEFT JOIN winline_markets w1 ON w1.winline_event_id=we.winline_event_id AND w1.winline_market_id=we.winline_event_id||':main_1x2:1' AND w1.active=1
+      LEFT JOIN winline_markets wx ON wx.winline_event_id=we.winline_event_id AND wx.winline_market_id=we.winline_event_id||':main_1x2:X' AND wx.active=1
+      LEFT JOIN winline_markets w2 ON w2.winline_event_id=we.winline_event_id AND w2.winline_market_id=we.winline_event_id||':main_1x2:2' AND w2.active=1
       WHERE date(datetime(g.scheduled_start_utc,'-8 hours')) BETWEEN ? AND ?
         AND g.game_type IN (1,2,3)
       ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC;
@@ -171,7 +178,8 @@ function settledOutcome(game,keys){
 function decorateArchiveGame(x){
   return {calendar_date:x.calendar_date,game_pk:Number(x.game_pk),season_id:x.season_id,game_type:Number(x.game_type),is_playoff:Number(x.game_type)===3,scheduled_start_utc:x.scheduled_start_utc,game_state:x.game_state,home_score:x.home_score,away_score:x.away_score,period_type:x.period_type,venue_name:x.venue_name,
     home:{tri:x.home_tri,name_ru:x.home_name_ru,name_en:x.home_name_en,logo:x.home_logo||teamLogo(x.home_tri)},away:{tri:x.away_tri,name_ru:x.away_name_ru,name_en:x.away_name_en,logo:x.away_logo||teamLogo(x.away_tri)},
-    vk:x.source_key?{source_key:x.source_key,title:x.vk_title,web_url:x.vk_url,app_url:x.vk_app_url,thumbnail_url:x.vk_thumbnail,status:x.vk_status}:null};
+    vk:x.source_key?{source_key:x.source_key,title:x.vk_title,web_url:x.vk_url,app_url:x.vk_app_url,thumbnail_url:x.vk_thumbnail,status:x.vk_status}:null,
+    winline:(Number.isFinite(Number(x.winline_p1))&&Number.isFinite(Number(x.winline_x))&&Number.isFinite(Number(x.winline_p2)))?{event_id:x.winline_event_id,p1:Number(x.winline_p1),x:Number(x.winline_x),p2:Number(x.winline_p2),deeplink:x.winline_deeplink||null}:null};
 }
 function decorateGame(x){return {...x,game_pk:Number(x.game_pk),game_type:Number(x.game_type),is_playoff:Number(x.game_type)===3,home:{tri:x.home_tri,name_ru:x.home_name_ru,name_en:x.home_name_en,logo:x.home_logo||teamLogo(x.home_tri)},away:{tri:x.away_tri,name_ru:x.away_name_ru,name_en:x.away_name_en,logo:x.away_logo||teamLogo(x.away_tri)}}}
 function teamLogo(tri){return tri?`https://assets.nhle.com/logos/nhl/svg/${up(tri)}_light.svg`:""}
