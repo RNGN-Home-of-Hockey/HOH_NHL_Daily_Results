@@ -270,7 +270,7 @@ async function scanOnePlayerSource(env,src){
   for(const item of items){
     const combined=item.title+" "+(item.body_text||"");
     if(isPolitical(combined)){politics++;continue}
-    if(!isHockeyOnly(combined)){offIce++;continue}
+    if(!isPlayerHockeyOnly(combined,src)){offIce++;continue}
     const id=await upsertNews(env.DB,item);
     if(!id)continue;
     await linkNewsPlayer(env.DB,id,Number(src.player_id));
