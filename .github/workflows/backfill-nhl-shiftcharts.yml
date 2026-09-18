@@ -1,0 +1,100 @@
+name: Backfill NHL Two-Season Shiftcharts
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_games:
+        description: Optional game limit for diagnostics (0 = all)
+        required: false
+        default: '0'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backfill-nhl-shiftcharts.yml'
+      - 'tools/backfill_nhl_shiftcharts.py'
+      - 'migrations/0021_nhl_shift_features.sql'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nhl-two-season-shiftcharts
+  cancel-in-progress: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 2; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID'; exit 2; }
+
+      - name: Install Wrangler
+        run: npm install --no-audit --no-fund
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply hoh-data-core --remote
+
+      - name: Download and aggregate NHL shiftcharts
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAX_GAMES="${{ github.event.inputs.max_games || '0' }}"
+          python tools/backfill_nhl_shiftcharts.py \
+            --workers 12 \
+            --max-games "$MAX_GAMES"
+
+      - name: Upload shift features to D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(local-data/nhl-shiftcharts/sql/shift_data_*.sql)
+          test ${#files[@]} -gt 0 || { echo 'No generated shift SQL files'; exit 3; }
+          for file in "${files[@]}"; do
+            echo "IMPORT $file"
+            npx wrangler d1 execute hoh-data-core --remote --file "$file"
+          done
+          npx wrangler d1 execute hoh-data-core --remote --file local-data/nhl-shiftcharts/sql/shift_meta.sql
+
+      - name: Verify shift coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT season_id,COUNT(DISTINCT game_pk) AS games,COUNT(*) AS player_game_rows,
+                   ROUND(AVG(toi_seconds),1) AS avg_toi_seconds
+            FROM nhl_player_shift_game
+            GROUP BY season_id
+            ORDER BY season_id;
+            SELECT scope_key,COUNT(*) AS pair_rows,SUM(games_together) AS pair_game_links,
+                   ROUND(AVG(shared_toi_seconds_pg),1) AS avg_shared_toi_pg
+            FROM nhl_player_pair_toi
+            GROUP BY scope_key
+            ORDER BY scope_key;
+          "
+
+      - name: Save shift summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhl-two-season-shiftcharts-summary
+          path: local-data/nhl-shiftcharts/summary.json
+          retention-days: 30
