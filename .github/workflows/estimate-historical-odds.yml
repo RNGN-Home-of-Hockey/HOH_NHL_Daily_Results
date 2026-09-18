@@ -1,0 +1,24 @@
+name: Estimate Historical Odds Backfill
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/estimate-historical-odds.yml'
+      - 'tools/estimate_historical_odds_backfill.py'
+
+permissions:
+  contents: read
+
+jobs:
+  estimate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Estimate licensed NHL historical odds backfill
+        run: python tools/estimate_historical_odds_backfill.py
