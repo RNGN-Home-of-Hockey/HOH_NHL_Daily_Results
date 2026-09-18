@@ -39,5 +39,20 @@ jobs:
             }
           }
           const rows=[...summary].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(([name,count])=>({name,count,sample:samples.get(name)}));
-          console.log('CATALOG',JSON.stringify({bytes:new TextEncoder().encode(xml).length,nhl_matches:perMatch.length,unique_market_types:rows.length,rows,per_match:perMatch}));
+          const valueCatalog={};
+          for(const [name] of summary)valueCatalog[name]=[];
+          for(const cm of sport[2].matchAll(/<Country\b([^>]*)>([\s\S]*?)<\/Country>/gi)){
+            for(const tm of cm[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
+              const ta=attrs(tm[1]); if(String(ta.Id)!=='142'&&!/^NHL$/i.test(String(ta.Name||'').trim()))continue;
+              for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
+                const ma=attrs(mm[1]);
+                if(ma.Team1!=='Calgary Flames'||ma.Team2!=='Seattle Kraken')continue;
+                for(const lm of mm[2].matchAll(/<line\b([^>]*)>/gi)){
+                  const a=attrs(lm[1]),name=String(a.freetext||'(no freetext)').trim();
+                  valueCatalog[name].push(a);
+                }
+              }
+            }
+          }
+          console.log('CATALOG',JSON.stringify({bytes:new TextEncoder().encode(xml).length,nhl_matches:perMatch.length,unique_market_types:rows.length,rows,per_match:perMatch,calgary_seattle:valueCatalog}));
           JS
