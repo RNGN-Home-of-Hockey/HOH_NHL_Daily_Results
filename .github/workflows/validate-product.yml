@@ -70,7 +70,8 @@ jobs:
           expected = {
               'pregame_team_snapshots','player_rolling_snapshots','player_opponent_splits',
               'goalie_rolling_snapshots','goalie_opponent_splits','team_current_snapshots',
-              'live_notification_cursors','data_core_meta','subscriptions','notification_log'
+              'live_notification_cursors','data_core_meta','subscriptions','notification_log',
+              'sports_news','sports_news_players','sports_news_comments','sports_player_sources'
           }
           got = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
           missing = expected - got
@@ -85,7 +86,7 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v9-polish.js','/telegram-app/v11.js','/telegram-app/v12.js','/telegram-app/v19.js']) {
+          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v9-polish.js','/telegram-app/v11.js','/telegram-app/v12.js','/telegram-app/v19.js','/telegram-app/v20.js']) {
             if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center shell missing: '+needle);
           }
           if (!mini.includes('data-tab="follows">Мои</button>')) throw new Error('Center subscription tab contract missing');
@@ -118,6 +119,12 @@ jobs:
             if (!r || r.status !== 200 || !v19.includes(needle)) throw new Error('Center V19 UI missing: '+needle);
           }
           if (v19.includes('new MutationObserver')) throw new Error('V19 authoritative UI must not add a MutationObserver layer');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v20.js'), {}, '/telegram-app/v20.js');
+          const v20 = await r.text();
+          for (const needle of ['СВЕЖЕЕ В НХЛ','v20PlayerNews','v20CommentSend','/api/telegram-center-v20']) {
+            if (!r || r.status !== 200 || !v20.includes(needle)) throw new Error('Center V20 UI missing: '+needle);
+          }
+          if (v20.includes('sports.ru/')) throw new Error('V20 UI must not expose Sports.ru links');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
           if (!r || r.status !== 200 || !(await r.text()).includes('gameFollowEnhancer')) throw new Error('Game-follow JS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/preferences.js'), {}, '/telegram-app/preferences.js');
