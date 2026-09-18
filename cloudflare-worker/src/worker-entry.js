@@ -12,6 +12,7 @@ import { runCenterScheduleMaintenance } from "./telegram-center-schedule-mainten
 import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js";
 import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
 import { runSportsRuNewsMaintenance } from "./telegram-center-v20-news.js";
+import { runWinlineFeedMaintenance } from "./winline-feed-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
@@ -129,6 +130,13 @@ export default {
           console.error("scheduled Sports.ru NHL news maintenance failed", error);
         }),
       );
+      if (envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
+        ctx.waitUntil(
+          runWinlineFeedMaintenance(env).catch((error) => {
+            console.error("scheduled Winline NHL feed maintenance failed", error);
+          }),
+        );
+      }
     }
 
     if (liveNotificationsEnabled && env.DB) {
