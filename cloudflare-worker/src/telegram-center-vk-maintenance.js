@@ -1,3 +1,5 @@
+import { resolveVkAccessToken } from "./telegram-center-vk-auth.js";
+
 const VK_API = "https://api.vk.com/method/video.get";
 const VK_VERSION = "5.199";
 const VK_OWNER_ID = -227682170;
@@ -43,8 +45,12 @@ const MONTHS = {
 
 export async function runVkBroadcastMaintenance(env,{forceBackfill=false}={}) {
   if (!env?.DB) return {ok:false,skipped:true,error:"missing_d1_binding"};
-  const token=String(env.VK_ACCESS_TOKEN||"").trim();
-  if (!token) return {ok:false,skipped:true,error:"missing_vk_access_token"};
+  let token;
+  try {
+    token=await resolveVkAccessToken(env);
+  } catch (error) {
+    return {ok:false,skipped:true,error:errorText(error)};
+  }
 
   try {
     const algoMeta=await loadMeta(env.DB,META_ALGO);
@@ -101,7 +107,20 @@ export async function runVkBroadcastMaintenance(env,{forceBackfill=false}={}) {
     await saveMeta(env.DB,META_LAST_ERROR,"");
     return result;
   } catch (error) {
-    const message=errorText(error);
+    let message=errorText(error);
+    if (/VK video\.get 5:|authorization failed|access token/i.test(message)) {
+      try {
+        token=await resolveVkAccessToken(env,{force:true});
+        const first=await fetchVkPage(token,0);
+        const current=await ingestPage(env,first.items||[],{offset:0,mode:"latest"});
+        const result={ok:true,owner_id:VK_OWNER_ID,current,backfill:{skipped:true,reason:"token_refreshed_latest_only"},finished_at:new Date().toISOString()};
+        await saveMeta(env.DB,META_LAST_SYNC,JSON.stringify(result));
+        await saveMeta(env.DB,META_LAST_ERROR,"");
+        return result;
+      } catch (refreshError) {
+        message=errorText(refreshError);
+      }
+    }
     try { await saveMeta(env.DB,META_LAST_ERROR,JSON.stringify({at:new Date().toISOString(),error:message})); } catch {}
     console.error("VK broadcast maintenance failed", message);
     return {ok:false,error:message};
