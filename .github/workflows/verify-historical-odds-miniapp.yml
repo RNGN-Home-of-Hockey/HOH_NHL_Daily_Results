@@ -1,0 +1,58 @@
+name: Verify Historical Odds Mini App
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-historical-odds-miniapp.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify production historical odds and spoiler UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://hoh-nhl-daily-results.znamteam-903.workers.dev'
+          sleep 5
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const get=async p=>{
+            const r=await fetch(base+p,{cache:'no-store',headers:{accept:'application/json'}});
+            const t=await r.text();
+            if(!r.ok)throw new Error(p+' HTTP '+r.status+' '+t.slice(0,500));
+            return JSON.parse(t);
+          };
+          const id=2025021078;
+          const d=await get('/api/telegram-center-v19/games/'+id);
+          if(!d.historical_odds)throw new Error('historical_odds missing');
+          const m=d.historical_odds.markets||[];
+          if(m.length!==3||m.some(x=>!(Number(x.odds)>1)))throw new Error('invalid historical markets '+JSON.stringify(m));
+          if(m.filter(x=>x.winner).length!==1)throw new Error('historical winner missing '+JSON.stringify(m));
+          console.log('GAME_ODDS_OK',id,m.map(x=>x.label+':'+x.odds+(x.winner?'*':'')).join(' '));
+
+          const a=await get('/api/telegram-center-v19/broadcasts?from=2026-03-19&to=2026-03-19');
+          const g=(a.games||[]).find(x=>Number(x.game_pk)===id);
+          if(!g)throw new Error('archive game missing');
+          if(!g.historical_odds)throw new Error('archive historical odds missing');
+          if(g.winline && [g.winline.p1,g.winline.x,g.winline.p2].some(x=>Number(x)===0))throw new Error('fake zero Winline odds leaked');
+          console.log('ARCHIVE_ODDS_OK',JSON.stringify(g.historical_odds));
+
+          const shell=await fetch(base+'/telegram-app',{cache:'no-store'}).then(r=>r.text());
+          if(!shell.includes('/telegram-app/v21.js'))throw new Error('V21 spoiler script missing in shell');
+          const v21=await fetch(base+'/telegram-app/v21.js',{cache:'no-store'}).then(r=>r.text());
+          for(const needle of ['hoh-center-no-spoilers','v21SpoilerToggle','CloudStorage','hohNoSpoilers']){
+            if(!v21.includes(needle))throw new Error('V21 spoiler contract missing '+needle);
+          }
+          const v19=await fetch(base+'/telegram-app/v19.js',{cache:'no-store'}).then(r=>r.text());
+          for(const needle of ['historical_odds','v19CardOdd.won','background:#ff5a00','winlineGame(d.winline,d.historical_odds)']){
+            if(!v19.includes(needle))throw new Error('V19 historical odds UI contract missing '+needle);
+          }
+          console.log('MINIAPP_ODDS_SPOILER_UI_OK');
+          JS
