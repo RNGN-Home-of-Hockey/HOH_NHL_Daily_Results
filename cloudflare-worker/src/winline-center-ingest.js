@@ -1,3 +1,4 @@
+import { getWinlineFeedMaintenanceStatus } from "./winline-feed-maintenance.js";
 const IMPORT_PATH="/api/winline/center/import";
 const STATUS_PATH="/api/winline/center/status";
 const SNAPSHOT_INTERVAL_MS=15*60*1000;
@@ -84,7 +85,8 @@ async function status(request,env){
       env.DB.prepare("SELECT MAX(updated_at) updated_at FROM winline_markets").first(),
       env.DB.prepare("SELECT COUNT(*) count,COUNT(DISTINCT game_pk) games,MAX(captured_at) latest FROM winline_market_snapshots").first().catch(()=>({count:0,games:0,latest:null}))
     ]);
-    return json({ok:true,events:Number(e?.count||0),markets:Number(m?.count||0),active_markets:Number(m?.active||0),latest_market_update:u?.updated_at||null,snapshots:Number(s?.count||0),snapshot_games:Number(s?.games||0),latest_snapshot_at:s?.latest||null});
+    const feed_sync=await getWinlineFeedMaintenanceStatus(env).catch(()=>null);
+    return json({ok:true,events:Number(e?.count||0),markets:Number(m?.count||0),active_markets:Number(m?.active||0),latest_market_update:u?.updated_at||null,snapshots:Number(s?.count||0),snapshot_games:Number(s?.games||0),latest_snapshot_at:s?.latest||null,feed_sync});
   }catch(error){return json({ok:false,error:"winline_schema_not_ready",detail:String(error?.message||error)},503)}
 }
 
