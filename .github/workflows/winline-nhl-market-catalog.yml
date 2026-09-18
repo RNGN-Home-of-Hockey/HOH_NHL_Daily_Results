@@ -1,0 +1,43 @@
+name: Winline NHL Market Catalog
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/winline-nhl-market-catalog.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Catalog current NHL prematch markets
+        run: |
+          node --input-type=module <<'JS'
+          const url='https://back.winline.ru/banners/prematch_mainsports_eng';
+          const decode=s=>String(s||'').replaceAll('&quot;','"').replaceAll('&amp;','&').replaceAll('&lt;','<').replaceAll('&gt;','>').replaceAll('&#39;',"'");
+          const attrs=tag=>Object.fromEntries([...String(tag||'').matchAll(/([A-Za-z0-9_]+)="([^"]*)"/g)].map(m=>[m[1],decode(m[2])]));
+          const r=await fetch(url,{headers:{accept:'application/xml,text/xml,*/*','user-agent':'HOH-Winline-market-catalog'}});
+          if(!r.ok)throw new Error('Winline HTTP '+r.status);
+          const xml=await r.text();
+          const sport=[...xml.matchAll(/<Sport\b([^>]*)>([\s\S]*?)<\/Sport>/gi)].find(m=>String(attrs(m[1]).Id)==='4');
+          if(!sport)throw new Error('Ice Hockey missing');
+          const summary=new Map(),samples=new Map(),perMatch=[];
+          for(const cm of sport[2].matchAll(/<Country\b([^>]*)>([\s\S]*?)<\/Country>/gi)){
+            for(const tm of cm[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
+              const ta=attrs(tm[1]);
+              if(String(ta.Id)!=='142'&&!/^NHL$/i.test(String(ta.Name||'').trim()))continue;
+              for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
+                const ma=attrs(mm[1]),names=[];
+                for(const lm of mm[2].matchAll(/<line\b([^>]*)>/gi)){
+                  const a=attrs(lm[1]),name=String(a.freetext||'(no freetext)').trim();
+                  summary.set(name,(summary.get(name)||0)+1);
+                  names.push(name);
+                  if(!samples.has(name))samples.set(name,{match:ma.Team1+' - '+ma.Team2,attrs:a});
+                }
+                perMatch.push({event_id:ma.Id,match:ma.Team1+' - '+ma.Team2,market_count:names.length,markets:names});
+              }
+            }
+          }
+          const rows=[...summary].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(([name,count])=>({name,count,sample:samples.get(name)}));
+          console.log('CATALOG',JSON.stringify({bytes:new TextEncoder().encode(xml).length,nhl_matches:perMatch.length,unique_market_types:rows.length,rows,per_match:perMatch}));
+          JS
