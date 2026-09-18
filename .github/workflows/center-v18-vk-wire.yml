@@ -82,11 +82,8 @@ jobs:
           if 'runVkBroadcastMaintenance' not in w:
             if wi not in w: raise RuntimeError('worker import anchor missing')
             w=w.replace(wi,wi+'import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance.js";\n',1)
-          call_anchor='''      ctx.waitUntil(\n        runCenterNameMaintenance(env).catch((error) => {\n          console.error("scheduled Telegram Center Russian-name maintenance failed", error);\n        }),\n      );\n'''
-          call_add='''      ctx.waitUntil(\n        runVkBroadcastMaintenance(env).catch((error) => {\n          console.error("scheduled HOH VK broadcast maintenance failed", error);\n        }),\n      );\n'''
-          if 'scheduled HOH VK broadcast maintenance failed' not in w:
-            if call_anchor not in w: raise RuntimeError('worker schedule anchor missing')
-            w=w.replace(call_anchor,call_anchor+call_add,1)
+          # VK maintenance has a dedicated */2 cron branch in worker-entry.js.
+          # Do not wire a second copy into the general scheduled branch.
           worker.write_text(w,encoding='utf-8')
           PY
       - name: Verify syntax and wiring
