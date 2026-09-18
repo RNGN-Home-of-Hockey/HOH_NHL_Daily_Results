@@ -64,7 +64,7 @@ jobs:
             if(!r.ok)continue;const d=await r.json();
             for(const w of d.gameWeek||[])for(const g of w.games||[])games.set(Number(g.id),g);
           }
-          const captured=new Date().toISOString(),sql=['PRAGMA foreign_keys = ON;','BEGIN TRANSACTION;'];
+          const captured=new Date().toISOString(),sql=['PRAGMA foreign_keys = ON;'];
           let matched=0,markets=0,snapshots=0;
           for(const {ma,lines} of events){
             const t1=TEAM[norm(ma.Team1)],t2=TEAM[norm(ma.Team2)],wt=Date.parse(ma.MatchDate);
@@ -115,8 +115,7 @@ jobs:
               }
             }
           }
-          sql.push('COMMIT;');
-          fs.writeFileSync('/tmp/winline-current.sql',sql.join('\n'));
+                    fs.writeFileSync('/tmp/winline-current.sql',sql.join('\n'));
           console.log('SEED_BUILD',JSON.stringify({feed_events:events.length,matched,markets,snapshots,bytes:new TextEncoder().encode(xml).length,sql_bytes:fs.statSync('/tmp/winline-current.sql').size}));
           if(matched<events.length)process.exitCode=2;
           JS
