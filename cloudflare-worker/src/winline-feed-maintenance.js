@@ -123,7 +123,7 @@ function parseNhlPrematch(xml){
         out.push({
           event_id:String(ma.Id),bid:String(ma.BID||""),team1:String(ma.Team1),team2:String(ma.Team2),
           team1_id:String(ma.Id1||""),team2_id:String(ma.Id2||""),starts_at:String(ma.MatchDate),
-          deeplink:String(ma.MatchUrl||""),p1,draw,p2
+          deeplink:String(ma.MatchUrl||""),p1,draw,p2,lines
         });
       }
     }
@@ -226,7 +226,7 @@ async function persistMapped(db,items,capturedAt){
   const placeholders=eventIds.map(()=>"?").join(",");
   const [eventRows,marketRows]=await Promise.all([
     db.prepare(`SELECT winline_event_id,game_pk,status,starts_at,deeplink FROM winline_events WHERE winline_event_id IN (${placeholders});`).bind(...eventIds).all(),
-    db.prepare(`SELECT winline_market_id,winline_event_id,market_type,subject_key,outcome_name,odds,deeplink,is_live,active FROM winline_markets WHERE winline_event_id IN (${placeholders}) AND market_type=?;`).bind(...eventIds,MARKET_TYPE).all()
+    db.prepare(`SELECT winline_market_id,winline_event_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json FROM winline_markets WHERE winline_event_id IN (${placeholders});`).bind(...eventIds).all()
   ]);
   const existingEvents=new Map((eventRows.results||[]).map(x=>[String(x.winline_event_id),x]));
   const existingMarkets=new Map((marketRows.results||[]).map(x=>[String(x.winline_market_id),x]));
@@ -234,6 +234,7 @@ async function persistMapped(db,items,capturedAt){
   let changedGames=0,unchangedGames=0;
 
   for(const item of items){
+    let gameChanged=false;
     const oldEvent=existingEvents.get(item.event_id);
     const eventRaw=JSON.stringify({source:"prematch_mainsports_eng",bid:item.bid,team1_id:item.team1_id,team2_id:item.team2_id,team1:item.team1,team2:item.team2});
     if(!oldEvent||Number(oldEvent.game_pk)!==item.game_pk||String(oldEvent.starts_at||"")!==String(item.starts_at)||String(oldEvent.deeplink||"")!==String(item.deeplink||"")){
@@ -244,15 +245,43 @@ async function persistMapped(db,items,capturedAt){
       `).bind(item.event_id,item.game_pk,"prematch",item.starts_at,item.deeplink||null,eventRaw));
     }
 
+    // Preserve every Winline line in current-state storage. Only changed outcomes are updated.
+    for(const line of item.lines||[]){
+      const base=fullMarketBase(line),defs=fullMarketOutcomes(line,item);
+      if(!base||!defs.length)continue;
+      let groupChanged=false;
+      for(const o of defs){
+        const id=item.event_id+":"+base+":"+o.idx,old=existingMarkets.get(id);
+        const changed=!old||Math.abs(Number(old.odds)-o.odds)>1e-9||String(old.subject_key||"")!==String(o.key||"")||String(old.outcome_name||"")!==String(o.name||"")||Number(old.active)!==1||Number(old.is_live)!==0;
+        if(!changed)continue;
+        groupChanged=true;gameChanged=true;
+        marketStmts.push(db.prepare(`
+          INSERT INTO winline_markets(winline_market_id,winline_event_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json,updated_at)
+          VALUES(?,?,?,?,?,?,?,?,0,1,?,CURRENT_TIMESTAMP)
+          ON CONFLICT(winline_market_id) DO UPDATE SET winline_event_id=excluded.winline_event_id,market_type=excluded.market_type,subject_type=excluded.subject_type,subject_key=excluded.subject_key,outcome_name=excluded.outcome_name,odds=excluded.odds,deeplink=excluded.deeplink,is_live=0,active=1,raw_json=excluded.raw_json,updated_at=CURRENT_TIMESTAMP;
+        `).bind(id,item.event_id,base,o.key?"team":"match",o.key,o.name,o.odds,item.deeplink||null,JSON.stringify(line)));
+      }
+      if(groupChanged){
+        for(const o of defs){
+          const id=item.event_id+":"+base+":"+o.idx;
+          snapshotStmts.push(db.prepare(`
+            INSERT INTO winline_market_snapshots(game_pk,winline_event_id,winline_market_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,captured_at,source_updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,0,?,?);
+          `).bind(item.game_pk,item.event_id,id,base,o.key?"team":"match",o.key,o.name,o.odds,item.deeplink||null,capturedAt,capturedAt));
+        }
+      }
+    }
+
+    // Stable canonical ids are consumed by the current match/broadcast UI.
     const outcomeDefs=item.team1_is_home
       ?[{suffix:"1",name:"1",key:item.home_tri,odds:item.p1},{suffix:"X",name:"X",key:null,odds:item.draw},{suffix:"2",name:"2",key:item.away_tri,odds:item.p2}]
       :[{suffix:"1",name:"1",key:item.away_tri,odds:item.p1},{suffix:"X",name:"X",key:null,odds:item.draw},{suffix:"2",name:"2",key:item.home_tri,odds:item.p2}];
-    let lineChanged=false;
+    let canonicalChanged=false;
     for(const o of outcomeDefs){
       const id=item.event_id+":main_1x2:"+o.suffix,old=existingMarkets.get(id);
       const changed=!old||Math.abs(Number(old.odds)-o.odds)>1e-9||String(old.subject_key||"")!==String(o.key||"")||Number(old.active)!==1||Number(old.is_live)!==0;
       if(changed){
-        lineChanged=true;
+        canonicalChanged=true;gameChanged=true;
         marketStmts.push(db.prepare(`
           INSERT INTO winline_markets(winline_market_id,winline_event_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json,updated_at)
           VALUES(?,?,?,?,?,?,?,?,0,1,NULL,CURRENT_TIMESTAMP)
@@ -260,8 +289,7 @@ async function persistMapped(db,items,capturedAt){
         `).bind(id,item.event_id,MARKET_TYPE,o.key?"team":"match",o.key,o.name,o.odds,item.deeplink||null));
       }
     }
-    if(lineChanged){
-      changedGames++;
+    if(canonicalChanged){
       for(const o of outcomeDefs){
         const id=item.event_id+":main_1x2:"+o.suffix;
         snapshotStmts.push(db.prepare(`
@@ -269,13 +297,39 @@ async function persistMapped(db,items,capturedAt){
           VALUES(?,?,?,?,?,?,?,?,?,0,?,?);
         `).bind(item.game_pk,item.event_id,id,MARKET_TYPE,o.key?"team":"match",o.key,o.name,o.odds,item.deeplink||null,capturedAt,capturedAt));
       }
-    }else unchangedGames++;
+    }
+
+    if(gameChanged)changedGames++;else unchangedGames++;
   }
 
-  if(eventStmts.length)await db.batch(eventStmts);
-  if(marketStmts.length)await db.batch(marketStmts);
-  if(snapshotStmts.length)await db.batch(snapshotStmts);
+  await runStatementBatches(db,eventStmts);
+  await runStatementBatches(db,marketStmts);
+  await runStatementBatches(db,snapshotStmts);
   return {events_written:eventStmts.length,markets_written:marketStmts.length,snapshot_rows_written:snapshotStmts.length,changed_games:changedGames,unchanged_games:unchangedGames};
+}
+
+function fullMarketBase(line){
+  const name=norm(String(line?.freetext||"market"));
+  if(!name)return null;
+  const value=line?.value!==undefined&&line?.value!==null&&String(line.value)!==""?String(line.value).replace(/[^0-9+.-]/g,""):"";
+  return name+(value?":"+value:"");
+}
+function fullMarketOutcomes(line,item){
+  const defs=[["1",line?.name1,line?.odd1],["2",line?.name2,line?.odd2],["3",line?.name3,line?.odd3]],out=[];
+  for(const [idx,nameRaw,oddRaw] of defs){
+    const odd=Number(oddRaw),name=String(nameRaw||"").trim();
+    if(!name||!Number.isFinite(odd)||odd<=1)continue;
+    let key=null;
+    if(name==="1")key=triForName(item.team1);
+    else if(name==="2")key=triForName(item.team2);
+    else if(/^home$/i.test(name))key=item.home_tri;
+    else if(/^away$/i.test(name))key=item.away_tri;
+    out.push({idx,name,key,odds:odd});
+  }
+  return out;
+}
+async function runStatementBatches(db,stmts,size=60){
+  for(let i=0;i<stmts.length;i+=size)await db.batch(stmts.slice(i,i+size));
 }
 
 function buildNameMap(){
