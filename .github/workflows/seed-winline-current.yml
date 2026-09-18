@@ -1,0 +1,132 @@
+name: Seed Current Winline NHL Line
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/seed-winline-current.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build current NHL odds SQL from Winline
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const FEED='https://back.winline.ru/banners/prematch_mainsports_eng';
+          const decode=s=>String(s||'').replaceAll('&quot;','"').replaceAll('&amp;','&').replaceAll('&lt;','<').replaceAll('&gt;','>').replaceAll('&#39;',"'");
+          const attrs=tag=>Object.fromEntries([...String(tag||'').matchAll(/([A-Za-z0-9_]+)="([^"]*)"/g)].map(m=>[m[1],decode(m[2])]));
+          const q=v=>v===null||v===undefined?'NULL':"'"+String(v).replaceAll("'","''")+"'";
+          const num=v=>Number.isFinite(Number(v))?String(Number(v)):'NULL';
+          const norm=s=>String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+          const TEAM={
+            anaheimducks:'ANA',bostonbruins:'BOS',buffalosabres:'BUF',calgaryflames:'CGY',carolinahurricanes:'CAR',chicagoblackhawks:'CHI',
+            coloradoavalanche:'COL',columbusbluejackets:'CBJ',dallasstars:'DAL',detroitredwings:'DET',edmontonoilers:'EDM',floridapanthers:'FLA',
+            losangeleskings:'LAK',minnesotawild:'MIN',montrealcanadiens:'MTL',nashvillepredators:'NSH',newjerseydevils:'NJD',newyorkislanders:'NYI',
+            newyorkrangers:'NYR',ottawasenators:'OTT',philadelphiaflyers:'PHI',pittsburghpenguins:'PIT',sanjosesharks:'SJS',seattlekraken:'SEA',
+            stlouisblues:'STL',tampabaylightning:'TBL',torontomapleleafs:'TOR',utahmammoth:'UTA',utahhockeyclub:'UTA',vancouvercanucks:'VAN',
+            vegasgoldenknights:'VGK',washingtoncapitals:'WSH',winnipegjets:'WPG'
+          };
+          const fr=await fetch(FEED,{headers:{accept:'application/xml,text/xml,*/*','user-agent':'HOH-current-line-seed'}});
+          if(!fr.ok)throw new Error('Winline HTTP '+fr.status);
+          const xml=await fr.text();
+          const sport=[...xml.matchAll(/<Sport\b([^>]*)>([\s\S]*?)<\/Sport>/gi)].find(m=>String(attrs(m[1]).Id)==='4');
+          if(!sport)throw new Error('Ice Hockey missing');
+          const events=[];
+          for(const cm of sport[2].matchAll(/<Country\b([^>]*)>([\s\S]*?)<\/Country>/gi)){
+            for(const tm of cm[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
+              const ta=attrs(tm[1]); if(String(ta.Id)!=='142'&&!/^NHL$/i.test(String(ta.Name||'').trim()))continue;
+              for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
+                const ma=attrs(mm[1]),lines=[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1]));
+                events.push({ma,lines});
+              }
+            }
+          }
+          const days=new Set();
+          for(const {ma} of events){
+            const t=Date.parse(ma.MatchDate);for(const o of [-1,0,1])days.add(new Date(t+o*86400000).toISOString().slice(0,10));
+          }
+          const games=new Map();
+          for(const day of [...days]){
+            const r=await fetch('https://api-web.nhle.com/v1/schedule/'+day,{headers:{accept:'application/json','user-agent':'HOH-current-line-seed'}});
+            if(!r.ok)continue;const d=await r.json();
+            for(const w of d.gameWeek||[])for(const g of w.games||[])games.set(Number(g.id),g);
+          }
+          const captured=new Date().toISOString(),sql=['PRAGMA foreign_keys = ON;','BEGIN TRANSACTION;'];
+          let matched=0,markets=0,snapshots=0;
+          for(const {ma,lines} of events){
+            const t1=TEAM[norm(ma.Team1)],t2=TEAM[norm(ma.Team2)],wt=Date.parse(ma.MatchDate);
+            let best=null;
+            for(const g of games.values()){
+              const h=g.homeTeam?.abbrev,a=g.awayTeam?.abbrev,gt=Date.parse(g.startTimeUTC),same=(h===t1&&a===t2)||(h===t2&&a===t1),diff=Math.abs(gt-wt);
+              if(same&&diff<=90*60000&&(!best||diff<best.diff))best={g,diff};
+            }
+            if(!best){console.log('UNMATCHED',ma.Team1,ma.Team2,ma.MatchDate);continue}
+            matched++;
+            const g=best.g,pk=Number(g.id),home=g.homeTeam.abbrev,away=g.awayTeam.abbrev,eventId=String(ma.Id);
+            sql.push(`INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,current_period,period_type,venue_name,last_synced_at)
+              VALUES(${pk},${q(String(g.season||''))},${num(g.gameType)},${q(g.startTimeUTC)},${q(String(g.gameState||'FUT'))},${q(home)},${q(away)},NULL,NULL,NULL,NULL,${q(g.venue?.default||null)},CURRENT_TIMESTAMP)
+              ON CONFLICT(game_pk) DO UPDATE SET season_id=excluded.season_id,game_type=excluded.game_type,scheduled_start_utc=excluded.scheduled_start_utc,game_state=excluded.game_state,home_tri=excluded.home_tri,away_tri=excluded.away_tri,venue_name=COALESCE(excluded.venue_name,games.venue_name),last_synced_at=CURRENT_TIMESTAMP;`);
+            sql.push(`INSERT INTO winline_events(winline_event_id,game_pk,status,starts_at,deeplink,raw_json,updated_at)
+              VALUES(${q(eventId)},${pk},'prematch',${q(ma.MatchDate)},${q(ma.MatchUrl||null)},${q(JSON.stringify({source:'prematch_mainsports_eng',team1:ma.Team1,team2:ma.Team2,bid:ma.BID||null}))},CURRENT_TIMESTAMP)
+              ON CONFLICT(winline_event_id) DO UPDATE SET game_pk=excluded.game_pk,status='prematch',starts_at=excluded.starts_at,deeplink=excluded.deeplink,raw_json=excluded.raw_json,updated_at=CURRENT_TIMESTAMP;`);
+            for(const line of lines){
+              const base=norm(line.freetext||'market')+(line.value!==undefined&&line.value!==''?':'+String(line.value).replace(/[^0-9+.-]/g,''):'');
+              const defs=[['1',line.name1,line.odd1],['2',line.name2,line.odd2],['3',line.name3,line.odd3]].filter(x=>x[1]&&Number.isFinite(Number(x[2])));
+              for(const [idx,name,oddRaw] of defs){
+                const odd=Number(oddRaw),marketId=eventId+':'+base+':'+idx,raw=JSON.stringify(line);
+                let subjectKey=null;
+                if(/^3-way odds$/i.test(line.freetext||'')){
+                  if(name==='1')subjectKey=t1;if(name==='2')subjectKey=t2;
+                } else if(/^Money Line$/i.test(line.freetext||'')){
+                  if(/^Home$/i.test(name))subjectKey=home;if(/^Away$/i.test(name))subjectKey=away;
+                }
+                sql.push(`INSERT INTO winline_markets(winline_market_id,winline_event_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json,updated_at)
+                  VALUES(${q(marketId)},${q(eventId)},${q(base)},${q(subjectKey?'team':'match')},${q(subjectKey)},${q(name)},${odd},${q(ma.MatchUrl||null)},0,1,${q(raw)},CURRENT_TIMESTAMP)
+                  ON CONFLICT(winline_market_id) DO UPDATE SET winline_event_id=excluded.winline_event_id,market_type=excluded.market_type,subject_type=excluded.subject_type,subject_key=excluded.subject_key,outcome_name=excluded.outcome_name,odds=excluded.odds,deeplink=excluded.deeplink,is_live=0,active=1,raw_json=excluded.raw_json,updated_at=CURRENT_TIMESTAMP;`);
+                sql.push(`INSERT INTO winline_market_snapshots(game_pk,winline_event_id,winline_market_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,captured_at,source_updated_at)
+                  VALUES(${pk},${q(eventId)},${q(marketId)},${q(base)},${q(subjectKey?'team':'match')},${q(subjectKey)},${q(name)},${odd},${q(ma.MatchUrl||null)},0,${q(captured)},${q(captured)});`);
+                markets++;snapshots++;
+              }
+            }
+            // Canonical stable IDs consumed by the current UI.
+            const main=lines.find(x=>/^3-way odds$/i.test(String(x.freetext||'').trim()));
+            if(main){
+              const defs=[[1,'1',main.odd1,t1],['X','X',main.odd2,null],[2,'2',main.odd3,t2]];
+              for(const [suffix,name,oddRaw,key] of defs){
+                const odd=Number(oddRaw),id=eventId+':main_1x2:'+suffix;
+                sql.push(`INSERT INTO winline_markets(winline_market_id,winline_event_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json,updated_at)
+                  VALUES(${q(id)},${q(eventId)},'main_1x2_regular',${q(key?'team':'match')},${q(key)},${q(name)},${odd},${q(ma.MatchUrl||null)},0,1,NULL,CURRENT_TIMESTAMP)
+                  ON CONFLICT(winline_market_id) DO UPDATE SET subject_key=excluded.subject_key,odds=excluded.odds,deeplink=excluded.deeplink,is_live=0,active=1,updated_at=CURRENT_TIMESTAMP;`);
+                sql.push(`INSERT INTO winline_market_snapshots(game_pk,winline_event_id,winline_market_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,captured_at,source_updated_at)
+                  VALUES(${pk},${q(eventId)},${q(id)},'main_1x2_regular',${q(key?'team':'match')},${q(key)},${q(name)},${odd},${q(ma.MatchUrl||null)},0,${q(captured)},${q(captured)});`);
+              }
+            }
+          }
+          sql.push('COMMIT;');
+          fs.writeFileSync('/tmp/winline-current.sql',sql.join('\n'));
+          console.log('SEED_BUILD',JSON.stringify({feed_events:events.length,matched,markets,snapshots,bytes:new TextEncoder().encode(xml).length,sql_bytes:fs.statSync('/tmp/winline-current.sql').size}));
+          if(matched<events.length)process.exitCode=2;
+          JS
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Seed remote D1
+        run: npx wrangler d1 execute hoh-data-core --remote --file=/tmp/winline-current.sql
+      - name: Verify seeded line
+        run: |
+          npx wrangler d1 execute hoh-data-core --remote --command "SELECT COUNT(*) events FROM winline_events;"
+          npx wrangler d1 execute hoh-data-core --remote --command "SELECT COUNT(*) markets FROM winline_markets;"
+          npx wrangler d1 execute hoh-data-core --remote --command "SELECT COUNT(DISTINCT game_pk) games_with_snapshots,COUNT(*) snapshots FROM winline_market_snapshots;"
+          npx wrangler d1 execute hoh-data-core --remote --command "SELECT e.game_pk,e.winline_event_id,MAX(CASE WHEN m.winline_market_id=e.winline_event_id||':main_1x2:1' THEN m.odds END) p1,MAX(CASE WHEN m.winline_market_id=e.winline_event_id||':main_1x2:X' THEN m.odds END) x,MAX(CASE WHEN m.winline_market_id=e.winline_event_id||':main_1x2:2' THEN m.odds END) p2 FROM winline_events e LEFT JOIN winline_markets m ON m.winline_event_id=e.winline_event_id GROUP BY e.game_pk,e.winline_event_id ORDER BY e.game_pk;"
