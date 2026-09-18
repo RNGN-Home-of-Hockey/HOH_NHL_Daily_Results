@@ -1,6 +1,7 @@
 import salaryCache from "../../player_salary_2026_27.json" with { type: "json" };
 import fullNames from "../../ru_full_names.json" with { type: "json" };
 import pronunciationCache from "../../state/center_player_pronunciations_eliteprospects.json" with { type: "json" };
+import pronunciationText from "../../state/center_player_pronunciation_text_nhl.json" with { type: "json" };
 import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
 
 const API="/api/telegram-center-v17";
@@ -52,13 +53,13 @@ async function profile(env,id){
   if(!row&&!landing&&!sal&&!pron&&!fullNames?.[String(id)])return json({ok:false,error:"player_not_found"},404);
   const tri=up(landing?.currentTeamAbbrev||row?.current_team_tri||sal?.team||pron?.team_tri||""),birth=String(row?.birth_date||landing?.birthDate||"").trim()||null;
   const en=String(row?.full_name_en||[loc(landing?.firstName),loc(landing?.lastName)].filter(Boolean).join(" ")||sal?.full_name_en||sal?.nhl_name||pron?.full_name_en||"").trim();
-  const p={player_id:id,full_name_en:en,full_name_ru:row?.full_name_ru||fullNames?.[String(id)]||fallbackRuName(en)||null,current_team_tri:tri,position_code:up(row?.position_code||landing?.position||""),sweater_number:row?.sweater_number??landing?.sweaterNumber??null,primary_country_code:up(row?.primary_country_code||landing?.birthCountry||"").slice(0,3),birth_date:birth,age:age(birth),team_logo:landing?.teamLogo||teamLogo(tri),headshot:landing?.headshot||photo(id,tri,currentSeason()),salary_aav:numOrNull(sal?.aav??sal?.cap_hit),salary_cash:numOrNull(sal?.salary_cash),profile_source:landing?"nhl_landing":row?"d1":pron?"pronunciation_cache":"salary_cache"};
+  const hIn=numOrNull(landing?.heightInInches),wLb=numOrNull(landing?.weightInPounds),pt=pronunciationText?.players?.[String(id)]||null;\n  const p={player_id:id,full_name_en:en,full_name_ru:row?.full_name_ru||fullNames?.[String(id)]||fallbackRuName(en)||null,current_team_tri:tri,position_code:up(row?.position_code||landing?.position||""),sweater_number:row?.sweater_number??landing?.sweaterNumber??null,primary_country_code:up(row?.primary_country_code||landing?.birthCountry||"").slice(0,3),birth_date:birth,age:age(birth),height_cm:hIn?Math.round(hIn*2.54):null,weight_kg:wLb?Math.round(wLb*0.45359237):null,pronunciation_text:pt?.pronunciation_text||null,pronunciation_source:pt?.pronunciation_source||null,team_logo:landing?.teamLogo||teamLogo(tri),headshot:landing?.headshot||photo(id,tri,currentSeason()),salary_aav:numOrNull(sal?.aav??sal?.cap_hit),salary_cash:numOrNull(sal?.salary_cash),profile_source:landing?"nhl_landing":row?"d1":pron?"pronunciation_cache":"salary_cache"};
   return json({ok:true,player:p});
 }
 
 async function liveRoster(tri){
   const d=await fetchJson(`${NHL}/roster/${tri}/current`),out=[];
-  for(const [section,forced] of [["forwards",null],["defensemen","D"],["goalies","G"]])for(const r of d?.[section]||[]){const id=Number(r?.id);if(!Number.isSafeInteger(id))continue;const first=loc(r?.firstName),last=loc(r?.lastName),birth=String(r?.birthDate||"").trim()||null;out.push({player_id:id,full_name_en:[first,last].filter(Boolean).join(" "),current_team_tri:tri,position_code:up(forced||r?.positionCode||r?.position||""),sweater_number:numOrNull(r?.sweaterNumber),primary_country_code:up(r?.birthCountry||"").slice(0,3),birth_date:birth,age:age(birth),team_logo:teamLogo(tri),headshot:photo(id,tri,currentSeason())});}
+  for(const [section,forced] of [["forwards",null],["defensemen","D"],["goalies","G"]])for(const r of d?.[section]||[]){const id=Number(r?.id);if(!Number.isSafeInteger(id))continue;const first=loc(r?.firstName),last=loc(r?.lastName),birth=String(r?.birthDate||"").trim()||null;out.push({player_id:id,full_name_en:[first,last].filter(Boolean).join(" "),current_team_tri:tri,position_code:up(forced||r?.positionCode||r?.position||""),sweater_number:numOrNull(r?.sweaterNumber),primary_country_code:up(r?.birthCountry||"").slice(0,3),birth_date:birth,age:age(birth),height_cm:r?.heightInInches?Math.round(Number(r.heightInInches)*2.54):null,weight_kg:r?.weightInPounds?Math.round(Number(r.weightInPounds)*0.45359237):null,team_logo:teamLogo(tri),headshot:photo(id,tri,currentSeason())});}
   return out;
 }
 
