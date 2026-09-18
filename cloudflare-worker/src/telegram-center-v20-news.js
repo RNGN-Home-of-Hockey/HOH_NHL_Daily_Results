@@ -50,6 +50,8 @@ export async function runSportsRuNewsMaintenance(env,{force=false,homeOnly=false
 async function homeNews(request,env){
   const limit=clamp(new URL(request.url).searchParams.get("limit"),10,1,20);
   try{
+    const count=await env.DB.prepare("SELECT COUNT(*) count FROM sports_news WHERE topic='nhl'").first().catch(()=>({count:0}));
+    if(Number(count?.count||0)<limit)await runSportsRuNewsMaintenance(env,{homeOnly:true}).catch(()=>null);
     const rows=await env.DB.prepare(`
       SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
              COUNT(c.comment_id) comment_count
@@ -87,7 +89,7 @@ async function newsDetail(env,newsId){
   if(!Number.isSafeInteger(newsId)||newsId<=0)return json({ok:false,error:"invalid_news_id"},400);
   let row;
   try{row=await env.DB.prepare(`
-    SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
+    SELECT n.news_id,n.source_url,n.title,n.body_text,n.published_at,n.created_at,
            COUNT(c.comment_id) comment_count
     FROM sports_news n
     LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
@@ -95,6 +97,16 @@ async function newsDetail(env,newsId){
     GROUP BY n.news_id LIMIT 1;
   `).bind(newsId).first()}catch(error){return json({ok:false,error:"news_schema_not_ready",detail:errorText(error)},503)}
   if(!row)return json({ok:false,error:"news_not_found"},404);
+  if(!row.body_text&&row.source_url){
+    const enriched=await enrichNews(row.source_url).catch(()=>null);
+    if(enriched?.body_text||enriched?.published_at){
+      await env.DB.prepare("UPDATE sports_news SET body_text=COALESCE(?,body_text),published_at=COALESCE(?,published_at),updated_at=CURRENT_TIMESTAMP WHERE news_id=?")
+        .bind(enriched.body_text||null,enriched.published_at||null,newsId).run().catch(()=>null);
+      row.body_text=enriched.body_text||row.body_text;
+      row.published_at=enriched.published_at||row.published_at;
+    }
+  }
+  delete row.source_url;
   return json({ok:true,version:"V20",news:row});
 }
 
@@ -313,6 +325,28 @@ async function fetchText(url){
   if(!r.ok)throw new Error("HTTP "+r.status+" "+url);
   return r.text();
 }
+async function enrichNews(url){
+  const html=await fetchText(url);
+  const meta=(name)=>{
+    const patterns=[
+      new RegExp('<meta[^>]+(?:property|name)=(["\\\'])'+name+'\\1[^>]+content=(["\\\'])([\\s\\S]*?)\\2[^>]*>','i'),
+      new RegExp('<meta[^>]+content=(["\\\'])([\\s\\S]*?)\\1[^>]+(?:property|name)=(["\\\'])'+name+'\\3[^>]*>','i')
+    ];
+    for(const re of patterns){const m=re.exec(html);if(m)return decodeEntities(m[m.length-1])}
+    return '';
+  };
+  let body=cleanText(meta('og:description')||meta('description')).slice(0,5000);
+  if(!body){
+    const m=/"description"\s*:\s*"((?:\\.|[^"\\])*)"/i.exec(html);
+    if(m)try{body=cleanText(JSON.parse('"'+m[1]+'"')).slice(0,5000)}catch{}
+  }
+  let published=meta('article:published_time');
+  if(!published){
+    const m=/"datePublished"\s*:\s*"([^"]+)"/i.exec(html);published=m?.[1]||'';
+  }
+  return {body_text:body||null,published_at:validDate(published)};
+}
+
 function displayName(x){return [x.first_name,x.last_name].filter(Boolean).join(" ").trim()||(x.username?"@"+x.username:"Пользователь")}
 function clamp(v,d,min,max){const n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.trunc(n))):d}
 function errorText(error){return String(error?.message||error||"unknown_error")}
