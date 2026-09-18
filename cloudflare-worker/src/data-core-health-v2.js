@@ -28,6 +28,10 @@ const EXPECTED_TABLES = [
   "telegram_users",
   "winline_events",
   "winline_markets",
+  "sports_news",
+  "sports_news_players",
+  "sports_news_comments",
+  "sports_player_sources",
 ];
 
 export async function handleDataCoreHealthV2(request, env, path) {
