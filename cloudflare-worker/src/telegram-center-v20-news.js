@@ -5,7 +5,7 @@ const HOME_MIN_INTERVAL_MS=10*60*1000;
 const PLAYER_BATCH=4;
 const MAX_PLAYER_PAGE=20;
 
-const POLITICAL_RE=/(един(?:ая|ой|ую)\s+росси(?:я|и|ю)|путин|кремл|президент|правительств|депутат|сенатор|конгресс|выбор|предвыбор|парт(?:ия|ии|ию)|политик|боев(?:ые|ых)?\s+действ|войн|украин|нато|санкц|въезд\s+в\s+[а-я]|латви|госдум|мид\b|\bмок\b|отстранени.{0,30}росси|допуск.{0,30}росси|иихф.{0,30}росси|патриот(?:изм|ическ)|гражданин\s+россии|подданн)/iu;
+const POLITICAL_RE=/(един(?:ая|ой|ую)\s+росси(?:я|и|ю)|путин|кремл|президент|правительств|депутат|сенатор|конгресс|выбор|предвыбор|парт(?:ия|ии|ию)|политик|боев(?:ые|ых)?\s+действ|войн|украин|нато|санкц|въезд\s+в\s+[а-я]|латви|госдум|мид\b|\bмок\b|отстранени.{0,30}росси|допуск.{0,30}росси|иихф.{0,30}росси|российск.{0,50}(?:допуст|допуск|отстран|участв).{0,50}(?:турнир|кубок\s+мира|олимпи)|(?:турнир|кубок\s+мира|олимпи).{0,50}российск.{0,50}(?:допуст|допуск|отстран|участв)|патриот(?:изм|ическ)|гражданин\s+россии|подданн)/iu;
 const OFF_ICE_RE=/(футбол|рпл|баскетбол|втб|мма|ufc|динамо\s+махачкал|помидор|день\s+рождения|вечерин|семь[яи]|сын\b|дочь\b|жена\b|отпуск|ресторан|автомобил|мода|кино|концерт)/iu;
 const HOCKEY_RE=/(нхл|nhl|хокке|матч|игр[аы]|сезон|гол|шайб|очк|передач|ассист|брос|кубок\s+стэнли|плей-офф|драфт|контракт|клуб|команд|тренер|форвард|защитник|вратар|звено|ворот|рекорд|капитан|трансфер|обмен|состав|трениров|лига|овертайм|буллит|силов)/iu;
 
@@ -50,20 +50,26 @@ export async function runSportsRuNewsMaintenance(env,{force=false,homeOnly=false
 async function homeNews(request,env){
   const limit=clamp(new URL(request.url).searchParams.get("limit"),10,1,20);
   try{
-    const count=await env.DB.prepare("SELECT COUNT(*) count FROM sports_news WHERE topic='nhl'").first().catch(()=>({count:0}));
-    if(Number(count?.count||0)<limit)await runSportsRuNewsMaintenance(env,{homeOnly:true}).catch(()=>null);
-    const rows=await env.DB.prepare(`
-      SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
-             COUNT(c.comment_id) comment_count
-      FROM sports_news n
-      LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
-      WHERE n.topic='nhl'
-      GROUP BY n.news_id
-      ORDER BY COALESCE(n.published_at,n.created_at) DESC,n.news_id DESC
-      LIMIT ?;
-    `).bind(limit).all();
+    let rows=await queryHomeNews(env.DB,limit);
+    if((rows.results||[]).length<limit){
+      await runSportsRuNewsMaintenance(env,{homeOnly:true}).catch(()=>null);
+      rows=await queryHomeNews(env.DB,limit);
+    }
     return json({ok:true,version:"V20",news:rows.results||[]});
   }catch(error){return json({ok:false,error:"news_schema_not_ready",detail:errorText(error)},503)}
+}
+
+async function queryHomeNews(db,limit){
+  return db.prepare(`
+    SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
+           COUNT(c.comment_id) comment_count
+    FROM sports_news n
+    LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
+    WHERE n.topic='nhl'
+    GROUP BY n.news_id
+    ORDER BY COALESCE(n.published_at,n.created_at) DESC,n.news_id DESC
+    LIMIT ?;
+  `).bind(limit).all();
 }
 
 async function playerNews(request,env,playerId){
@@ -149,13 +155,17 @@ async function addComment(request,env,newsId){
 
 async function status(env){
   try{
-    const [n,p,c,s]=await Promise.all([
+    const [n,p,c,s,last,ovi]=await Promise.all([
       env.DB.prepare("SELECT COUNT(*) count,MAX(COALESCE(published_at,created_at)) latest FROM sports_news").first(),
       env.DB.prepare("SELECT COUNT(DISTINCT player_id) players FROM sports_news_players").first(),
       env.DB.prepare("SELECT COUNT(*) count FROM sports_news_comments WHERE deleted=0").first(),
-      env.DB.prepare("SELECT COUNT(*) sources,SUM(CASE WHEN backfill_done=1 THEN 1 ELSE 0 END) done FROM sports_player_sources").first()
+      env.DB.prepare("SELECT COUNT(*) sources,SUM(CASE WHEN backfill_done=1 THEN 1 ELSE 0 END) done FROM sports_player_sources").first(),
+      loadMeta(env.DB,"sports_ru_nhl_home_sync"),
+      env.DB.prepare("SELECT player_id,sports_slug,next_page,backfill_done,last_scanned_at,last_error FROM sports_player_sources WHERE player_id=8471214 LIMIT 1").first().catch(()=>null)
     ]);
-    return json({ok:true,version:"V20",news:Number(n?.count||0),latest:n?.latest||null,players_with_news:Number(p?.players||0),comments:Number(c?.count||0),player_sources:Number(s?.sources||0),player_backfill_done:Number(s?.done||0)});
+    let lastHomeSync=null;
+    try{lastHomeSync=last?.meta_value?JSON.parse(last.meta_value):null}catch{lastHomeSync={raw:last?.meta_value||null}}
+    return json({ok:true,version:"V20",news:Number(n?.count||0),latest:n?.latest||null,players_with_news:Number(p?.players||0),comments:Number(c?.count||0),player_sources:Number(s?.sources||0),player_backfill_done:Number(s?.done||0),last_home_sync:lastHomeSync,ovechkin_source:ovi||null});
   }catch(error){return json({ok:false,error:"news_schema_not_ready",detail:errorText(error)},503)}
 }
 
