@@ -1,0 +1,93 @@
+name: Backfill NHL Official Two-Season Stats
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backfill-nhl-official-stats.yml'
+      - 'tools/backfill_nhl_official_reports.py'
+      - 'migrations/0020_h2h_and_official_reports.sql'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nhl-official-two-season-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 2; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID'; exit 2; }
+
+      - name: Install Wrangler
+        run: npm install --no-audit --no-fund
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply hoh-data-core --remote
+
+      - name: Download official NHL reports
+        run: |
+          python tools/backfill_nhl_official_reports.py \
+            --season 20242025 \
+            --season 20252026 \
+            --game-type 2 \
+            --game-type 3 \
+            --chunk-size 150
+
+      - name: Upload official reports to D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(local-data/nhl-official-reports/sql/official_*.sql)
+          test ${#files[@]} -gt 0 || { echo 'No generated SQL files'; exit 3; }
+          for file in "${files[@]}"; do
+            echo "IMPORT $file"
+            npx wrangler d1 execute hoh-data-core --remote --file "$file"
+          done
+          npx wrangler d1 execute hoh-data-core --remote --file local-data/nhl-official-reports/sql/official_meta.sql
+
+      - name: Verify H2H and official report coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT scope_key, COUNT(*) AS pair_rows, SUM(games) AS perspective_games
+            FROM team_h2h_snapshots
+            GROUP BY scope_key
+            ORDER BY scope_key;
+            SELECT season_id, game_type, entity_type, COUNT(*) AS rows
+            FROM nhl_official_stat_reports
+            GROUP BY season_id, game_type, entity_type
+            ORDER BY season_id, game_type, entity_type;
+          "
+
+      - name: Save collection summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhl-official-two-season-summary
+          path: local-data/nhl-official-reports/summary.json
+          retention-days: 30
