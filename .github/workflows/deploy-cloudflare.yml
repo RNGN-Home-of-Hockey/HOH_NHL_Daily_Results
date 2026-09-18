@@ -96,7 +96,7 @@ jobs:
           const shell=await fetch(base+'/telegram-app',{cache:'no-store'}).then(r=>r.text());
           if(!shell.includes('/telegram-app/v19.js'))throw new Error('V19 script missing from production shell');
           const ui=await fetch(base+'/telegram-app/v19.js',{cache:'no-store'}).then(r=>r.text());
-          for(const needle of ["data-tab='broadcasts'","v19Audio","aspect-ratio:16/9","v19Country","v19Playoff"]){
+          for(const needle of ["b.dataset.tab='broadcasts'","v19Audio","aspect-ratio:16/9","v19Country","v19Playoff"]){
             if(!ui.includes(needle))throw new Error('V19 UI contract missing '+needle);
           }
           if(ui.includes('new MutationObserver'))throw new Error('V19 unexpectedly added MutationObserver');
