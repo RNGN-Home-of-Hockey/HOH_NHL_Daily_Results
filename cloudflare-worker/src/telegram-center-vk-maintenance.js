@@ -169,17 +169,23 @@ async function ingestPage(env,items,{offset,mode}){
   await bulkUpsertBroadcasts(env.DB,records);
 
   const eligible=records.filter(x=>x.parsed_home_tri&&x.parsed_away_tri&&(x.scheduled_at||x.published_at));
-  const games=await loadCandidateGames(env.DB,eligible);
+  let matchable=eligible,alreadyMapped=0;
+  if(mode==="latest"&&eligible.length){
+    const mapped=await loadMappedSourceKeys(env.DB,eligible);
+    matchable=eligible.filter(x=>!mapped.has(x.source_key));
+    alreadyMapped=eligible.length-matchable.length;
+  }
+  const games=await loadCandidateGames(env.DB,matchable);
   const mappings=[];
   let ambiguous=0,unmatched=0;
-  for(const record of eligible){
+  for(const record of matchable){
     const match=matchFromCandidates(games,record.parsed_home_tri,record.parsed_away_tri,record.scheduled_at||record.published_at,record);
     if(match.kind==="matched")mappings.push({game_pk:match.game_pk,source_key:record.source_key,match_method:match.method,match_confidence:match.confidence});
     else if(match.kind==="ambiguous")ambiguous++;
     else unmatched++;
   }
   if(mappings.length)await bulkUpsertMappings(env.DB,mappings);
-  return {mode,offset,seen:(items||[]).length,stored:records.length,eligible:eligible.length,mapped:mappings.length,ambiguous,unmatched};
+  return {mode,offset,seen:(items||[]).length,stored:records.length,eligible:eligible.length,already_mapped:alreadyMapped,matched_now:mappings.length,mapped:alreadyMapped+mappings.length,ambiguous,unmatched};
 }
 
 async function bulkUpsertBroadcasts(db,records){
@@ -223,6 +229,97 @@ async function bulkUpsertMappings(db,mappings){
       match_method=CASE WHEN excluded.match_confidence>=game_vk_broadcasts.match_confidence THEN excluded.match_method ELSE game_vk_broadcasts.match_method END,
       match_confidence=MAX(game_vk_broadcasts.match_confidence,excluded.match_confidence),updated_at=CURRENT_TIMESTAMP;
   `).bind(payload).run();
+}
+
+async function loadMappedSourceKeys(db,records){
+  if(!records.length)return new Set();
+  const keys=JSON.stringify(records.map(x=>x.source_key));
+  const rows=await db.prepare(`
+    SELECT m.source_key
+    FROM game_vk_broadcasts m
+    JOIN json_each(?) j ON m.source_key=json_extract(j.value,'
+  const times=records.map(x=>Date.parse(x.scheduled_at||x.published_at||"")).filter(Number.isFinite);
+  if(!times.length)return [];
+  const lo=new Date(Math.min(...times)-MATCH_WINDOW_MS).toISOString();
+  const hi=new Date(Math.max(...times)+MATCH_WINDOW_MS).toISOString();
+  const rows=await db.prepare(`
+    SELECT game_pk,scheduled_start_utc,home_tri,away_tri,game_type
+    FROM games
+    WHERE scheduled_start_utc BETWEEN ? AND ? AND game_type IN (1,2,3)
+    ORDER BY scheduled_start_utc ASC,game_pk ASC;
+  `).bind(lo,hi).all();
+  return rows.results||[];
+}
+
+function matchFromCandidates(games,a,b,dateIso,record){
+  const t=Date.parse(dateIso||"");
+  if(!Number.isFinite(t))return {kind:"unmatched"};
+  const pair=(games||[]).filter(g=>((g.home_tri===a&&g.away_tri===b)||(g.home_tri===b&&g.away_tri===a)));
+  const titleDay=explicitTitleDay(record?.title||"");
+  if(titleDay){
+    const exact=pair.filter(g=>String(g.scheduled_start_utc||"").slice(0,10)===titleDay);
+    if(exact.length===1){
+      return {kind:"matched",game_pk:Number(exact[0].game_pk),confidence:1,method:"title_teams_calendar_date"};
+    }
+  }
+  const scored=pair
+    .map(g=>({g,d:Math.abs(Date.parse(g.scheduled_start_utc)-t)}))
+    .filter(x=>Number.isFinite(x.d)&&x.d<=MATCH_WINDOW_MS)
+    .sort((x,y)=>x.d-y.d||Number(x.g.game_pk)-Number(y.g.game_pk));
+  if(!scored.length)return {kind:"unmatched"};
+  if(scored.length>1&&Math.abs(scored[1].d-scored[0].d)<15*60*1000)return {kind:"ambiguous"};
+  const d=scored[0].d;
+  let confidence=d<=6*3600*1000?1:d<=18*3600*1000?.97:.92;
+  const duration=Number(record?.duration_seconds||0);
+  const title=norm(record?.title||"");
+  if(duration>=90*60)confidence=Math.min(1,confidence+.003);
+  if(/прямой эфир|трансляц|live|полный матч/.test(title))confidence=Math.min(1,confidence+.002);
+  return {kind:"matched",game_pk:Number(scored[0].g.game_pk),confidence,method:"title_teams_time"};
+}
+function explicitTitleDay(title){
+  const text=String(title||"");
+  let m=text.match(/(?<!\d)([0-3]?\d)[.\-/]([01]?\d)[.\-/](20\d{2})(?!\d)/);
+  if(m)return `${m[3]}-${String(Number(m[2])).padStart(2,"0")}-${String(Number(m[1])).padStart(2,"0")}`;
+  m=text.match(/(?<!\d)(20\d{2})[.\-/]([01]?\d)[.\-/]([0-3]?\d)(?!\d)/);
+  if(m)return `${m[1]}-${String(Number(m[2])).padStart(2,"0")}-${String(Number(m[3])).padStart(2,"0")}`;
+  return null;
+}
+
+function parseTeams(title){
+  const n=` ${norm(title)} `,hits=[];
+  for(const [tri,names] of Object.entries(TEAM_ALIASES)){
+    let score=0;
+    const triAlias=tri.toLowerCase();
+    if(n.includes(` ${triAlias} `))score=Math.max(score,10);
+    for(const raw of names){const a=norm(raw);if(a&&n.includes(` ${a} `))score=Math.max(score,a.length)}
+    if(score)hits.push({tri,score});
+  }
+  return hits.sort((x,y)=>y.score-x.score||x.tri.localeCompare(y.tri)).slice(0,2).map(x=>x.tri);
+}
+function parseTitleDate(title,fallback){
+  const text=String(title||"");
+  let m=text.match(/(?<!\d)([0-3]?\d)[.\-/]([01]?\d)[.\-/](20\d{2})(?!\d)/);
+  if(m){const d=new Date(Date.UTC(Number(m[3]),Number(m[2])-1,Number(m[1]),0,0,0));if(Number.isFinite(d.getTime()))return d.toISOString()}
+  m=text.match(/(?<!\d)(20\d{2})[.\-/]([01]?\d)[.\-/]([0-3]?\d)(?!\d)/);
+  if(m){const d=new Date(Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]),0,0,0));if(Number.isFinite(d.getTime()))return d.toISOString()}
+  m=norm(text).match(/(?:^|\s)([0-3]?\d)\s+([a-zа-я]+)\s+(20\d{2})(?:\s|$)/i);
+  if(m){const month=MONTHS[m[2]];if(month){const d=new Date(Date.UTC(Number(m[3]),month-1,Number(m[1]),0,0,0));if(Number.isFinite(d.getTime()))return d.toISOString()}}
+  return fallback||null;
+}
+function bestImage(images){
+  const list=Array.isArray(images)?images:[];if(!list.length)return typeof images==="string"?images:null;
+  return list.slice().sort((a,b)=>(Number(b.width||0)*Number(b.height||0))-(Number(a.width||0)*Number(a.height||0)))[0]?.url||null;
+}
+function compactItem(x){return {id:x?.id,owner_id:x?.owner_id,title:x?.title,date:x?.date,adding_date:x?.adding_date,duration:x?.duration,type:x?.type,live_status:x?.live_status,views:x?.views,player:x?.player}}
+function unixIso(v){const n=Number(v);return Number.isFinite(n)&&n>0?new Date(n*1000).toISOString():null}
+function norm(v){return String(v||"").toLowerCase().replaceAll("ё","е").replace(/[^0-9a-zа-я]+/gi," ").trim().replace(/\s+/g," ")}
+function numOrNull(v){const n=Number(v);return Number.isFinite(n)?n:null}
+function errorText(error){return String(error?.message||error||"unknown_error")}
+async function loadMeta(db,key){try{return await db.prepare(`SELECT meta_value,updated_at FROM data_core_meta WHERE meta_key=? LIMIT 1;`).bind(key).first()}catch{return null}}
+async function saveMeta(db,key,value){await db.prepare(`INSERT INTO data_core_meta(meta_key,meta_value,updated_at) VALUES (?,?,CURRENT_TIMESTAMP) ON CONFLICT(meta_key) DO UPDATE SET meta_value=excluded.meta_value,updated_at=CURRENT_TIMESTAMP;`).bind(key,value).run()}
+);
+  `).bind(keys).all();
+  return new Set((rows.results||[]).map(x=>String(x.source_key||"")).filter(Boolean));
 }
 
 async function loadCandidateGames(db,records){
