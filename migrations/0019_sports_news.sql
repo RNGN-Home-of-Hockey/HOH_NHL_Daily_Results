@@ -60,8 +60,3 @@ CREATE TABLE IF NOT EXISTS sports_player_sources (
 CREATE INDEX IF NOT EXISTS idx_sports_player_sources_scan
   ON sports_player_sources(backfill_done, last_scanned_at, player_id);
 
-INSERT INTO sports_player_sources(player_id,sports_slug,source_url,next_page,backfill_done)
-VALUES(8471214,'alexander-ovechkin','https://www.sports.ru/hockey/person/alexander-ovechkin/news/',1,0)
-ON CONFLICT(player_id) DO UPDATE SET
-  sports_slug=excluded.sports_slug,
-  source_url=excluded.source_url;
