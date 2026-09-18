@@ -85,7 +85,7 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v9-polish.js','/telegram-app/v11.js','/telegram-app/v12.js']) {
+          for (const needle of ['NHL CENTER','Center подключён','V8','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v9-polish.js','/telegram-app/v11.js','/telegram-app/v12.js','/telegram-app/v19.js']) {
             if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center shell missing: '+needle);
           }
           if (!mini.includes('data-tab="follows">Мои</button>')) throw new Error('Center subscription tab contract missing');
@@ -112,6 +112,12 @@ jobs:
           if (!r || r.status !== 200 || !media.configured || !Array.isArray(media.items) || media.items.length !== 3) throw new Error('Center V12 media route failed');
           if (media.items.filter(x=>x.kind==='short').length !== 2 || media.items.filter(x=>x.kind==='news').length !== 1) throw new Error('Center V12 media mix failed');
           if (!media.items.every(x=>String(x.url||'').startsWith('https://www.youtube.com/') && String(x.thumb||'').startsWith('https://'))) throw new Error('Center V12 media links failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v19.js'), {}, '/telegram-app/v19.js');
+          const v19 = await r.text();
+          for (const needle of ['openBroadcasts','v19Audio','aspect-ratio:16/9','historical_pregame','v19Country']) {
+            if (!r || r.status !== 200 || !v19.includes(needle)) throw new Error('Center V19 UI missing: '+needle);
+          }
+          if (v19.includes('new MutationObserver')) throw new Error('V19 authoritative UI must not add a MutationObserver layer');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
           if (!r || r.status !== 200 || !(await r.text()).includes('gameFollowEnhancer')) throw new Error('Game-follow JS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/preferences.js'), {}, '/telegram-app/preferences.js');

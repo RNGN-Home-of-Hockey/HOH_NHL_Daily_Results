@@ -1,3 +1,5 @@
+import fullNames from "../../ru_full_names.json" with { type: "json" };
+
 const NHL="https://api-web.nhle.com/v1";
 const TEAMS=["ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA","LAK","MIN","MTL","NSH","NJD","NYI","NYR","OTT","PHI","PIT","SJS","SEA","STL","TBL","TOR","UTA","VAN","VGK","WSH","WPG"];
 const META_KEY="center_rosters_current";
@@ -40,19 +42,20 @@ export async function runCenterRosterMaintenance(env,{force=false}={}){
     const statements=[];
     for(const p of rows.slice(i,i+45)){
       statements.push(env.DB.prepare(`
-        INSERT INTO players (player_id,first_name_en,last_name_en,full_name_en,current_team_tri,position_code,sweater_number,shoots_catches,active,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP)
+        INSERT INTO players (player_id,first_name_en,last_name_en,full_name_en,full_name_ru,current_team_tri,position_code,sweater_number,shoots_catches,active,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP)
         ON CONFLICT(player_id) DO UPDATE SET
           first_name_en=excluded.first_name_en,
           last_name_en=excluded.last_name_en,
           full_name_en=excluded.full_name_en,
+          full_name_ru=COALESCE(players.full_name_ru,excluded.full_name_ru),
           current_team_tri=excluded.current_team_tri,
           position_code=excluded.position_code,
           sweater_number=excluded.sweater_number,
           shoots_catches=excluded.shoots_catches,
           active=1,
           updated_at=CURRENT_TIMESTAMP;
-      `).bind(p.player_id,p.first_name_en,p.last_name_en,p.full_name_en,p.current_team_tri,p.position_code,p.sweater_number,p.shoots_catches));
+      `).bind(p.player_id,p.first_name_en,p.last_name_en,p.full_name_en,p.full_name_ru,p.current_team_tri,p.position_code,p.sweater_number,p.shoots_catches));
       statements.push(env.DB.prepare(`
         INSERT INTO player_profile_meta (player_id,primary_country_code,countries_json,birth_date,source_updated_at,updated_at)
         VALUES (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
@@ -85,6 +88,7 @@ function normalizePlayer(p,tri,forced){
     first_name_en:first||null,
     last_name_en:last||null,
     full_name_en:[first,last].filter(Boolean).join(" "),
+    full_name_ru:fullNames?.[String(id)]||transliterateName([first,last].filter(Boolean).join(" "))||null,
     current_team_tri:tri,
     position_code:position,
     sweater_number:Number.isFinite(number)?number:null,
@@ -96,3 +100,15 @@ function normalizePlayer(p,tri,forced){
 function localized(v){if(!v)return"";if(typeof v==="string")return v;return v.default||v.en||Object.values(v)[0]||""}
 function errorText(e){return String(e?.message||e||"unknown_error")}
 function safeJson(v){try{return JSON.parse(String(v||"{}"))}catch{return null}}
+
+function transliterateName(value){
+  const words=String(value||"").trim().split(/\s+/).filter(Boolean);
+  return words.map(word=>{
+    let s=word.toLowerCase();
+    const pairs=[["shch","щ"],["yo","ё"],["yu","ю"],["ya","я"],["zh","ж"],["kh","х"],["ts","ц"],["ch","ч"],["sh","ш"],["ph","ф"],["th","т"],["ck","к"],["qu","кв"],["mc","мак"]];
+    for(const [a,b] of pairs)s=s.split(a).join(b);
+    const map={a:"а",b:"б",c:"к",d:"д",e:"е",f:"ф",g:"г",h:"х",i:"и",j:"дж",k:"к",l:"л",m:"м",n:"н",o:"о",p:"п",q:"к",r:"р",s:"с",t:"т",u:"у",v:"в",w:"в",x:"кс",y:"й",z:"з"};
+    s=[...s].map(ch=>map[ch]||ch).join("");
+    return s?s[0].toUpperCase()+s.slice(1):s;
+  }).join(" ");
+}

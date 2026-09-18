@@ -10,6 +10,7 @@ import { handleTeamCurrentRequest } from "./team-current-routes.js";
 import { getCenterNotificationStatus, runCenterNotificationTick } from "./telegram-center-notification-engine.js";
 import { runCenterScheduleMaintenance } from "./telegram-center-schedule-maintenance.js";
 import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js";
+import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
@@ -115,6 +116,11 @@ export default {
       ctx.waitUntil(
         runCenterNameMaintenance(env).catch((error) => {
           console.error("scheduled Telegram Center Russian-name maintenance failed", error);
+        }),
+      );
+      ctx.waitUntil(
+        runCenterRosterMaintenance(env).catch((error) => {
+          console.error("scheduled Telegram Center roster maintenance failed", error);
         }),
       );
       ctx.waitUntil(
