@@ -1,0 +1,111 @@
+name: Map Winline NHL Events
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/map-winline-nhl.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Match Winline NHL prematch events to NHL gamePk
+        run: |
+          node --input-type=module <<'JS'
+          const FEED='https://back.winline.ru/banners/prematch_mainsports_eng';
+          const decode=s=>String(s||'').replaceAll('&quot;','"').replaceAll('&amp;','&').replaceAll('&lt;','<').replaceAll('&gt;','>');
+          const attrs=tag=>Object.fromEntries([...String(tag||'').matchAll(/([A-Za-z0-9_]+)="([^"]*)"/g)].map(m=>[m[1],decode(m[2])]));
+          const norm=s=>String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+          const isoDay=d=>new Date(d).toISOString().slice(0,10);
+          const shiftDay=(day,n)=>{const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
+          const teamNames=t=>{
+            const vals=[
+              t?.name?.default,t?.name?.fr,
+              [t?.placeName?.default,t?.commonName?.default].filter(Boolean).join(' '),
+              [t?.placeName?.default,t?.teamName?.default].filter(Boolean).join(' '),
+              t?.commonName?.default,t?.teamName?.default,t?.abbrev
+            ].filter(Boolean);
+            return [...new Set(vals.map(norm).filter(Boolean))];
+          };
+          const teamMatch=(name,t)=>teamNames(t).includes(norm(name));
+          const get=async url=>{
+            const r=await fetch(url,{headers:{accept:'application/json','user-agent':'HOH-Winline-map/1.0'}});
+            if(!r.ok)throw new Error(url+' HTTP '+r.status);
+            return r.json();
+          };
+
+          const fr=await fetch(FEED,{headers:{accept:'application/xml,text/xml,*/*','user-agent':'HOH-Winline-map/1.0'}});
+          if(!fr.ok)throw new Error('Winline HTTP '+fr.status);
+          const xml=await fr.text();
+          const sport=[...xml.matchAll(/<Sport\b([^>]*)>([\s\S]*?)<\/Sport>/gi)].find(m=>String(attrs(m[1]).Id)==='4');
+          if(!sport)throw new Error('Ice Hockey sport Id=4 missing');
+          const events=[];
+          for(const cm of sport[2].matchAll(/<Country\b([^>]*)>([\s\S]*?)<\/Country>/gi)){
+            for(const tm of cm[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
+              const ta=attrs(tm[1]);
+              if(String(ta.Id)!=='142'&&!/^NHL$/i.test(String(ta.Name||'').trim()))continue;
+              for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
+                const ma=attrs(mm[1]);
+                const lines=[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1]));
+                const three=lines.find(x=>/^3-way odds$/i.test(String(x.freetext||'').trim()));
+                const ml=lines.find(x=>/^Money Line$/i.test(String(x.freetext||'').trim()));
+                events.push({
+                  event_id:String(ma.Id||''),bid:String(ma.BID||''),team1:ma.Team1,team2:ma.Team2,
+                  team1_id:ma.Id1,team2_id:ma.Id2,starts_at:ma.MatchDate,url:ma.MatchUrl,
+                  p1:three?.odd1||null,x:three?.odd2||null,p2:three?.odd3||null,
+                  ml1:ml?.odd1||null,ml2:ml?.odd2||null
+                });
+              }
+            }
+          }
+          console.log('WINLINE_NHL_EVENTS',events.length);
+          if(events.length!==17)console.log('NOTE expected 17 from prior probe, current feed now has',events.length);
+
+          const days=new Set();
+          for(const e of events){
+            const d=isoDay(e.starts_at);
+            for(const n of [-1,0,1])days.add(shiftDay(d,n));
+          }
+          const gamesByPk=new Map();
+          for(const day of [...days].sort()){
+            const d=await get('https://api-web.nhle.com/v1/schedule/'+day);
+            const weeks=Array.isArray(d.gameWeek)?d.gameWeek:[];
+            for(const w of weeks)for(const g of (w.games||[]))gamesByPk.set(Number(g.id),g);
+          }
+          const games=[...gamesByPk.values()];
+          const rows=[];
+          for(const e of events){
+            const wt=Date.parse(e.starts_at);
+            const candidates=[];
+            for(const g of games){
+              const gt=Date.parse(g.startTimeUTC);
+              const diff=Math.abs(gt-wt);
+              const direct=teamMatch(e.team1,g.homeTeam)&&teamMatch(e.team2,g.awayTeam);
+              const reverse=teamMatch(e.team1,g.awayTeam)&&teamMatch(e.team2,g.homeTeam);
+              if((direct||reverse)&&diff<=12*3600e3)candidates.push({g,diff,direct,reverse});
+            }
+            candidates.sort((a,b)=>a.diff-b.diff);
+            const best=candidates[0]||null;
+            rows.push({
+              ...e,
+              game_pk:best?Number(best.g.id):null,
+              nhl_away:best?best.g.awayTeam?.name?.default:null,
+              nhl_home:best?best.g.homeTeam?.name?.default:null,
+              nhl_start_utc:best?best.g.startTimeUTC:null,
+              time_diff_minutes:best?Math.round(best.diff/60000):null,
+              orientation:best?(best.direct?'team1_home':'team1_away'):null,
+              game_type:best?best.g.gameType:null,
+              game_state:best?best.g.gameState:null,
+              candidate_count:candidates.length
+            });
+          }
+          for(const r of rows)console.log('MAP',JSON.stringify(r));
+          const matched=rows.filter(x=>x.game_pk),unmatched=rows.filter(x=>!x.game_pk);
+          console.log('SUMMARY',JSON.stringify({feed_events:rows.length,matched:matched.length,unmatched:unmatched.length,unmatched_events:unmatched}));
+          if(unmatched.length)process.exitCode=2;
+          JS
