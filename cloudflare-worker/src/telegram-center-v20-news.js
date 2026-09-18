@@ -345,7 +345,7 @@ function extractHtmlNews(html,base){
     let href=decodeEntities(m[3]);
     if(!href||href.startsWith("#"))continue;
     try{href=new URL(href,base).toString()}catch{continue}
-    if(!/^https?:\/\/(?:www\.)?sports\.ru\/hockey\/\d+\.html(?:[?#].*)?$/i.test(href))continue;
+    if(!/^https?:\/\/(?:www\.)?sports\.ru\/hockey\/\d+(?:-[^/?#]+)?\.html(?:[?#].*)?$/i.test(href))continue;
     const title=cleanText(m[5]);
     if(title.length<20||title.length>700||seen.has(href))continue;
     seen.add(href);
