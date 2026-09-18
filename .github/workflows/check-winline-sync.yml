@@ -1,0 +1,44 @@
+name: Check Winline Production Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/check-winline-sync.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check adaptive Winline production state
+        run: |
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const get=async p=>{
+            const r=await fetch(base+p,{headers:{accept:'application/json'}});
+            const d=await r.json();
+            if(!r.ok)throw new Error(p+' HTTP '+r.status+' '+JSON.stringify(d));
+            return d;
+          };
+          const status=await get('/api/winline/center/status');
+          console.log('STATUS',JSON.stringify(status,null,2));
+          if((status.events||0)<17)throw new Error('Expected at least 17 Winline events, got '+status.events);
+          if((status.markets||0)<51)throw new Error('Expected at least 51 Winline markets, got '+status.markets);
+          if((status.snapshots||0)<51)throw new Error('Expected initial Winline snapshots, got '+status.snapshots);
+          if((status.feed_sync?.last_sync?.mapped_events||0)<17)throw new Error('Feed sync mapped fewer than 17 events: '+JSON.stringify(status.feed_sync));
+          const games=[2026020001,2026020002,2026020003,2026020004,2026020005,2026020006,2026020007,2026020009,2026020010,2026020011,2026020012,2026020013,2026020014,2026020015,2026020016,2026020017,2026020020];
+          let good=0;
+          for(const pk of games){
+            const d=await get('/api/telegram-center-v19/games/'+pk);
+            const markets=d.winline?.markets||[];
+            const line=markets.map(x=>({outcome:x.outcome_key,name:x.outcome_name,odds:x.odds}));
+            console.log('GAME',pk,JSON.stringify({source:d.winline?.source,market_type:d.winline?.market_type,line}));
+            if(line.length>=3&&line.some(x=>x.outcome==='home')&&line.some(x=>x.outcome==='draw')&&line.some(x=>x.outcome==='away'))good++;
+          }
+          if(good!==games.length)throw new Error('Only '+good+'/'+games.length+' games have complete 1-X-2');
+          console.log('WINLINE_PRODUCTION_SYNC_OK',JSON.stringify({events:status.events,markets:status.markets,snapshots:status.snapshots,games:good,cadence_minutes:status.feed_sync?.cadence_minutes,next_due_at:status.feed_sync?.next_due_at}));
+          JS
