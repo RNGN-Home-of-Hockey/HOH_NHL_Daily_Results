@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/import-user-historical-odds.yml'
       - 'tools/import_user_excel_historical_odds.py'
+      - 'data/historical-odds/**'
       - 'tools/materialize_historical_odds.sql'
       - 'migrations/0027_historical_odds.sql'
 
