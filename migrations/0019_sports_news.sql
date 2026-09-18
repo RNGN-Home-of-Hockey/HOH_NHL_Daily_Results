@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS sports_news (
   UNIQUE (source, source_url)
 );
 
-CREATE INDEX IF NOT EXISTS idx_sports_news_published
-  ON sports_news(published_at DESC, news_id DESC);
+CREATE INDEX IF NOT EXISTS idx_sports_news_topic_published
+  ON sports_news(topic, published_at DESC, news_id DESC);
 
 CREATE TABLE IF NOT EXISTS sports_news_players (
   news_id INTEGER NOT NULL,
