@@ -1,5 +1,5 @@
 DELETE FROM historical_odds_game_features
-WHERE source='the_odds_api_eu_consensus' AND market_key='regular_time_1x2';
+WHERE market_key='regular_time_1x2';
 
 INSERT INTO historical_odds_game_features (
   game_pk,source,market_key,home_tri,away_tri,season_id,game_type,regulation_result,
@@ -39,19 +39,18 @@ SELECT
 FROM historical_odds_closing o
 JOIN games g ON g.game_pk=o.game_pk
 JOIN team_game_features hf ON hf.game_pk=g.game_pk AND hf.team_tri=g.home_tri
-WHERE o.source='the_odds_api_eu_consensus'
-  AND o.market_key='regular_time_1x2'
+WHERE o.market_key='regular_time_1x2'
   AND o.home_odds IS NOT NULL AND o.draw_odds IS NOT NULL AND o.away_odds IS NOT NULL;
 
 DELETE FROM historical_odds_team_trends
-WHERE source='the_odds_api_eu_consensus' AND market_key='regular_time_1x2';
+WHERE market_key='regular_time_1x2';
 
 WITH scopes AS (
   SELECT *, '2Y' AS scope_key FROM historical_odds_game_features
-  WHERE source='the_odds_api_eu_consensus' AND market_key='regular_time_1x2'
+  WHERE market_key='regular_time_1x2'
   UNION ALL
   SELECT *, 'S_'||season_id AS scope_key FROM historical_odds_game_features
-  WHERE source='the_odds_api_eu_consensus' AND market_key='regular_time_1x2'
+  WHERE market_key='regular_time_1x2'
 ),
 team_rows AS (
   SELECT
