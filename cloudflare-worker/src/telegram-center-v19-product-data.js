@@ -26,7 +26,10 @@ async function productStatus(env) {
       env.DB.prepare(`SELECT COUNT(*) snapshots,COUNT(DISTINCT game_pk) games FROM winline_market_snapshots;`).first().catch(()=>({snapshots:0,games:0})),
     ]);
     const teams=(rows.results||[]).map(x=>({team_tri:x.team_tri,players:Number(x.players||0)}));
-    return json({ok:true,version:"V19",roster_maintenance:maintenance,active_players:Number(total?.players||0),teams_with_roster:teams.length,roster_complete:teams.length===32&&teams.every(x=>x.players>0),teams,winline_snapshots:Number(snapshots?.snapshots||0),winline_snapshot_games:Number(snapshots?.games||0)});
+    const expected=["ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA","LAK","MIN","MTL","NSH","NJD","NYI","NYR","OTT","PHI","PIT","SJS","SEA","STL","TBL","TOR","UTA","VAN","VGK","WSH","WPG"];
+    const counts=new Map(teams.map(x=>[x.team_tri,x.players]));
+    const missing_or_short_rosters=expected.filter(tri=>(counts.get(tri)||0)<15).map(tri=>({team_tri:tri,players:counts.get(tri)||0}));
+    return json({ok:true,version:"V19",roster_maintenance:maintenance,active_players:Number(total?.players||0),teams_with_roster:teams.length,roster_complete:missing_or_short_rosters.length===0,missing_or_short_rosters,teams,winline_snapshots:Number(snapshots?.snapshots||0),winline_snapshot_games:Number(snapshots?.games||0)});
   } catch (error) {
     return json({ok:false,error:"product_status_failed",detail:errorText(error)},503);
   }
