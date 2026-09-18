@@ -153,7 +153,7 @@ function canonicalMarket(rows,game){
   for(const [marketType,list] of groups){
     const dedupe=new Map();for(const x of list){const k=x.outcome_key||String(x.outcome_name||x.winline_market_id);if(!dedupe.has(k))dedupe.set(k,x)}
     const vals=[...dedupe.values()],keys=new Set(vals.map(x=>x.outcome_key).filter(Boolean));
-    let score=0;if(keys.has("home"))score+=4;if(keys.has("away"))score+=4;if(keys.has("draw"))score+=5;if(keys.size>=2)score+=3;if(keys.size===3)score+=4;if(/1x2|3.?way|regular|60|основ|исход|match.?result/i.test(marketType))score+=3;score-=vals.some(x=>Number(x.is_live)===1)?1:0;
+    let score=0;if(keys.has("home"))score+=4;if(keys.has("away"))score+=4;if(keys.has("draw"))score+=5;if(keys.size>=2)score+=3;if(keys.size===3)score+=4;if(marketType==="main_1x2_regular")score+=100;else if(/1x2|3.?way|regular|60|основ|исход|match.?result/i.test(marketType)&&!/period/i.test(marketType))score+=6;score-=vals.some(x=>Number(x.is_live)===1)?1:0;
     if(score>best.score)best={score,market_type:marketType,rows:vals,keys};
   }
   const order={home:1,draw:2,away:3};best.rows.sort((a,b)=>(order[a.outcome_key]||9)-(order[b.outcome_key]||9));return best;
