@@ -59,7 +59,7 @@ jobs:
             --season 20252026 \
             --game-type 2 \
             --game-type 3 \
-            --chunk-size 150 \\
+            --chunk-size 150 \
             --workers 6
 
       - name: Upload official reports to D1
