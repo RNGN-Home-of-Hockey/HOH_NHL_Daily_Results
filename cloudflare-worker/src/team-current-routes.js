@@ -37,6 +37,7 @@ import { handleTelegramCenterV19Ui } from "./telegram-center-v19-ui.js";
 import { handleTelegramCenterV20News } from "./telegram-center-v20-news.js";
 import { handleTelegramCenterV20Ui } from "./telegram-center-v20-ui.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
+import { handleWinlineFeedProbe } from "./winline-feed-probe.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
 import { handleControlCenterV2Ui } from "./control-center-v2-ui.js";
@@ -57,6 +58,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
 
   const winlineCenterResponse = await handleWinlineCenterIngest(request.clone(), env, path);
   if (winlineCenterResponse) return winlineCenterResponse;
+  const winlineFeedProbeResponse = await handleWinlineFeedProbe(request.clone(), path);
+  if (winlineFeedProbeResponse) return winlineFeedProbeResponse;
 
   const centerV9Response = await handleTelegramCenterV9Enhancer(request.clone(), env, path);
   if (centerV9Response) return centerV9Response;
