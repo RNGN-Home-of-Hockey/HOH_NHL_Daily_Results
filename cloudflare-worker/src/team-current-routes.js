@@ -115,9 +115,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes('/telegram-app/v15-core.js')) body = body.replace('</body>', '<script src="/telegram-app/v15-core.js"></script></body>');
       if (!body.includes('/telegram-app/v15-team.js')) body = body.replace('</body>', '<script src="/telegram-app/v15-team.js"></script></body>');
       if (!body.includes('/telegram-app/v15-player.js')) body = body.replace('</body>', '<script src="/telegram-app/v15-player.js"></script></body>');
-      if (!body.includes('/telegram-app/v16.js')) body = body.replace('</body>', '<script src="/telegram-app/v16.js"></script></body>');
-      if (!body.includes('/telegram-app/v17.js')) body = body.replace('</body>', '<script src="/telegram-app/v17.js"></script></body>');
-      if (!body.includes('/telegram-app/v18.js')) body = body.replace('</body>', '<script src="/telegram-app/v18.js"></script></body>');
+      if (!body.includes('/telegram-app/v16.js')) body = body.replace('</body>', '<script src="/telegram-app/v16.js?build=18.1"></script></body>');
+      if (!body.includes('/telegram-app/v17.js')) body = body.replace('</body>', '<script src="/telegram-app/v17.js?build=18.1"></script></body>');
+      if (!body.includes('/telegram-app/v18.js')) body = body.replace('</body>', '<script src="/telegram-app/v18.js?build=18.1"></script></body>');
       return new Response(body, {status:centerV8Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerV8Response;
