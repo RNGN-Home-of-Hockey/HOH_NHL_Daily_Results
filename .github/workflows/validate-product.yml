@@ -2,7 +2,7 @@ name: Validate HOH product
 
 on:
   push:
-    branches: [main, v19-product-completion-20260918]
+    branches: [main]
     paths:
       - 'cloudflare-worker/**'
       - 'migrations/**'
