@@ -105,7 +105,7 @@ async function newsDetail(env,newsId){
   if(!Number.isSafeInteger(newsId)||newsId<=0)return json({ok:false,error:"invalid_news_id"},400);
   let row;
   try{row=await env.DB.prepare(`
-    SELECT n.news_id,n.source_url,n.title,n.body_text,n.published_at,n.created_at,
+    SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
            COUNT(c.comment_id) comment_count
     FROM sports_news n
     LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
@@ -113,16 +113,6 @@ async function newsDetail(env,newsId){
     GROUP BY n.news_id LIMIT 1;
   `).bind(newsId).first()}catch(error){return json({ok:false,error:"news_schema_not_ready",detail:errorText(error)},503)}
   if(!row)return json({ok:false,error:"news_not_found"},404);
-  if(!row.body_text&&row.source_url){
-    const enriched=await enrichNews(row.source_url).catch(()=>null);
-    if(enriched?.body_text||enriched?.published_at){
-      await env.DB.prepare("UPDATE sports_news SET body_text=COALESCE(?,body_text),published_at=COALESCE(?,published_at),updated_at=CURRENT_TIMESTAMP WHERE news_id=?")
-        .bind(enriched.body_text||null,enriched.published_at||null,newsId).run().catch(()=>null);
-      row.body_text=enriched.body_text||row.body_text;
-      row.published_at=enriched.published_at||row.published_at;
-    }
-  }
-  delete row.source_url;
   return json({ok:true,version:"V20",news:row});
 }
 
@@ -404,9 +394,12 @@ function cleanText(v){return decodeEntities(String(v||"").replace(/<script\b[\s\
 function decodeEntities(v){return String(v||"").replace(/&nbsp;|&#160;/gi," ").replace(/&amp;/gi,"&").replace(/&quot;/gi,'"').replace(/&#39;|&apos;/gi,"'").replace(/&lt;/gi,"<").replace(/&gt;/gi,">").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n)||32))}
 function norm(v){return cleanText(v).toLocaleLowerCase("ru").replaceAll("ё","е")}
 async function fetchText(url){
-  const r=await fetch(url,{headers:{Accept:"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Language":"ru-RU,ru;q=0.9,en;q=0.6","User-Agent":USER_AGENT}});
-  if(!r.ok)throw new Error("HTTP "+r.status+" "+url);
-  return r.text();
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+  try{
+    const r=await fetch(url,{signal:controller.signal,headers:{Accept:"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Language":"ru-RU,ru;q=0.9,en;q=0.6","User-Agent":USER_AGENT}});
+    if(!r.ok)throw new Error("HTTP "+r.status+" "+url);
+    return await r.text();
+  }finally{clearTimeout(timer)}
 }
 async function enrichNews(url){
   const html=await fetchText(url);
