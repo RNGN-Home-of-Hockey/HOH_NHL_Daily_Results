@@ -34,6 +34,8 @@ import { handleTelegramCenterV18VkData } from "./telegram-center-v18-vk-data.js"
 import { handleTelegramCenterV18VkUi } from "./telegram-center-v18-vk-ui.js";
 import { handleTelegramCenterV19ProductData } from "./telegram-center-v19-product-data.js";
 import { handleTelegramCenterV19Ui } from "./telegram-center-v19-ui.js";
+import { handleTelegramCenterV20News } from "./telegram-center-v20-news.js";
+import { handleTelegramCenterV20Ui } from "./telegram-center-v20-ui.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
 import { handleControlLowReadRequest } from "./control-low-read-routes.js";
@@ -96,6 +98,10 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (centerV19DataResponse) return centerV19DataResponse;
   const centerV19UiResponse = handleTelegramCenterV19Ui(request, path);
   if (centerV19UiResponse) return centerV19UiResponse;
+  const centerV20NewsResponse = await handleTelegramCenterV20News(request.clone(), env, path);
+  if (centerV20NewsResponse) return centerV20NewsResponse;
+  const centerV20UiResponse = handleTelegramCenterV20Ui(request, path);
+  if (centerV20UiResponse) return centerV20UiResponse;
   const centerV18PlayerLastGameResponse = await handleTelegramCenterV18PlayerLastGame(request.clone(), env, path);
   if (centerV18PlayerLastGameResponse) return centerV18PlayerLastGameResponse;
   const centerV18VkDataResponse = await handleTelegramCenterV18VkData(request.clone(), env, path);
@@ -125,6 +131,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes('/telegram-app/v17.js')) body = body.replace('</body>', '<script src="/telegram-app/v17.js?build=18.1"></script></body>');
       if (!body.includes('/telegram-app/v18.js')) body = body.replace('</body>', '<script src="/telegram-app/v18.js?build=18.1"></script></body>');
       if (!body.includes('/telegram-app/v19.js')) body = body.replace('</body>', '<script src="/telegram-app/v19.js?build=19.0"></script></body>');
+      if (!body.includes('/telegram-app/v20.js')) body = body.replace('</body>', '<script src="/telegram-app/v20.js?build=20.0"></script></body>');
       return new Response(body, {status:centerV8Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerV8Response;
