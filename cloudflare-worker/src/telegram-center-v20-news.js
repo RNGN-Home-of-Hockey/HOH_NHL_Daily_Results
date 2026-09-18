@@ -6,7 +6,7 @@ const PLAYER_BATCH=4;
 const MAX_PLAYER_PAGE=20;
 
 const POLITICAL_RE=/(един(?:ая|ой|ую)\s+росси(?:я|и|ю)|путин|кремл|президент|правительств|депутат|сенатор|конгресс|выбор|предвыбор|парт(?:ия|ии|ию)|политик|боев(?:ые|ых)?\s+действ|войн|украин|нато|санкц|въезд\s+в\s+[а-я]|латви|госдум|мид\b|\bмок\b|отстранени.{0,30}росси|допуск.{0,30}росси|иихф.{0,30}росси|патриот(?:изм|ическ)|гражданин\s+россии|подданн)/iu;
-const OFF_ICE_RE=/(футбол|рпл|динамо\s+махачкал|помидор|день\s+рождения|вечерин|семь[яи]|сын\b|дочь\b|жена\b|отпуск|ресторан|автомобил|мода|кино|концерт)/iu;
+const OFF_ICE_RE=/(футбол|рпл|баскетбол|втб|мма|ufc|динамо\s+махачкал|помидор|день\s+рождения|вечерин|семь[яи]|сын\b|дочь\b|жена\b|отпуск|ресторан|автомобил|мода|кино|концерт)/iu;
 const HOCKEY_RE=/(нхл|nhl|хокке|матч|игр[аы]|сезон|гол|шайб|очк|передач|ассист|брос|кубок\s+стэнли|плей-офф|драфт|контракт|клуб|команд|тренер|форвард|защитник|вратар|звено|ворот|рекорд|капитан|трансфер|обмен|состав|трениров|лига|овертайм|буллит|силов)/iu;
 
 export async function handleTelegramCenterV20News(request,env,path){
@@ -380,6 +380,11 @@ function tag(block,name){
 function hasNextNewsPage(html,next){return new RegExp("(Следующие\\s+100\\s+новостей|/news/page"+next+"/)","i").test(cleanText(html))||new RegExp("/news/page"+next+"/","i").test(String(html||""))}
 function isPolitical(text){return POLITICAL_RE.test(String(text||""))}
 function isHockeyOnly(text){const s=String(text||"");return HOCKEY_RE.test(s)&&!OFF_ICE_RE.test(s)}
+function isPlayerHockeyOnly(text,src){
+  const s=String(text||"");if(OFF_ICE_RE.test(s))return false;if(HOCKEY_RE.test(s))return true;
+  const hay=norm(s),names=[src?.full_name_ru,src?.full_name_en].filter(Boolean);
+  return names.some(name=>{const parts=norm(name).split(" ").filter(Boolean),last=parts.at(-1)||"";return last.length>=5&&hay.includes(last)});
+}
 function playerSlug(name){return String(name||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[’']/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"")}
 function canonicalUrl(v){try{const u=new URL(v);u.hash="";u.search="";return u.toString()}catch{return String(v||"").trim()}}
 function validDate(v){if(!v)return null;const d=new Date(v);return Number.isNaN(d.getTime())?null:d.toISOString()}
