@@ -70,19 +70,28 @@ async function playerNews(request,env,playerId){
   if(!Number.isSafeInteger(playerId)||playerId<=0)return json({ok:false,error:"invalid_player_id"},400);
   const limit=clamp(new URL(request.url).searchParams.get("limit"),100,1,200);
   try{
-    const rows=await env.DB.prepare(`
-      SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
-             COUNT(c.comment_id) comment_count
-      FROM sports_news_players p
-      JOIN sports_news n ON n.news_id=p.news_id
-      LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
-      WHERE p.player_id=?
-      GROUP BY n.news_id
-      ORDER BY COALESCE(n.published_at,n.created_at) DESC,n.news_id DESC
-      LIMIT ?;
-    `).bind(playerId,limit).all();
+    let rows=await queryPlayerNews(env.DB,playerId,limit);
+    if(!(rows.results||[]).length){
+      await ensureSinglePlayerSource(env.DB,playerId);
+      await scanPlayerById(env,playerId).catch(()=>null);
+      rows=await queryPlayerNews(env.DB,playerId,limit);
+    }
     return json({ok:true,version:"V20",player_id:playerId,news:rows.results||[]});
   }catch(error){return json({ok:false,error:"news_schema_not_ready",detail:errorText(error)},503)}
+}
+
+async function queryPlayerNews(db,playerId,limit){
+  return db.prepare(`
+    SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
+           COUNT(c.comment_id) comment_count
+    FROM sports_news_players p
+    JOIN sports_news n ON n.news_id=p.news_id
+    LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
+    WHERE p.player_id=?
+    GROUP BY n.news_id
+    ORDER BY COALESCE(n.published_at,n.created_at) DESC,n.news_id DESC
+    LIMIT ?;
+  `).bind(playerId,limit).all();
 }
 
 async function newsDetail(env,newsId){
@@ -174,6 +183,26 @@ async function scanNhlMain(env){
   return {ok:true,seen:items.length,stored,politics,duplicate};
 }
 
+async function ensureSinglePlayerSource(db,playerId){
+  const exists=await db.prepare("SELECT player_id FROM sports_player_sources WHERE player_id=? LIMIT 1").bind(playerId).first();
+  if(exists)return;
+  const p=await db.prepare("SELECT player_id,full_name_en FROM players WHERE player_id=? LIMIT 1").bind(playerId).first();
+  if(!p?.full_name_en)return;
+  const slug=playerSlug(p.full_name_en);if(!slug)return;
+  await db.prepare("INSERT OR IGNORE INTO sports_player_sources(player_id,sports_slug,source_url,next_page,backfill_done) VALUES(?,?,?,1,0)")
+    .bind(playerId,slug,`https://www.sports.ru/hockey/person/${slug}/news/`).run();
+}
+
+async function scanPlayerById(env,playerId){
+  const src=await env.DB.prepare(`
+    SELECT s.player_id,s.sports_slug,s.source_url,s.next_page,p.full_name_en,p.full_name_ru,p.current_team_tri
+    FROM sports_player_sources s JOIN players p ON p.player_id=s.player_id
+    WHERE s.player_id=? AND s.backfill_done=0 LIMIT 1;
+  `).bind(playerId).first();
+  if(!src)return {ok:true,skipped:true};
+  return scanOnePlayerSource(env,src);
+}
+
 async function ensurePlayerSources(db){
   const rows=await db.prepare(`
     SELECT p.player_id,p.full_name_en
@@ -207,34 +236,38 @@ async function scanPlayerSources(env){
   `).bind(PLAYER_BATCH).all();
   let sources=0,stored=0,politics=0,offIce=0,errors=0;
   for(const src of rows.results||[]){
-    sources++;
-    const page=Math.max(1,Number(src.next_page||1));
-    const url=page===1?src.source_url:src.source_url+`page${page}/`;
-    let html;
-    try{html=await fetchText(url)}catch(error){
-      errors++;
-      await env.DB.prepare("UPDATE sports_player_sources SET backfill_done=1,last_scanned_at=CURRENT_TIMESTAMP,last_error=?,updated_at=CURRENT_TIMESTAMP WHERE player_id=?").bind(errorText(error).slice(0,300),src.player_id).run();
-      continue;
-    }
-    const items=extractHtmlNews(html,url);
-    let accepted=0;
-    for(const item of items){
-      const combined=item.title+" "+(item.body_text||"");
-      if(isPolitical(combined)){politics++;continue}
-      if(!isHockeyOnly(combined)){offIce++;continue}
-      const id=await upsertNews(env.DB,item);
-      if(!id)continue;
-      await linkNewsPlayer(env.DB,id,Number(src.player_id));
-      stored++;accepted++;
-    }
-    const hasNext=page<MAX_PLAYER_PAGE&&hasNextNewsPage(html,page+1)&&items.length>0;
-    await env.DB.prepare(`
-      UPDATE sports_player_sources
-      SET next_page=?,backfill_done=?,last_scanned_at=CURRENT_TIMESTAMP,last_error=NULL,updated_at=CURRENT_TIMESTAMP
-      WHERE player_id=?;
-    `).bind(hasNext?page+1:page,hasNext?0:1,src.player_id).run();
+    const r=await scanOnePlayerSource(env,src);
+    sources++;stored+=Number(r.stored||0);politics+=Number(r.politics||0);offIce+=Number(r.off_ice||0);errors+=Number(r.errors||0);
   }
   return {ok:true,sources,stored,politics,off_ice:offIce,errors};
+}
+
+async function scanOnePlayerSource(env,src){
+  const page=Math.max(1,Number(src.next_page||1));
+  const url=page===1?src.source_url:src.source_url+`page${page}/`;
+  let html;
+  try{html=await fetchText(url)}catch(error){
+    await env.DB.prepare("UPDATE sports_player_sources SET backfill_done=1,last_scanned_at=CURRENT_TIMESTAMP,last_error=?,updated_at=CURRENT_TIMESTAMP WHERE player_id=?").bind(errorText(error).slice(0,300),src.player_id).run();
+    return {stored:0,politics:0,off_ice:0,errors:1};
+  }
+  const items=extractHtmlNews(html,url);
+  let stored=0,politics=0,offIce=0;
+  for(const item of items){
+    const combined=item.title+" "+(item.body_text||"");
+    if(isPolitical(combined)){politics++;continue}
+    if(!isHockeyOnly(combined)){offIce++;continue}
+    const id=await upsertNews(env.DB,item);
+    if(!id)continue;
+    await linkNewsPlayer(env.DB,id,Number(src.player_id));
+    stored++;
+  }
+  const hasNext=page<MAX_PLAYER_PAGE&&hasNextNewsPage(html,page+1)&&items.length>0;
+  await env.DB.prepare(`
+    UPDATE sports_player_sources
+    SET next_page=?,backfill_done=?,last_scanned_at=CURRENT_TIMESTAMP,last_error=NULL,updated_at=CURRENT_TIMESTAMP
+    WHERE player_id=?;
+  `).bind(hasNext?page+1:page,hasNext?0:1,src.player_id).run();
+  return {stored,politics,off_ice:offIce,errors:0,page,has_next:hasNext};
 }
 
 async function upsertNews(db,item){
