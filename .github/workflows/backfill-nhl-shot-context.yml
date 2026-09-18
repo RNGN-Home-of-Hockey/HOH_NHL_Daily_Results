@@ -1,0 +1,92 @@
+name: Backfill NHL Shot Context
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backfill-nhl-shot-context.yml'
+      - 'tools/backfill_shot_context.py'
+      - 'migrations/0024_shot_context_features.sql'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hoh-d1-bulk-import
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 2; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID'; exit 2; }
+
+      - name: Install Wrangler
+        run: npm install --no-audit --no-fund
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply hoh-data-core --remote
+
+      - name: Download PBP and derive shot context
+        run: python tools/backfill_shot_context.py --workers 12
+
+      - name: Upload compact shot context to D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(local-data/shot-context/sql/shot_context_*.sql)
+          test ${#files[@]} -gt 0 || { echo 'No generated shot context SQL'; exit 3; }
+          for file in "${files[@]}"; do
+            echo "IMPORT $file"
+            npx wrangler d1 execute hoh-data-core --remote --file "$file"
+          done
+          npx wrangler d1 execute hoh-data-core --remote --file local-data/shot-context/sql/shot_context_meta.sql
+
+      - name: Verify shot context coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT season_id,game_type,COUNT(DISTINCT game_pk) AS games,COUNT(*) AS team_rows,
+                   SUM(shot_attempts) AS attempts,SUM(hoh_slot_attempts) AS slot_attempts,
+                   SUM(rebound_attempts) AS rebound_attempts,
+                   SUM(quick_transition_attempts) AS quick_transition_attempts
+            FROM team_shot_context_game
+            GROUP BY season_id,game_type
+            ORDER BY season_id,game_type;
+            SELECT season_id,game_type,COUNT(DISTINCT game_pk) AS games,COUNT(*) AS player_rows
+            FROM player_shot_context_game
+            GROUP BY season_id,game_type
+            ORDER BY season_id,game_type;
+            SELECT scope_key,COUNT(*) AS h2h_rows
+            FROM team_shot_context_h2h
+            GROUP BY scope_key
+            ORDER BY scope_key;
+          "
+
+      - name: Save summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhl-shot-context-summary
+          path: local-data/shot-context/summary.json
+          retention-days: 30
