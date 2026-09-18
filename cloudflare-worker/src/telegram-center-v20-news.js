@@ -350,7 +350,8 @@ function extractHtmlNews(html,base){
     if(title.length<20||title.length>700||seen.has(href))continue;
     seen.add(href);
     const attrs=(m[1]||"")+" "+(m[4]||"");
-    const dt=/datetime=(["'])([^"']+)\1/i.exec(attrs)?.[2]||null;
+    const nearby=String(html||"").slice(Math.max(0,m.index-900),m.index+Math.min(m[0].length,300));
+    const dt=/datetime=(["'])([^"']+)\1/i.exec(attrs)?.[2]||[...nearby.matchAll(/datetime=(["'])([^"']+)\1/gi)].at(-1)?.[2]||null;
     out.push({source_key:canonicalUrl(href),source_url:canonicalUrl(href),title,body_text:null,published_at:validDate(dt)});
   }
   return out;
@@ -410,12 +411,10 @@ async function fetchText(url){
 async function enrichNews(url){
   const html=await fetchText(url);
   const meta=(name)=>{
-    const patterns=[
-      new RegExp('<meta[^>]+(?:property|name)=(["\\\'])'+name+'\\1[^>]+content=(["\\\'])([\\s\\S]*?)\\2[^>]*>','i'),
-      new RegExp('<meta[^>]+content=(["\\\'])([\\s\\S]*?)\\1[^>]+(?:property|name)=(["\\\'])'+name+'\\3[^>]*>','i')
-    ];
-    for(const re of patterns){const m=re.exec(html);if(m)return decodeEntities(m[m.length-1])}
-    return '';
+    let m=new RegExp('<meta[^>]+(?:property|name)=(["\\\'])'+name+'\\1[^>]+content=(["\\\'])([\\s\\S]*?)\\2[^>]*>','i').exec(html);
+    if(m)return decodeEntities(m[3]);
+    m=new RegExp('<meta[^>]+content=(["\\\'])([\\s\\S]*?)\\1[^>]+(?:property|name)=(["\\\'])'+name+'\\3[^>]*>','i').exec(html);
+    return m?decodeEntities(m[2]):'';
   };
   let body=cleanText(meta('og:description')||meta('description')).slice(0,5000);
   if(!body){
