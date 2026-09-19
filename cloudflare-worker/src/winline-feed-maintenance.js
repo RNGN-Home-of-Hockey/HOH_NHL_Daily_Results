@@ -112,7 +112,7 @@ function parseNhlPrematch(xml){
   for(const cm of sport[2].matchAll(/<Country\b([^>]*)>([\s\S]*?)<\/Country>/gi)){
     for(const tm of cm[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
       const ta=attrs(tm[1]);
-      if(String(ta.Id)!=="142"&&!/^NHL$/i.test(String(ta.Name||"").trim()))continue;
+      if(String(ta.Id)!=="142"&&!/NHL/i.test(String(ta.Name||"").trim()))continue;
       for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
         const ma=attrs(mm[1]);
         const lines=[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1]));
