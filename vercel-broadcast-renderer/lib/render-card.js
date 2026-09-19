@@ -1,7 +1,7 @@
 import React from "react";
 import satori from "satori";
 import sharp from "sharp";
-import wawoff2 from "wawoff2";
+import { createFont, woff2 } from "fonteditor-core";
 import { readFile } from "node:fs/promises";
 
 const WIDTH = 820;
@@ -12,7 +12,7 @@ const templateUrl = new URL("../assets/card-template.webp", import.meta.url);
 const fontUrl = new URL("../assets/sofia-sans-condensed-italic.woff2", import.meta.url);
 
 const templatePromise = readFile(templateUrl);
-const fontPromise = (async()=>Buffer.from(await wawoff2.decompress(await readFile(fontUrl))))();
+const fontPromise = (async()=>{await woff2.init();const source=await readFile(fontUrl);const font=createFont(source,{type:"woff2"});return Buffer.from(font.write({type:"ttf"}));})();
 const logoCache = new Map();
 
 const TEAM = {
