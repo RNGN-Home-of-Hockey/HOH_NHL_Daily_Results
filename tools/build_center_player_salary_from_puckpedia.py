@@ -92,6 +92,9 @@ def norm(text: str) -> str:
         "aleksei medvedev":"alexei medvedev",
         "alex ovechkin":"alexander ovechkin",
         "danil zhilkin":"danny zhilkin",
+        "dmitri voronkov":"dmitry voronkov",
+        "nikita susuev":"nikita susuyev",
+        "cooper flinton":"robert flinton",
     }
     return aliases.get(s, s)
 
