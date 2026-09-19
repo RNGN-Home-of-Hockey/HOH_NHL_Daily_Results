@@ -269,7 +269,7 @@ async function ensureRenderedCard(env,cardId){
   const payload=rendererPayloadFromRow(row);
   if(!Number.isFinite(Number(payload.odds))||Number(payload.odds)<=1)throw new Error("winline_price_required");
   const body=JSON.stringify(payload);
-  const hash=await sha256Hex("renderer-v2-574x148:"+body);
+  const hash=await sha256Hex("renderer-v3-574x148-aligned:"+body);
   if(String(row.render_hash||"")===hash&&row.render_png_base64){
     return {cached:true,hash,bytes:Number(row.render_bytes||0),rendered_at:row.rendered_at||null};
   }
