@@ -32,7 +32,10 @@ jobs:
               SUM(CASE WHEN m.birth_date IS NOT NULL AND TRIM(m.birth_date)<>'' THEN 1 ELSE 0 END) birth_date,
               SUM(CASE WHEN p.current_team_tri IS NOT NULL AND TRIM(p.current_team_tri)<>'' THEN 1 ELSE 0 END) team,
               SUM(CASE WHEN p.position_code IS NOT NULL AND TRIM(p.position_code)<>'' THEN 1 ELSE 0 END) position,
-              SUM(CASE WHEN p.sweater_number IS NOT NULL THEN 1 ELSE 0 END) number
+              SUM(CASE WHEN p.sweater_number IS NOT NULL THEN 1 ELSE 0 END) number,
+              SUM(CASE WHEN m.height_cm IS NOT NULL THEN 1 ELSE 0 END) height,
+              SUM(CASE WHEN m.weight_kg IS NOT NULL THEN 1 ELSE 0 END) weight,
+              SUM(CASE WHEN m.height_cm IS NOT NULL AND m.weight_kg IS NOT NULL THEN 1 ELSE 0 END) physical_complete
             FROM players p LEFT JOIN player_profile_meta m ON m.player_id=p.player_id
             WHERE COALESCE(p.active,1)=1;
 
@@ -100,4 +103,10 @@ jobs:
             FROM winline_events we
             JOIN games g ON g.game_pk=we.game_pk
             WHERE UPPER(COALESCE(g.game_state,'')) NOT IN ('FINAL','OFF');
+
+            SELECT COUNT(*) user_profiles,
+                   SUM(CASE WHEN no_spoilers=1 THEN 1 ELSE 0 END) no_spoilers_enabled,
+                   SUM(CASE WHEN display_username IS NOT NULL AND TRIM(display_username)<>'' THEN 1 ELSE 0 END) with_nickname,
+                   SUM(CASE WHEN avatar_base64 IS NOT NULL AND avatar_base64<>'' THEN 1 ELSE 0 END) with_avatar
+            FROM app_user_profiles;
           "
