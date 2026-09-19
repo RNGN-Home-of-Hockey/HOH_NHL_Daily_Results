@@ -1,0 +1,88 @@
+name: Audit Center Data Quality
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-center-data-quality.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install Wrangler
+        run: npm install --no-audit --no-fund
+      - name: Audit remote D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT
+              COUNT(*) mapped_games,
+              SUM(CASE WHEN v.duration_seconds IS NOT NULL AND v.duration_seconds < 3600 THEN 1 ELSE 0 END) short_mapped,
+              SUM(CASE WHEN v.duration_seconds IS NULL THEN 1 ELSE 0 END) unknown_duration_mapped,
+              MIN(CASE WHEN v.duration_seconds IS NOT NULL THEN v.duration_seconds END) min_duration,
+              ROUND(AVG(CASE WHEN v.duration_seconds IS NOT NULL THEN v.duration_seconds END),1) avg_duration,
+              MAX(v.duration_seconds) max_duration
+            FROM game_vk_broadcasts m JOIN vk_broadcasts v ON v.source_key=m.source_key;
+
+            SELECT meta_key,meta_value,updated_at
+            FROM data_core_meta
+            WHERE meta_key IN (
+              'hoh_vk_video_backfill_algo','hoh_vk_video_backfill_offset','hoh_vk_video_backfill_done',
+              'hoh_vk_video_last_sync_json','hoh_vk_video_last_error'
+            ) ORDER BY meta_key;
+
+            SELECT
+              COUNT(*) active_players,
+              SUM(CASE WHEN m.player_id IS NOT NULL THEN 1 ELSE 0 END) with_profile_meta,
+              SUM(CASE WHEN m.primary_country_code IS NOT NULL AND TRIM(m.primary_country_code)<>'' THEN 1 ELSE 0 END) with_country,
+              SUM(CASE WHEN m.birth_date IS NOT NULL AND TRIM(m.birth_date)<>'' THEN 1 ELSE 0 END) with_birth_date,
+              SUM(CASE WHEN p.current_team_tri IS NOT NULL AND TRIM(p.current_team_tri)<>'' THEN 1 ELSE 0 END) with_team,
+              SUM(CASE WHEN p.position_code IS NOT NULL AND TRIM(p.position_code)<>'' THEN 1 ELSE 0 END) with_position,
+              SUM(CASE WHEN p.sweater_number IS NOT NULL THEN 1 ELSE 0 END) with_number
+            FROM players p LEFT JOIN player_profile_meta m ON m.player_id=p.player_id
+            WHERE COALESCE(p.active,1)=1;
+
+            SELECT
+              COUNT(DISTINCT s.player_id) exact_players_with_news,
+              COUNT(*) exact_player_news_links,
+              COUNT(DISTINCT n.news_id) exact_news
+            FROM sports_player_news_exact s JOIN sports_news n ON n.news_id=s.news_id;
+
+            SELECT COUNT(*) user_profiles,
+                   SUM(CASE WHEN display_username IS NOT NULL AND TRIM(display_username)<>'' THEN 1 ELSE 0 END) profiles_with_nick,
+                   SUM(CASE WHEN avatar_base64 IS NOT NULL AND avatar_base64<>'' THEN 1 ELSE 0 END) profiles_with_avatar
+            FROM app_user_profiles;
+          "
+      - name: Production UI/API smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const text=async p=>{const r=await fetch(base+p,{cache:'no-store'});if(!r.ok)throw new Error(p+' HTTP '+r.status);return r.text()};
+          const json=async p=>{const r=await fetch(base+p,{cache:'no-store'});const t=await r.text();if(!r.ok)throw new Error(p+' HTTP '+r.status+' '+t.slice(0,200));return JSON.parse(t)};
+          const shell=await text('/telegram-app');
+          if(!shell.includes('/telegram-app/v22.js'))throw new Error('V22 missing from shell');
+          const v22=await text('/telegram-app/v22.js');
+          for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','256','120000','normalizePlayers'])if(!v22.includes(x))throw new Error('V22 contract missing '+x);
+          const v20=await text('/telegram-app/v20.js');
+          for(const x of ['limit=15','v20NewsExtra','Ещё ','v20CommentAvatar'])if(!v20.includes(x))throw new Error('news/comment UI missing '+x);
+          const ovi=await json('/api/telegram-center-v20/players/8471214/news?limit=100');
+          if(!(ovi.news||[]).length)throw new Error('exact Ovechkin news empty');
+          const vk=await json('/api/telegram-center-v19/status');
+          console.log('QUALITY_SMOKE_OK',JSON.stringify({ovechkin_news:ovi.news.length,vk_mapped:vk.mapped_games,vk_unmapped:vk.unmapped_games,backfill:vk.backfill}));
+          JS
