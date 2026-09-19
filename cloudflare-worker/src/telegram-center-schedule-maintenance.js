@@ -35,6 +35,15 @@ export async function runCenterScheduleMaintenance(env,{now=null,force=false}={}
     const game = normalizeGame(raw,season);
     if (game) unique.set(game.game_pk,game);
   }
+
+  // Club season feeds can omit preseason. Merge the official near-term league
+  // schedule explicitly so gameType=1 appears in Data Core before the season.
+  const nearTerm = await fetchNearTermLeagueSchedule(clock,season);
+  for (const raw of nearTerm.games) {
+    const game = normalizeGame(raw,season);
+    if (game) unique.set(game.game_pk,game);
+  }
+
   if (unique.size < 500) {
     return {ok:false,maintenance:"schedule",error:"schedule_source_incomplete",season,unique_games:unique.size,source_errors:payloads.filter(x=>x.error)};
   }
@@ -71,6 +80,26 @@ export async function runCenterScheduleMaintenance(env,{now=null,force=false}={}
   const summary={season,unique_games:unique.size,written,source_errors:payloads.filter(x=>x.error).map(x=>({team:x.tri,error:x.error})),synced_at:clock.toISOString()};
   await writeMeta(env.DB,metaKey,JSON.stringify(summary));
   return {ok:true,maintenance:"schedule",skipped:false,interval_minutes:intervalMinutes,...summary,roster:rosterResult};
+}
+
+async function fetchNearTermLeagueSchedule(clock,season){
+  const unique=new Map(),errors=[];
+  // NHL schedule endpoint returns a week window. Three anchors cover the next
+  // three weeks and include preseason + the first regular-season games.
+  for(const dayOffset of [0,7,14]){
+    const day=new Date(clock.getTime()+dayOffset*86400000).toISOString().slice(0,10);
+    try{
+      const response=await fetch(`${NHL}/schedule/${day}`,{headers:{Accept:"application/json","User-Agent":"HOH-NHL-Center/7"}});
+      if(!response.ok){errors.push({day,error:`HTTP ${response.status}`});continue}
+      const data=await response.json();
+      for(const week of Array.isArray(data?.gameWeek)?data.gameWeek:[]){
+        for(const raw of Array.isArray(week?.games)?week.games:[]){
+          if(raw?.id)unique.set(Number(raw.id),raw);
+        }
+      }
+    }catch(error){errors.push({day,error:errorText(error)})}
+  }
+  return {games:[...unique.values()],errors,season};
 }
 
 async function refreshRostersIfDue(env,clock,force){
