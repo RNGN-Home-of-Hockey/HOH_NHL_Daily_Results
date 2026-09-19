@@ -291,48 +291,24 @@ function browserApp(){
 
 const OPERATOR_HTML=`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HOH Broadcast Operator</title><style>:root{--bg:#09090b;--panel:#121216;--line:#2b2b31;--text:#f5f4f1;--muted:#73737c;--orange:#ff5a1f;--lav:#c8b7ff;--green:#79dea9;--red:#df7169}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}.wrap{max-width:1180px;margin:auto;padding:28px 18px 80px}.brand{font-weight:950}.brand i{font-style:normal;color:var(--orange)}.hero{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid var(--line);padding:28px 0 18px}.eyebrow{font-size:8px;color:var(--lav);letter-spacing:.1em}.hero h1{font-size:36px;margin:5px 0}.hero p{font-size:9px;color:#777}.links{display:flex;gap:6px}.links a{color:#aaa;text-decoration:none;border:1px solid var(--line);padding:8px 10px;border-radius:9px;font-size:9px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.panel{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}.panel h3{font-size:9px;color:var(--lav);letter-spacing:.1em;text-transform:uppercase}.candidate,.saved{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #26262c;padding:10px 0}.candidate span,.saved>div:first-child{display:flex;flex-direction:column}.candidate b,.saved b{font-size:10px}.candidate small,.saved small{font-size:7px;color:#777;margin-top:3px}button,input{border:1px solid var(--line);background:#18181c;color:#fff;border-radius:8px;padding:8px 10px}button{font-weight:850;font-size:8px;cursor:pointer}.actions{display:flex;gap:5px}.show{background:var(--orange);color:#111;border-color:var(--orange)}.hide{border-color:#73413e;color:#e58a84}.empty{text-align:center;padding:45px;color:#777}.empty.small{padding:16px}.empty.error{color:var(--red)}@media(max-width:750px){.grid{grid-template-columns:1fr}.hero{display:block}.links{margin-top:10px;flex-wrap:wrap}.saved{align-items:flex-start;flex-direction:column}}</style></head><body><div class="wrap"><div class="brand">HOME OF <i>HOCKEY</i> · BROADCAST OPERATOR</div><main id="content"><div class="empty">Загрузка…</div></main></div><script src="/broadcast/operator/app.js"></script></body></html>`;
 
-const OVERLAY_HTML=`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HOH Broadcast Overlay</title><style>
-${BROADCAST_CARD_CSS}
+const OVERLAY_HTML=\`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HOH Broadcast Overlay</title><style>
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;background:transparent!important;overflow:hidden}
 .stage{position:fixed;inset:0;pointer-events:none}
-.stage .hohcard{position:absolute;left:64px;bottom:70px;width:820px;max-width:none;opacity:0;transform:translateY(26px);transition:opacity .25s ease,transform .25s ease}
-.stage .hohcard.on{opacity:1;transform:none}
-</style></head><body><!-- HOME OF HOCKEY × WINLINE -->
-<div class="stage">
-  <div class="hohcard" id="card">
-    <div class="hohcard-fact" id="fact"></div>
-    <div class="hohcard-teammark" id="teammark"></div>
-    <div class="hohcard-team" id="team"></div>
-    <div class="hohcard-market" id="market"></div>
-    <div class="hohcard-odds" id="odds"></div>
-    <div class="hohcard-profit"><strong id="profit"></strong><span id="profitsuffix"></span></div>
-  </div>
-</div>
+#cardimg{position:absolute;left:64px;bottom:70px;width:820px;height:211px;object-fit:contain;opacity:0;transform:translateY(26px);transition:opacity .25s ease,transform .25s ease}
+#cardimg.on{opacity:1;transform:none}
+</style></head><body><div class="stage"><img id="cardimg" alt=""></div>
 <script>
-const META={ANA:["АНАХАЙМ","#FC4C02"],BOS:["БОСТОН","#FFB81C"],BUF:["БАФФАЛО","#003087"],CGY:["КАЛГАРИ","#D2001C"],CAR:["КАРОЛИНА","#CE1126"],CHI:["ЧИКАГО","#CF0A2C"],COL:["КОЛОРАДО","#6F263D"],CBJ:["КОЛАМБУС","#002654"],DAL:["ДАЛЛАС","#006847"],DET:["ДЕТРОЙТ","#CE1126"],EDM:["ЭДМОНТОН","#FF4C00"],FLA:["ФЛОРИДА","#C8102E"],LAK:["ЛОС-АНДЖЕЛЕС","#A2AAAD"],MIN:["МИННЕСОТА","#154734"],MTL:["МОНРЕАЛЬ","#AF1E2D"],NSH:["НЭШВИЛЛ","#FFB81C"],NJD:["НЬЮ-ДЖЕРСИ","#CE1126"],NYI:["АЙЛЕНДЕРС","#00539B"],NYR:["РЕЙНДЖЕРС","#0038A8"],OTT:["ОТТАВА","#C52032"],PHI:["ФИЛАДЕЛЬФИЯ","#F74902"],PIT:["ПИТТСБУРГ","#FCB514"],SJS:["САН-ХОСЕ","#006D75"],SEA:["СИЭТЛ","#99D9D9"],STL:["СЕНТ-ЛУИС","#002F87"],TBL:["ТАМПА-БЭЙ","#002868"],TOR:["ТОРОНТО","#003E7E"],UTA:["ЮТА","#71AFE5"],VAN:["ВАНКУВЕР","#00843D"],VGK:["ВЕГАС","#B4975A"],WSH:["ВАШИНГТОН","#C8102E"],WPG:["ВИННИПЕГ","#AC162C"]};
-const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const RENDERER="https://hoh-broadcast-renderer.vercel.app";
+const META={ANA:["АНАХАЙМ","#FC4C02"],BOS:["БОСТОН","#FFB81C"],BUF:["БАФФАЛО","#003087"],CGY:["КАЛГАРИ","#D2001C"],CAR:["КАРОЛИНА","#CE1126"],CHI:["ЧИКАГО","#CF0A2C"],COL:["КОЛОРАДО","#6F263D"],CBJ:["КОЛАМБУС","#002654"],DAL:["ДАЛЛАС","#006847"],DET:["ДЕТРОЙТ","#CE1126"],EDM:["ЭДМОНТОН","#FF4C00"],FLA:["ФЛОРИДА","#C8102E"],LAK:["ЛОС-АНДЖЕЛЕС","#A2AAAD"],MIN:["МИННЕСОТА","#154734"],MTL:["МОНРЕАЛЬ","#AF1E2D"],NSH:["НЭШВИЛЛ","#FFB81C"],NJD:["НЬЮ-ДЖЕРСИ","#CE1126"],NYI:["АЙЛЕНДЕРС","#00539B"],NYR:["РЕЙНДЖЕРС","#0038A8"],OTT:["ОТТАВА","#C52032"],PHI:["ФИЛАДЕЛЬФИЯ","#F74902"],PIT:["ПИТТСБУРГ","#FCB514"],SJS:["САН-ХОСЕ","#006D75"],SEA:["СИЭТЛ","#99D9D9"],STL:["СЕНТ-ЛУИС","#002F87"],TBL:["ТАМПА-БЭЙ","#002868"],TOR:["ТОРОНТО","#003E7E"],UTA:["ЮТА","#71AFE5"],VAN:["ВАНКУВЕР","#00843D"],VGK:["ВЕГАС","#B4975A"],WSH:["ВАШИНГТОН","#C8102E"],WPG:["ВИННИПЕГ","#041E42"]};
 function payload(c){try{return c&&c.payload_json?JSON.parse(c.payload_json):{}}catch{return{}}}
 function teamCode(c,p){const a=String(c.away_tri||"").toUpperCase(),h=String(c.home_tri||"").toUpperCase();for(const v of [p&&p.market&&p.market.subject,p&&p.market&&p.market.side,p&&p.evidence&&p.evidence.team,c.suggested_market_subject]){const x=String(v||"").toUpperCase();if(x===a||x===h)return x}const t=String((p&&p.title)||c.headline_ru||"").toUpperCase();if(a&&t.includes(a))return a;if(h&&t.includes(h))return h;return a||h}
 function displayText(v){let s=String(v??"");for(const [tri,m] of Object.entries(META))s=s.replace(new RegExp("\\\\b"+tri+"\\\\b","gi"),m[0]);return s.replace(/([+-]?\\d+)\\.(\\d+)/g,"$1,$2").toUpperCase()}
 function marketText(c,p,teamName){const m=(p&&p.market)||{},type=String(m.type||c.suggested_market_type||"").toLowerCase(),side=String(m.side||"").toLowerCase(),line=Number(m.line);const n=Number.isFinite(line)?String(Math.abs(line)).replace(".",","):"";if(type==="handicap")return"ФОРА "+(line>0?"+":line<0?"-":"")+n+" ГОЛА";if(type==="team_total")return(side==="under"?"ИТМ ":"ИТБ ")+n+" ГОЛА";if(type==="game_total")return(side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+n;if(type==="moneyline")return"ПОБЕДА";if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";if(type==="period_2_result")return"2-Й ПЕРИОД · ПОБЕДА";return displayText(m.label||c.stat_text_ru||"СТАВКА WINLINE").replace(teamName,"").trim()}
-function factHtml(c,p,teamName){let s=esc(displayText((p&&p.title)||c.headline_ru||""));if(teamName)s=s.replace(esc(teamName),'<span class="facthot">'+esc(teamName)+'</span>');s=s.replace(/(\\d+\\s+ИЗ\\s+\\d+)/g,'<span class="facthot">$1</span>');s=s.replace(/(\\d+\\s*\\/\\s*\\d+)/g,'<span class="facthot">$1</span>');return s}
-function render(c){
-  const p=payload(c),tri=teamCode(c,p),meta=META[tri]||[tri||"КОМАНДА","#00e6c3"],name=meta[0];
-  const isHome=tri===String(c.home_tri||"").toUpperCase(),logo=isHome?c.home_logo:c.away_logo;
-  const market=p&&p.market?p.market:{},od=Number(market.odds??c.manual_odds),priced=Number.isFinite(od)&&od>1;
-  const profit=priced?Math.round((od-1)*1000):null,el=document.getElementById("card");
-  el.classList.toggle("hohcard-unpriced",!priced);
-  document.getElementById("fact").innerHTML=factHtml(c,p,name);
-  document.getElementById("team").textContent=name;
-  document.getElementById("market").textContent=marketText(c,p,name);
-  document.getElementById("odds").textContent=priced?od.toFixed(2):"—";
-  document.getElementById("profit").textContent=profit===null?"ЛИНИЯ НЕ НАЙДЕНА":"+"+profit.toLocaleString("ru-RU")+" РУБ";
-  document.getElementById("profitsuffix").textContent=profit===null?"WINLINE":"(ПРИ СТАВКЕ 1000 РУБ.)";
-  document.getElementById("teammark").innerHTML=logo?'<img src="'+esc(logo)+'" alt="'+esc(name)+'">':'<span>'+esc(tri)+'</span>';
-  el.classList.add("on");
-}
+function factText(c,p){let s=displayText((p&&p.title)||c.headline_ru||"");const m=(p&&p.market)||{};if(String(m.type||c.suggested_market_type||"").toLowerCase()==="handicap"&&!/ФОРУ[^А-ЯЁ]*[+-]?\\d+(?:,\\d+)?\\s+ГОЛА/.test(s)){s=s.replace(/ФОРУ\\s+([+-]?\\d+(?:,\\d+)?)/,"ФОРУ $1 ГОЛА")}return s}
+function encode(value){const bytes=new TextEncoder().encode(JSON.stringify(value));let binary="";for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(binary).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"")}
+function renderUrl(c){const p=payload(c),tri=teamCode(c,p),meta=META[tri]||[tri||"КОМАНДА","#00E6C3"],name=meta[0],color=meta[1];const isHome=tri===String(c.home_tri||"").toUpperCase(),logo=isHome?c.home_logo:c.away_logo;const m=(p&&p.market)||{},od=Number(m.odds??c.manual_odds);const body={team:tri,team_name:name,team_color:color,team_logo_url:logo||undefined,fact:factText(c,p),market:marketText(c,p,name),odds:Number.isFinite(od)&&od>1?od:null,stake:1000};return RENDERER+"/api/render-card?data="+encodeURIComponent(encode(body))}
 let current="";
-async function tick(){try{const r=await fetch("/api/broadcast/state",{cache:"no-store"}),d=await r.json(),c=d.on_air,el=document.getElementById("card");if(!c){current="";el.classList.remove("on");return}if(c.card_id!==current){current=c.card_id;render(c)}else el.classList.add("on")}catch(e){console.error(e)}}
+async function tick(){try{const r=await fetch("/api/broadcast/state",{cache:"no-store"}),d=await r.json(),c=d.on_air,img=document.getElementById("cardimg");if(!c){current="";img.classList.remove("on");img.removeAttribute("src");return}const url=renderUrl(c);if(c.card_id!==current||img.src!==url){current=c.card_id;img.onload=()=>img.classList.add("on");img.onerror=()=>img.classList.remove("on");img.src=url}else img.classList.add("on")}catch(e){console.error(e)}}
 tick();setInterval(tick,750);
-</script></body></html>`;
+</script></body></html>\`;
