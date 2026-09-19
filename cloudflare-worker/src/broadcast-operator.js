@@ -177,7 +177,7 @@ async function persistDraft(db,card,meta){
     INSERT INTO broadcast_cards(
       card_id,game_pk,insight_id,display_order,headline_ru,stat_text_ru,source_note_ru,
       suggested_market_type,suggested_market_subject,manual_odds,odds_is_demo,payload_json,status,updated_at
-    ) VALUES(?,?,NULL,999,?,?,?,?,?,?,?,?,?,'draft',CURRENT_TIMESTAMP)
+    ) VALUES(?,?,NULL,999,?,?,?,?,?,?,?,?,'draft',CURRENT_TIMESTAMP)
     ON CONFLICT(card_id) DO UPDATE SET
       headline_ru=excluded.headline_ru,stat_text_ru=excluded.stat_text_ru,source_note_ru=excluded.source_note_ru,
       suggested_market_type=excluded.suggested_market_type,suggested_market_subject=excluded.suggested_market_subject,
