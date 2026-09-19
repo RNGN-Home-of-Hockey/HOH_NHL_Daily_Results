@@ -41,7 +41,9 @@ function save(){
   localStorage.setItem(KEY,state.enabled?'1':'0');
   try{tg?.CloudStorage?.setItem?.(KEY,state.enabled?'1':'0',()=>{})}catch{}
 }
-function toggle(){state.enabled=!state.enabled;save();apply(true)}
+function emit(){try{window.dispatchEvent(new CustomEvent('hoh-spoilers-change',{detail:{enabled:Boolean(state.enabled)}}))}catch{}}
+function toggle(){state.enabled=!state.enabled;save();apply(true);emit()}
+window.HOHSetNoSpoilers=function(enabled){state.enabled=Boolean(enabled);save();apply(false)};
 function install(){
   style();
   let b=document.getElementById('v21SpoilerToggle');
