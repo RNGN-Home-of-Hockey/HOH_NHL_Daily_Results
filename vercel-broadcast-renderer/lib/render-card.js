@@ -1,8 +1,6 @@
-import React from "react";
-import satori from "satori";
 import sharp from "sharp";
-import { createFont, woff2 } from "fonteditor-core";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 const WIDTH = 820;
 const HEIGHT = 211;
@@ -10,9 +8,9 @@ const STAKE_DEFAULT = 1000;
 
 const templateUrl = new URL("../assets/card-template.webp", import.meta.url);
 const fontUrl = new URL("../assets/sofia-sans-condensed-italic.woff2", import.meta.url);
+const fontPath = fileURLToPath(fontUrl);
 
 const templatePromise = readFile(templateUrl);
-const fontPromise = (async()=>{await woff2.init();const source=await readFile(fontUrl);const font=createFont(source,{type:"woff2"});return Buffer.from(font.write({type:"ttf"}));})();
 const logoCache = new Map();
 
 const TEAM = {
@@ -29,62 +27,75 @@ const TEAM = {
   WSH:["ВАШИНГТОН","#C8102E"],WPG:["ВИННИПЕГ","#041E42"]
 };
 
-const e = React.createElement;
 const upper = (v) => String(v ?? "").trim().toUpperCase();
 const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
+
+function escapeMarkup(value){
+  return String(value ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&apos;");
+}
 
 function normalizeDecimalText(value){
   return upper(value).replace(/([+-]?\d+)\.(\d+)/g,"$1,$2");
 }
 
-function fontSizeForFact(text){
-  const n=String(text||"").length;
-  if(n<=58)return 20;
-  if(n<=70)return 18;
-  if(n<=82)return 16;
-  return 14;
-}
-
-function fontSizeForTeam(text){
-  const n=String(text||"").length;
-  if(n<=9)return 33;
-  if(n<=13)return 30;
-  if(n<=17)return 27;
-  return 24;
-}
-
-function fontSizeForMarket(text){
-  const n=String(text||"").length;
-  return n<=20?18:n<=28?16:14;
-}
-
-function highlightFact(text, teamName){
+function highlightedFactMarkup(text, teamName){
   const source=normalizeDecimalText(text);
-  const escaped=String(teamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-  const parts=[];
-  const re=new RegExp("(" + (escaped?escaped+"|":"") + "\\d+\\s+ИЗ\\s+\\d+|\\d+\\s*\\/\\s*\\d+)","gi");
-  let last=0,m;
+  const escapedTeam=String(teamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const re=new RegExp("("+(escapedTeam?escapedTeam+"|":"")+"\\d+\\s+ИЗ\\s+\\d+|\\d+\\s*\\/\\s*\\d+)","gi");
+  let out="",last=0,m;
   while((m=re.exec(source))){
-    if(m.index>last)parts.push({text:source.slice(last,m.index),hot:false});
-    parts.push({text:m[0],hot:true});
+    out+=escapeMarkup(source.slice(last,m.index));
+    out+=`<span foreground="#FF641E">${escapeMarkup(m[0])}</span>`;
     last=m.index+m[0].length;
   }
-  if(last<source.length)parts.push({text:source.slice(last),hot:false});
-  return parts.length?parts:[{text:source,hot:false}];
+  out+=escapeMarkup(source.slice(last));
+  return out||escapeMarkup(source);
 }
 
-async function asDataUri(url){
+async function textLayer({
+  markup,
+  width,
+  height,
+  size,
+  color="#FFFFFF",
+  align="left"
+}){
+  return sharp({
+    text:{
+      text:`<span foreground="${color}">${markup}</span>`,
+      font:`Sofia Sans Condensed ${size}`,
+      fontfile:fontPath,
+      width,
+      height,
+      align,
+      justify:false,
+      rgba:true,
+      wrap:"none"
+    }
+  }).png().toBuffer();
+}
+
+async function fetchLogo(url){
   if(!url)return null;
-  if(url.startsWith("data:"))return url;
   if(logoCache.has(url))return logoCache.get(url);
   try{
-    const response=await fetch(url,{signal:AbortSignal.timeout(3500),headers:{"User-Agent":"HOH-Broadcast-Renderer/1.0"}});
+    const response=await fetch(url,{
+      signal:AbortSignal.timeout(3500),
+      headers:{"User-Agent":"HOH-Broadcast-Renderer/1.0"}
+    });
     if(!response.ok)throw new Error("logo HTTP "+response.status);
-    const type=response.headers.get("content-type")||"image/svg+xml";
-    const buf=Buffer.from(await response.arrayBuffer());
-    const data="data:"+type+";base64,"+buf.toString("base64");
-    logoCache.set(url,data);
-    return data;
+    const source=Buffer.from(await response.arrayBuffer());
+    const png=await sharp(source,{density:240})
+      .resize(88,88,{fit:"contain",background:{r:0,g:0,b:0,alpha:0}})
+      .png()
+      .toBuffer();
+    logoCache.set(url,png);
+    return png;
   }catch{
     return null;
   }
@@ -109,79 +120,55 @@ export function normalizePayload(input={}){
 
 export async function renderCard(input={}){
   const p=normalizePayload(input);
-  const [template,font,logoData]=await Promise.all([
-    templatePromise,
-    fontPromise,
-    asDataUri(p.logoUrl)
-  ]);
+  const template=await templatePromise;
+  const logo=await fetchLogo(p.logoUrl);
 
-  const factParts=highlightFact(p.fact,p.teamName);
-  const baseStyle={
-    position:"absolute",
-    display:"flex",
-    overflow:"hidden",
-    fontFamily:"SofiaHOH",
-    fontStyle:"italic",
-    fontWeight:700,
-    color:"#FFFFFF",
-    lineHeight:1
-  };
-
-  const overlay=e("div",{style:{
-    position:"relative",display:"flex",width:WIDTH,height:HEIGHT,
-    background:"transparent",fontFamily:"SofiaHOH",fontStyle:"italic",fontWeight:700
-  }},
-    e("div",{style:{
-      position:"absolute",display:"flex",left:8,top:14,width:7,height:43,
-      borderRadius:4,backgroundColor:p.teamColor
-    }}),
-    e("div",{style:{
-      ...baseStyle,left:44,top:12,width:724,height:48,alignItems:"center",
-      whiteSpace:"nowrap",fontSize:fontSizeForFact(p.fact),letterSpacing:"0.1px"
-    }},...factParts.map((part,i)=>e("span",{key:i,style:{color:part.hot?"#FF641E":"#FFFFFF"}},part.text))),
-    e("div",{style:{
-      ...baseStyle,left:17,top:83,width:116,height:108,
-      alignItems:"center",justifyContent:"center"
-    }},logoData
-      ? e("img",{src:logoData,width:88,height:88,style:{objectFit:"contain"}})
-      : e("span",{style:{fontSize:24,color:"#D8D8DC"}},p.team)
-    ),
-    e("div",{style:{
-      ...baseStyle,left:153,top:94,width:235,height:38,alignItems:"center",
-      whiteSpace:"nowrap",fontSize:fontSizeForTeam(p.teamName)
-    }},p.teamName),
-    e("div",{style:{
-      ...baseStyle,left:153,top:134,width:235,height:29,alignItems:"center",
-      whiteSpace:"nowrap",fontSize:fontSizeForMarket(p.market),color:"#D6D6DA"
-    }},p.market),
-    e("div",{style:{
-      ...baseStyle,left:656,top:83,width:136,height:68,alignItems:"center",
-      justifyContent:"center",whiteSpace:"nowrap",fontSize:p.priced?48:38,
-      letterSpacing:"-1px"
-    }},p.priced?p.odds.toFixed(2):"—"),
-    e("div",{style:{
-      ...baseStyle,left:435,top:164,width:346,height:39,alignItems:"center",
-      justifyContent:"center",whiteSpace:"nowrap",gap:10
-    }},
-      e("span",{style:{fontSize:p.priced?20:16,color:"#FF641E"}},p.priced
-        ?"+"+p.profit.toLocaleString("ru-RU")+" РУБ"
-        :"ЛИНИЯ НЕ НАЙДЕНА"
-      ),
-      e("span",{style:{fontSize:12,color:"#D4D4D8"}},p.priced
-        ?"(ПРИ СТАВКЕ "+p.stake.toLocaleString("ru-RU")+" РУБ.)"
-        :"WINLINE"
-      )
-    )
-  );
-
-  const svg=await satori(overlay,{
-    width:WIDTH,height:HEIGHT,
-    fonts:[{name:"SofiaHOH",data:font,weight:700,style:"italic"}]
+  const fact=await textLayer({
+    markup:highlightedFactMarkup(p.fact,p.teamName),
+    width:724,height:48,size:22,align:"left"
   });
+  const teamName=await textLayer({
+    markup:escapeMarkup(p.teamName),
+    width:235,height:38,size:38,align:"left"
+  });
+  const market=await textLayer({
+    markup:escapeMarkup(p.market),
+    width:235,height:29,size:22,color:"#D6D6DA",align:"left"
+  });
+  const odds=await textLayer({
+    markup:escapeMarkup(p.priced?p.odds.toFixed(2):"—"),
+    width:136,height:68,size:p.priced?58:46,align:"center"
+  });
+  const profitMarkup=p.priced
+    ? `<span foreground="#FF641E">+${escapeMarkup(p.profit.toLocaleString("ru-RU"))} РУБ</span>  <span foreground="#D4D4D8">(ПРИ СТАВКЕ ${escapeMarkup(p.stake.toLocaleString("ru-RU"))} РУБ.)</span>`
+    : `<span foreground="#FF641E">ЛИНИЯ НЕ НАЙДЕНА</span>  <span foreground="#D4D4D8">WINLINE</span>`;
+  const profit=await textLayer({
+    markup:profitMarkup,
+    width:346,height:39,size:p.priced?22:18,align:"center"
+  });
+
+  const composites=[
+    {input:{create:{width:7,height:43,channels:4,background:p.teamColor}},left:8,top:14},
+    {input:fact,left:44,top:12},
+    {input:teamName,left:153,top:94},
+    {input:market,left:153,top:134},
+    {input:odds,left:656,top:83},
+    {input:profit,left:435,top:164}
+  ];
+
+  if(logo){
+    composites.push({input:logo,left:31,top:92});
+  }else{
+    const fallback=await textLayer({
+      markup:escapeMarkup(p.team),
+      width:88,height:88,size:28,color:"#D8D8DC",align:"center"
+    });
+    composites.push({input:fallback,left:31,top:92});
+  }
 
   return sharp(template)
     .ensureAlpha()
-    .composite([{input:Buffer.from(svg)}])
+    .composite(composites)
     .png({compressionLevel:9,adaptiveFiltering:true})
     .toBuffer();
 }
