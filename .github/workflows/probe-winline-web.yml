@@ -38,12 +38,18 @@ jobs:
             for(const s of scripts.slice(-12)){
               try{
                 const sr=await fetch(s,{headers:{'user-agent':'Mozilla/5.0'}});
-                if(!sr.ok)continue;
                 const js=await sr.text();
-                const hits=[...new Set(js.split(/[\s"'(){};,]+/).filter(x=>/prematch|back\.winline|events|tournaments|\/api\//i.test(x)))];
-                if(hits.length)console.log('BUNDLE_HITS',s,hits.slice(0,120));
+                console.log('BUNDLE',s,sr.status,js.length);
+                for(const needle of ['back.winline','prematch','/api/','events','tournament','sportEvent','eventList','line/list']){
+                  let pos=0,count=0;
+                  while((pos=js.toLowerCase().indexOf(needle.toLowerCase(),pos))>=0&&count<8){
+                    console.log('CTX',needle,js.slice(Math.max(0,pos-240),Math.min(js.length,pos+520)).replace(/\\s+/g,' '));
+                    pos+=needle.length;count++;
+                  }
+                }
               }catch(e){console.log('BUNDLE_ERR',s,String(e))}
             }
           }
           JS
 # retry probe 2026-09-19
+# context probe 2026-09-19
