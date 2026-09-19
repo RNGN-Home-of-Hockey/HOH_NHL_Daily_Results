@@ -146,7 +146,7 @@ function normalizePlayer(p,tri,forced){const id=Number(p?.id),first=localized(p?
 function normalizeGame(raw,season){
   const id=Number(raw?.id),home=upper(raw?.homeTeam?.abbrev),away=upper(raw?.awayTeam?.abbrev),start=raw?.startTimeUTC||raw?.startTimeUtc;
   if(!Number.isSafeInteger(id)||id<=0||!home||!away||!start)return null;
-  return {game_pk:id,season_id:String(raw?.season||season),game_type:integerOrNull(raw?.gameType),scheduled_start_utc:start,game_state:upper(raw?.gameState||"FUT"),home_tri:home,away_tri:away,home_score:numberOrNull(raw?.homeTeam?.score),away_score:numberOrNull(raw?.awayTeam?.score),current_period:integerOrNull(raw?.periodDescriptor?.number),period_type:raw?.periodDescriptor?.periodType||raw?.gameOutcome?.lastPeriodType||null,venue_name:localized(raw?.venue)};
+  return {game_pk:id,season_id:String(raw?.season||season),game_type:integerOrNull(raw?.gameType),scheduled_start_utc:start,game_state:upper(raw?.gameState||"FUT"),home_tri:home,away_tri:away,home_score:numberOrZero(raw?.homeTeam?.score),away_score:numberOrZero(raw?.awayTeam?.score),current_period:integerOrNull(raw?.periodDescriptor?.number),period_type:raw?.periodDescriptor?.periodType||raw?.gameOutcome?.lastPeriodType||null,venue_name:localized(raw?.venue)};
 }
 async function writeMeta(db,key,value){await db.prepare(`INSERT INTO data_core_meta (meta_key,meta_value,updated_at) VALUES (?,?,CURRENT_TIMESTAMP) ON CONFLICT(meta_key) DO UPDATE SET meta_value=excluded.meta_value,updated_at=CURRENT_TIMESTAMP;`).bind(key,value).run()}
 function fresh(updatedAt,clock,minutes){if(!updatedAt)return false;const age=clock.getTime()-Date.parse(`${String(updatedAt).replace(" ","T")}Z`);return Number.isFinite(age)&&age>=0&&age<minutes*60*1000}
@@ -155,5 +155,6 @@ function localized(value){if(!value)return null;if(typeof value==="string")retur
 function upper(v){return String(v||"").trim().toUpperCase()}
 function integerOrNull(v){const n=Number(v);return Number.isSafeInteger(n)?n:null}
 function numberOrNull(v){if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null}
+function numberOrZero(v){const n=Number(v);return Number.isFinite(n)?n:0}
 function envInt(value,fallback,min,max){const n=Number(value);return Number.isSafeInteger(n)&&n>=min&&n<=max?n:fallback}
 function errorText(error){return String(error?.message||error||"unknown_error")}
