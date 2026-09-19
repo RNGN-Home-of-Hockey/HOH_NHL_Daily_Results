@@ -44,10 +44,10 @@ jobs:
                 const js=await sr.text();
                 console.log('BUNDLE',s,sr.status,js.length);
                 if(s.includes('main.')){
-                  const urls=[...new Set(js.match(/https?:\\/\\/[^"'\\s)<>]+/g)||[])].filter(x=>/winline|win-line|api|sapi|event/i.test(x));
+                  const urls=[...new Set(js.split(/[\\s"'(){};,]+/).filter(x=>x.startsWith('http://')||x.startsWith('https://')).map(x=>x.replace(/[\\]$/,'')))].filter(x=>x.includes('winline')||x.includes('win-line')||x.includes('api')||x.includes('event'));
                   console.log('MAIN_URLS',urls.slice(0,250));
-                  for(const needle of ['sapi','\\$events','\\$sports','idChampionship','apiUrl','socket','websocket','ws://','wss://','betline','lineApi','eventApi']){
-                    let pos=0,count=0,low=js.toLowerCase(),n=needle.replaceAll('\\\\','').toLowerCase();
+                  for(const needle of ['this.sapi','sapi=','$events','$sports','idChampionship','apiUrl','socket','websocket','ws://','wss://','betline','lineApi','eventApi','SportsApi']){
+                    let pos=0,count=0,low=js.toLowerCase(),n=needle.toLowerCase();
                     while((pos=low.indexOf(n,pos))>=0&&count<10){
                       console.log('DEEPCTX',needle,js.slice(Math.max(0,pos-300),Math.min(js.length,pos+700)).replace(/\\s+/g,' '));
                       pos+=Math.max(1,n.length);count++;
@@ -69,3 +69,4 @@ jobs:
 # context probe 2026-09-19
 # base-href probe 2026-09-19
 # deep sports api probe 2026-09-19
+# safe deep sports api probe 2026-09-19
