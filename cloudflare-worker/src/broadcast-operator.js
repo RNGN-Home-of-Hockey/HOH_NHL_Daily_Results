@@ -253,7 +253,7 @@ async function renderedCardRoute(env,cardId){
       "Content-Type":"image/png",
       "Content-Length":String(bytes.length),
       "Cache-Control":"public, max-age=31536000, immutable",
-      "ETag":`"`{String(row.render_hash||"")}`",
+      "ETag":"\""+String(row.render_hash||"")+"\"",
       "X-HOH-Render-Hash":String(row.render_hash||""),
       "X-Content-Type-Options":"nosniff"
     }});
@@ -282,7 +282,7 @@ async function ensureRenderedCard(env,cardId){
   });
   if(!response.ok){
     const message=await response.text().catch(()=>"");
-    throw new Error(`renderer_http_`{response.status}`{message?": "+message.slice(0,240):""}`);
+    throw new Error("renderer_http_"+response.status+(message?": "+message.slice(0,240):""));
   }
   const type=String(response.headers.get("content-type")||"").toLowerCase();
   if(!type.includes("image/png"))throw new Error("renderer_invalid_content_type");
