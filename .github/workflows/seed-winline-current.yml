@@ -47,10 +47,11 @@ jobs:
           const events=[];
           for(const cm of sport[2].matchAll(/<Country\b([^>]*)>([\s\S]*?)<\/Country>/gi)){
             for(const tm of cm[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
-              const ta=attrs(tm[1]); if(String(ta.Id)!=='142'&&!/NHL/i.test(String(ta.Name||'').trim()))continue;
+              const ta=attrs(tm[1]);
               for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
                 const ma=attrs(mm[1]),lines=[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1]));
-                events.push({ma,lines});
+                if(!TEAM[norm(ma.Team1)]||!TEAM[norm(ma.Team2)])continue;
+                events.push({ma,lines,tournament_id:String(ta.Id||''),tournament_name:String(ta.Name||'')});
               }
             }
           }
@@ -130,4 +131,4 @@ jobs:
           npx wrangler d1 execute hoh-data-core --remote --command "SELECT COUNT(DISTINCT game_pk) games_with_snapshots,COUNT(*) snapshots FROM winline_market_snapshots;"
           npx wrangler d1 execute hoh-data-core --remote --command "SELECT e.game_pk,e.winline_event_id,MAX(CASE WHEN m.winline_market_id=e.winline_event_id||':main_1x2:1' THEN m.odds END) p1,MAX(CASE WHEN m.winline_market_id=e.winline_event_id||':main_1x2:X' THEN m.odds END) x,MAX(CASE WHEN m.winline_market_id=e.winline_event_id||':main_1x2:2' THEN m.odds END) p2 FROM winline_events e LEFT JOIN winline_markets m ON m.winline_event_id=e.winline_event_id GROUP BY e.game_pk,e.winline_event_id ORDER BY e.game_pk;"
 
-# preseason tournament refresh trigger 2026-09-19c
+# preseason identity scan trigger 2026-09-19d
