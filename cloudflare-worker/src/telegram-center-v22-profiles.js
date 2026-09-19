@@ -42,7 +42,7 @@ async function putMe(request,env){
     if(Number.isFinite(changed)&&Date.now()-changed<24*3600*1000){
       return json({ok:false,error:"username_change_cooldown",next_change_at:new Date(changed+24*3600*1000).toISOString()},409);
     }
-    const exists=await env.DB.prepare("SELECT telegram_user_id FROM app_user_profiles WHERE LOWER(display_username)=LOWER(?) AND telegram_user_id<>? LIMIT 1").bind(username,auth.user.id).first();
+    const exists=await env.DB.prepare("SELECT telegram_user_id FROM app_user_profiles WHERE display_username_norm=? AND telegram_user_id<>? LIMIT 1").bind(usernameNorm(username),auth.user.id).first();
     if(exists)return json({ok:false,error:"username_taken"},409);
   }
 
@@ -73,16 +73,16 @@ async function putMe(request,env){
   const usernameChanged=username&&String(current?.display_username||"").toLowerCase()!==username.toLowerCase()?new Date().toISOString().replace("T"," ").replace("Z",""):current?.username_changed_at||null;
   await env.DB.prepare(`
     INSERT INTO app_user_profiles
-      (telegram_user_id,display_username,profile_name,birth_date,city,hockey_since_year,favorite_team_tri,favorite_player,
+      (telegram_user_id,display_username,display_username_norm,profile_name,birth_date,city,hockey_since_year,favorite_team_tri,favorite_player,
        theme_mode,avatar_mime,avatar_base64,avatar_bytes,username_changed_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
     ON CONFLICT(telegram_user_id) DO UPDATE SET
-      display_username=excluded.display_username,profile_name=excluded.profile_name,birth_date=excluded.birth_date,
+      display_username=excluded.display_username,display_username_norm=excluded.display_username_norm,profile_name=excluded.profile_name,birth_date=excluded.birth_date,
       city=excluded.city,hockey_since_year=excluded.hockey_since_year,favorite_team_tri=excluded.favorite_team_tri,
       favorite_player=excluded.favorite_player,theme_mode=excluded.theme_mode,avatar_mime=excluded.avatar_mime,
       avatar_base64=excluded.avatar_base64,avatar_bytes=excluded.avatar_bytes,
       username_changed_at=excluded.username_changed_at,updated_at=CURRENT_TIMESTAMP;
-  `).bind(auth.user.id,username,profileName,birthDate,city,hockeySince,favTeam,favoritePlayer,theme,avatarMime,avatarBase64,avatarBytes,usernameChanged).run();
+  `).bind(auth.user.id,username,usernameNorm(username),profileName,birthDate,city,hockeySince,favTeam,favoritePlayer,theme,avatarMime,avatarBase64,avatarBytes,usernameChanged).run();
 
   const saved=await env.DB.prepare(`
     SELECT telegram_user_id,display_username,profile_name,birth_date,city,hockey_since_year,
@@ -110,6 +110,7 @@ function decorateProfile(p,id){
   return {...p,exists:true,has_avatar:Boolean(Number(p.has_avatar)),avatar_url:Number(p.has_avatar)?API+"/avatars/"+id:null};
 }
 function cleanUsername(v){const s=String(v||"").trim().replace(/^@/,"");return /^[A-Za-zА-Яа-яЁё0-9_]{3,24}$/u.test(s)?s:null}
+function usernameNorm(v){return v?String(v).normalize("NFKC").toLocaleLowerCase("ru-RU"):null}
 function cleanText(v,max){const s=String(v||"").trim().replace(/\s+/g," ");return s?s.slice(0,max):null}
 function cleanDate(v){const s=String(v||"").trim();if(!s)return null;if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return null;const d=new Date(s+"T00:00:00Z");return Number.isNaN(d.getTime())?null:s}
 function cleanTri(v){const s=String(v||"").trim().toUpperCase();return /^[A-Z]{3}$/.test(s)?s:null}
