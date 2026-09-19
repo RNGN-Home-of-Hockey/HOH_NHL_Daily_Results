@@ -500,7 +500,7 @@ ${BROADCAST_CARD_CSS}
 .actions{height:36px;display:grid;grid-template-columns:1fr 1.2fr;border-top:1px solid #29292e}.act{padding:8px;font-size:9px}.show{background:#29292e;color:#a8a8ae}.show:hover{background:var(--orange);color:#111}.hide{background:#35171a;color:#ff8f8f}.noln{background:#17171a;color:#666;cursor:not-allowed}.drawer{width:min(930px,96vw)}.preview{margin:auto 0;background:transparent;border:0;border-radius:0;padding:18px;overflow:auto}.preview .aircard{width:820px;height:196px;min-width:820px;max-width:820px;margin:auto}
 @media(max-width:1100px){.app{grid-template-columns:240px 1fr}.work{grid-template-columns:1fr}.rightcol{grid-template-columns:1fr 1fr}.top{grid-template-columns:1fr}.air{max-width:none}.metrics{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.app{display:block}.side{position:relative;height:auto}.main{padding:16px}.match{grid-template-columns:1fr auto 1fr;padding:18px 12px}.logo{display:none}.score{font-size:42px}.code{font-size:22px}.cards{grid-template-columns:1fr}.rightcol{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}}
-\n#cards .card:before{content:none}\n#cards .card{padding-top:0}\n.preview .hohcard{width:820px;max-width:100%}\n
+
 #cards .card:before{content:none}
 #cards .card{padding-top:0}
 #cards .hohcard{width:100%;max-width:820px}
