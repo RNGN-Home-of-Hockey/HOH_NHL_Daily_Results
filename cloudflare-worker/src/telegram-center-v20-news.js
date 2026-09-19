@@ -151,7 +151,7 @@ async function status(env){
   try{
     const [n,p,c,s,last,ovi]=await Promise.all([
       env.DB.prepare("SELECT COUNT(*) count,MAX(COALESCE(published_at,created_at)) latest FROM sports_news").first(),
-      env.DB.prepare("SELECT COUNT(DISTINCT player_id) players FROM sports_news_players").first(),
+      env.DB.prepare("SELECT COUNT(DISTINCT player_id) players FROM sports_player_news_exact").first(),
       env.DB.prepare("SELECT COUNT(*) count FROM sports_news_comments WHERE deleted=0").first(),
       env.DB.prepare("SELECT COUNT(*) sources,SUM(CASE WHEN backfill_done=1 THEN 1 ELSE 0 END) done FROM sports_player_sources").first(),
       loadMeta(env.DB,"sports_ru_nhl_home_sync"),
