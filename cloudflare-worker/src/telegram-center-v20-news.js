@@ -91,7 +91,7 @@ async function queryPlayerNews(db,playerId,limit){
   return db.prepare(`
     SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
            COUNT(c.comment_id) comment_count
-    FROM sports_news_players p
+    FROM sports_player_news_exact p
     JOIN sports_news n ON n.news_id=p.news_id
     LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
     WHERE p.player_id=?
@@ -120,13 +120,16 @@ async function comments(env,newsId){
   if(!Number.isSafeInteger(newsId)||newsId<=0)return json({ok:false,error:"invalid_news_id"},400);
   try{
     const rows=await env.DB.prepare(`
-      SELECT c.comment_id,c.body,c.created_at,u.telegram_user_id,u.username,u.first_name,u.last_name
+      SELECT c.comment_id,c.body,c.created_at,u.telegram_user_id,u.username,u.first_name,u.last_name,
+             p.display_username,p.profile_name,
+             CASE WHEN p.avatar_base64 IS NOT NULL AND p.avatar_base64<>'' THEN 1 ELSE 0 END has_avatar
       FROM sports_news_comments c
       JOIN telegram_users u ON u.telegram_user_id=c.telegram_user_id
+      LEFT JOIN app_user_profiles p ON p.telegram_user_id=c.telegram_user_id
       WHERE c.news_id=? AND c.deleted=0
       ORDER BY c.created_at ASC,c.comment_id ASC LIMIT 250;
     `).bind(newsId).all();
-    return json({ok:true,news_id:newsId,comments:(rows.results||[]).map(x=>({...x,author:displayName(x)}))});
+    return json({ok:true,news_id:newsId,comments:(rows.results||[]).map(x=>({...x,author:displayName(x),avatar_url:Number(x.has_avatar)?"/api/telegram-center-v22/avatars/"+x.telegram_user_id:null}))});
   }catch(error){return json({ok:false,error:"comments_failed",detail:errorText(error)},503)}
 }
 
@@ -275,6 +278,7 @@ async function scanOnePlayerSource(env,src){
     const id=await upsertNews(env.DB,item);
     if(!id)continue;
     await linkNewsPlayer(env.DB,id,Number(src.player_id));
+    await env.DB.prepare("INSERT OR IGNORE INTO sports_player_news_exact(player_id,news_id,source_page_url) VALUES(?,?,?)").bind(Number(src.player_id),id,src.source_url).run();
     stored++;
   }
   const hasNext=page<MAX_PLAYER_PAGE&&hasNextNewsPage(html,page+1)&&items.length>0;
@@ -421,7 +425,7 @@ async function enrichNews(url){
   return {body_text:body||null,published_at:validDate(published)};
 }
 
-function displayName(x){return [x.first_name,x.last_name].filter(Boolean).join(" ").trim()||(x.username?"@"+x.username:"Пользователь")}
+function displayName(x){return x.display_username?("@"+x.display_username):x.profile_name||[x.first_name,x.last_name].filter(Boolean).join(" ").trim()||(x.username?"@"+x.username:"Пользователь")}
 function clamp(v,d,min,max){const n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.trunc(n))):d}
 function errorText(error){return String(error?.message||error||"unknown_error")}
 
