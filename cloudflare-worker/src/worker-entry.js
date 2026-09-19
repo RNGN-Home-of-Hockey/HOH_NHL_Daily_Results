@@ -22,6 +22,7 @@ const CANARY_START_DATE = "2024-10-04";
 const CANARY_END_DATE = "2025-06-30";
 const CANARY_TARGET_GAMES = 10;
 const WINLINE_PARTNER_URL = "https://p.winline.ru/s/hSJPscomBm?statid=2558_&sub4=nhl&promocode=NHL";
+const WINLINE_NHL_URL = "https://winline.ru/stavki/sport/xokkej/ssha/nhl";
 const WINLINE_EVENT_WINDOW_MS = 45 * 24 * 60 * 60 * 1000;
 
 export default {
@@ -185,9 +186,8 @@ async function winlineClickRoute(request, env) {
       `).bind(eventId).first();
     }
   }catch{}
-  if(!isUpcomingWinlineRow(row))return redirect(WINLINE_PARTNER_URL);
-
-  const tracked=await trackedWinlineEventUrl(row.deeplink).catch(()=>null);
+  const destination=isUpcomingWinlineRow(row)?row.deeplink:WINLINE_NHL_URL;
+  const tracked=await trackedWinlineDestinationUrl(destination).catch(()=>null);
   return redirect(tracked||WINLINE_PARTNER_URL);
 }
 
@@ -201,8 +201,8 @@ function isUpcomingWinlineRow(row){
   return delta>=-6*60*60*1000&&delta<=WINLINE_EVENT_WINDOW_MS;
 }
 
-async function trackedWinlineEventUrl(eventUrl){
-  const target=new URL(String(eventUrl||""));
+async function trackedWinlineDestinationUrl(destinationUrl){
+  const target=new URL(String(destinationUrl||""));
   if(!/(^|\.)winline\.ru$/i.test(target.hostname))return null;
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
   try{
