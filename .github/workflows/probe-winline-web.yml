@@ -1,0 +1,48 @@
+name: Probe Winline NHL Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-winline-web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Probe Winline NHL page and bundles
+        run: |
+          node --input-type=module <<'JS'
+          const urls=[
+            'https://winline.ru/stavki/sport/xokkej/ssha/nhl',
+            'https://winline.ru/stavki/sport/xokkej'
+          ];
+          const headers={'user-agent':'Mozilla/5.0','accept':'text/html,application/xhtml+xml'};
+          for(const url of urls){
+            const r=await fetch(url,{headers,redirect:'follow'});
+            console.log('PAGE',url,r.status,r.url);
+            const html=await r.text();
+            console.log('HTML_BYTES',html.length);
+            const scripts=[...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m=>new URL(m[1],r.url).href);
+            const links=[...html.matchAll(/<link[^>]+href=["']([^"']+)["']/gi)].map(m=>new URL(m[1],r.url).href);
+            console.log('SCRIPTS',scripts.slice(0,40));
+            console.log('HTML_API_STRINGS',[...new Set((html.match(/https?:\\/\\/[^"'<> ]+|[A-Za-z0-9_./-]*(?:api|prematch|events|line)[A-Za-z0-9_./?=&-]*/gi)||[]))].slice(0,120));
+            for(const s of scripts.slice(-12)){
+              try{
+                const sr=await fetch(s,{headers:{'user-agent':'Mozilla/5.0'}});
+                if(!sr.ok)continue;
+                const js=await sr.text();
+                const hits=[...new Set((js.match(/https?:\\/\\/[^"'\\s)]+|[A-Za-z0-9_./-]{0,80}(?:prematch|back\\.winline|events|tournaments|api)[A-Za-z0-9_./?=&-]{0,120}/gi)||[]))];
+                if(hits.length)console.log('BUNDLE_HITS',s,hits.slice(0,120));
+              }catch(e){console.log('BUNDLE_ERR',s,String(e))}
+            }
+          }
+          JS
