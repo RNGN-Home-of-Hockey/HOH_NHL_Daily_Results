@@ -60,3 +60,19 @@ jobs:
           npx wrangler d1 execute hoh-data-core --remote --command "SELECT game_pk,game_type,scheduled_start_utc,away_tri,home_tri,game_state FROM games WHERE game_type=1 AND datetime(scheduled_start_utc)>=datetime('now') ORDER BY datetime(scheduled_start_utc) ASC LIMIT 25;"
 
 # retry with non-null future scores 2026-09-19
+
+      - name: Verify broadcast API order
+        run: |
+          node --input-type=module <<'JS'
+          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/broadcast/games';
+          const r=await fetch(url,{headers:{accept:'application/json'}});
+          if(!r.ok)throw new Error('Broadcast API HTTP '+r.status);
+          const d=await r.json();
+          console.log('BROADCAST_FIRST_GAMES',JSON.stringify((d.games||[]).slice(0,20).map(g=>({
+            game_pk:g.game_pk,game_type:g.game_type,start:g.scheduled_start_utc,away:g.away_tri,home:g.home_tri,state:g.game_state
+          }))));
+          const first=(d.games||[])[0];
+          if(!first)throw new Error('No upcoming games');
+          if(Number(first.game_type)!==1)throw new Error('First upcoming game is not preseason: '+JSON.stringify(first));
+          JS
+# verify broadcast preseason visibility 2026-09-19
