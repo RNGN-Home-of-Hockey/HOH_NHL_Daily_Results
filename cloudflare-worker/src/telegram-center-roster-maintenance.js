@@ -7,11 +7,15 @@ const FRESH_HOURS=6;
 
 export async function runCenterRosterMaintenance(env,{force=false}={}){
   if(!env.DB)return {ok:false,error:"missing_d1_binding"};
-  const last=await env.DB.prepare(`SELECT meta_value,updated_at FROM data_core_meta WHERE meta_key=? LIMIT 1;`).bind(META_KEY).first().catch(()=>null);
-  if(!force&&last?.updated_at){
+  const [last,physical]=await Promise.all([
+    env.DB.prepare(`SELECT meta_value,updated_at FROM data_core_meta WHERE meta_key=? LIMIT 1;`).bind(META_KEY).first().catch(()=>null),
+    env.DB.prepare(`SELECT COUNT(*) total,SUM(CASE WHEN height_cm IS NOT NULL AND weight_kg IS NOT NULL THEN 1 ELSE 0 END) physical FROM player_profile_meta;`).first().catch(()=>({total:0,physical:0}))
+  ]);
+  const physicalReady=Number(physical?.physical||0)>=Math.min(600,Math.max(1,Number(physical?.total||0)*0.45));
+  if(!force&&physicalReady&&last?.updated_at){
     const age=Date.now()-Date.parse(`${String(last.updated_at).replace(" ","T")}Z`);
     if(Number.isFinite(age)&&age>=0&&age<FRESH_HOURS*3600000){
-      return {ok:true,skipped:true,reason:"fresh",updated_at:last.updated_at,summary:safeJson(last.meta_value)};
+      return {ok:true,skipped:true,reason:"fresh",updated_at:last.updated_at,physical_cached:Number(physical?.physical||0),summary:safeJson(last.meta_value)};
     }
   }
 
@@ -57,15 +61,17 @@ export async function runCenterRosterMaintenance(env,{force=false}={}){
           updated_at=CURRENT_TIMESTAMP;
       `).bind(p.player_id,p.first_name_en,p.last_name_en,p.full_name_en,p.full_name_ru,p.current_team_tri,p.position_code,p.sweater_number,p.shoots_catches));
       statements.push(env.DB.prepare(`
-        INSERT INTO player_profile_meta (player_id,primary_country_code,countries_json,birth_date,source_updated_at,updated_at)
-        VALUES (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+        INSERT INTO player_profile_meta (player_id,primary_country_code,countries_json,birth_date,height_cm,weight_kg,source_updated_at,updated_at)
+        VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
         ON CONFLICT(player_id) DO UPDATE SET
           primary_country_code=COALESCE(excluded.primary_country_code,player_profile_meta.primary_country_code),
           countries_json=COALESCE(excluded.countries_json,player_profile_meta.countries_json),
           birth_date=COALESCE(excluded.birth_date,player_profile_meta.birth_date),
+          height_cm=COALESCE(excluded.height_cm,player_profile_meta.height_cm),
+          weight_kg=COALESCE(excluded.weight_kg,player_profile_meta.weight_kg),
           source_updated_at=CURRENT_TIMESTAMP,
           updated_at=CURRENT_TIMESTAMP;
-      `).bind(p.player_id,p.birth_country,p.birth_country?JSON.stringify([p.birth_country]):null,p.birth_date));
+      `).bind(p.player_id,p.birth_country,p.birth_country?JSON.stringify([p.birth_country]):null,p.birth_date,p.height_cm,p.weight_kg));
     }
     await env.DB.batch(statements);
     written+=Math.floor(statements.length/2);
@@ -95,6 +101,8 @@ function normalizePlayer(p,tri,forced){
     shoots_catches:String(p?.shootsCatches||"").trim()||null,
     birth_date:String(p?.birthDate||"").trim()||null,
     birth_country:String(p?.birthCountry||"").trim().toUpperCase()||null,
+    height_cm:Number.isFinite(Number(p?.heightInInches))?Math.round(Number(p.heightInInches)*2.54):null,
+    weight_kg:Number.isFinite(Number(p?.weightInPounds))?Math.round(Number(p.weightInPounds)*0.45359237):null,
   };
 }
 function localized(v){if(!v)return"";if(typeof v==="string")return v;return v.default||v.en||Object.values(v)[0]||""}
