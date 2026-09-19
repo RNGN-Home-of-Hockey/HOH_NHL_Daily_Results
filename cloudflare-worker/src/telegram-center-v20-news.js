@@ -41,13 +41,8 @@ export async function runSportsRuNewsMaintenance(env,{force=false,homeOnly=false
     home=await scanNhlMain(env);
     await saveMeta(env.DB,"sports_ru_nhl_home_sync",JSON.stringify({ok:home.ok,stored:home.stored,politics:home.politics,at:new Date().toISOString()}));
   }
-  let players={skipped:true};
-  if(!homeOnly){
-    await ensurePlayerSources(env.DB);
-    players=await scanPlayerSources(env);
-    players.exact_recent=await scanExactRecentSources(env).catch(error=>({ok:false,error:errorText(error)}));
-  }
-  return {ok:Boolean(home.ok!==false&&players.ok!==false),home,players};
+  const players={skipped:true,reason:"player_news_ui_disabled"};
+  return {ok:Boolean(home.ok!==false),home,players};
 }
 
 async function homeNews(request,env){
