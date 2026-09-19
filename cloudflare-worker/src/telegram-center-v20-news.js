@@ -143,6 +143,8 @@ async function addComment(request,env,newsId){
   const exists=await env.DB.prepare("SELECT news_id FROM sports_news WHERE news_id=? LIMIT 1").bind(newsId).first();
   if(!exists)return json({ok:false,error:"news_not_found"},404);
   await upsertTelegramUser(env.DB,auth.user);
+  const profile=await env.DB.prepare("SELECT display_username FROM app_user_profiles WHERE telegram_user_id=? LIMIT 1").bind(auth.user.id).first();
+  if(!profile?.display_username)return json({ok:false,error:"profile_username_required"},409);
   const r=await env.DB.prepare("INSERT INTO sports_news_comments(news_id,telegram_user_id,body) VALUES(?,?,?)").bind(newsId,auth.user.id,text).run();
   return json({ok:true,comment_id:Number(r.meta?.last_row_id||0)},201);
 }
