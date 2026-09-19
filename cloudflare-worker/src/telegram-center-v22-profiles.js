@@ -18,7 +18,7 @@ async function getMe(request,env){
   await upsertTelegramUser(env.DB,auth.user);
   const p=await env.DB.prepare(`
     SELECT telegram_user_id,display_username,profile_name,birth_date,city,hockey_since_year,
-           favorite_team_tri,favorite_player,theme_mode,
+           favorite_team_tri,favorite_player,theme_mode,no_spoilers,
            CASE WHEN avatar_base64 IS NOT NULL AND avatar_base64<>'' THEN 1 ELSE 0 END has_avatar,
            avatar_bytes,username_changed_at,updated_at
     FROM app_user_profiles WHERE telegram_user_id=? LIMIT 1;
@@ -61,6 +61,7 @@ async function putMe(request,env){
   }
   const theme=body?.theme_mode===undefined?(current?.theme_mode||"dark"):String(body.theme_mode||"").toLowerCase();
   if(!["dark","light"].includes(theme))return json({ok:false,error:"invalid_theme"},400);
+  const noSpoilers=body?.no_spoilers===undefined?Boolean(Number(current?.no_spoilers||0)):Boolean(body.no_spoilers);
 
   let avatarMime=current?.avatar_mime||null,avatarBase64=current?.avatar_base64||null,avatarBytes=numOrNull(current?.avatar_bytes);
   if(body?.avatar_data_url===null){avatarMime=null;avatarBase64=null;avatarBytes=null}
@@ -74,19 +75,19 @@ async function putMe(request,env){
   await env.DB.prepare(`
     INSERT INTO app_user_profiles
       (telegram_user_id,display_username,display_username_norm,profile_name,birth_date,city,hockey_since_year,favorite_team_tri,favorite_player,
-       theme_mode,avatar_mime,avatar_base64,avatar_bytes,username_changed_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+       theme_mode,no_spoilers,avatar_mime,avatar_base64,avatar_bytes,username_changed_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
     ON CONFLICT(telegram_user_id) DO UPDATE SET
       display_username=excluded.display_username,display_username_norm=excluded.display_username_norm,profile_name=excluded.profile_name,birth_date=excluded.birth_date,
       city=excluded.city,hockey_since_year=excluded.hockey_since_year,favorite_team_tri=excluded.favorite_team_tri,
-      favorite_player=excluded.favorite_player,theme_mode=excluded.theme_mode,avatar_mime=excluded.avatar_mime,
+      favorite_player=excluded.favorite_player,theme_mode=excluded.theme_mode,no_spoilers=excluded.no_spoilers,avatar_mime=excluded.avatar_mime,
       avatar_base64=excluded.avatar_base64,avatar_bytes=excluded.avatar_bytes,
       username_changed_at=excluded.username_changed_at,updated_at=CURRENT_TIMESTAMP;
-  `).bind(auth.user.id,username,usernameNorm(username),profileName,birthDate,city,hockeySince,favTeam,favoritePlayer,theme,avatarMime,avatarBase64,avatarBytes,usernameChanged).run();
+  `).bind(auth.user.id,username,usernameNorm(username),profileName,birthDate,city,hockeySince,favTeam,favoritePlayer,theme,noSpoilers?1:0,avatarMime,avatarBase64,avatarBytes,usernameChanged).run();
 
   const saved=await env.DB.prepare(`
     SELECT telegram_user_id,display_username,profile_name,birth_date,city,hockey_since_year,
-           favorite_team_tri,favorite_player,theme_mode,
+           favorite_team_tri,favorite_player,theme_mode,no_spoilers,
            CASE WHEN avatar_base64 IS NOT NULL AND avatar_base64<>'' THEN 1 ELSE 0 END has_avatar,
            avatar_bytes,username_changed_at,updated_at
     FROM app_user_profiles WHERE telegram_user_id=? LIMIT 1;
@@ -106,8 +107,8 @@ async function avatar(env,id){
 }
 
 function decorateProfile(p,id){
-  if(!p)return {exists:false,telegram_user_id:id,display_username:null,profile_name:null,birth_date:null,city:null,hockey_since_year:null,favorite_team_tri:null,favorite_player:null,theme_mode:"dark",has_avatar:false,avatar_url:null,username_changed_at:null};
-  return {...p,exists:true,has_avatar:Boolean(Number(p.has_avatar)),avatar_url:Number(p.has_avatar)?API+"/avatars/"+id:null};
+  if(!p)return {exists:false,telegram_user_id:id,display_username:null,profile_name:null,birth_date:null,city:null,hockey_since_year:null,favorite_team_tri:null,favorite_player:null,theme_mode:"dark",no_spoilers:false,has_avatar:false,avatar_url:null,username_changed_at:null};
+  return {...p,exists:true,no_spoilers:Boolean(Number(p.no_spoilers)),has_avatar:Boolean(Number(p.has_avatar)),avatar_url:Number(p.has_avatar)?API+"/avatars/"+id:null};
 }
 function cleanUsername(v){const s=String(v||"").trim().replace(/^@/,"");return /^[A-Za-zА-Яа-яЁё0-9_]{3,24}$/u.test(s)?s:null}
 function usernameNorm(v){return v?String(v).normalize("NFKC").toLocaleLowerCase("ru-RU"):null}
