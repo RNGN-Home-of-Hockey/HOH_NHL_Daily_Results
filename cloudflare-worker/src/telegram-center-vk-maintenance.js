@@ -6,7 +6,7 @@ const VK_OWNER_ID = -227682170;
 const PAGE_SIZE = 100;
 const BACKFILL_PAGES_PER_TICK = 15;
 const META_ALGO = "hoh_vk_video_backfill_algo";
-const BACKFILL_ALGO = "v5-full-broadcast-min-60m";
+const BACKFILL_ALGO = "v6-full-broadcast-no-highlights";
 const META_CURSOR = "hoh_vk_video_backfill_offset";
 const META_DONE = "hoh_vk_video_backfill_done";
 const META_LAST_SYNC = "hoh_vk_video_last_sync_json";
@@ -263,6 +263,8 @@ async function loadCandidateGames(db,records){
 }
 
 function broadcastLengthEligible(record){
+  const title=String(record?.title||"");
+  if(/(?:хайлайт|highlights?|обзор\s+матча|лучшие\s+моменты|best\s+moments?)/iu.test(title))return false;
   const duration=Number(record?.duration_seconds);
   if(Number.isFinite(duration)&&duration>0)return duration>=MIN_CANONICAL_DURATION_SECONDS;
   const status=norm(record?.status||"");
