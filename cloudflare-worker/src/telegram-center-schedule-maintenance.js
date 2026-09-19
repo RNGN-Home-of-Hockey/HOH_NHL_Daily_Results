@@ -13,7 +13,7 @@ export async function runCenterScheduleMaintenance(env,{now=null,force=false}={}
   if(rosterResult && rosterResult.ok===false)return rosterResult;
 
   const intervalMinutes = envInt(env.CENTER_SCHEDULE_SYNC_INTERVAL_MINUTES, DEFAULT_INTERVAL_MINUTES, 30, 1440);
-  const metaKey = `center_schedule_sync:${season}`;
+  const metaKey = `center_schedule_sync:${season}:v2-preseason`;
   const last = await env.DB.prepare(`SELECT meta_value,updated_at FROM data_core_meta WHERE meta_key=? LIMIT 1;`).bind(metaKey).first().catch(()=>null);
   if (!force && fresh(last?.updated_at,clock,intervalMinutes)) {
     return {ok:true,maintenance:"schedule",skipped:true,reason:"fresh",season,interval_minutes:intervalMinutes,last_sync:last.updated_at,roster:rosterResult};
