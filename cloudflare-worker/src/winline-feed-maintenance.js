@@ -219,7 +219,7 @@ function normalizeNhlGame(g){
   if(!Number.isSafeInteger(id)||!home||!away||!start)return null;
   const num=v=>v===null||v===undefined||v===""?null:Number.isFinite(Number(v))?Number(v):null;
   const localized=v=>typeof v==="string"?v:(v?.default||v?.en||null);
-  return {game_pk:id,season_id:String(g?.season||""),game_type:num(g?.gameType),scheduled_start_utc:start,game_state:String(g?.gameState||"FUT").toUpperCase(),home_tri:home,away_tri:away,home_score:num(g?.homeTeam?.score),away_score:num(g?.awayTeam?.score),current_period:num(g?.periodDescriptor?.number),period_type:g?.periodDescriptor?.periodType||g?.gameOutcome?.lastPeriodType||null,venue_name:localized(g?.venue)};
+  return {game_pk:id,season_id:String(g?.season||""),game_type:num(g?.gameType),scheduled_start_utc:start,game_state:String(g?.gameState||"FUT").toUpperCase(),home_tri:home,away_tri:away,home_score:num(g?.homeTeam?.score)??0,away_score:num(g?.awayTeam?.score)??0,current_period:num(g?.periodDescriptor?.number),period_type:g?.periodDescriptor?.periodType||g?.gameOutcome?.lastPeriodType||null,venue_name:localized(g?.venue)};
 }
 
 async function persistMapped(db,items,capturedAt){
