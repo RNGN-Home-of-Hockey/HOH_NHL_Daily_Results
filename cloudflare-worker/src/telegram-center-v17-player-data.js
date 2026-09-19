@@ -30,7 +30,7 @@ async function players(request,env){
   }
 
   try{
-    const r=await env.DB.prepare(`SELECT p.player_id,p.full_name_en,COALESCE(m.full_name_ru,p.full_name_ru) full_name_ru,p.current_team_tri,p.position_code,p.sweater_number,m.primary_country_code,m.birth_date FROM players p LEFT JOIN player_profile_meta m ON m.player_id=p.player_id WHERE COALESCE(p.active,1)=1 LIMIT 1800;`).all();
+    const r=await env.DB.prepare(`SELECT p.player_id,p.full_name_en,COALESCE(m.full_name_ru,p.full_name_ru) full_name_ru,p.current_team_tri,p.position_code,p.sweater_number,m.primary_country_code,m.birth_date,m.height_cm,m.weight_kg FROM players p LEFT JOIN player_profile_meta m ON m.player_id=p.player_id WHERE COALESCE(p.active,1)=1 LIMIT 1800;`).all();
     for(const d of r.results||[]){const id=Number(d.player_id),prev=map.get(id)||{},sal=(salaryCache?.players||{})[String(id)]||{};map.set(id,{...prev,...d,player_id:id,full_name_ru:d.full_name_ru||prev.full_name_ru||fullNames?.[String(id)]||fallbackRuName(d.full_name_en||prev.full_name_en)||null,salary_aav:numOrNull(sal?.aav??sal?.cap_hit??prev.salary_aav),salary_cash:numOrNull(sal?.salary_cash??prev.salary_cash)});}
   }catch{}
 
@@ -50,13 +50,14 @@ async function profile(env,id){
   if(!Number.isSafeInteger(id)||id<=0)return json({ok:false,error:"invalid_player_id"},400);
   const sal=(salaryCache?.players||{})[String(id)]||null,pron=(pronunciationCache?.players||{})[String(id)]||null;
   let row=null;
-  try{row=await env.DB.prepare(`SELECT p.player_id,p.full_name_en,COALESCE(m.full_name_ru,p.full_name_ru) full_name_ru,p.current_team_tri,p.position_code,p.sweater_number,m.primary_country_code,m.birth_date FROM players p LEFT JOIN player_profile_meta m ON m.player_id=p.player_id WHERE p.player_id=? LIMIT 1;`).bind(id).first();}catch{}
+  try{row=await env.DB.prepare(`SELECT p.player_id,p.full_name_en,COALESCE(m.full_name_ru,p.full_name_ru) full_name_ru,p.current_team_tri,p.position_code,p.sweater_number,m.primary_country_code,m.birth_date,m.height_cm,m.weight_kg FROM players p LEFT JOIN player_profile_meta m ON m.player_id=p.player_id WHERE p.player_id=? LIMIT 1;`).bind(id).first();}catch{}
   const landing=await fetchJson(`${NHL}/player/${id}/landing`).catch(()=>null);
   if(!row&&!landing&&!sal&&!pron&&!fullNames?.[String(id)])return json({ok:false,error:"player_not_found"},404);
   const tri=up(landing?.currentTeamAbbrev||row?.current_team_tri||sal?.team||pron?.team_tri||""),birth=String(row?.birth_date||landing?.birthDate||"").trim()||null;
   const en=String(row?.full_name_en||[loc(landing?.firstName),loc(landing?.lastName)].filter(Boolean).join(" ")||sal?.full_name_en||sal?.nhl_name||pron?.full_name_en||"").trim();
   const hIn=numOrNull(landing?.heightInInches),wLb=numOrNull(landing?.weightInPounds),pt=pronunciationText?.players?.[String(id)]||null;
-  const p={player_id:id,full_name_en:en,full_name_ru:row?.full_name_ru||fullNames?.[String(id)]||fallbackRuName(en)||null,current_team_tri:tri,position_code:up(row?.position_code||landing?.position||""),sweater_number:row?.sweater_number??landing?.sweaterNumber??null,primary_country_code:up(row?.primary_country_code||landing?.birthCountry||"").slice(0,3),birth_date:birth,age:age(birth),height_cm:hIn?Math.round(hIn*2.54):null,weight_kg:wLb?Math.round(wLb*0.45359237):null,pronunciation_text:pt?.pronunciation_text||null,pronunciation_source:pt?.pronunciation_source||null,team_logo:landing?.teamLogo||teamLogo(tri),headshot:landing?.headshot||photo(id,tri,currentSeason()),salary_aav:numOrNull(sal?.aav??sal?.cap_hit),salary_cash:numOrNull(sal?.salary_cash),profile_source:landing?"nhl_landing":row?"d1":pron?"pronunciation_cache":"salary_cache"};
+  const heightCm=hIn?Math.round(hIn*2.54):numOrNull(row?.height_cm),weightKg=wLb?Math.round(wLb*0.45359237):numOrNull(row?.weight_kg);
+  const p={player_id:id,full_name_en:en,full_name_ru:row?.full_name_ru||fullNames?.[String(id)]||fallbackRuName(en)||null,current_team_tri:tri,position_code:up(row?.position_code||landing?.position||""),sweater_number:row?.sweater_number??landing?.sweaterNumber??null,primary_country_code:up(row?.primary_country_code||landing?.birthCountry||"").slice(0,3),birth_date:birth,age:age(birth),height_cm:heightCm,weight_kg:weightKg,pronunciation_text:pt?.pronunciation_text||null,pronunciation_source:pt?.pronunciation_source||null,team_logo:landing?.teamLogo||teamLogo(tri),headshot:landing?.headshot||photo(id,tri,currentSeason()),salary_aav:numOrNull(sal?.aav??sal?.cap_hit),salary_cash:numOrNull(sal?.salary_cash),profile_source:landing?"nhl_landing":row?"d1":pron?"pronunciation_cache":"salary_cache"};
   return json({ok:true,player:p});
 }
 
