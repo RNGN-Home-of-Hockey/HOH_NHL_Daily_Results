@@ -31,8 +31,11 @@ jobs:
             console.log('PAGE',url,r.status,r.url);
             const html=await r.text();
             console.log('HTML_BYTES',html.length);
-            const scripts=[...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m=>new URL(m[1],r.url).href);
-            const links=[...html.matchAll(/<link[^>]+href=["']([^"']+)["']/gi)].map(m=>new URL(m[1],r.url).href);
+            const baseHref=(html.match(/<base[^>]+href=["']([^"']+)["']/i)||[])[1]||'/';
+            const baseUrl=new URL(baseHref,r.url).href;
+            const scripts=[...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m=>new URL(m[1],baseUrl).href);
+            const links=[...html.matchAll(/<link[^>]+href=["']([^"']+)["']/gi)].map(m=>new URL(m[1],baseUrl).href);
+            console.log('BASE',baseUrl);
             console.log('SCRIPTS',scripts.slice(0,40));
             const htmlTokens=html.split(/[\s"'<>]+/).filter(x=>/api|prematch|event|line|back\.winline/i.test(x)); console.log('HTML_API_STRINGS',[...new Set(htmlTokens)].slice(0,120));
             for(const s of scripts.slice(-12)){
@@ -53,3 +56,4 @@ jobs:
           JS
 # retry probe 2026-09-19
 # context probe 2026-09-19
+# base-href probe 2026-09-19
