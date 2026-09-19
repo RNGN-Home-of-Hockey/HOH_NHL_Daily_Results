@@ -16,7 +16,7 @@ export async function handleBroadcastRequest(request, env, path) {
   }
   if (path === "/broadcast/app.js") {
     if (request.method !== "GET") return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
-    return jsResponse(`const __name=(target,value)=>target;\n(${browserApp.toString()})();`);
+    const rendererBase=String(env.BROADCAST_RENDERER_URL||"https://hoh-broadcast-renderer.vercel.app").replace(/\\/+$/,"");\n    return jsResponse(`const __name=(target,value)=>target;\\nconst HOH_RENDERER_BASE=${JSON.stringify(rendererBase)};\\n(${browserApp.toString()})();`);
   }
 
   if (path === BROADCAST_PATH) {
@@ -440,17 +440,30 @@ function profitParts(odds){
   const profit=Math.round((odds-1)*1000);
   return{amount:"+"+profit.toLocaleString("ru-RU")+" РУБ",suffix:"(ПРИ СТАВКЕ 1000 РУБ.)"};
 }
+function encodeRendererPayload(value){
+  const bytes=new TextEncoder().encode(JSON.stringify(value));let binary="";
+  for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+  return btoa(binary).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");
+}
+function rendererPayload(c){
+  const odds=Number(c.market?.odds),team=cardTeam(c);
+  return {
+    team:team.tri,
+    team_name:team.name,
+    team_color:team.color,
+    team_logo_url:team.logo||undefined,
+    fact:factText(c),
+    market:marketDescription(c,team),
+    odds:Number.isFinite(odds)&&odds>1?odds:null,
+    stake:1000
+  };
+}
+function rendererUrl(c){
+  return HOH_RENDERER_BASE+"/api/render-card?data="+encodeURIComponent(encodeRendererPayload(rendererPayload(c)));
+}
 function broadcastCardHtml(c,large=false){
-  const odds=Number(c.market?.odds),team=cardTeam(c),profit=profitParts(odds),market=marketDescription(c,team);
-  const priced=Number.isFinite(odds)&&odds>1;
-  return `<div class="hohcard ${large?'hohcard-large':''} ${priced?'':'hohcard-unpriced'}">
-    <div class="hohcard-fact">${factHtml(c,team)}</div>
-    <div class="hohcard-teammark">${team.logo?`<img src="${esc(team.logo)}" alt="${esc(team.name)}">`:`<span>${esc(team.tri)}</span>`}</div>
-    <div class="hohcard-team">${esc(team.name)}</div>
-    <div class="hohcard-market">${esc(market)}</div>
-    <div class="hohcard-odds">${priced?odds.toFixed(2):'—'}</div>
-    <div class="hohcard-profit"><strong>${esc(profit.amount)}</strong><span>${esc(profit.suffix)}</span></div>
-  </div>`;
+  const team=cardTeam(c),url=rendererUrl(c);
+  return `<div class="renderedcard ${large?'large':''}"><img src="${esc(url)}" alt="${esc(team.name)} · WINLINE" loading="eager" decoding="async"></div>`;
 }
 function hasRealWinlinePrice(c){const o=Number(c?.market?.odds);return Number.isFinite(o)&&o>1&&c?.market?.odds_is_demo===false&&c?.market?.odds_source==="provider_live"}
 function renderCards(cards){currentCards=cards;$('#cards').innerHTML=cards.length?cards.map((c,i)=>{const priced=hasRealWinlinePrice(c),shown=c.__status==='shown';return `<article class="card">${broadcastCardHtml(c)}<div class="actions"><button class="act previewbtn" data-i="${i}">PREVIEW</button><button class="act ${shown?'hide':priced?'show':'noln'} showbtn" data-i="${i}" ${!shown&&!priced?'disabled':''}>${shown?'УБРАТЬ':priced?'ПОКАЗАТЬ':'НЕТ ЛИНИИ WINLINE'}</button></div></article>`}).join(''):'<div class="empty">Пока нет статистических карточек для этого матча</div>';document.querySelectorAll('.previewbtn').forEach(b=>b.onclick=()=>previewCard(Number(b.dataset.i),b));document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b))}
@@ -503,7 +516,7 @@ ${BROADCAST_CARD_CSS}
 #cards .card:before{content:none}
 #cards .card{padding-top:0}
 #cards .hohcard{width:100%;max-width:820px}
-.preview .hohcard{width:820px;max-width:100%}
+.preview .hohcard{width:820px;max-width:100%}\n.renderedcard{width:820px;max-width:100%;aspect-ratio:820/211;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden}.renderedcard img{display:block;width:100%;height:auto;object-fit:contain}.preview .renderedcard{width:820px;max-width:100%}
 </style></head><body>
 <div class="app">
 <aside class="side">
