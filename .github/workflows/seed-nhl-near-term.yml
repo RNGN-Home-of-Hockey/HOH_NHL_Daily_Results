@@ -45,7 +45,7 @@ jobs:
             const pk=Number(g.id),home=g.homeTeam?.abbrev,away=g.awayTeam?.abbrev;
             if(!pk||!home||!away||!g.startTimeUTC)continue;
             sql.push(`INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,current_period,period_type,venue_name,last_synced_at)
-              VALUES(${pk},${q(String(g.season||''))},${gt},${q(g.startTimeUTC)},${q(String(g.gameState||'FUT').toUpperCase())},${q(home)},${q(away)},${num(g.homeTeam?.score)},${num(g.awayTeam?.score)},${num(g.periodDescriptor?.number)},${q(g.periodDescriptor?.periodType||g.gameOutcome?.lastPeriodType||null)},${q(g.venue?.default||g.venue?.en||null)},CURRENT_TIMESTAMP)
+              VALUES(${pk},${q(String(g.season||''))},${gt},${q(g.startTimeUTC)},${q(String(g.gameState||'FUT').toUpperCase())},${q(home)},${q(away)},${Number.isFinite(Number(g.homeTeam?.score))?Number(g.homeTeam.score):0},${Number.isFinite(Number(g.awayTeam?.score))?Number(g.awayTeam.score):0},${num(g.periodDescriptor?.number)},${q(g.periodDescriptor?.periodType||g.gameOutcome?.lastPeriodType||null)},${q(g.venue?.default||g.venue?.en||null)},CURRENT_TIMESTAMP)
               ON CONFLICT(game_pk) DO UPDATE SET season_id=excluded.season_id,game_type=excluded.game_type,scheduled_start_utc=excluded.scheduled_start_utc,game_state=excluded.game_state,home_tri=excluded.home_tri,away_tri=excluded.away_tri,home_score=COALESCE(excluded.home_score,games.home_score),away_score=COALESCE(excluded.away_score,games.away_score),current_period=COALESCE(excluded.current_period,games.current_period),period_type=COALESCE(excluded.period_type,games.period_type),venue_name=COALESCE(excluded.venue_name,games.venue_name),last_synced_at=CURRENT_TIMESTAMP;`);
           }
           fs.writeFileSync('/tmp/nhl-near-term.sql',sql.join('\n'));
@@ -58,3 +58,5 @@ jobs:
       - name: Verify upcoming preseason
         run: |
           npx wrangler d1 execute hoh-data-core --remote --command "SELECT game_pk,game_type,scheduled_start_utc,away_tri,home_tri,game_state FROM games WHERE game_type=1 AND datetime(scheduled_start_utc)>=datetime('now') ORDER BY datetime(scheduled_start_utc) ASC LIMIT 25;"
+
+# retry with non-null future scores 2026-09-19
