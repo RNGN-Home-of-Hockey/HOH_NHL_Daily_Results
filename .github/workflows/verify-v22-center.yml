@@ -44,7 +44,21 @@ jobs:
           for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich'])if(!v22.includes(x))throw new Error('V22 missing '+x);
 
           const v19=await text('/telegram-app/v19.js');
-          for(const x of ['v19LastGameRich','v19OddsMatch','v19TeamVk','TEAM_RU','mountPlayerTeamOdds'])if(!v19.includes(x))throw new Error('V19 upgrade missing '+x);
+          for(const x of ['v19LastGameRich','v19OddsMatch','v19TeamVk','TEAM_RU','mountPlayerTeamOdds','v19MetaSecond'])if(!v19.includes(x))throw new Error('V19 upgrade missing '+x);
+          const v15team=await text('/telegram-app/v15-team.js');
+          for(const x of ['cupText','v15SeriesSpoiler','Финал Кубка Стэнли','v15OddsMatch','nextOdds'])if(!v15team.includes(x))throw new Error('team UI upgrade missing '+x);
+          const v21=await text('/telegram-app/v21.js');
+          if(!v21.includes('v15SeriesSpoiler'))throw new Error('series spoiler masking missing');
+
+          const matthews=await json('/api/telegram-center-v17/players/8479318');
+          for(const k of ['primary_country_code','birth_date','height_cm','weight_kg','team_logo'])if(!matthews.player?.[k])throw new Error('Matthews profile missing '+k);
+          if(matthews.player.current_team_tri!=='TOR')throw new Error('Matthews team mismatch '+matthews.player.current_team_tri);
+          const rosenSearch=await json('/api/telegram-center-v17/players?q='+encodeURIComponent('Isak Rosen')+'&limit=20');
+          const rosen=(rosenSearch.players||[]).find(x=>String(x.full_name_en||'').toLowerCase().includes('isak rosen'));
+          if(rosen){
+            const rp=await json('/api/telegram-center-v17/players/'+rosen.player_id);
+            for(const k of ['primary_country_code','birth_date','height_cm','weight_kg','team_logo'])if(!rp.player?.[k])throw new Error('Rosen profile missing '+k);
+          }
 
           const v20=await text('/telegram-app/v20.js');
           for(const x of ['limit=15','v20NewsExtra','v20More','v20CommentAvatar','HOHEnsureCommentIdentity'])if(!v20.includes(x))throw new Error('V20 upgrade missing '+x);
