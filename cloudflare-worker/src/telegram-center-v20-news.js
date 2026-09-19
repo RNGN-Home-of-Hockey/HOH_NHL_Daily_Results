@@ -80,7 +80,7 @@ async function playerNews(request,env,playerId){
     let rows=await queryPlayerNews(env.DB,playerId,limit);
     if(!(rows.results||[]).length){
       await ensureSinglePlayerSource(env.DB,playerId);
-      await scanPlayerById(env,playerId).catch(()=>null);
+      await scanPlayerById(env,playerId,{forceFirst:true}).catch(()=>null);
       rows=await queryPlayerNews(env.DB,playerId,limit);
     }
     return json({ok:true,version:"V20",player_id:playerId,news:rows.results||[]});
@@ -204,13 +204,15 @@ async function ensureSinglePlayerSource(db,playerId){
     .bind(playerId,slug,`https://www.sports.ru/hockey/person/${slug}/news/`).run();
 }
 
-async function scanPlayerById(env,playerId){
+async function scanPlayerById(env,playerId,{forceFirst=false}={}){
   const src=await env.DB.prepare(`
-    SELECT s.player_id,s.sports_slug,s.source_url,s.next_page,p.full_name_en,p.full_name_ru,p.current_team_tri
+    SELECT s.player_id,s.sports_slug,s.source_url,s.next_page,s.backfill_done,p.full_name_en,p.full_name_ru,p.current_team_tri
     FROM sports_player_sources s JOIN players p ON p.player_id=s.player_id
-    WHERE s.player_id=? AND s.backfill_done=0 LIMIT 1;
+    WHERE s.player_id=? LIMIT 1;
   `).bind(playerId).first();
   if(!src)return {ok:true,skipped:true};
+  if(!forceFirst&&Number(src.backfill_done)===1)return {ok:true,skipped:true,reason:"backfill_done"};
+  if(forceFirst)src.next_page=1;
   return scanOnePlayerSource(env,src);
 }
 
