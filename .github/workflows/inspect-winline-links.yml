@@ -31,6 +31,28 @@ jobs:
             FROM winline_events we JOIN games g ON g.game_pk=we.game_pk
             ORDER BY we.starts_at ASC LIMIT 8;
           "
+      - name: Verify production affiliate router
+        shell: bash
+        run: |
+          set -euo pipefail
+          FUTURE='https://hoh-nhl-daily-results.znamteam-903.workers.dev/go/winline?game_pk=2026020001'
+          HIST='https://hoh-nhl-daily-results.znamteam-903.workers.dev/go/winline?game_pk=2024030116'
+          echo '--- future route ---'
+          FH="$(curl -sS -D - -o /dev/null --max-time 15 "$FUTURE")"
+          echo "$FH" | grep -Ei '^(HTTP/|location:)'
+          FL="$(printf '%s\n' "$FH" | awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,"");sub(/^[Ll]ocation:[[:space:]]*/,"");print;exit}')"
+          [[ "$FL" == *"/plus/16255232"* ]] || { echo "future route missing event deeplink"; exit 1; }
+          [[ "$FL" == *"statid=2558_"* ]] || { echo "future route missing statid"; exit 1; }
+          [[ "$FL" == *"sub4=nhl"* ]] || { echo "future route missing sub4"; exit 1; }
+          [[ "$FL" == *"promocode=NHL"* ]] || { echo "future route missing promo"; exit 1; }
+          [[ "$FL" == *"clickid="* ]] || { echo "future route missing clickid"; exit 1; }
+
+          echo '--- historical route ---'
+          HH="$(curl -sS -D - -o /dev/null --max-time 15 "$HIST")"
+          echo "$HH" | grep -Ei '^(HTTP/|location:)'
+          HL="$(printf '%s\n' "$HH" | awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,"");sub(/^[Ll]ocation:[[:space:]]*/,"");print;exit}')"
+          [[ "$HL" == "https://p.winline.ru/s/hSJPscomBm?statid=2558_&sub4=nhl&promocode=NHL" ]] || { echo "historical route not partner URL"; exit 1; }
+
       - name: Inspect affiliate redirect
         shell: bash
         run: |
