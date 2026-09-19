@@ -1,0 +1,65 @@
+name: Audit Mini App Load
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-miniapp-load.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Measure production mini-app assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://hoh-nhl-daily-results.znamteam-903.workers.dev'
+          assets=(
+            '/telegram-app'
+            '/telegram-app/v9.js'
+            '/telegram-app/v9-polish.js'
+            '/telegram-app/v11.js'
+            '/telegram-app/v12.js'
+            '/telegram-app/v13.js'
+            '/telegram-app/v15-core.js'
+            '/telegram-app/v15-team.js'
+            '/telegram-app/v15-player.js'
+            '/telegram-app/v16.js?build=18.1'
+            '/telegram-app/v17.js?build=18.1'
+            '/telegram-app/v18.js?build=18.1'
+            '/telegram-app/v19.js?build=19.0'
+            '/telegram-app/v20.js?build=20.0'
+            '/telegram-app/v21.js?build=21.1'
+            '/telegram-app/v22.js?build=22.0'
+          )
+          total=0
+          for p in "${assets[@]}"; do
+            line=$(curl -sS -o /dev/null --max-time 20 -w '%{http_code} %{size_download} %{time_starttransfer} %{time_total}' "$BASE$p")
+            read -r code bytes ttfb total_time <<<"$line"
+            echo "ASSET $p code=$code bytes=$bytes ttfb=$ttfb total=$total_time"
+            total=$((total + bytes))
+          done
+          echo "TOTAL_BYTES $total"
+
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const paths=[
+            '/telegram-app/v9.js','/telegram-app/v9-polish.js','/telegram-app/v11.js','/telegram-app/v12.js','/telegram-app/v13.js',
+            '/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v15-player.js','/telegram-app/v16.js?build=18.1',
+            '/telegram-app/v17.js?build=18.1','/telegram-app/v18.js?build=18.1','/telegram-app/v19.js?build=19.0',
+            '/telegram-app/v20.js?build=20.0','/telegram-app/v21.js?build=21.1','/telegram-app/v22.js?build=22.0'
+          ];
+          const t=performance.now();
+          const rows=await Promise.all(paths.map(async p=>{
+            const t0=performance.now(),r=await fetch(base+p,{cache:'no-store'}),txt=await r.text();
+            return {p,status:r.status,ms:Math.round(performance.now()-t0),chars:txt.length};
+          }));
+          console.log('PARALLEL_TOTAL_MS',Math.round(performance.now()-t));
+          console.log('PARALLEL_ASSETS',JSON.stringify(rows));
+          JS
