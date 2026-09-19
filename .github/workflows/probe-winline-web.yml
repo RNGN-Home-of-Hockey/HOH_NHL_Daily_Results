@@ -34,15 +34,16 @@ jobs:
             const scripts=[...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m=>new URL(m[1],r.url).href);
             const links=[...html.matchAll(/<link[^>]+href=["']([^"']+)["']/gi)].map(m=>new URL(m[1],r.url).href);
             console.log('SCRIPTS',scripts.slice(0,40));
-            console.log('HTML_API_STRINGS',[...new Set((html.match(/https?:\\/\\/[^"'<> ]+|[A-Za-z0-9_./-]*(?:api|prematch|events|line)[A-Za-z0-9_./?=&-]*/gi)||[]))].slice(0,120));
+            const htmlTokens=html.split(/[\s"'<>]+/).filter(x=>/api|prematch|event|line|back\.winline/i.test(x)); console.log('HTML_API_STRINGS',[...new Set(htmlTokens)].slice(0,120));
             for(const s of scripts.slice(-12)){
               try{
                 const sr=await fetch(s,{headers:{'user-agent':'Mozilla/5.0'}});
                 if(!sr.ok)continue;
                 const js=await sr.text();
-                const hits=[...new Set((js.match(/https?:\\/\\/[^"'\\s)]+|[A-Za-z0-9_./-]{0,80}(?:prematch|back\\.winline|events|tournaments|api)[A-Za-z0-9_./?=&-]{0,120}/gi)||[]))];
+                const hits=[...new Set(js.split(/[\s"'(){};,]+/).filter(x=>/prematch|back\.winline|events|tournaments|\/api\//i.test(x)))];
                 if(hits.length)console.log('BUNDLE_HITS',s,hits.slice(0,120));
               }catch(e){console.log('BUNDLE_ERR',s,String(e))}
             }
           }
           JS
+# retry probe 2026-09-19
