@@ -76,4 +76,28 @@ jobs:
             FROM data_core_meta
             WHERE meta_key IN ('hoh_vk_video_backfill_algo','hoh_vk_video_backfill_offset','hoh_vk_video_backfill_done','sports_ru_exact_recent_cursor')
             ORDER BY meta_key;
+
+            SELECT g.season_id,
+                   COUNT(*) games,
+                   COUNT(DISTINCT CASE WHEN o.game_pk IS NOT NULL THEN g.game_pk END) historical_odds_games,
+                   COUNT(DISTINCT CASE WHEN b.game_pk IS NOT NULL THEN g.game_pk END) vk_games,
+                   COUNT(DISTINCT CASE WHEN b.game_pk IS NOT NULL AND o.game_pk IS NULL THEN g.game_pk END) vk_without_historical_odds
+            FROM games g
+            LEFT JOIN historical_odds_closing o
+              ON o.game_pk=g.game_pk AND o.market_key='regular_time_1x2' AND o.source='user_excel_consensus_2seasons'
+            LEFT JOIN game_vk_broadcasts b ON b.game_pk=g.game_pk
+            WHERE g.game_type IN (2,3)
+            GROUP BY g.season_id
+            ORDER BY g.season_id;
+
+            SELECT source,market_key,COUNT(DISTINCT game_pk) games,COUNT(*) rows
+            FROM historical_odds_closing
+            GROUP BY source,market_key
+            ORDER BY games DESC;
+
+            SELECT COUNT(*) future_winline_events,
+                   SUM(CASE WHEN we.deeplink IS NOT NULL AND TRIM(we.deeplink)<>'' THEN 1 ELSE 0 END) with_deeplink
+            FROM winline_events we
+            JOIN games g ON g.game_pk=we.game_pk
+            WHERE UPPER(COALESCE(g.game_state,'')) NOT IN ('FINAL','OFF');
           "
