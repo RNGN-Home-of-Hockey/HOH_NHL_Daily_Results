@@ -165,8 +165,13 @@ async function broadcastGameRoute(env, gamePk) {
     routeStage="betting";
     let bettingInsights=[];
     let bettingInsightsDegraded=false;
+    let providerMarkets=[];
     try {
-      bettingInsights=await buildBettingInsights(env.DB,game);
+      providerMarkets=await loadBroadcastWinlineMarkets(env.DB,game);
+      bettingInsights=await buildBettingInsights(env.DB,game,{
+        provider_markets:providerMarkets,
+        market_max_age_ms:broadcastWinlineMaxAgeMs(game),
+      });
     } catch (error) {
       bettingInsightsDegraded=true;
       console.error("broadcast betting insights degraded", error);
@@ -190,6 +195,7 @@ async function broadcastGameRoute(env, gamePk) {
       events,
       cards:bettingInsights,
       betting_insights_degraded:bettingInsightsDegraded,
+      provider_market_count:providerMarkets.length,
       data_degraded_sections:dataDegradedSections,
       quick_cards:quickCards,
       persisted_cards:persistedCards,
@@ -200,6 +206,76 @@ async function broadcastGameRoute(env, gamePk) {
   }
 }
 
+const WINLINE_TEAM_NAMES={
+  anaheimducks:"ANA",bostonbruins:"BOS",buffalosabres:"BUF",calgaryflames:"CGY",carolinahurricanes:"CAR",chicagoblackhawks:"CHI",
+  coloradoavalanche:"COL",columbusbluejackets:"CBJ",dallasstars:"DAL",detroitredwings:"DET",edmontonoilers:"EDM",floridapanthers:"FLA",
+  losangeleskings:"LAK",minnesotawild:"MIN",montrealcanadiens:"MTL",nashvillepredators:"NSH",newjerseydevils:"NJD",newyorkislanders:"NYI",
+  newyorkrangers:"NYR",ottawasenators:"OTT",philadelphiaflyers:"PHI",pittsburghpenguins:"PIT",sanjosesharks:"SJS",seattlekraken:"SEA",
+  stlouisblues:"STL",tampabaylightning:"TBL",torontomapleleafs:"TOR",utahmammoth:"UTA",utahhockeyclub:"UTA",vancouvercanucks:"VAN",
+  vegasgoldenknights:"VGK",washingtoncapitals:"WSH",winnipegjets:"WPG"
+};
+
+async function loadBroadcastWinlineMarkets(db,game){
+  const event=await db.prepare("SELECT winline_event_id,deeplink,raw_json,updated_at FROM winline_events WHERE game_pk=? ORDER BY updated_at DESC LIMIT 1;").bind(game.game_pk).first().catch(()=>null);
+  if(!event)return [];
+  const result=await db.prepare("SELECT winline_market_id,market_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json,updated_at FROM winline_markets WHERE winline_event_id=? AND active=1 AND odds IS NOT NULL ORDER BY updated_at DESC,winline_market_id ASC LIMIT 240;").bind(event.winline_event_id).all().catch(()=>({results:[]}));
+  const eventRaw=parseJson(event.raw_json),team1=triFromWinlineName(eventRaw?.team1),team2=triFromWinlineName(eventRaw?.team2);
+  const out=[];
+  for(const row of result.results||[]){const m=canonicalBroadcastWinlineMarket(row,event,game,{team1,team2});if(m)out.push(m)}
+  return out;
+}
+
+function canonicalBroadcastWinlineMarket(row,event,game,teams){
+  const raw=parseJson(row.raw_json)||{};
+  const freetext=String(raw.freetext||row.market_type||"").trim();
+  const norm=normalizeWinlineText(freetext);
+  const outcome=String(row.outcome_name||"").trim();
+  const lowerOutcome=outcome.toLowerCase();
+  const value=finiteMarketLine(raw.value,marketLineFromType(row.market_type));
+  const updatedAt=isoOrNull(row.updated_at||event.updated_at);
+  const base={provider:"winline",event_id:String(event.winline_event_id||""),market_id:String(row.winline_market_id||""),selection_id:String(row.winline_market_id||""),odds:Number(row.odds),status:"open",updated_at:updatedAt,deeplink:row.deeplink||event.deeplink||null};
+  if(!Number.isFinite(base.odds)||base.odds<=1||!updatedAt)return null;
+  if(String(row.market_type)==="main_1x2_regular"||/3wayodds|1x2/.test(norm)){
+    const subject=teamSubject(row.subject_key,outcome,game,teams);
+    const side=subject||(/^(x|draw|tie|ничья|н)$/i.test(outcome)?"draw":null);
+    if(!side)return null;
+    return {...base,market_type:"moneyline",period:"REG",subject,side,line:null};
+  }
+  if(/moneyline|matchwinner|winner/.test(norm)&&!/period/.test(norm)){
+    const subject=teamSubject(row.subject_key,outcome,game,teams);if(!subject)return null;
+    return {...base,market_type:"moneyline",period:"GAME",subject,side:subject,line:null};
+  }
+  const period=/1stperiod|period1|firstperiod/.test(norm)?"P1":/2ndperiod|period2|secondperiod/.test(norm)?"P2":/3rdperiod|period3|thirdperiod/.test(norm)?"P3":/regulartime|60min|60minutes/.test(norm)?"REG":"GAME";
+  const side=/over|more|больше|тб/i.test(lowerOutcome)?"over":/under|less|меньше|тм/i.test(lowerOutcome)?"under":null;
+  if(/teamtotal|individualtotal|team1total|team2total|totalteam/.test(norm)){
+    const idx=/team1|1stteam|firstteam|individualtotal1|total1/.test(norm)?1:/team2|2ndteam|secondteam|individualtotal2|total2/.test(norm)?2:0;
+    const subject=String(row.subject_key||"").toUpperCase()||(idx===1?teams.team1:idx===2?teams.team2:null);
+    if(!subject||!side||value===null)return null;
+    return {...base,market_type:"team_total",period,subject,side,line:value};
+  }
+  if(/handicap|spread|puckline/.test(norm)){
+    const subject=teamSubject(row.subject_key,outcome,game,teams);if(!subject||value===null)return null;
+    let line=value;const first=subject===teams.team1,second=subject===teams.team2;if(second&&!first)line=-value;
+    return {...base,market_type:"handicap",period,subject,side:subject,line};
+  }
+  if(/total/.test(norm)&&!/team|individual/.test(norm)){
+    if(!side||value===null)return null;
+    return {...base,market_type:"game_total",period,subject:null,side,line:value};
+  }
+  return null;
+}
+function teamSubject(subjectKey,outcome,game,teams){
+  const key=String(subjectKey||"").trim().toUpperCase();if(key===game.home_tri||key===game.away_tri)return key;
+  if(outcome==="1")return teams.team1||null;if(outcome==="2")return teams.team2||null;
+  if(/^home$/i.test(outcome))return game.home_tri;if(/^away$/i.test(outcome))return game.away_tri;return null;
+}
+function parseJson(v){try{return v?JSON.parse(v):null}catch{return null}}
+function normalizeWinlineText(v){return String(v||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"")}
+function triFromWinlineName(v){return WINLINE_TEAM_NAMES[normalizeWinlineText(v)]||null}
+function finiteMarketLine(...values){for(const v of values){if(v===null||v===undefined||v==="")continue;const n=Number(String(v).replace(",",".").replace(/[^0-9+.-]/g,""));if(Number.isFinite(n))return n}return null}
+function marketLineFromType(v){const m=String(v||"").match(/:([+-]?\d+(?:\.\d+)?)$/);return m?m[1]:null}
+function isoOrNull(v){const raw=String(v||"").trim();const t=Date.parse(raw.includes("T")?raw:raw.replace(" ","T")+"Z");return Number.isFinite(t)?new Date(t).toISOString():null}
+function broadcastWinlineMaxAgeMs(game){const left=Date.parse(String(game?.scheduled_start_utc||""))-Date.now();if(!Number.isFinite(left))return 7*60*60*1000;if(left>6*60*60*1000)return 7*60*60*1000;if(left>60*60*1000)return 75*60*1000;return 25*60*1000}
 function buildQuickCards(game, teamStats, playerStats) {
   const cards=[];
   const home=teamStats.find(r=>Number(r.is_home)===1);
@@ -249,7 +325,7 @@ function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[si
 function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct==null||!Number.isFinite(Number(a.faceoff_pct))?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct==null||!Number.isFinite(Number(h.faceoff_pct))?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
 function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}renderCards(merged.slice(0,12));const sub=document.querySelector('.psub');if(sub)sub.textContent=liveCards.length?`LIVE ${liveCards.length} · история ${historicalCards.length} · рынок Winline подбирается по типу сигнала`:`Сильных live-сигналов сейчас нет · история ${historicalCards.length} · слабые тренды не показываем`}
-async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=l.cards||[];renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);c.textContent=parts.join(' · ')+' · LIVE FEED '+new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}if(['LIVE','CRIT'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
+async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds)));renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);c.textContent=parts.join(' · ')+' · LIVE FEED '+new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}if(['LIVE','CRIT'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
 const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
   CGY:{name:"КАЛГАРИ",color:"#D2001C"},CAR:{name:"КАРОЛИНА",color:"#CE1126"},CHI:{name:"ЧИКАГО",color:"#CF0A2C"},
@@ -337,7 +413,7 @@ function broadcastCardHtml(c,large=false){
 function renderCards(cards){currentCards=cards;$('#cards').innerHTML=cards.length?cards.map((c,i)=>`<article class="card">${broadcastCardHtml(c)}<div class="actions"><button class="act previewbtn" data-i="${i}">PREVIEW</button><button class="act ${c.__status==='shown'?'hide':'show'} showbtn" data-i="${i}">${c.__status==='shown'?'УБРАТЬ':'ПОКАЗАТЬ'}</button></div></article>`).join(''):'<div class="empty">Пока нет карточек</div>';document.querySelectorAll('.previewbtn').forEach(b=>b.onclick=()=>previewCard(Number(b.dataset.i),b));document.querySelectorAll('.showbtn').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b))}
 async function ensureDraft(c){if(c.__cardId)return c.__cardId;const d=await operatorApi('/api/broadcast/operator/drafts/from-insight',{method:'POST',body:JSON.stringify({game_pk:Number(selected),card:c})});c.__cardId=d.card?.card_id||d.card_id;if(!c.__cardId)throw new Error('Не удалось создать эфирную карточку');c.__status=d.card?.status||'draft';return c.__cardId}
 async function setBroadcastStatus(c,status){const id=await ensureDraft(c);const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(id)+'/status',{method:'POST',body:JSON.stringify({status})});c.__status=d.card?.status||status;const s=await api('/api/broadcast/state');renderAir(s.on_air);return d}
-async function previewCard(i,b){const c=currentCards[i];if(!c)return;$('#previewcard').innerHTML=broadcastCardHtml(c,true);$('#drawer').classList.add('open');if(!ensureOperatorToken())return;b.disabled=true;try{await ensureDraft(c);if(c.__status!=='preview'&&c.__status!=='shown')await setBroadcastStatus(c,'preview');renderCards(currentCards)}catch(e){alert(e.message)}finally{b.disabled=false}}
+async function previewCard(i,b){const c=currentCards[i];if(!c)return;$('#previewcard').innerHTML=broadcastCardHtml(c,true);$('#drawer').classList.add('open')}
 async function toggleShow(i,b){const c=currentCards[i];if(!c)return;b.disabled=true;try{if(c.__status==='shown'){await setBroadcastStatus(c,'hidden')}else{await ensureDraft(c);if(c.__status!=='preview')await setBroadcastStatus(c,'preview');if(!confirm('Показать эту плашку в эфир?')){renderCards(currentCards);return}await setBroadcastStatus(c,'shown')}renderCards(currentCards)}catch(e){alert(e.message)}finally{b.disabled=false}}
 function renderPlayers(rows){$('#players').innerHTML=`<div class="prow head"><div>Игрок</div><div class="num">Г</div><div class="num">П</div><div class="num">О</div><div class="num">Бр</div></div>`+(rows.length?rows.slice(0,10).map(p=>`<div class="prow"><div><div class="pname">${esc(p.full_name_ru||p.full_name_en)}</div><div class="pmeta">${esc(p.team_tri)} · ${esc(p.position_code||'—')} · #${esc(p.sweater_number??'—')}</div></div><div class="num">${p.goals??0}</div><div class="num">${p.assists??0}</div><div class="num">${p.points??0}</div><div class="num">${p.shots??'—'}</div></div>`).join(''):'<div class="empty">Нет статистики</div>')}
 function renderEvents(rows){$('#events').innerHTML=rows.length?rows.slice(0,18).map(e=>`<div class="event"><div class="etime">P${esc(e.period_number??'—')} ${esc(e.time_in_period||'')}</div><div><div class="etype">${e.event_type==='goal'||e.event_type==='shootout-goal'?'ГОЛ':e.event_type==='penalty'?'УДАЛЕНИЕ':'КОНЕЦ ПЕРИОДА'}${e.team_tri?' · '+esc(e.team_tri):''}</div><div class="edesc">${esc(e.description||peopleText(e.people)||'')}</div></div><div class="escore">${e.away_score??''}${e.away_score!==null&&e.away_score!==undefined?':':''}${e.home_score??''}</div></div>`).join(''):'<div class="empty">Нет ключевых событий</div>'}
@@ -362,18 +438,18 @@ const DASHBOARD_HTML=String.raw`<!doctype html>
 .drawerback{position:fixed;inset:0;background:rgba(0,0,0,.66);display:none;z-index:20}.drawerback.open{display:block}.drawer{position:absolute;right:0;top:0;bottom:0;width:min(520px,92vw);background:#101012;border-left:1px solid #303036;padding:24px;display:flex;flex-direction:column}.dtop{display:flex;justify-content:space-between;align-items:center}.dtitle{font-size:10px;letter-spacing:.16em;font-weight:900;color:#777}.close{border:1px solid #333;background:#171719;color:#aaa;border-radius:9px;padding:7px 10px;cursor:pointer}.preview{margin:auto 0;border-radius:24px;background:linear-gradient(135deg,#151517,#201a27);border:1px solid #37333f;padding:30px}.pvbrand{font-size:10px;letter-spacing:.16em;font-weight:950}.pveyebrow{margin-top:34px;color:var(--lav);font-size:10px;font-weight:900;letter-spacing:.12em}.pvvalue{font-size:58px;font-weight:950;letter-spacing:-.08em;margin-top:10px}.pvtitle{font-size:20px;font-weight:900;margin-top:10px;line-height:1.15}.pvnote{font-size:11px;color:#83838c;margin-top:12px}.dfoot{font-size:10px;color:#74747c;line-height:1.5;padding-top:20px}.legend{display:flex;gap:8px;align-items:center}.safe{display:inline-flex;align-items:center;gap:6px;color:#8d8d94}.safe:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green)}
 
 /* Fixed HOH × Winline broadcast-card template */
-.cards{padding:12px;grid-template-columns:1fr;gap:12px}.card{border:1px solid #303036;border-radius:14px;background:#0d0d0f;overflow:hidden;position:relative}.card:before,.card.lav:before,.kind,.cardbody{display:none}
-.aircard{--team-color:#00e6c3;position:relative;height:218px;min-width:720px;background:transparent;color:#fff;overflow:visible}
-.factbar{position:absolute;left:0;right:0;top:0;height:66px;border:1px solid #5a5a60;border-radius:13px;background:linear-gradient(135deg,#151517,#0b0b0d);display:flex;align-items:center;padding:0 24px 0 38px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.28)}
+.cards{padding:12px;grid-template-columns:1fr;gap:12px}.card{border:1px solid #303036;border-radius:14px;background:#0d0d0f;overflow-x:auto;overflow-y:hidden;position:relative}.card:before,.card.lav:before,.kind,.cardbody{display:none}
+.aircard{--team-color:#00e6c3;position:relative;width:820px;height:196px;min-width:820px;max-width:820px;margin:0 auto;background:transparent;color:#fff;overflow:visible}
+.factbar{position:absolute;left:0;width:820px;top:0;height:58px;border:1px solid #5a5a60;border-radius:13px;background:linear-gradient(135deg,#151517,#0b0b0d);display:flex;align-items:center;padding:0 22px 0 36px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.28)}
 .teamstripe{position:absolute;left:0;top:8px;bottom:8px;width:7px;border-radius:5px;background:var(--team-color);box-shadow:0 0 15px color-mix(in srgb,var(--team-color) 65%,transparent)}
-.facttext{font-size:20px;line-height:1;font-weight:950;letter-spacing:-.02em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.facthot{color:var(--orange)}
-.betpanel{position:absolute;left:0;right:0;top:76px;height:138px;border:1px solid #5a5a60;border-radius:14px;background:linear-gradient(135deg,#101113,#070809 72%,#101114);overflow:visible;box-shadow:0 8px 25px rgba(0,0,0,.3)}
-.teammark{position:absolute;left:0;top:0;width:142px;height:136px;border-right:1px solid #35353a;border-radius:13px 0 0 13px;background:linear-gradient(135deg,color-mix(in srgb,var(--team-color) 20%,#060708),#060708 70%);display:grid;place-items:center;overflow:hidden}.teammark img{width:106px;height:106px;object-fit:contain}.teammark span{font-size:22px;font-weight:950;color:#aaa}
-.betcopy{position:absolute;left:142px;top:0;width:292px;height:136px;padding:26px 22px;display:flex;flex-direction:column;justify-content:center;overflow:hidden}.betteam{font-size:34px;line-height:1;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.betdesc{margin-top:12px;font-size:20px;line-height:1;font-weight:900;color:#d0d0d4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.winlinebrand{position:absolute;left:59%;top:28px;transform:translateX(-50%);width:188px;height:54px;display:grid;place-items:center}.winlineSvg{display:block;width:188px;height:auto}
-.oddsbox{position:absolute;right:0;top:-1px;width:156px;height:92px;background:linear-gradient(135deg,#176eff,#0b4df5);color:#fff;clip-path:polygon(12% 0,100% 0,92% 100%,0 100%);display:grid;place-items:center;padding:0 12px 0 22px;font-size:50px;line-height:1;font-weight:950;font-style:italic;letter-spacing:-.055em;border-radius:0 13px 0 0}
-.profitbox{position:absolute;right:-1px;bottom:-1px;width:58%;height:56px;border:1px solid #5b5b61;border-radius:13px;background:linear-gradient(135deg,#19191c,#0b0b0d);display:flex;align-items:center;justify-content:center;gap:10px;padding:0 16px;white-space:nowrap;overflow:hidden}.profitbox strong{font-size:22px;color:var(--orange);font-weight:950}.profitbox span{font-size:13px;color:#c9c9ce;font-weight:850}
-.actions{height:36px;display:grid;grid-template-columns:1fr 1.2fr;border-top:1px solid #29292e}.act{padding:8px;font-size:9px}.show{background:#29292e;color:#a8a8ae}.show:hover{background:var(--orange);color:#111}.hide{background:#35171a;color:#ff8f8f}.drawer{width:min(980px,96vw)}.preview{margin:auto 0;background:transparent;border:0;border-radius:0;padding:0;overflow:auto}.preview .aircard{width:900px;height:250px;min-width:900px;margin:auto}.preview .factbar{height:76px}.preview .facttext{font-size:25px}.preview .betpanel{top:88px;height:158px}.preview .teammark{width:164px;height:156px}.preview .teammark img{width:122px;height:122px}.preview .betcopy{left:164px;width:330px;height:156px}.preview .betteam{font-size:39px}.preview .betdesc{font-size:23px}.preview .winlinebrand{width:220px;height:62px;top:31px}.preview .winlineSvg{width:220px}.preview .oddsbox{width:180px;height:104px;font-size:58px}.preview .profitbox{height:62px}.preview .profitbox strong{font-size:25px}.preview .profitbox span{font-size:14px}
+.facttext{font-family:"Arial Narrow","Roboto Condensed",Arial,sans-serif;font-size:18px;line-height:1;font-weight:950;letter-spacing:-.02em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.facthot{color:var(--orange)}
+.betpanel{position:absolute;left:0;width:820px;top:66px;height:126px;border:1px solid #5a5a60;border-radius:14px;background:linear-gradient(135deg,#101113,#070809 72%,#101114);overflow:visible;box-shadow:0 8px 25px rgba(0,0,0,.3)}
+.teammark{position:absolute;left:0;top:0;width:126px;height:124px;border-right:1px solid #35353a;border-radius:13px 0 0 13px;background:linear-gradient(135deg,color-mix(in srgb,var(--team-color) 20%,#060708),#060708 70%);display:grid;place-items:center;overflow:hidden}.teammark img{width:92px;height:92px;object-fit:contain}.teammark span{font-size:22px;font-weight:950;color:#aaa}
+.betcopy{position:absolute;left:126px;top:0;width:276px;height:124px;padding:23px 20px;display:flex;flex-direction:column;justify-content:center;overflow:hidden}.betteam{font-size:30px;line-height:1;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.betdesc{margin-top:10px;font-size:18px;line-height:1;font-weight:900;color:#d0d0d4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.winlinebrand{position:absolute;left:58%;top:24px;transform:translateX(-50%);width:174px;height:50px;display:grid;place-items:center}.winlineSvg{display:block;width:174px;height:auto}
+.oddsbox{position:absolute;right:0;top:-1px;width:148px;height:82px;background:linear-gradient(135deg,#176eff,#0b4df5);color:#fff;clip-path:polygon(12% 0,100% 0,92% 100%,0 100%);display:grid;place-items:center;padding:0 12px 0 22px;font-size:46px;line-height:1;font-weight:950;font-style:italic;letter-spacing:-.055em;border-radius:0 13px 0 0}
+.profitbox{position:absolute;right:-1px;bottom:-1px;width:58%;height:50px;border:1px solid #5b5b61;border-radius:13px;background:linear-gradient(135deg,#19191c,#0b0b0d);display:flex;align-items:center;justify-content:center;gap:10px;padding:0 16px;white-space:nowrap;overflow:hidden}.profitbox strong{font-size:20px;color:var(--orange);font-weight:950}.profitbox span{font-size:12px;color:#c9c9ce;font-weight:850}
+.actions{height:36px;display:grid;grid-template-columns:1fr 1.2fr;border-top:1px solid #29292e}.act{padding:8px;font-size:9px}.show{background:#29292e;color:#a8a8ae}.show:hover{background:var(--orange);color:#111}.hide{background:#35171a;color:#ff8f8f}.drawer{width:min(930px,96vw)}.preview{margin:auto 0;background:transparent;border:0;border-radius:0;padding:18px;overflow:auto}.preview .aircard{width:820px;height:196px;min-width:820px;max-width:820px;margin:auto}
 @media(max-width:1100px){.app{grid-template-columns:240px 1fr}.work{grid-template-columns:1fr}.rightcol{grid-template-columns:1fr 1fr}.top{grid-template-columns:1fr}.air{max-width:none}.metrics{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.app{display:block}.side{position:relative;height:auto}.main{padding:16px}.match{grid-template-columns:1fr auto 1fr;padding:18px 12px}.logo{display:none}.score{font-size:42px}.code{font-size:22px}.cards{grid-template-columns:1fr}.rightcol{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}}
 </style></head><body>
