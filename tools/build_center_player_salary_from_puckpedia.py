@@ -43,15 +43,56 @@ def localized(value: Any) -> str:
 def norm(text: str) -> str:
     s = unicodedata.normalize("NFKD", str(text or ""))
     s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    s = re.sub(r"[^a-z0-9]+", " ", s).strip()
+    s = re.sub(r"\s+", " ", s)
     aliases = {
-        "alexis lafreniere":"alexis lafreniere",
-        "tim stutzle":"tim stutzle",
+        # Existing full-name variants from the salary source.
         "kristopher letang":"kris letang",
         "janis jerome moser":"j j moser",
         "john jason peterka":"jj peterka",
+
+        # NHL roster short names / salary-table legal names.
+        "alex killorn":"alexander killorn",
+        "timmy washe":"tim washe",
+        "will borgen":"william borgen",
+        "matt coronato":"matthew coronato",
+        "jake middleton":"jacob middleton",
+        "mike benning":"michael benning",
+        "zach sawchenko":"zachary sawchenko",
+        "fedor svechkov":"fyodor svechkov",
+        "zach werenski":"zachary werenski",
+        "cam talbot":"cameron talbot",
+        "mattias janmark":"mattias janmark nylen",
+        "matt savoie":"matthew savoie",
+        "joshua brown":"josh brown",
+        "damien carfagna":"damian carfagna",
+        "mikey anderson":"michael anderson",
+        "matt boldy":"matthew boldy",
+        "mike matheson":"michael matheson",
+        "nick perbix":"nicklaus perbix",
+        "matt murray":"matthew murray",
+        "nico daws":"nicolas daws",
+        "tony deangelo":"anthony deangelo",
+        "matthew kessel":"matt kessel",
+        "matt rempe":"matthew rempe",
+        "joe veleno":"joseph veleno",
+        "gabe perreault":"gabriel perreault",
+        "michael amadio":"mike amadio",
+        "cam dineen":"cameron dineen",
+        "dan vladar":"daniel vladar",
+        "nick robertson":"nicholas robertson",
+        "tommy novak":"thomas novak",
+        "ben kindel":"benjamin kindel",
+        "cam lund":"cameron lund",
+        "matty beniers":"matthew beniers",
+        "jacob quillan":"jake quillan",
+        "bo groulx":"benoit olivier groulx",
+        "henrik rybinski":"henry rybinski",
+        "victor mancini":"vittorio mancini",
+        "aleksei medvedev":"alexei medvedev",
+        "alex ovechkin":"alexander ovechkin",
+        "danil zhilkin":"danny zhilkin",
     }
-    s = re.sub(r"[^a-z0-9]+", " ", s).strip()
-    s = re.sub(r"\s+", " ", s)
     return aliases.get(s, s)
 
 
@@ -68,12 +109,16 @@ def nhl_roster(session: requests.Session, tri: str) -> list[dict[str, Any]]:
     r.raise_for_status()
     data = r.json()
     out: list[dict[str, Any]] = []
-    for section in ("forwards", "defensemen", "goalies"):
+    for section, forced_position in (("forwards", ""), ("defensemen", "D"), ("goalies", "G")):
         for p in data.get(section) or []:
             full = " ".join(x for x in (localized(p.get("firstName")), localized(p.get("lastName"))) if x).strip()
             if not full:
                 continue
-            out.append({"player_id":int(p["id"]),"name":full,"key":norm(full),"nhl_team":tri})
+            position = str(p.get("positionCode") or p.get("position") or forced_position or "").upper().strip()
+            out.append({
+                "player_id":int(p["id"]),"name":full,"key":norm(full),"nhl_team":tri,
+                "position":position,
+            })
     return out
 
 
@@ -97,6 +142,12 @@ def normalize_team(value: str) -> str:
     team = re.sub(r"[^A-Z]", "", str(value or "").upper())
     team = TEAM_ALIASES.get(team, team)
     return team if team in TEAMS else ""
+
+
+def source_position(text: str) -> str:
+    """Extract the roster position MarkerZone prints next to the player name."""
+    m = re.search(r"\((C|LW|RW|D|G)(?:[/, ](?:C|LW|RW|D|G))*\)", str(text or "").upper())
+    return m.group(1) if m else ""
 
 
 def source_rows(session: requests.Session) -> list[dict[str, Any]]:
@@ -145,7 +196,7 @@ def source_rows(session: requests.Session) -> list[dict[str, Any]]:
             continue
         seen.add(key)
         out.append({
-            "name":name,"key":norm(name),"team":team,
+            "name":name,"key":norm(name),"team":team,"position":source_position(row_text),
             "salary_cash":salary_cash,"cap_hit":cap_hit,"aav":cap_hit,
             "url":requests.compat.urljoin(SOURCE_URL, href),
         })
@@ -173,7 +224,7 @@ def source_rows(session: requests.Session) -> list[dict[str, Any]]:
             if key in seen:
                 continue
             seen.add(key)
-            out.append({"name":name,"key":norm(name),"team":team,"salary_cash":salary_cash,"cap_hit":cap_hit,"aav":cap_hit,"url":SOURCE_URL})
+            out.append({"name":name,"key":norm(name),"team":team,"position":source_position(text),"salary_cash":salary_cash,"cap_hit":cap_hit,"aav":cap_hit,"url":SOURCE_URL})
     return out
 
 
@@ -189,26 +240,42 @@ def match(pool: list[dict[str, Any]], rows: list[dict[str, Any]]) -> tuple[dict[
     for row in rows:
         candidates = [p for p in by_key.get(row["key"], []) if p["player_id"] not in used]
         same_team = [p for p in candidates if row["team"] and p["nhl_team"] == row["team"]]
-        chosen = same_team[0] if len(same_team)==1 else (candidates[0] if len(candidates)==1 else None)
+        team_pool = same_team or candidates
+        same_position = [p for p in team_pool if row.get("position") and p.get("position") == row["position"]]
+        chosen = (
+            same_position[0] if len(same_position)==1
+            else team_pool[0] if len(team_pool)==1
+            else None
+        )
         if chosen:
             used.add(chosen["player_id"])
-            result[str(chosen["player_id"])] = {**row,"nhl_name":chosen["name"],"match_method":"exact_name"}
+            result[str(chosen["player_id"])] = {
+                **row,"nhl_name":chosen["name"],
+                "match_method":"exact_name_position" if same_position else "exact_name",
+            }
         else:
             pending.append(row)
 
     available = [p for p in pool if p["player_id"] not in used]
     for row in pending:
         candidates = [p for p in available if not row["team"] or p["nhl_team"]==row["team"]]
+        if row.get("position"):
+            positioned = [p for p in candidates if p.get("position")==row["position"]]
+            if positioned:
+                candidates = positioned
         if not candidates:
             candidates = available
         scored = sorted(((SequenceMatcher(None,row["key"],p["key"]).ratio(),p) for p in candidates),key=lambda x:x[0],reverse=True)
         best = scored[0] if scored else (0.0,None)
         second = scored[1][0] if len(scored)>1 else 0.0
-        if best[1] and best[0]>=0.91 and best[0]-second>=0.035:
+        # Position/team restrictions make the remaining nickname/legal-name aliases much safer.
+        threshold = 0.86 if row.get("position") and row.get("team") else 0.91
+        margin = 0.025 if row.get("position") and row.get("team") else 0.035
+        if best[1] and best[0]>=threshold and best[0]-second>=margin:
             p=best[1];used.add(p["player_id"]);available=[x for x in available if x["player_id"]!=p["player_id"]]
-            result[str(p["player_id"])]={**row,"nhl_name":p["name"],"match_method":"fuzzy_name","match_score":round(best[0],4)}
+            result[str(p["player_id"])]={**row,"nhl_name":p["name"],"match_method":"fuzzy_name_position" if row.get("position") else "fuzzy_name","match_score":round(best[0],4)}
         else:
-            unresolved.append({"full_name_en":row["name"],"team":row["team"],"salary_cash":row["salary_cash"],"aav":row["aav"],"best_score":round(best[0],4)})
+            unresolved.append({"full_name_en":row["name"],"team":row["team"],"position":row.get("position") or "","salary_cash":row["salary_cash"],"aav":row["aav"],"best_score":round(best[0],4)})
     return result, unresolved
 
 
@@ -224,7 +291,7 @@ def main() -> int:
     players:dict[str,Any]={}
     for pid,row in matched.items():
         players[pid]={
-            "team":row["team"],"full_name_en":row["name"],"nhl_name":row.get("nhl_name"),
+            "team":row["team"],"position":row.get("position") or "","full_name_en":row["name"],"nhl_name":row.get("nhl_name"),
             "salary_cash":int(row["salary_cash"]),"cap_hit":int(row["cap_hit"]),"aav":int(row["aav"]),
             "source_url":row["url"],"match_method":row.get("match_method"),"match_score":row.get("match_score"),
         }
