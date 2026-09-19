@@ -1,6 +1,7 @@
 import React from "react";
 import satori from "satori";
 import sharp from "sharp";
+import wawoff2 from "wawoff2";
 import { readFile } from "node:fs/promises";
 
 const WIDTH = 820;
@@ -11,7 +12,7 @@ const templateUrl = new URL("../assets/card-template.webp", import.meta.url);
 const fontUrl = new URL("../assets/sofia-sans-condensed-italic.woff2", import.meta.url);
 
 const templatePromise = readFile(templateUrl);
-const fontPromise = readFile(fontUrl);
+const fontPromise = (async()=>Buffer.from(await wawoff2.decompress(await readFile(fontUrl))))();
 const logoCache = new Map();
 
 const TEAM = {
