@@ -6,7 +6,7 @@ const VK_OWNER_ID = -227682170;
 const PAGE_SIZE = 100;
 const BACKFILL_PAGES_PER_TICK = 15;
 const META_ALGO = "hoh_vk_video_backfill_algo";
-const BACKFILL_ALGO = "v6-full-broadcast-no-highlights";
+const BACKFILL_ALGO = "v7-strict-full-broadcast-cleanup";
 const META_CURSOR = "hoh_vk_video_backfill_offset";
 const META_DONE = "hoh_vk_video_backfill_done";
 const META_LAST_SYNC = "hoh_vk_video_last_sync_json";
@@ -58,7 +58,12 @@ export async function runVkBroadcastMaintenance(env,{forceBackfill=false}={}) {
       DELETE FROM game_vk_broadcasts
       WHERE source_key IN (
         SELECT source_key FROM vk_broadcasts
-        WHERE duration_seconds IS NOT NULL AND duration_seconds < ?
+        WHERE (duration_seconds IS NOT NULL AND duration_seconds < ?)
+           OR LOWER(title) LIKE '%хайлайт%'
+           OR LOWER(title) LIKE '%highlight%'
+           OR LOWER(title) LIKE '%обзор матча%'
+           OR LOWER(title) LIKE '%лучшие моменты%'
+           OR LOWER(title) LIKE '%best moment%'
       );
     `).bind(MIN_CANONICAL_DURATION_SECONDS).run();
 
@@ -178,6 +183,8 @@ async function ingestPage(env,items,{offset,mode}){
   await bulkUpsertBroadcasts(env.DB,records);
 
   const eligible=records.filter(x=>x.parsed_home_tri&&x.parsed_away_tri&&(x.scheduled_at||x.published_at)&&broadcastLengthEligible(x));
+  const rejected=records.filter(x=>!broadcastLengthEligible(x));
+  if(rejected.length)await deleteMappingsForSources(env.DB,rejected.map(x=>x.source_key));
   let matchable=eligible,alreadyMapped=0;
   if(mode==="latest"&&eligible.length){
     const mapped=await loadMappedSourceKeys(env.DB,eligible);
@@ -240,6 +247,14 @@ async function bulkUpsertMappings(db,mappings){
   `).bind(payload).run();
 }
 
+async function deleteMappingsForSources(db,keys){
+  const clean=[...new Set((keys||[]).map(x=>String(x||"")).filter(Boolean))];
+  if(!clean.length)return;
+  for(let i=0;i<clean.length;i+=80){
+    const part=clean.slice(i,i+80),q=part.map(()=>"?").join(",");
+    await db.prepare("DELETE FROM game_vk_broadcasts WHERE source_key IN ("+q+");").bind(...part).run();
+  }
+}
 async function loadMappedSourceKeys(db,records){
   if(!records.length)return new Set();
   const keys=records.map(x=>String(x.source_key||"")).filter(Boolean);
