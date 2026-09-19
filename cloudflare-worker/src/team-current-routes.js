@@ -37,6 +37,7 @@ import { handleTelegramCenterV19Ui } from "./telegram-center-v19-ui.js";
 import { handleTelegramCenterV20News } from "./telegram-center-v20-news.js";
 import { handleTelegramCenterV20Ui } from "./telegram-center-v20-ui.js";
 import { handleTelegramCenterV21SpoilersUi } from "./telegram-center-v21-spoilers-ui.js";
+import { handleTelegramCenterV22Profiles } from "./telegram-center-v22-profiles.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleWinlineFeedProbe } from "./winline-feed-probe.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
@@ -108,6 +109,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (centerV20UiResponse) return centerV20UiResponse;
   const centerV21SpoilersUiResponse = handleTelegramCenterV21SpoilersUi(request, path);
   if (centerV21SpoilersUiResponse) return centerV21SpoilersUiResponse;
+  const centerV22ProfilesResponse = await handleTelegramCenterV22Profiles(request.clone(), env, path);
+  if (centerV22ProfilesResponse) return centerV22ProfilesResponse;
   const centerV18PlayerLastGameResponse = await handleTelegramCenterV18PlayerLastGame(request.clone(), env, path);
   if (centerV18PlayerLastGameResponse) return centerV18PlayerLastGameResponse;
   const centerV18VkDataResponse = await handleTelegramCenterV18VkData(request.clone(), env, path);
