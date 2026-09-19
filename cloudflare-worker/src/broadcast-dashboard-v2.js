@@ -49,13 +49,23 @@ async function broadcastGamesRoute(env) {
         FROM games g
         LEFT JOIN teams ht ON ht.tri_code=g.home_tri
         LEFT JOIN teams at ON at.tri_code=g.away_tri
-        WHERE g.game_type IN (2,3)
-        ORDER BY g.scheduled_start_utc DESC
+        WHERE g.game_type IN (1,2,3)
+          AND (
+            UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT')
+            OR datetime(g.scheduled_start_utc) >= datetime('now')
+          )
+        ORDER BY datetime(g.scheduled_start_utc) ASC, g.game_pk ASC
         LIMIT 100;
       `).all(),
       env.DB.prepare(`
         SELECT
-          (SELECT COUNT(*) FROM games WHERE game_type IN (2,3)) AS games,
+          (SELECT COUNT(*) FROM games
+            WHERE game_type IN (1,2,3)
+              AND (
+                UPPER(COALESCE(game_state,'')) IN ('LIVE','CRIT')
+                OR datetime(scheduled_start_utc) >= datetime('now')
+              )
+          ) AS games,
           (SELECT COUNT(*) FROM players) AS players,
           (SELECT COUNT(*) FROM teams) AS teams;
       `).first(),
@@ -111,7 +121,7 @@ async function broadcastGameRoute(env, gamePk) {
       FROM games g
       LEFT JOIN teams ht ON ht.tri_code=g.home_tri
       LEFT JOIN teams at ON at.tri_code=g.away_tri
-      WHERE g.game_pk=? AND g.game_type IN (2,3)
+      WHERE g.game_pk=? AND g.game_type IN (1,2,3)
       LIMIT 1;
     `).bind(gamePk).first();
     if (!game) return jsonResponse({ ok:false,error:"game_not_found" },404);
@@ -332,9 +342,9 @@ function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function ensureOperatorToken(){if(operatorToken)return true;operatorToken=prompt('Operator key')||'';if(operatorToken)sessionStorage.setItem('hohOperatorToken',operatorToken);return Boolean(operatorToken)}
 async function operatorApi(url,opts={}){if(!ensureOperatorToken())throw new Error('Operator key не введён');const headers={...(opts.headers||{}),Authorization:'Bearer '+operatorToken};if(opts.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opts,headers,cache:'no-store'});const d=await r.json().catch(()=>({}));if(r.status===401){sessionStorage.removeItem('hohOperatorToken');operatorToken='';throw new Error('Неверный Operator key')}if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
 function fmtDate(v){if(!v)return'';const d=new Date(v);return d.toLocaleString('ru-RU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).replace(',',' ·')}
-function typeLabel(t){return Number(t)===3?'Плей-офф':'Регулярка'}
+function typeLabel(t){const n=Number(t);return n===1?'Предсезонка':n===3?'Плей-офф':'Регулярка'}
 async function api(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
-async function load(){try{const [g,s]=await Promise.all([api('/api/broadcast/games'),api('/api/broadcast/state')]);games=g.games||[];$('#counts').textContent=`${g.counts.games} игр · ${g.counts.players} игроков · ${g.counts.teams} команды`;renderAir(s.on_air);const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
+async function load(){try{const [g,s]=await Promise.all([api('/api/broadcast/games'),api('/api/broadcast/state')]);games=g.games||[];$('#counts').textContent=`${g.counts.games} ближайших игр · предсезонка + регулярка + плей-офф`;renderAir(s.on_air);const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
 function renderAir(card){const air=$('#air'),text=$('#airtext');if(card){air.classList.add('live');text.textContent=`${card.headline_ru}: ${card.stat_text_ru}`}else{air.classList.remove('live');text.textContent='Сейчас ничего не показано'}}
 function renderGames(){$('#games').innerHTML=games.map(g=>`<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span class="pill">${typeLabel(g.game_type)}</span></div></button>`).join('');document.querySelectorAll('.game').forEach(b=>b.onclick=()=>selectGame(Number(b.dataset.id)))}
 async function selectGame(id){selected=id;renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const d=await api('/api/broadcast/games/'+id);currentData=d;historicalCards=d.cards||[];renderGame(d);await refreshLive(id,true)}
@@ -476,7 +486,7 @@ const DASHBOARD_HTML=String.raw`<!doctype html>
   <div class="brand"><div class="brandname"><span class="mark"></span>HOME OF HOCKEY</div><span class="alpha">ALPHA</span></div>
   <div class="label">Broadcast control</div>
   <div class="nav"><a class="navitem active" href="#hero"><span class="dot"></span>Матчи</a><a class="navitem" href="#cards-panel"><span class="dot"></span>Карточки</a><a class="navitem" href="/broadcast/overlay" target="_blank" rel="noopener"><span class="dot"></span>Overlay</a></div>
-  <div class="label">Матчи в Data Core</div><div class="sidecount" id="counts">загрузка...</div><div class="games" id="games"></div>
+  <div class="label">Ближайшие матчи NHL</div><div class="sidecount" id="counts">загрузка...</div><div class="games" id="games"></div>
 </aside>
 <main class="main">
   <div class="top"><div class="heading"><h1>Broadcast Stats / Control Room</h1><p>Реальные данные NHL → HOH Data Core → эфир</p></div><div class="air" id="air"><div class="airtag"><span class="airdot"></span><span>ON AIR</span></div><div class="airtext" id="airtext">Сейчас ничего не показано</div></div></div>
