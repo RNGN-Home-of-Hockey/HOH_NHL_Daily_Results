@@ -51,7 +51,11 @@ jobs:
           HH="$(curl -sS -D - -o /dev/null --max-time 15 "$HIST")"
           echo "$HH" | grep -Ei '^(HTTP/|location:)'
           HL="$(printf '%s\n' "$HH" | awk 'BEGIN{IGNORECASE=1}/^location:/{sub(/\r$/,"");sub(/^[Ll]ocation:[[:space:]]*/,"");print;exit}')"
-          [[ "$HL" == "https://p.winline.ru/s/hSJPscomBm?statid=2558_&sub4=nhl&promocode=NHL" ]] || { echo "historical route not partner URL"; exit 1; }
+          [[ "$HL" == *"/stavki/sport/xokkej/ssha/nhl"* ]] || { echo "historical route missing NHL section"; exit 1; }
+          [[ "$HL" == *"statid=2558_"* ]] || { echo "historical route missing statid"; exit 1; }
+          [[ "$HL" == *"sub4=nhl"* ]] || { echo "historical route missing sub4"; exit 1; }
+          [[ "$HL" == *"promocode=NHL"* ]] || { echo "historical route missing promo"; exit 1; }
+          [[ "$HL" == *"clickid="* ]] || { echo "historical route missing clickid"; exit 1; }
 
       - name: Inspect affiliate redirect
         shell: bash
