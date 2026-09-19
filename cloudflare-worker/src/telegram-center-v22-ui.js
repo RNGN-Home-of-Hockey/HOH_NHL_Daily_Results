@@ -111,5 +111,14 @@ css();placeEye();mountMine();normalizePlayers();version();
 me(true).then(d=>{const p=d?.profile;if(p?.exists&&p.theme_mode&&H.theme?.()!==p.theme_mode)H.setTheme?.(p.theme_mode)}).catch(()=>{});
 const obs=new MutationObserver(()=>{requestAnimationFrame(()=>{placeEye();mountMine();normalizePlayers();version()})});
 obs.observe(document.documentElement,{childList:true,subtree:true});
-document.addEventListener('click',e=>{if(e.target.closest?.('.tab,[id="v15Back"]'))setTimeout(()=>{placeEye();mountMine()},60)},true);
+document.addEventListener('click',e=>{
+  const wl=e.target.closest?.('a[href^="/go/winline"]');
+  if(wl){
+    e.preventDefault();e.stopPropagation();
+    const url=new URL(wl.getAttribute('href'),location.origin).href;
+    try{if(window.Telegram?.WebApp?.openLink)window.Telegram.WebApp.openLink(url,{try_instant_view:false});else window.location.href=url}catch{window.location.href=url}
+    return;
+  }
+  if(e.target.closest?.('.tab,[id="v15Back"]'))setTimeout(()=>{placeEye();mountMine()},60)
+},true);
 })();`;
