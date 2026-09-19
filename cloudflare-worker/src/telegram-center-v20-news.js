@@ -3,6 +3,7 @@ const NHL_PAGE="https://www.sports.ru/hockey/tournament/nhl/";
 const USER_AGENT="Mozilla/5.0 (compatible; HOH-NHL-Center/20; +news-indexer)";
 const HOME_MIN_INTERVAL_MS=10*60*1000;
 const PLAYER_BATCH=4;
+const EXACT_RECENT_BATCH=8;
 const MAX_PLAYER_PAGE=20;
 const SPORTS_SLUG_OVERRIDES=new Map([[8471214,"alexander-ovechkin"]]);
 
@@ -44,6 +45,7 @@ export async function runSportsRuNewsMaintenance(env,{force=false,homeOnly=false
   if(!homeOnly){
     await ensurePlayerSources(env.DB);
     players=await scanPlayerSources(env);
+    players.exact_recent=await scanExactRecentSources(env).catch(error=>({ok:false,error:errorText(error)}));
   }
   return {ok:Boolean(home.ok!==false&&players.ok!==false),home,players};
 }
@@ -238,6 +240,35 @@ async function ensurePlayerSources(db){
   if(stmts.length)await db.batch(stmts);
 }
 
+async function scanExactRecentSources(env){
+  const meta=await loadMeta(env.DB,"sports_ru_exact_recent_cursor").catch(()=>null);
+  let cursor=Number(meta?.meta_value||0);
+  let rows=await env.DB.prepare(`
+    SELECT s.player_id,s.sports_slug,s.source_url,s.next_page,p.full_name_en,p.full_name_ru,p.current_team_tri
+    FROM sports_player_sources s
+    JOIN players p ON p.player_id=s.player_id
+    WHERE COALESCE(p.active,1)=1 AND s.player_id>?
+    ORDER BY s.player_id ASC LIMIT ?;
+  `).bind(cursor,EXACT_RECENT_BATCH).all();
+  if(!(rows.results||[]).length){
+    cursor=0;
+    rows=await env.DB.prepare(`
+      SELECT s.player_id,s.sports_slug,s.source_url,s.next_page,p.full_name_en,p.full_name_ru,p.current_team_tri
+      FROM sports_player_sources s
+      JOIN players p ON p.player_id=s.player_id
+      WHERE COALESCE(p.active,1)=1
+      ORDER BY s.player_id ASC LIMIT ?;
+    `).bind(EXACT_RECENT_BATCH).all();
+  }
+  let scanned=0,stored=0,errors=0,last=cursor;
+  for(const src of rows.results||[]){
+    const r=await scanOnePlayerSource(env,src,{pageOverride:1,preservePagination:true});
+    scanned++;stored+=Number(r.stored||0);errors+=Number(r.errors||0);last=Number(src.player_id)||last;
+  }
+  if(scanned)await saveMeta(env.DB,"sports_ru_exact_recent_cursor",String(last));
+  return {ok:true,scanned,stored,errors,cursor:last};
+}
+
 async function scanPlayerSources(env){
   const rows=await env.DB.prepare(`
     SELECT s.player_id,s.sports_slug,s.source_url,s.next_page,p.full_name_en,p.full_name_ru,p.current_team_tri
@@ -257,8 +288,8 @@ async function scanPlayerSources(env){
   return {ok:true,sources,stored,politics,off_ice:offIce,errors};
 }
 
-async function scanOnePlayerSource(env,src){
-  const page=Math.max(1,Number(src.next_page||1));
+async function scanOnePlayerSource(env,src,{pageOverride=null,preservePagination=false}={}){
+  const page=pageOverride==null?Math.max(1,Number(src.next_page||1)):Math.max(1,Number(pageOverride));
   const url=page===1?src.source_url:src.source_url+`page${page}/`;
   let html;
   try{html=await fetchText(url)}catch(error){
@@ -286,12 +317,16 @@ async function scanOnePlayerSource(env,src){
     stored++;
   }
   const hasNext=page<MAX_PLAYER_PAGE&&hasNextNewsPage(html,page+1)&&items.length>0;
-  await env.DB.prepare(`
-    UPDATE sports_player_sources
-    SET next_page=?,backfill_done=?,last_scanned_at=CURRENT_TIMESTAMP,last_error=NULL,updated_at=CURRENT_TIMESTAMP
-    WHERE player_id=?;
-  `).bind(hasNext?page+1:page,hasNext?0:1,src.player_id).run();
-  return {stored,politics,off_ice:offIce,errors:0,page,has_next:hasNext};
+  if(preservePagination){
+    await env.DB.prepare("UPDATE sports_player_sources SET last_scanned_at=CURRENT_TIMESTAMP,last_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE player_id=?").bind(src.player_id).run();
+  }else{
+    await env.DB.prepare(`
+      UPDATE sports_player_sources
+      SET next_page=?,backfill_done=?,last_scanned_at=CURRENT_TIMESTAMP,last_error=NULL,updated_at=CURRENT_TIMESTAMP
+      WHERE player_id=?;
+    `).bind(hasNext?page+1:page,hasNext?0:1,src.player_id).run();
+  }
+  return {stored,politics,off_ice:offIce,errors:0,page,has_next:hasNext,preserve_pagination:preservePagination};
 }
 
 async function upsertNews(db,item){
