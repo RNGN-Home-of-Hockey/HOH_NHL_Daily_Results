@@ -1,0 +1,63 @@
+name: Verify V22 Center
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-v22-center.yml'
+      - 'cloudflare-worker/src/telegram-center-v22-ui.js'
+      - 'cloudflare-worker/src/telegram-center-v22-profiles.js'
+      - 'cloudflare-worker/src/telegram-center-v19-ui.js'
+      - 'cloudflare-worker/src/telegram-center-v20-ui.js'
+      - 'cloudflare-worker/src/telegram-center-v20-news.js'
+      - 'cloudflare-worker/src/telegram-center-v15-team-ui.js'
+      - 'cloudflare-worker/src/telegram-center-v15-player-data.js'
+      - 'cloudflare-worker/src/telegram-center-vk-maintenance.js'
+      - 'cloudflare-worker/src/team-current-routes.js'
+      - 'migrations/0028_user_profiles_and_exact_player_news.sql'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for Worker deploy
+        run: sleep 25
+      - name: Verify production V22 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          async function raw(path,opts={}){const r=await fetch(base+path,{cache:'no-store',...opts});return {r,t:await r.text()}}
+          async function text(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status);return t}
+          async function json(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+t.slice(0,300));return JSON.parse(t)}
+
+          const shell=await text('/telegram-app');
+          for(const x of ['/telegram-app/v21.js','/telegram-app/v22.js'])if(!shell.includes(x))throw new Error('shell missing '+x);
+
+          const v22=await text('/telegram-app/v22.js');
+          for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich'])if(!v22.includes(x))throw new Error('V22 missing '+x);
+
+          const v19=await text('/telegram-app/v19.js');
+          for(const x of ['v19LastGameRich','v19OddsMatch','v19TeamVk','TEAM_RU','mountPlayerTeamOdds'])if(!v19.includes(x))throw new Error('V19 upgrade missing '+x);
+
+          const v20=await text('/telegram-app/v20.js');
+          for(const x of ['limit=15','v20NewsExtra','v20More','v20CommentAvatar','HOHEnsureCommentIdentity'])if(!v20.includes(x))throw new Error('V20 upgrade missing '+x);
+
+          const news=await json('/api/telegram-center-v20/news/home?limit=15');
+          if((news.news||[]).length<15)throw new Error('home news <15');
+          const ovi=await json('/api/telegram-center-v20/players/8471214/news?limit=100');
+          if(!(ovi.news||[]).length)throw new Error('exact Ovechkin news empty');
+
+          const unauth=await raw('/api/telegram-center-v22/me');
+          if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
+
+          const status=await json('/api/telegram-center-v19/status');
+          if(status.backfill?.done===false)throw new Error('VK full backfill incomplete');
+          console.log('V22_PRODUCTION_OK',JSON.stringify({home_news:news.news.length,ovechkin_exact_news:ovi.news.length,vk_mapped:status.mapped_games,vk_unmapped:status.unmapped_games}));
+          JS
