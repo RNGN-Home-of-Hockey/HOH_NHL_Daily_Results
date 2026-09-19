@@ -120,7 +120,7 @@ async function comments(env,newsId){
   if(!Number.isSafeInteger(newsId)||newsId<=0)return json({ok:false,error:"invalid_news_id"},400);
   try{
     const rows=await env.DB.prepare(`
-      SELECT c.comment_id,c.body,c.created_at,u.telegram_user_id,u.username,u.first_name,u.last_name,
+      SELECT c.comment_id,c.body,c.created_at,u.telegram_user_id,
              p.display_username,p.profile_name,
              CASE WHEN p.avatar_base64 IS NOT NULL AND p.avatar_base64<>'' THEN 1 ELSE 0 END has_avatar
       FROM sports_news_comments c
@@ -429,7 +429,7 @@ async function enrichNews(url){
   return {body_text:body||null,published_at:validDate(published)};
 }
 
-function displayName(x){return x.display_username?("@"+x.display_username):x.profile_name||[x.first_name,x.last_name].filter(Boolean).join(" ").trim()||(x.username?"@"+x.username:"Пользователь")}
+function displayName(x){return x.display_username?("@"+x.display_username):x.profile_name||"Пользователь"}
 function clamp(v,d,min,max){const n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.trunc(n))):d}
 function errorText(error){return String(error?.message||error||"unknown_error")}
 
