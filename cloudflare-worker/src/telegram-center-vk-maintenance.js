@@ -4,15 +4,16 @@ const VK_API = "https://api.vk.com/method/video.get";
 const VK_VERSION = "5.199";
 const VK_OWNER_ID = -227682170;
 const PAGE_SIZE = 100;
-const BACKFILL_PAGES_PER_TICK = 5;
+const BACKFILL_PAGES_PER_TICK = 15;
 const META_ALGO = "hoh_vk_video_backfill_algo";
-const BACKFILL_ALGO = "v4-ny-alias-title-date";
+const BACKFILL_ALGO = "v5-full-broadcast-min-60m";
 const META_CURSOR = "hoh_vk_video_backfill_offset";
 const META_DONE = "hoh_vk_video_backfill_done";
 const META_LAST_SYNC = "hoh_vk_video_last_sync_json";
 const META_LAST_ERROR = "hoh_vk_video_last_error";
 const HISTORICAL_NOT_BEFORE = Date.parse("2024-09-15T00:00:00Z") / 1000;
 const MATCH_WINDOW_MS = 36 * 3600 * 1000;
+const MIN_CANONICAL_DURATION_SECONDS = 60 * 60;
 
 const TEAM_ALIASES = {
   ANA:["anaheim","ducks","анахайм","дакс"], BOS:["boston","bruins","бостон","брюинз"], BUF:["buffalo","sabres","баффало","сейбрз"],
@@ -53,6 +54,14 @@ export async function runVkBroadcastMaintenance(env,{forceBackfill=false}={}) {
   }
 
   try {
+    await env.DB.prepare(`
+      DELETE FROM game_vk_broadcasts
+      WHERE source_key IN (
+        SELECT source_key FROM vk_broadcasts
+        WHERE duration_seconds IS NOT NULL AND duration_seconds < ?
+      );
+    `).bind(MIN_CANONICAL_DURATION_SECONDS).run();
+
     const algoMeta=await loadMeta(env.DB,META_ALGO);
     if(String(algoMeta?.meta_value||"")!==BACKFILL_ALGO){
       await saveMeta(env.DB,META_CURSOR,"0");
@@ -168,7 +177,7 @@ async function ingestPage(env,items,{offset,mode}){
   if(!records.length)return {mode,offset,seen:(items||[]).length,stored:0,eligible:0,mapped:0,ambiguous:0,unmatched:0};
   await bulkUpsertBroadcasts(env.DB,records);
 
-  const eligible=records.filter(x=>x.parsed_home_tri&&x.parsed_away_tri&&(x.scheduled_at||x.published_at));
+  const eligible=records.filter(x=>x.parsed_home_tri&&x.parsed_away_tri&&(x.scheduled_at||x.published_at)&&broadcastLengthEligible(x));
   let matchable=eligible,alreadyMapped=0;
   if(mode==="latest"&&eligible.length){
     const mapped=await loadMappedSourceKeys(env.DB,eligible);
@@ -253,7 +262,14 @@ async function loadCandidateGames(db,records){
   return rows.results||[];
 }
 
+function broadcastLengthEligible(record){
+  const duration=Number(record?.duration_seconds);
+  if(Number.isFinite(duration)&&duration>0)return duration>=MIN_CANONICAL_DURATION_SECONDS;
+  const status=norm(record?.status||"");
+  return /live|прямой эфир/.test(status);
+}
 function matchFromCandidates(games,a,b,dateIso,record){
+  if(!broadcastLengthEligible(record))return {kind:"unmatched",reason:"duration_under_60m"};
   const t=Date.parse(dateIso||"");
   if(!Number.isFinite(t))return {kind:"unmatched"};
   const pair=(games||[]).filter(g=>((g.home_tri===a&&g.away_tri===b)||(g.home_tri===b&&g.away_tri===a)));
