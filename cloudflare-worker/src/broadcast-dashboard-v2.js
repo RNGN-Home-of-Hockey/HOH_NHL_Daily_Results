@@ -471,6 +471,8 @@ const DASHBOARD_HTML=String.raw`<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HOH Broadcast Control</title>
 <style>
+${BROADCAST_CARD_CSS}
+
 :root{--bg:#080808;--side:#0b0b0c;--panel:#111113;--panel2:#17171a;--line:#2a2a2f;--text:#f8f8f6;--muted:#85858d;--orange:#ff5a1f;--lav:#c8b7ff;--lav2:#7869a7;--green:#83e6b1;--red:#ff6161}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}body{overflow-x:hidden}button{font:inherit}
 .app{display:grid;grid-template-columns:290px minmax(0,1fr);min-height:100vh}.side{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--line);background:var(--side);padding:20px 16px}.brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px}.brandname{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:950}.mark{width:18px;height:18px;border-radius:4px;background:var(--orange);box-shadow:10px 0 0 var(--lav)}.alpha{font-size:9px;letter-spacing:.15em;color:#777;border:1px solid #29292e;padding:5px 8px;border-radius:99px}.label{font-size:9px;font-weight:900;letter-spacing:.16em;color:#67676f;text-transform:uppercase;margin:18px 6px 8px}.nav{display:grid;gap:4px}.navitem{padding:11px 12px;border-radius:11px;color:#9a9aa1;display:flex;align-items:center;gap:10px;text-decoration:none;cursor:pointer;border:0;background:transparent;font:inherit;text-align:left}.navitem:hover{background:#141416;color:#fff}.navitem.active{background:#1a1a1d;color:#fff}.dot{width:7px;height:7px;border-radius:50%;background:#53535a}.active .dot{background:var(--orange);box-shadow:0 0 0 5px rgba(255,90,31,.1)}.soon{margin-left:auto;font-size:10px;color:#555}.sidecount{font-size:10px;color:#6f6f76;margin:0 6px 10px}.games{display:grid;gap:5px}
@@ -498,7 +500,12 @@ const DASHBOARD_HTML=String.raw`<!doctype html>
 .actions{height:36px;display:grid;grid-template-columns:1fr 1.2fr;border-top:1px solid #29292e}.act{padding:8px;font-size:9px}.show{background:#29292e;color:#a8a8ae}.show:hover{background:var(--orange);color:#111}.hide{background:#35171a;color:#ff8f8f}.noln{background:#17171a;color:#666;cursor:not-allowed}.drawer{width:min(930px,96vw)}.preview{margin:auto 0;background:transparent;border:0;border-radius:0;padding:18px;overflow:auto}.preview .aircard{width:820px;height:196px;min-width:820px;max-width:820px;margin:auto}
 @media(max-width:1100px){.app{grid-template-columns:240px 1fr}.work{grid-template-columns:1fr}.rightcol{grid-template-columns:1fr 1fr}.top{grid-template-columns:1fr}.air{max-width:none}.metrics{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.app{display:block}.side{position:relative;height:auto}.main{padding:16px}.match{grid-template-columns:1fr auto 1fr;padding:18px 12px}.logo{display:none}.score{font-size:42px}.code{font-size:22px}.cards{grid-template-columns:1fr}.rightcol{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}}
-\n#cards .card:before{content:none}\n#cards .card{padding-top:0}\n.preview .hohcard{width:820px;max-width:100%}\n</style></head><body>
+\n#cards .card:before{content:none}\n#cards .card{padding-top:0}\n.preview .hohcard{width:820px;max-width:100%}\n
+#cards .card:before{content:none}
+#cards .card{padding-top:0}
+#cards .hohcard{width:100%;max-width:820px}
+.preview .hohcard{width:820px;max-width:100%}
+</style></head><body>
 <div class="app">
 <aside class="side">
   <div class="brand"><div class="brandname"><span class="mark"></span>HOME OF HOCKEY</div><span class="alpha">ALPHA</span></div>
