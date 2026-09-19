@@ -43,7 +43,12 @@ jobs:
           async function json(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+t.slice(0,300));return JSON.parse(t)}
 
           const shell=await text('/telegram-app');
-          for(const x of ['/telegram-app/v21.js','/telegram-app/v22.js'])if(!shell.includes(x))throw new Error('shell missing '+x);
+          const bundled=shell.includes('/telegram-app/runtime-v23.js');
+          if(!bundled)for(const x of ['/telegram-app/v21.js','/telegram-app/v22.js'])if(!shell.includes(x))throw new Error('shell missing '+x);
+          if(bundled){
+            const runtime=await text('/telegram-app/runtime-v23.js');
+            for(const x of ['HOHV15','HOHSetNoSpoilers','HOHEnsureCommentIdentity','openGameV19','СВЕЖЕЕ В НХЛ'])if(!runtime.includes(x))throw new Error('runtime bundle missing '+x);
+          }
 
           const v22=await text('/telegram-app/v22.js');
           for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers'])if(!v22.includes(x))throw new Error('V22 missing '+x);
