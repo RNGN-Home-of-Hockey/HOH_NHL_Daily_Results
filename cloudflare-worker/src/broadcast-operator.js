@@ -7,11 +7,11 @@ const ALLOWED_STATUSES = new Set(["draft","preview","shown","hidden"]);
 export async function handleBroadcastOperatorRequest(request, env, path) {
   if (path === "/broadcast/operator") {
     if (request.method !== "GET") return json({ok:false,error:"method_not_allowed"},405);
-    return html(OPERATOR_HTML);
+    return html(OPERATOR_HTML,{cache:"no-store"});
   }
   if (path === "/broadcast/operator/app.js") {
     if (request.method !== "GET") return json({ok:false,error:"method_not_allowed"},405);
-    return js(`(${browserApp.toString()})();`);
+    return js(`const __name=(target,value)=>target;\n(${browserApp.toString()})();`);
   }
   if (path === "/broadcast/overlay") {
     if (request.method !== "GET") return json({ok:false,error:"method_not_allowed"},405);
@@ -29,6 +29,10 @@ export async function handleBroadcastOperatorRequest(request, env, path) {
   if (path === "/api/broadcast/operator/drafts/from-player") {
     if (request.method !== "POST") return json({ok:false,error:"method_not_allowed"},405);
     return createPlayerDraft(request,env);
+  }
+  if (path === "/api/broadcast/operator/drafts/from-insight") {
+    if (request.method !== "POST") return json({ok:false,error:"method_not_allowed"},405);
+    return createInsightDraft(request,env);
   }
   const cardMatch = /^\/api\/broadcast\/operator\/cards\/([^/]+)$/.exec(path);
   if (cardMatch) {
@@ -68,6 +72,7 @@ async function createMarketDraft(request,env){
     suggested_market_subject:candidate.subject||`${game.away_tri}-${game.home_tri}`,
     manual_odds:null,
     odds_is_demo:1,
+    payload_json:JSON.stringify({id:`market-${gamePk}`,title:`${game.away_tri} — ${game.home_tri}: ${candidate.label}`,value:`${pct(candidate.combined_rate)}`,market:{type:candidate.market_type,subject:candidate.subject,side:candidate.side,line:candidate.line,label:candidate.label,odds:null},evidence:candidate.evidence||{}}),
   };
   return persistDraft(env.DB,card,{source:"market_lab",candidate});
 }
@@ -95,8 +100,40 @@ async function createPlayerDraft(request,env){
     suggested_market_subject:String(candidate.market?.subject||candidate.evidence?.player_id||"").slice(0,120),
     manual_odds:Number.isFinite(Number(candidate.market?.odds))?Number(candidate.market.odds):null,
     odds_is_demo:1,
+    payload_json:JSON.stringify(candidate),
   };
   return persistDraft(env.DB,card,{source:"player_market",candidate});
+}
+
+async function createInsightDraft(request,env){
+  let body;
+  try{body=await request.json()}catch{return json({ok:false,error:"invalid_json"},400)}
+  const gamePk=positiveInt(body.game_pk);
+  const candidate=body.card&&typeof body.card==="object"?body.card:null;
+  if(!gamePk||!candidate)return json({ok:false,error:"invalid_request"},400);
+  const game=await env.DB.prepare(`
+    SELECT g.game_pk,g.home_tri,g.away_tri,g.scheduled_start_utc,g.game_state
+    FROM games g WHERE g.game_pk=? LIMIT 1;
+  `).bind(gamePk).first();
+  if(!game)return json({ok:false,error:"game_not_found"},404);
+  const market=candidate.market&&typeof candidate.market==="object"?candidate.market:{};
+  const odds=Number(market.odds);
+  const subject=String(market.subject||market.side||candidate.evidence?.team||candidate.team_tri||"").slice(0,120);
+  const payload=JSON.stringify(candidate);
+  const idBase=String(candidate.id||candidate.insight_type||candidate.type||"insight");
+  const card={
+    card_id:safeId(`insight-${gamePk}-${idBase}`),
+    game_pk:gamePk,
+    headline_ru:String(candidate.title||candidate.value||candidate.eyebrow||"HOH INSIGHT").slice(0,180),
+    stat_text_ru:String(market.label||candidate.value||"").slice(0,240),
+    source_note_ru:String(candidate.explanation||candidate.note||"HOH Data Core").slice(0,500),
+    suggested_market_type:String(market.type||candidate.insight_type||"insight").slice(0,80),
+    suggested_market_subject:subject,
+    manual_odds:Number.isFinite(odds)?odds:null,
+    odds_is_demo:market.odds_is_demo===true?1:0,
+    payload_json:payload.slice(0,50000),
+  };
+  return persistDraft(env.DB,card,{source:"broadcast_dashboard",candidate});
 }
 
 async function persistDraft(db,card,meta){
@@ -107,15 +144,16 @@ async function persistDraft(db,card,meta){
   await db.prepare(`
     INSERT INTO broadcast_cards(
       card_id,game_pk,insight_id,display_order,headline_ru,stat_text_ru,source_note_ru,
-      suggested_market_type,suggested_market_subject,manual_odds,odds_is_demo,status,updated_at
-    ) VALUES(?,?,NULL,999,?,?,?,?,?,?,?,'draft',CURRENT_TIMESTAMP)
+      suggested_market_type,suggested_market_subject,manual_odds,odds_is_demo,payload_json,status,updated_at
+    ) VALUES(?,?,NULL,999,?,?,?,?,?,?,?,?,?,'draft',CURRENT_TIMESTAMP)
     ON CONFLICT(card_id) DO UPDATE SET
       headline_ru=excluded.headline_ru,stat_text_ru=excluded.stat_text_ru,source_note_ru=excluded.source_note_ru,
       suggested_market_type=excluded.suggested_market_type,suggested_market_subject=excluded.suggested_market_subject,
-      manual_odds=excluded.manual_odds,odds_is_demo=excluded.odds_is_demo,status='draft',shown_at=NULL,updated_at=CURRENT_TIMESTAMP;
+      manual_odds=excluded.manual_odds,odds_is_demo=excluded.odds_is_demo,payload_json=excluded.payload_json,
+      status='draft',shown_at=NULL,updated_at=CURRENT_TIMESTAMP;
   `).bind(
     card.card_id,card.game_pk,card.headline_ru,card.stat_text_ru,card.source_note_ru,
-    card.suggested_market_type,card.suggested_market_subject,card.manual_odds,card.odds_is_demo,
+    card.suggested_market_type,card.suggested_market_subject,card.manual_odds,card.odds_is_demo,card.payload_json||null,
   ).run();
   const saved=await loadCard(db,card.card_id);
   return json({ok:true,action:"draft_saved",card:saved,source:meta.source,candidate:meta.candidate});
@@ -218,14 +256,14 @@ async function managementAuthorized(request,env){
 async function secureEqual(a,b){const e=new TextEncoder();const [da,db]=await Promise.all([crypto.subtle.digest("SHA-256",e.encode(a)),crypto.subtle.digest("SHA-256",e.encode(b))]);const aa=new Uint8Array(da),bb=new Uint8Array(db);if(aa.length!==bb.length)return false;let d=0;for(let i=0;i<aa.length;i++)d|=aa[i]^bb[i];return d===0}
 function json(payload,status=200){return new Response(JSON.stringify(payload),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}})}
 function html(body,{cache="public, max-age=180"}={}){return new Response(body,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":cache,"X-Content-Type-Options":"nosniff"}})}
-function js(body){return new Response(body,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"public, max-age=120","X-Content-Type-Options":"nosniff"}})}
+function js(body){return new Response(body,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}})}
 
 function browserApp(){
   const $=s=>document.querySelector(s);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let token=sessionStorage.getItem('hohOperatorToken')||'';let game=new URLSearchParams(location.search).get('game')||'';let matchup=null;let persisted=[];
   async function api(url,opts={}){const headers={...(opts.headers||{})};if(token)headers.Authorization='Bearer '+token;if(opts.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opts,headers,cache:'no-store'});const d=await r.json().catch(()=>({}));if(r.status===401)throw new Error('Нужен Operator key');if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
   function ensureToken(){if(token)return true;token=prompt('Operator key')||'';if(token)sessionStorage.setItem('hohOperatorToken',token);return Boolean(token)}
-  async function load(){if(!/^\d+$/.test(game)){input();return}$('#content').innerHTML='<div class="empty">Загрузка…</div>';try{const [m,b]=await Promise.all([fetch('/api/matchup/'+game+'?window=20&min_confidence=0',{cache:'no-store'}).then(r=>r.json()),fetch('/api/broadcast/games/'+game,{cache:'no-store'}).then(r=>r.json())]);matchup=m;persisted=b.persisted_cards||[];render()}catch(e){$('#content').innerHTML='<div class="empty error">'+esc(e.message)+'</div>'}}
+  async function load(){try{if(!/^\d+$/.test(game)){const list=await fetch('/api/broadcast/games',{cache:'no-store'}).then(r=>r.json());game=String(list.games?.[0]?.game_pk||'');if(!game){input();return}history.replaceState(null,'','/broadcast/operator?game='+encodeURIComponent(game))}$('#content').innerHTML='<div class="empty">Загрузка…</div>';const [m,b]=await Promise.all([fetch('/api/matchup/'+game+'?window=20&min_confidence=0',{cache:'no-store'}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||('matchup HTTP '+r.status));return d}),fetch('/api/broadcast/games/'+game,{cache:'no-store'}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||('broadcast HTTP '+r.status));return d})]);matchup=m;persisted=b.persisted_cards||[];render()}catch(e){$('#content').innerHTML='<div class="empty error">'+esc(e.message)+'</div>'}}
   function input(){$('#content').innerHTML='<div class="empty"><h2>Game ID</h2><input id="game"><button id="go">Открыть</button></div>';$('#go').onclick=()=>{game=$('#game').value.trim();location.href='/broadcast/operator?game='+encodeURIComponent(game)}}
   function render(){const g=matchup.game;$('#content').innerHTML=`<section class="hero"><div><div class="eyebrow">OPERATOR · MANUAL ONLY</div><h1>${esc(g.away_tri)} — ${esc(g.home_tri)}</h1><p>${esc(g.start_utc||'')}</p></div><div class="links"><a href="/matchup?game=${game}">Matchup Lab</a><a href="/broadcast?game=${game}">Broadcast</a><a href="/broadcast/overlay" target="_blank">Overlay</a></div></section><section class="grid"><article class="panel"><h3>Market Lab → draft</h3>${(matchup.top_markets||[]).map((m,i)=>`<div class="candidate"><span><b>${esc(m.label)}</b><small>${Math.round(Number(m.combined_rate)*100)}% · conf ${m.confidence}</small></span><button data-market="${i}">В черновик</button></div>`).join('')}</article><article class="panel"><h3>Player cards → draft</h3>${(matchup.player_markets||[]).map((c,i)=>`<div class="candidate"><span><b>${esc(c.market?.label||c.title)}</b><small>${esc(c.value||'')} · score ${Math.round(Number(c.score||0))}</small></span><button data-player="${i}">В черновик</button></div>`).join('')||'<div class="empty small">Нет player cards</div>'}</article></section><section class="panel"><h3>Persisted Broadcast cards</h3><div id="saved">${savedHtml()}</div></section>`;document.querySelectorAll('[data-market]').forEach(b=>b.onclick=()=>draftMarket(Number(b.dataset.market),b));document.querySelectorAll('[data-player]').forEach(b=>b.onclick=()=>draftPlayer(Number(b.dataset.player),b));bindSaved()}
   function savedHtml(){return persisted.map(c=>`<div class="saved"><div><b>${esc(c.headline_ru)}</b><small>${esc(c.stat_text_ru)} · ${esc(c.status)}</small></div><div class="actions">${c.status!=='shown'?`<button data-edit="${esc(c.card_id)}">Edit</button>`:''}${c.status==='draft'||c.status==='hidden'?`<button data-status="preview" data-card="${esc(c.card_id)}">PREVIEW</button>`:''}${c.status==='preview'?`<button class="show" data-status="shown" data-card="${esc(c.card_id)}">SHOW</button><button data-status="draft" data-card="${esc(c.card_id)}">BACK</button>`:''}${c.status==='shown'?`<button class="hide" data-status="hidden" data-card="${esc(c.card_id)}">HIDE</button>`:''}</div></div>`).join('')||'<div class="empty small">Черновиков пока нет</div>'}
