@@ -25,10 +25,15 @@ export async function handleBroadcastOperatorRequest(request, env, path) {
   if (!path.startsWith("/api/broadcast/operator/")) return null;
   if (path === "/api/broadcast/operator/status") {
     if (request.method !== "GET") return json({ok:false,error:"method_not_allowed"},405);
-    return json({ok:true,operator_key_configured:Boolean(String(env.MANAGEMENT_API_SECRET||"").trim())});
+    return json({
+      ok:true,
+      operator_key_configured:Boolean(String(env.MANAGEMENT_API_SECRET||"").trim()),
+      operator_key_required:String(env.BROADCAST_OPERATOR_OPEN||"")!=="1"
+    });
   }
   if (!env.DB) return json({ok:false,error:"missing_d1_binding"},503);
-  if (!(await managementAuthorized(request,env))) return json({ok:false,error:"unauthorized"},401);
+  const openBroadcastOperator=String(env.BROADCAST_OPERATOR_OPEN||"")==="1";
+  if (!openBroadcastOperator && !(await managementAuthorized(request,env))) return json({ok:false,error:"unauthorized"},401);
 
   if (path === "/api/broadcast/operator/drafts/from-market") {
     if (request.method !== "POST") return json({ok:false,error:"method_not_allowed"},405);
