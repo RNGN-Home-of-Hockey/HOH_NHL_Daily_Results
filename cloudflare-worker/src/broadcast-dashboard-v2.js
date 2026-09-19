@@ -98,6 +98,7 @@ async function broadcastStateRoute(env) {
     const shown = await env.DB.prepare(`
       SELECT bc.card_id,bc.game_pk,bc.headline_ru,bc.stat_text_ru,bc.source_note_ru,bc.shown_at,bc.status,
              bc.suggested_market_type,bc.suggested_market_subject,bc.manual_odds,bc.odds_is_demo,bc.payload_json,
+             bc.render_hash,bc.render_bytes,bc.rendered_at,
              g.home_tri,g.away_tri,
              ht.name_ru AS home_name_ru,ht.name_en AS home_name,ht.logo_url AS home_logo,
              at.name_ru AS away_name_ru,at.name_en AS away_name,at.logo_url AS away_logo
@@ -172,7 +173,8 @@ async function broadcastGameRoute(env, gamePk) {
       `).bind(gamePk)),
       safeAll("persisted_cards", env.DB.prepare(`
         SELECT card_id,headline_ru,stat_text_ru,source_note_ru,status,shown_at,display_order,
-               suggested_market_type,suggested_market_subject,manual_odds,odds_is_demo,payload_json
+               suggested_market_type,suggested_market_subject,manual_odds,odds_is_demo,payload_json,
+               render_hash,render_bytes,rendered_at
         FROM broadcast_cards
         WHERE game_pk=?
         ORDER BY CASE status WHEN 'shown' THEN 0 WHEN 'preview' THEN 1 ELSE 2 END,display_order,created_at;
@@ -369,7 +371,7 @@ async function selectGame(id){selected=id;renderGames();if(liveTimer){clearInter
 function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[side+'_name']||tri,logo=g[side+'_logo'];return `<div class="team ${side==='home'?'home':''}">${side==='home'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}<div class="logo">${logo?`<img src="${esc(logo)}" alt="">`:`<span class="fallback">${esc(tri)}</span>`}</div>${side==='away'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}</div>`}
 function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct==null||!Number.isFinite(Number(a.faceoff_pct))?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct==null||!Number.isFinite(Number(h.faceoff_pct))?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
-function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}renderCards(merged.slice(0,12));const priced=merged.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');if(sub)sub.textContent=`Статистических сигналов: ${merged.length} · с точной линией Winline: ${priced} · без точной линии доступны для PREVIEW, но не для эфира`}
+function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}renderCards(merged.slice(0,12));const priced=merged.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');if(sub)sub.textContent=`Статистических сигналов: ${merged.length} · с точной линией Winline: ${priced} · Vercel вызывается только по кнопке ДАТЬ ПЛАШКУ`}
 async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds)));renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);c.textContent=parts.join(' · ')+' · LIVE FEED '+new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}if(['LIVE','CRIT'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
 const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
@@ -441,37 +443,91 @@ function profitParts(odds){
   const profit=Math.round((odds-1)*1000);
   return{amount:"+"+profit.toLocaleString("ru-RU")+" РУБ",suffix:"(ПРИ СТАВКЕ 1000 РУБ.)"};
 }
-function encodeRendererPayload(value){
-  const bytes=new TextEncoder().encode(JSON.stringify(value));let binary="";
-  for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
-  return btoa(binary).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");
-}
-function rendererPayload(c){
-  const odds=Number(c.market?.odds),team=cardTeam(c);
-  return {
-    team:team.tri,
-    team_name:team.name,
-    team_color:team.color,
-    team_logo_url:team.logo||undefined,
-    fact:factText(c),
-    market:marketDescription(c,team),
-    odds:Number.isFinite(odds)&&odds>1?odds:null,
-    stake:1000
-  };
-}
-function rendererUrl(c){
-  return HOH_RENDERER_BASE+"/api/render-card?data="+encodeURIComponent(encodeRendererPayload(rendererPayload(c)));
-}
-function broadcastCardHtml(c,large=false){
-  const team=cardTeam(c),url=rendererUrl(c);
-  return `<div class="renderedcard ${large?'large':''}"><img src="${esc(url)}" alt="${esc(team.name)} · WINLINE" loading="eager" decoding="async"></div>`;
-}
+
 function hasRealWinlinePrice(c){const o=Number(c?.market?.odds);return Number.isFinite(o)&&o>1&&c?.market?.odds_is_demo===false&&c?.market?.odds_source==="provider_live"}
-function renderCards(cards){currentCards=cards;$('#cards').innerHTML=cards.length?cards.map((c,i)=>{const priced=hasRealWinlinePrice(c),shown=c.__status==='shown';return `<article class="card">${broadcastCardHtml(c)}<div class="actions"><button class="act previewbtn" data-i="${i}">PREVIEW</button><button class="act ${shown?'hide':priced?'show':'noln'} showbtn" data-i="${i}" ${!shown&&!priced?'disabled':''}>${shown?'УБРАТЬ':priced?'ПОКАЗАТЬ':'НЕТ ЛИНИИ WINLINE'}</button></div></article>`}).join(''):'<div class="empty">Пока нет статистических карточек для этого матча</div>';document.querySelectorAll('.previewbtn').forEach(b=>b.onclick=()=>previewCard(Number(b.dataset.i),b));document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b))}
-async function ensureDraft(c){if(c.__cardId)return c.__cardId;const d=await operatorApi('/api/broadcast/operator/drafts/from-insight',{method:'POST',body:JSON.stringify({game_pk:Number(selected),card:c})});c.__cardId=d.card?.card_id||d.card_id;if(!c.__cardId)throw new Error('Не удалось создать эфирную карточку');c.__status=d.card?.status||'draft';return c.__cardId}
-async function setBroadcastStatus(c,status){const id=await ensureDraft(c);const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(id)+'/status',{method:'POST',body:JSON.stringify({status})});c.__status=d.card?.status||status;const s=await api('/api/broadcast/state');renderAir(s.on_air);return d}
-async function previewCard(i,b){const c=currentCards[i];if(!c)return;$('#previewcard').innerHTML=broadcastCardHtml(c,true);$('#drawer').classList.add('open')}
-async function toggleShow(i,b){const c=currentCards[i];if(!c)return;b.disabled=true;try{if(c.__status==='shown'){await setBroadcastStatus(c,'hidden')}else{await ensureDraft(c);if(c.__status!=='preview')await setBroadcastStatus(c,'preview');if(!confirm('Показать эту плашку в эфир?')){renderCards(currentCards);return}await setBroadcastStatus(c,'shown')}renderCards(currentCards)}catch(e){alert(e.message)}finally{b.disabled=false}}
+function candidateCardId(c){
+  const raw="insight-"+String(selected)+"-"+String(c?.id||c?.insight_type||c?.type||"insight");
+  return raw.replace(/[^a-zA-Z0-9_.:-]+/g,"-").slice(0,180);
+}
+function applyPersistedState(cards){
+  const persisted=currentData?.persisted_cards||[];
+  const map=new Map(persisted.map(p=>[String(p.card_id),p]));
+  for(const c of cards){
+    const id=candidateCardId(c),p=map.get(id);
+    c.__cardId=id;
+    if(p){
+      c.__status=String(p.status||"draft");
+      c.__renderHash=p.render_hash||null;
+      c.__renderedAt=p.rendered_at||null;
+    }else{
+      c.__status=c.__status||"draft";
+      c.__renderHash=null;
+      c.__renderedAt=null;
+    }
+  }
+}
+function cardSummaryHtml(c){
+  const team=cardTeam(c),odds=Number(c?.market?.odds),priced=Number.isFinite(odds)&&odds>1,profit=profitParts(odds);
+  return `<div class="signal">
+    <div class="signal-fact">${esc(factText(c))}</div>
+    <div class="signal-main">
+      <div class="signal-copy">
+        <div class="signal-team">${esc(team.name)}</div>
+        <div class="signal-market">${esc(marketDescription(c,team))}</div>
+      </div>
+      <div class="signal-price">${priced?odds.toFixed(2):'—'}</div>
+    </div>
+    <div class="signal-profit"><b>${esc(profit.amount)}</b><span>${esc(profit.suffix)}</span></div>
+  </div>`;
+}
+function renderCards(cards){
+  applyPersistedState(cards);
+  currentCards=cards;
+  $('#cards').innerHTML=cards.length?cards.map((c,i)=>{
+    const priced=hasRealWinlinePrice(c),shown=c.__status==='shown';
+    return `<article class="card">${cardSummaryHtml(c)}<div class="actions"><button class="act ${shown?'hide':priced?'show':'noln'} showbtn" data-i="${i}" ${!shown&&!priced?'disabled':''}>${shown?'УБРАТЬ':priced?'ДАТЬ ПЛАШКУ':'НЕТ ЛИНИИ WINLINE'}</button></div></article>`;
+  }).join(''):'<div class="empty">Пока нет статистических карточек для этого матча</div>';
+  document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b));
+}
+async function ensureDraft(c){
+  if(c.__cardId&&c.__status!=="draft"&&c.__status!=="hidden")return c.__cardId;
+  const d=await operatorApi('/api/broadcast/operator/drafts/from-insight',{method:'POST',body:JSON.stringify({game_pk:Number(selected),card:c})});
+  c.__cardId=d.card?.card_id||d.card_id||c.__cardId;
+  if(!c.__cardId)throw new Error('Не удалось создать эфирную карточку');
+  c.__status=d.card?.status||'draft';
+  return c.__cardId;
+}
+async function setBroadcastStatus(c,status){
+  const id=await ensureDraft(c);
+  const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(id)+'/status',{method:'POST',body:JSON.stringify({status})});
+  c.__status=d.card?.status||status;
+  c.__renderHash=d.card?.render_hash||c.__renderHash||null;
+  const s=await api('/api/broadcast/state');
+  renderAir(s.on_air);
+  return d;
+}
+async function toggleShow(i,b){
+  const c=currentCards[i];if(!c)return;
+  b.disabled=true;
+  const old=b.textContent;
+  try{
+    if(c.__status==='shown'){
+      b.textContent='СНИМАЮ…';
+      await setBroadcastStatus(c,'hidden');
+    }else{
+      b.textContent='ГЕНЕРАЦИЯ…';
+      await ensureDraft(c);
+      await setBroadcastStatus(c,'shown');
+    }
+    renderCards(currentCards);
+  }catch(e){
+    alert(e.message);
+    b.textContent=old;
+  }finally{
+    b.disabled=false;
+  }
+}
+
 function renderPlayers(rows){$('#players').innerHTML=`<div class="prow head"><div>Игрок</div><div class="num">Г</div><div class="num">П</div><div class="num">О</div><div class="num">Бр</div></div>`+(rows.length?rows.slice(0,10).map(p=>`<div class="prow"><div><div class="pname">${esc(p.full_name_ru||p.full_name_en)}</div><div class="pmeta">${esc(p.team_tri)} · ${esc(p.position_code||'—')} · #${esc(p.sweater_number??'—')}</div></div><div class="num">${p.goals??0}</div><div class="num">${p.assists??0}</div><div class="num">${p.points??0}</div><div class="num">${p.shots??'—'}</div></div>`).join(''):'<div class="empty">Нет статистики</div>')}
 function renderEvents(rows){$('#events').innerHTML=rows.length?rows.slice(0,18).map(e=>`<div class="event"><div class="etime">P${esc(e.period_number??'—')} ${esc(e.time_in_period||'')}</div><div><div class="etype">${e.event_type==='goal'||e.event_type==='shootout-goal'?'ГОЛ':e.event_type==='penalty'?'УДАЛЕНИЕ':'КОНЕЦ ПЕРИОДА'}${e.team_tri?' · '+esc(e.team_tri):''}</div><div class="edesc">${esc(e.description||peopleText(e.people)||'')}</div></div><div class="escore">${e.away_score??''}${e.away_score!==null&&e.away_score!==undefined?':':''}${e.home_score??''}</div></div>`).join(''):'<div class="empty">Нет ключевых событий</div>'}
 function peopleText(v){return String(v||'').split(';;').map(x=>x.split('|')[0]).filter(Boolean).join(', ')}
@@ -517,6 +573,13 @@ ${BROADCAST_CARD_CSS}
 #cards .card:before{content:none}
 #cards .card{padding-top:0}
 #cards .hohcard{width:100%;max-width:820px}
+.signal{width:100%;max-width:820px;margin:0 auto;background:#0e0e11;border:1px solid #303036;border-radius:12px;overflow:hidden}
+.signal-fact{padding:13px 16px 11px;font-size:15px;font-weight:900;line-height:1.25;border-bottom:1px solid #29292e;color:#f5f5f4}
+.signal-main{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:12px 14px 8px 16px}
+.signal-copy{min-width:0}.signal-team{font-size:22px;font-weight:950;line-height:1.05}.signal-market{margin-top:5px;color:#aaaab1;font-size:13px;font-weight:800}
+.signal-price{flex:0 0 auto;min-width:104px;text-align:center;padding:10px 16px;border-radius:10px;background:#1557f5;color:#fff;font-size:28px;font-weight:950;font-style:italic}
+.signal-profit{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:0 16px 12px;font-size:11px;color:#9b9ba2}.signal-profit b{color:var(--orange);font-size:14px}
+
 .preview .hohcard{width:820px;max-width:100%}\n.renderedcard{width:820px;max-width:100%;aspect-ratio:820/211;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden}.renderedcard img{display:block;width:100%;height:auto;object-fit:contain}.preview .renderedcard{width:820px;max-width:100%}
 </style></head><body>
 <div class="app">
