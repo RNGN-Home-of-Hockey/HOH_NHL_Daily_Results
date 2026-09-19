@@ -16,7 +16,8 @@ export async function handleBroadcastRequest(request, env, path) {
   }
   if (path === "/broadcast/app.js") {
     if (request.method !== "GET") return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
-    const rendererBase=String(env.BROADCAST_RENDERER_URL||"https://hoh-broadcast-renderer.vercel.app").replace(/\\/+$/,"");\n    return jsResponse(`const __name=(target,value)=>target;\\nconst HOH_RENDERER_BASE=${JSON.stringify(rendererBase)};\\n(${browserApp.toString()})();`);
+    const rendererBase=String(env.BROADCAST_RENDERER_URL||"https://hoh-broadcast-renderer.vercel.app").replace(/\/+$/,"");
+    return jsResponse(`const __name=(target,value)=>target;\nconst HOH_RENDERER_BASE=${JSON.stringify(rendererBase)};\n(${browserApp.toString()})();`);
   }
 
   if (path === BROADCAST_PATH) {
