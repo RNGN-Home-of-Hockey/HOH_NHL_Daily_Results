@@ -48,6 +48,25 @@ jobs:
             FROM sports_player_sources;
 
             SELECT
+              CASE
+                WHEN last_error LIKE '%404%' THEN '404'
+                WHEN last_error LIKE '%403%' THEN '403'
+                WHEN last_error LIKE '%429%' THEN '429'
+                WHEN last_error IS NULL OR TRIM(last_error)='' THEN 'none'
+                ELSE substr(last_error,1,80)
+              END error_group,
+              COUNT(*) count
+            FROM sports_player_sources
+            GROUP BY error_group
+            ORDER BY count DESC
+            LIMIT 12;
+
+            SELECT s.player_id,p.full_name_en,p.full_name_ru,s.sports_slug,s.source_url,s.last_error
+            FROM sports_player_sources s JOIN players p ON p.player_id=s.player_id
+            WHERE s.last_error IS NOT NULL AND TRIM(s.last_error)<>''
+            ORDER BY s.player_id ASC LIMIT 20;
+
+            SELECT
               COUNT(*) mapped_games,
               SUM(CASE WHEN v.duration_seconds<3600 THEN 1 ELSE 0 END) short_mapped,
               SUM(CASE WHEN LOWER(v.title) LIKE '%хайлайт%' OR LOWER(v.title) LIKE '%highlight%' OR LOWER(v.title) LIKE '%обзор матча%' OR LOWER(v.title) LIKE '%лучшие моменты%' THEN 1 ELSE 0 END) title_highlight_mapped
