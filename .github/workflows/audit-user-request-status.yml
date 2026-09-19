@@ -23,6 +23,32 @@ jobs:
         with:
           node-version: '24'
       - run: npm install --no-audit --no-fund
+      - name: Audit active player salary and number gaps
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const teams=['ANA','BOS','BUF','CGY','CAR','CHI','COL','CBJ','DAL','DET','EDM','FLA','LAK','MIN','MTL','NSH','NJD','NYI','NYR','OTT','PHI','PIT','SJS','SEA','STL','TBL','TOR','UTA','VAN','VGK','WSH','WPG'];
+          const byId=new Map();
+          for(const tri of teams){
+            const r=await fetch(base+'/api/telegram-center-v17/players?team='+tri+'&limit=350',{cache:'no-store'});
+            const d=await r.json();if(!r.ok)throw new Error(tri+' '+r.status+' '+JSON.stringify(d).slice(0,200));
+            for(const p of d.players||[])byId.set(String(p.player_id),p);
+          }
+          const rows=[...byId.values()];
+          const noSalary=rows.filter(p=>!Number(p.salary_aav));
+          const noNumber=rows.filter(p=>p.sweater_number===null||p.sweater_number===undefined||p.sweater_number==='');
+          console.log('PLAYER_COVERAGE',JSON.stringify({
+            players:rows.length,
+            salary:rows.length-noSalary.length,
+            missing_salary:noSalary.length,
+            number:rows.length-noNumber.length,
+            missing_number:noNumber.length
+          }));
+          console.log('MISSING_SALARY',JSON.stringify(noSalary.map(p=>({id:p.player_id,name:p.full_name_en,team:p.current_team_tri,pos:p.position_code,number:p.sweater_number})).slice(0,120)));
+          console.log('MISSING_NUMBER',JSON.stringify(noNumber.map(p=>({id:p.player_id,name:p.full_name_en,team:p.current_team_tri,pos:p.position_code,salary:p.salary_aav})).slice(0,120)));
+          JS
+
       - name: Audit D1 status
         run: |
           npx wrangler d1 execute hoh-data-core --remote --command "
