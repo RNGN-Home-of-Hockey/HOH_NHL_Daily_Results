@@ -106,8 +106,8 @@ async function avatar(env,id){
 }
 
 function decorateProfile(p,id){
-  if(!p)return {telegram_user_id:id,display_username:null,profile_name:null,birth_date:null,city:null,hockey_since_year:null,favorite_team_tri:null,favorite_player:null,theme_mode:"dark",has_avatar:false,avatar_url:null,username_changed_at:null};
-  return {...p,has_avatar:Boolean(Number(p.has_avatar)),avatar_url:Number(p.has_avatar)?API+"/avatars/"+id:null};
+  if(!p)return {exists:false,telegram_user_id:id,display_username:null,profile_name:null,birth_date:null,city:null,hockey_since_year:null,favorite_team_tri:null,favorite_player:null,theme_mode:"dark",has_avatar:false,avatar_url:null,username_changed_at:null};
+  return {...p,exists:true,has_avatar:Boolean(Number(p.has_avatar)),avatar_url:Number(p.has_avatar)?API+"/avatars/"+id:null};
 }
 function cleanUsername(v){const s=String(v||"").trim().replace(/^@/,"");return /^[A-Za-zА-Яа-яЁё0-9_]{3,24}$/u.test(s)?s:null}
 function cleanText(v,max){const s=String(v||"").trim().replace(/\s+/g," ");return s?s.slice(0,max):null}
