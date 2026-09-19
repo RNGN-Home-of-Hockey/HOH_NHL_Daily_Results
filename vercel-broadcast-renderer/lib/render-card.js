@@ -1,6 +1,5 @@
 import sharp from "sharp";
 import { fileURLToPath } from "node:url";
-import { WINLINE_LOGO_PNG_BASE64 } from "./winline-logo.js";
 
 const WIDTH = 820;
 const HEIGHT = 211;
@@ -8,7 +7,6 @@ const STAKE_DEFAULT = 1000;
 const fontUrl = new URL("../assets/sofia-sans-condensed-italic.woff2", import.meta.url);
 const fontPath = fileURLToPath(fontUrl);
 const logoCache = new Map();
-const winlineLogo = Buffer.from(WINLINE_LOGO_PNG_BASE64, "base64");
 
 const TEAM = {
   ANA:["АНАХАЙМ","#FC4C02"],BOS:["БОСТОН","#FFB81C"],BUF:["БАФФАЛО","#003087"],
@@ -58,6 +56,9 @@ function baseTemplateSvg(teamColor){
     <path d="M650 64 H806 Q818 64 816 77 L803 142 Q801 153 789 153 H630Z" fill="url(#b)" stroke="#606067" stroke-width="1.2"/>
     <path d="M430 153 H803 Q813 153 813 163 V197 Q813 207 803 207 H420 Q410 207 412 197 L419 164 Q421 153 430 153Z" fill="url(#g)" stroke="#606067" stroke-width="1.2"/>
     <line x1="141" y1="65" x2="141" y2="153" stroke="#44444b"/>
+    <rect x="425" y="84" width="184" height="54" rx="27" fill="#080808" stroke="#ff641e" stroke-width="5"/>
+    <text x="440" y="120" fill="#fff" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="900" font-style="italic">WINLINE</text>
+    <circle cx="578" cy="111" r="18" fill="#ff641e"/>
   </svg>`);
 }
 
@@ -113,12 +114,10 @@ export async function renderCard(input={}){
       :`<span foreground="#FF641E">ЛИНИЯ НЕ НАЙДЕНА</span>  <span foreground="#D4D4D8">WINLINE</span>`,
       width:346,height:39,size:p.priced?22:18,align:"center"})
   ]);
-  const winline=await sharp(winlineLogo).resize(178,49,{fit:"contain"}).png().toBuffer();
   const composites=[
     {input:fact,left:45,top:11},
     {input:teamName,left:152,top:91},
     {input:market,left:152,top:130},
-    {input:winline,left:430,top:88},
     {input:odds,left:656,top:77},
     {input:profit,left:437,top:160}
   ];
