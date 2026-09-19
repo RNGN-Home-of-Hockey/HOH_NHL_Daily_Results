@@ -269,7 +269,7 @@ async function ensureRenderedCard(env,cardId){
   const payload=rendererPayloadFromRow(row);
   if(!Number.isFinite(Number(payload.odds))||Number(payload.odds)<=1)throw new Error("winline_price_required");
   const body=JSON.stringify(payload);
-  const hash=await sha256Hex(body);
+  const hash=await sha256Hex("renderer-v2-574x148:"+body);
   if(String(row.render_hash||"")===hash&&row.render_png_base64){
     return {cached:true,hash,bytes:Number(row.render_bytes||0),rendered_at:row.rendered_at||null};
   }
@@ -473,7 +473,7 @@ const OVERLAY_HTML=`<!doctype html><html lang="ru"><head><meta charset="utf-8"><
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;background:transparent!important;overflow:hidden}
 .stage{position:fixed;inset:0;pointer-events:none}
-#cardimg{position:absolute;left:64px;bottom:70px;width:820px;height:211px;object-fit:contain;opacity:0;transform:translateY(26px);transition:opacity .25s ease,transform .25s ease}
+#cardimg{position:absolute;left:64px;bottom:70px;width:574px;height:148px;object-fit:contain;opacity:0;transform:translateY(26px);transition:opacity .25s ease,transform .25s ease}
 #cardimg.on{opacity:1;transform:none}
 </style></head><body><div class="stage"><img id="cardimg" alt=""></div>
 <script>
