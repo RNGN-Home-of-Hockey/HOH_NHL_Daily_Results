@@ -21,6 +21,8 @@ const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
 const CANARY_END_DATE = "2025-06-30";
 const CANARY_TARGET_GAMES = 10;
+const WINLINE_PARTNER_URL = "https://p.winline.ru/s/hSJPscomBm?statid=2558_&sub4=nhl&promocode=NHL";
+const WINLINE_EVENT_WINDOW_MS = 45 * 24 * 60 * 60 * 1000;
 
 export default {
   async fetch(request, env) {
@@ -29,6 +31,10 @@ export default {
 
     const vkOauthResponse = handleVkOauthHelper(request, path);
     if (vkOauthResponse) return vkOauthResponse;
+
+    if (path === "/go/winline") {
+      return winlineClickRoute(request, env);
+    }
 
     if (path === "/api/telegram-center-v18/vk/discovery") {
       if (request.method !== "GET") return jsonResponse({ok:false,error:"method_not_allowed"},405);
@@ -154,6 +160,77 @@ export default {
     }
   },
 };
+
+async function winlineClickRoute(request, env) {
+  if (request.method !== "GET") return new Response("method_not_allowed",{status:405});
+  if (!env?.DB) return redirect(WINLINE_PARTNER_URL);
+  const url=new URL(request.url);
+  const gamePk=Number(url.searchParams.get("game_pk")||0);
+  const eventId=String(url.searchParams.get("event_id")||"").trim();
+  let row=null;
+  try{
+    if(Number.isSafeInteger(gamePk)&&gamePk>0){
+      row=await env.DB.prepare(`
+        SELECT g.game_pk,g.game_state,g.scheduled_start_utc,we.winline_event_id,we.deeplink,we.starts_at
+        FROM games g
+        LEFT JOIN winline_events we ON we.game_pk=g.game_pk
+        WHERE g.game_pk=? LIMIT 1;
+      `).bind(gamePk).first();
+    }else if(/^\d+$/.test(eventId)){
+      row=await env.DB.prepare(`
+        SELECT g.game_pk,g.game_state,g.scheduled_start_utc,we.winline_event_id,we.deeplink,we.starts_at
+        FROM winline_events we
+        LEFT JOIN games g ON g.game_pk=we.game_pk
+        WHERE we.winline_event_id=? LIMIT 1;
+      `).bind(eventId).first();
+    }
+  }catch{}
+  if(!isUpcomingWinlineRow(row))return redirect(WINLINE_PARTNER_URL);
+
+  const tracked=await trackedWinlineEventUrl(row.deeplink).catch(()=>null);
+  return redirect(tracked||WINLINE_PARTNER_URL);
+}
+
+function isUpcomingWinlineRow(row){
+  if(!row?.deeplink)return false;
+  const state=String(row.game_state||"").toUpperCase();
+  if(["FINAL","OFF"].includes(state))return false;
+  const t=Date.parse(String(row.starts_at||row.scheduled_start_utc||""));
+  if(!Number.isFinite(t))return false;
+  const delta=t-Date.now();
+  return delta>=-6*60*60*1000&&delta<=WINLINE_EVENT_WINDOW_MS;
+}
+
+async function trackedWinlineEventUrl(eventUrl){
+  const target=new URL(String(eventUrl||""));
+  if(!/(^|\.)winline\.ru$/i.test(target.hostname))return null;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
+  try{
+    const partner=await fetch(WINLINE_PARTNER_URL,{
+      redirect:"manual",
+      signal:controller.signal,
+      headers:{"user-agent":"HOH-NHL-Center/affiliate-router"}
+    });
+    const location=partner.headers.get("location");
+    if(!location)return null;
+    const affiliate=new URL(location);
+    if(!/(^|\.)winline\.ru$/i.test(affiliate.hostname))return null;
+    for(const [k,v] of affiliate.searchParams.entries())target.searchParams.set(k,v);
+    target.searchParams.set("statid","2558_");
+    target.searchParams.set("sub4","nhl");
+    target.searchParams.set("promocode","NHL");
+    if(!target.searchParams.get("utm_promo"))target.searchParams.set("utm_promo","NHL");
+    return target.toString();
+  }finally{clearTimeout(timer)}
+}
+
+function redirect(location){
+  return new Response(null,{status:302,headers:{
+    "Location":location,
+    "Cache-Control":"no-store, no-cache, must-revalidate",
+    "Referrer-Policy":"no-referrer"
+  }});
+}
 
 async function broadcastLiveRoute(request, gamePk) {
   if (request.method !== "GET") {
