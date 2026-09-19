@@ -112,9 +112,11 @@ function parseNhlPrematch(xml){
   for(const cm of sport[2].matchAll(/<Country\b([^>]*)>([\s\S]*?)<\/Country>/gi)){
     for(const tm of cm[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
       const ta=attrs(tm[1]);
-      if(String(ta.Id)!=="142"&&!/NHL/i.test(String(ta.Name||"").trim()))continue;
       for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
         const ma=attrs(mm[1]);
+        // Winline may place NHL preseason under a non-"NHL" tournament label.
+        // Team identity is the reliable discriminator.
+        if(!triForName(ma.Team1)||!triForName(ma.Team2))continue;
         const lines=[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1]));
         const three=lines.find(x=>/^3-way odds$/i.test(String(x.freetext||"").trim()))||
                     lines.find(x=>/3.?way|1x2/i.test(String(x.freetext||"")));
@@ -123,7 +125,7 @@ function parseNhlPrematch(xml){
         out.push({
           event_id:String(ma.Id),bid:String(ma.BID||""),team1:String(ma.Team1),team2:String(ma.Team2),
           team1_id:String(ma.Id1||""),team2_id:String(ma.Id2||""),starts_at:String(ma.MatchDate),
-          deeplink:String(ma.MatchUrl||""),p1,draw,p2,lines
+          deeplink:String(ma.MatchUrl||""),p1,draw,p2,lines,tournament_id:String(ta.Id||""),tournament_name:String(ta.Name||"")
         });
       }
     }
