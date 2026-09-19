@@ -38,6 +38,7 @@ import { handleTelegramCenterV20News } from "./telegram-center-v20-news.js";
 import { handleTelegramCenterV20Ui } from "./telegram-center-v20-ui.js";
 import { handleTelegramCenterV21SpoilersUi } from "./telegram-center-v21-spoilers-ui.js";
 import { handleTelegramCenterV22Profiles } from "./telegram-center-v22-profiles.js";
+import { handleTelegramCenterV22Ui } from "./telegram-center-v22-ui.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleWinlineFeedProbe } from "./winline-feed-probe.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
@@ -111,6 +112,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (centerV21SpoilersUiResponse) return centerV21SpoilersUiResponse;
   const centerV22ProfilesResponse = await handleTelegramCenterV22Profiles(request.clone(), env, path);
   if (centerV22ProfilesResponse) return centerV22ProfilesResponse;
+  const centerV22UiResponse = handleTelegramCenterV22Ui(request, path);
+  if (centerV22UiResponse) return centerV22UiResponse;
   const centerV18PlayerLastGameResponse = await handleTelegramCenterV18PlayerLastGame(request.clone(), env, path);
   if (centerV18PlayerLastGameResponse) return centerV18PlayerLastGameResponse;
   const centerV18VkDataResponse = await handleTelegramCenterV18VkData(request.clone(), env, path);
@@ -141,7 +144,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
       if (!body.includes('/telegram-app/v18.js')) body = body.replace('</body>', '<script src="/telegram-app/v18.js?build=18.1"></script></body>');
       if (!body.includes('/telegram-app/v19.js')) body = body.replace('</body>', '<script src="/telegram-app/v19.js?build=19.0"></script></body>');
       if (!body.includes('/telegram-app/v20.js')) body = body.replace('</body>', '<script src="/telegram-app/v20.js?build=20.0"></script></body>');
-      if (!body.includes('/telegram-app/v21.js')) body = body.replace('</body>', '<script src="/telegram-app/v21.js?build=21.0"></script></body>');
+      if (!body.includes('/telegram-app/v21.js')) body = body.replace('</body>', '<script src="/telegram-app/v21.js?build=21.1"></script></body>');
+      if (!body.includes('/telegram-app/v22.js')) body = body.replace('</body>', '<script src="/telegram-app/v22.js?build=22.0"></script></body>');
       return new Response(body, {status:centerV8Response.status,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}});
     }
     return centerV8Response;
