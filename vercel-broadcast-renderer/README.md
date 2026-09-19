@@ -19,7 +19,7 @@ During Vercel project setup use:
 - **Framework Preset:** Other
 - **Build Command:** leave empty
 - **Install Command:** default (`npm install`)
-- **Node.js:** 20.x
+- **Node.js:** 24.x
 
 No database is required.
 
