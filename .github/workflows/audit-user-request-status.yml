@@ -1,0 +1,60 @@
+name: Audit User Request Status
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-user-request-status.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - name: Audit D1 status
+        run: |
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT
+              COUNT(*) active_players,
+              SUM(CASE WHEN m.primary_country_code IS NOT NULL AND TRIM(m.primary_country_code)<>'' THEN 1 ELSE 0 END) country,
+              SUM(CASE WHEN m.birth_date IS NOT NULL AND TRIM(m.birth_date)<>'' THEN 1 ELSE 0 END) birth_date,
+              SUM(CASE WHEN p.current_team_tri IS NOT NULL AND TRIM(p.current_team_tri)<>'' THEN 1 ELSE 0 END) team,
+              SUM(CASE WHEN p.position_code IS NOT NULL AND TRIM(p.position_code)<>'' THEN 1 ELSE 0 END) position,
+              SUM(CASE WHEN p.sweater_number IS NOT NULL THEN 1 ELSE 0 END) number
+            FROM players p LEFT JOIN player_profile_meta m ON m.player_id=p.player_id
+            WHERE COALESCE(p.active,1)=1;
+
+            SELECT
+              COUNT(DISTINCT e.player_id) exact_players_with_news,
+              COUNT(*) exact_links
+            FROM sports_player_news_exact e;
+
+            SELECT
+              COUNT(*) player_sources,
+              SUM(CASE WHEN backfill_done=1 THEN 1 ELSE 0 END) source_backfill_done,
+              SUM(CASE WHEN last_error IS NOT NULL AND TRIM(last_error)<>'' THEN 1 ELSE 0 END) source_errors
+            FROM sports_player_sources;
+
+            SELECT
+              COUNT(*) mapped_games,
+              SUM(CASE WHEN v.duration_seconds<3600 THEN 1 ELSE 0 END) short_mapped,
+              SUM(CASE WHEN LOWER(v.title) LIKE '%хайлайт%' OR LOWER(v.title) LIKE '%highlight%' OR LOWER(v.title) LIKE '%обзор матча%' OR LOWER(v.title) LIKE '%лучшие моменты%' THEN 1 ELSE 0 END) title_highlight_mapped
+            FROM game_vk_broadcasts m JOIN vk_broadcasts v ON v.source_key=m.source_key;
+
+            SELECT meta_key,meta_value,updated_at
+            FROM data_core_meta
+            WHERE meta_key IN ('hoh_vk_video_backfill_algo','hoh_vk_video_backfill_offset','hoh_vk_video_backfill_done','sports_ru_exact_recent_cursor')
+            ORDER BY meta_key;
+          "
