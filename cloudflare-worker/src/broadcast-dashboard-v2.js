@@ -240,7 +240,89 @@ function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct===null?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct===null?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
 function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}renderCards(merged.slice(0,12));const sub=document.querySelector('.psub');if(sub)sub.textContent=liveCards.length?`LIVE ${liveCards.length} · история ${historicalCards.length} · рынок Winline подбирается по типу сигнала`:`Сильных live-сигналов сейчас нет · история ${historicalCards.length} · слабые тренды не показываем`}
 async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=l.cards||[];renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);c.textContent=parts.join(' · ')+' · LIVE FEED '+new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}if(['LIVE','CRIT'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
-function broadcastCardHtml(c,large=false){const odds=Number(c.market?.odds),market=c.market?.label||'Рынок Winline',demo=c.market?.odds_is_demo===true,q=c.evidence_quality||{},tier=String(q.tier||''),support=Number(q.independent_support_count||c.evidence?.independent_support_count||0),quality=tier&&tier!=='LIVE'?`<span class="qualitytag q${esc(tier)}" title="Сила доказательств, не вероятность">${esc(tier)}${support>0?' · +'+support:''}</span>`:'';return `<div class="aircard ${large?'large':''}"><div class="factrow"><div class="signaleyebrow">${esc(c.eyebrow||'HOH INSIGHT')}${quality}${demo?'<span class="demotag">DEMO</span>':''}</div><div class="signaltitle">${esc(c.title||c.value||'')}</div></div><div class="betline"><div class="winlinebrand"><img src="/broadcast/winline-logo.png" alt="Winline"></div><div class="betmarket">${esc(market)}</div><div class="oddsbox">${Number.isFinite(odds)?odds.toFixed(2):'—'}</div></div></div>`}
+const TEAM_META={
+  ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
+  CGY:{name:"КАЛГАРИ",color:"#D2001C"},CAR:{name:"КАРОЛИНА",color:"#CE1126"},CHI:{name:"ЧИКАГО",color:"#CF0A2C"},
+  COL:{name:"КОЛОРАДО",color:"#6F263D"},CBJ:{name:"КОЛАМБУС",color:"#002654"},DAL:{name:"ДАЛЛАС",color:"#006847"},
+  DET:{name:"ДЕТРОЙТ",color:"#CE1126"},EDM:{name:"ЭДМОНТОН",color:"#FF4C00"},FLA:{name:"ФЛОРИДА",color:"#C8102E"},
+  LAK:{name:"ЛОС-АНДЖЕЛЕС",color:"#A2AAAD"},MIN:{name:"МИННЕСОТА",color:"#154734"},MTL:{name:"МОНРЕАЛЬ",color:"#AF1E2D"},
+  NSH:{name:"НЭШВИЛЛ",color:"#FFB81C"},NJD:{name:"НЬЮ-ДЖЕРСИ",color:"#CE1126"},NYI:{name:"АЙЛЕНДЕРС",color:"#00539B"},
+  NYR:{name:"РЕЙНДЖЕРС",color:"#0038A8"},OTT:{name:"ОТТАВА",color:"#C52032"},PHI:{name:"ФИЛАДЕЛЬФИЯ",color:"#F74902"},
+  PIT:{name:"ПИТТСБУРГ",color:"#FCB514"},SJS:{name:"САН-ХОСЕ",color:"#006D75"},SEA:{name:"СИЭТЛ",color:"#99D9D9"},
+  STL:{name:"СЕНТ-ЛУИС",color:"#002F87"},TBL:{name:"ТАМПА-БЭЙ",color:"#002868"},TOR:{name:"ТОРОНТО",color:"#003E7E"},
+  UTA:{name:"ЮТА",color:"#71AFE5"},VAN:{name:"ВАНКУВЕР",color:"#00843D"},VGK:{name:"ВЕГАС",color:"#B4975A"},
+  WSH:{name:"ВАШИНГТОН",color:"#C8102E"},WPG:{name:"ВИННИПЕГ",color:"#AC162C"}
+};
+function teamCodeFromCard(card){
+  const g=currentData?.game||{},away=String(g.away_tri||"").toUpperCase(),home=String(g.home_tri||"").toUpperCase();
+  const candidates=[card?.market?.subject,card?.market?.side,card?.evidence?.team,card?.team_tri,card?.evidence?.subject_team];
+  for(const raw of candidates){const tri=String(raw||"").toUpperCase();if(tri===away||tri===home)return tri}
+  const hay=String(card?.title||"")+" "+String(card?.value||"")+" "+String(card?.market?.label||"");
+  if(away&&new RegExp("\\b"+away+"\\b","i").test(hay))return away;
+  if(home&&new RegExp("\\b"+home+"\\b","i").test(hay))return home;
+  return away||home||"";
+}
+function cardTeam(card){
+  const g=currentData?.game||{},tri=teamCodeFromCard(card),side=tri===String(g.home_tri||"").toUpperCase()?"home":"away";
+  const meta=TEAM_META[tri]||{name:tri||"КОМАНДА",color:"#00E6C3"};
+  return {tri,name:meta.name,color:meta.color,logo:g[side+"_logo"]||""};
+}
+function displayText(value){
+  let s=String(value??"");
+  for(const [tri,meta] of Object.entries(TEAM_META))s=s.replace(new RegExp("\\b"+tri+"\\b","gi"),meta.name);
+  return s.replace(/([+-]?\\d+)\\.(\\d+)/g,"$1,$2").toUpperCase();
+}
+function lineText(value){
+  const n=Number(value);if(!Number.isFinite(n))return"";
+  const abs=Math.abs(n).toString().replace(".",",");
+  return (n>0?"+":n<0?"-":"")+abs;
+}
+function marketDescription(card,team){
+  const m=card?.market||{},type=String(m.type||"").toLowerCase(),side=String(m.side||"").toLowerCase();
+  const line=Number(m.line);
+  if(type==="handicap"){let v=Number.isFinite(line)?line:null;if(v===null){const mm=String(m.label||"").match(/([+-]\\d+(?:[.,]\\d+)?)/);if(mm)v=Number(mm[1].replace(",","."))}return "ФОРА "+(v===null?"":lineText(v))+" ГОЛА"}
+  if(type==="team_total"){const dir=side==="under"?"ИТМ":"ИТБ";return dir+" "+(Number.isFinite(line)?lineText(Math.abs(line)).replace("+",""):"")+" ГОЛА"}
+  if(type==="game_total"){const dir=side==="under"?"ТОТАЛ МЕНЬШЕ":"ТОТАЛ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?String(line).replace(".",","):"")}
+  if(type==="moneyline")return"ПОБЕДА";
+  if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";
+  if(type==="period_2_result")return"2-Й ПЕРИОД · ПОБЕДА";
+  const fallback=displayText(m.label||"СТАВКА WINLINE").replace(team.name,"").replace(/^\\s*[·—-]+\\s*/,"").trim();
+  return fallback||"СТАВКА WINLINE";
+}
+function factText(card){
+  const m=card?.market||{};
+  let s=displayText(card?.title||card?.value||"");
+  if(String(m.type||"").toLowerCase()==="handicap"&&!/ФОРУ[^А-ЯЁ]*[+-]?\\d+(?:,\\d+)?\\s+ГОЛА/.test(s)){
+    s=s.replace(/ФОРУ\\s+([+-]?\\d+(?:,\\d+)?)/,"ФОРУ $1 ГОЛА");
+  }
+  return s;
+}
+function factHtml(card,team){
+  let html=esc(factText(card));
+  const safeName=esc(team.name);
+  if(safeName)html=html.replace(safeName,'<span class="facthot">'+safeName+'</span>');
+  html=html.replace(/(\\d+\\s+ИЗ\\s+\\d+)/g,'<span class="facthot">$1</span>');
+  html=html.replace(/(\\d+\\s*\/\\s*\\d+)/g,'<span class="facthot">$1</span>');
+  return html;
+}
+function profitParts(odds){
+  if(!Number.isFinite(odds)||odds<=1)return{amount:"—",suffix:"(ПРИ СТАВКЕ 1000 РУБ.)"};
+  const profit=Math.round((odds-1)*1000);
+  return{amount:"+"+profit.toLocaleString("ru-RU")+" РУБ",suffix:"(ПРИ СТАВКЕ 1000 РУБ.)"};
+}
+function broadcastCardHtml(c,large=false){
+  const odds=Number(c.market?.odds),team=cardTeam(c),profit=profitParts(odds),market=marketDescription(c,team);
+  return `<div class="aircard ${large?'large':''}" style="--team-color:${esc(team.color)}">
+    <div class="factbar"><span class="teamstripe"></span><div class="facttext">${factHtml(c,team)}</div></div>
+    <div class="betpanel">
+      <div class="teammark">${team.logo?`<img src="${esc(team.logo)}" alt="${esc(team.name)}">`:`<span>${esc(team.tri)}</span>`}</div>
+      <div class="betcopy"><div class="betteam">${esc(team.name)}</div><div class="betdesc">${esc(market)}</div></div>
+      <div class="winlinebrand"><img src="/broadcast/winline-logo.png" alt="Winline"></div>
+      <div class="oddsbox">${Number.isFinite(odds)?odds.toFixed(2):'—'}</div>
+      <div class="profitbox"><strong>${esc(profit.amount)}</strong><span>${esc(profit.suffix)}</span></div>
+    </div>
+  </div>`;
+}
 function renderCards(cards){currentCards=cards;$('#cards').innerHTML=cards.length?cards.map((c,i)=>`<article class="card">${broadcastCardHtml(c)}<div class="actions"><button class="act previewbtn" data-i="${i}">PREVIEW</button><button class="act show" disabled title="Подключим защищённый эфир следующим шагом">ПОКАЗАТЬ</button></div></article>`).join(''):'<div class="empty">Пока нет карточек</div>';document.querySelectorAll('.previewbtn').forEach(b=>b.onclick=()=>previewCard(Number(b.dataset.i)))}
 function previewCard(i){const c=currentCards[i];if(!c)return;$('#previewcard').innerHTML=broadcastCardHtml(c,true);$('#drawer').classList.add('open')}
 function renderPlayers(rows){$('#players').innerHTML=`<div class="prow head"><div>Игрок</div><div class="num">Г</div><div class="num">П</div><div class="num">О</div><div class="num">Бр</div></div>`+(rows.length?rows.slice(0,10).map(p=>`<div class="prow"><div><div class="pname">${esc(p.full_name_ru||p.full_name_en)}</div><div class="pmeta">${esc(p.team_tri)} · ${esc(p.position_code||'—')} · #${esc(p.sweater_number??'—')}</div></div><div class="num">${p.goals??0}</div><div class="num">${p.assists??0}</div><div class="num">${p.points??0}</div><div class="num">${p.shots??'—'}</div></div>`).join(''):'<div class="empty">Нет статистики</div>')}
@@ -265,9 +347,19 @@ const DASHBOARD_HTML=String.raw`<!doctype html>
 .rightcol{display:grid;gap:14px;align-content:start}.players{padding:4px 14px 12px}.prow{display:grid;grid-template-columns:minmax(0,1fr) 28px 28px 28px 34px;gap:5px;align-items:center;padding:10px 0;border-bottom:1px solid #252529}.prow.head{padding:8px 0;color:#666;font-size:8px;text-transform:uppercase}.pname{font-size:10px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pmeta{font-size:8px;color:#6f6f76;margin-top:2px}.num{text-align:center;font-size:10px;font-weight:850}.events{padding:4px 14px 12px;max-height:310px;overflow:auto}.event{display:grid;grid-template-columns:44px 1fr auto;gap:8px;padding:9px 0;border-bottom:1px solid #242428}.etime{font-size:9px;color:var(--lav);font-weight:900}.etype{font-size:9px;font-weight:900}.edesc{font-size:8px;color:#73737b;margin-top:2px;line-height:1.35}.escore{font-size:11px;font-weight:950}.empty{padding:18px;color:#666;font-size:10px}
 .drawerback{position:fixed;inset:0;background:rgba(0,0,0,.66);display:none;z-index:20}.drawerback.open{display:block}.drawer{position:absolute;right:0;top:0;bottom:0;width:min(520px,92vw);background:#101012;border-left:1px solid #303036;padding:24px;display:flex;flex-direction:column}.dtop{display:flex;justify-content:space-between;align-items:center}.dtitle{font-size:10px;letter-spacing:.16em;font-weight:900;color:#777}.close{border:1px solid #333;background:#171719;color:#aaa;border-radius:9px;padding:7px 10px;cursor:pointer}.preview{margin:auto 0;border-radius:24px;background:linear-gradient(135deg,#151517,#201a27);border:1px solid #37333f;padding:30px}.pvbrand{font-size:10px;letter-spacing:.16em;font-weight:950}.pveyebrow{margin-top:34px;color:var(--lav);font-size:10px;font-weight:900;letter-spacing:.12em}.pvvalue{font-size:58px;font-weight:950;letter-spacing:-.08em;margin-top:10px}.pvtitle{font-size:20px;font-weight:900;margin-top:10px;line-height:1.15}.pvnote{font-size:11px;color:#83838c;margin-top:12px}.dfoot{font-size:10px;color:#74747c;line-height:1.5;padding-top:20px}.legend{display:flex;gap:8px;align-items:center}.safe{display:inline-flex;align-items:center;gap:6px;color:#8d8d94}.safe:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green)}
 
-/* Compact 1920x1080 broadcast-card language */
-.cards{padding:10px;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.card{border:1px solid #303036;border-radius:12px;background:#111113;overflow:hidden;position:relative}.card:before,.card.lav:before,.kind,.cardbody{display:none}.aircard{height:124px;display:grid;grid-template-rows:minmax(0,1fr) 42px;background:linear-gradient(135deg,#151518,#0d0d0f);overflow:hidden}.factrow{padding:12px 14px 9px;min-width:0}.signaleyebrow{display:flex;align-items:center;gap:7px;font-size:8px;color:#8b8b94;font-weight:900;letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.demotag{flex:0 0 auto;font-size:7px;letter-spacing:.08em;color:#ff8b62;border:1px solid rgba(255,90,31,.45);border-radius:4px;padding:2px 4px}.qualitytag{flex:0 0 auto;font-size:7px;letter-spacing:.06em;border:1px solid #3a3a40;border-radius:4px;padding:2px 4px;color:#aaa}.qualitytag.qA{color:var(--green);border-color:rgba(131,230,177,.45)}.qualitytag.qB{color:var(--lav);border-color:rgba(200,183,255,.38)}.qualitytag.qC{color:#777}.signaltitle{margin-top:7px;font-size:14px;line-height:1.08;font-weight:950;letter-spacing:-.025em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.betline{display:grid;grid-template-columns:94px minmax(0,1fr) 86px;align-items:stretch;border-top:1px solid #2a2a2f;background:#0b0b0d;min-width:0}.winlinebrand{display:grid;place-items:center;padding:0 10px;border-right:1px solid #2b2b30}.winlinebrand img{display:block;width:76px;max-height:23px;object-fit:contain}.betmarket{align-self:center;padding:0 10px;font-size:9px;line-height:1.1;font-weight:900;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.oddsbox{height:100%;min-width:86px;background:#1761ff;color:#fff;clip-path:polygon(11% 0,100% 0,89% 100%,0 100%);display:grid;place-items:center;padding:0 10px;font-size:23px;line-height:1;font-weight:950;font-style:italic;letter-spacing:-.04em}.actions{height:30px;display:grid;grid-template-columns:1fr 1.2fr;border-top:1px solid #29292e}.act{padding:6px 8px;font-size:8px}.preview{margin:auto 0;background:transparent;border:0;border-radius:0;padding:0}.preview .aircard{width:100%;height:154px;border:1px solid #34343a;border-radius:14px}.preview .factrow{padding:17px 18px 12px}.preview .signaleyebrow{font-size:9px}.preview .signaltitle{font-size:20px;line-height:1.05}.preview .betline{grid-template-columns:116px minmax(0,1fr) 112px}.preview .winlinebrand img{width:92px;max-height:28px}.preview .betmarket{font-size:11px;padding:0 14px}.preview .oddsbox{font-size:31px;min-width:112px}
-
+/* Fixed HOH × Winline broadcast-card template */
+.cards{padding:10px;grid-template-columns:1fr;gap:10px}.card{border:1px solid #303036;border-radius:14px;background:#111113;overflow:hidden;position:relative}.card:before,.card.lav:before,.kind,.cardbody{display:none}
+.aircard{--team-color:#00e6c3;position:relative;height:174px;min-width:620px;background:transparent;color:#fff;overflow:visible}
+.factbar{position:absolute;left:0;right:0;top:0;height:52px;border:1px solid #505057;border-radius:12px;background:linear-gradient(135deg,#171719,#0c0c0e);display:flex;align-items:center;padding:0 18px 0 30px;overflow:hidden;box-shadow:0 5px 18px rgba(0,0,0,.22)}
+.teamstripe{position:absolute;left:0;top:7px;bottom:7px;width:5px;border-radius:4px;background:var(--team-color);box-shadow:0 0 12px color-mix(in srgb,var(--team-color) 55%,transparent)}
+.facttext{font-size:15px;line-height:1;font-weight:950;letter-spacing:-.01em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.facthot{color:var(--orange)}
+.betpanel{position:absolute;left:0;right:0;top:60px;height:110px;border:1px solid #505057;border-radius:14px;background:linear-gradient(135deg,#111214,#08090a 72%,#101114);overflow:visible;box-shadow:0 7px 22px rgba(0,0,0,.24)}
+.teammark{position:absolute;left:0;top:0;width:112px;height:108px;border-right:1px solid #303036;border-radius:13px 0 0 13px;background:linear-gradient(135deg,color-mix(in srgb,var(--team-color) 18%,#070809),#070809 70%);display:grid;place-items:center;overflow:hidden}.teammark img{width:82px;height:82px;object-fit:contain}.teammark span{font-size:20px;font-weight:950;color:#aaa}
+.betcopy{position:absolute;left:112px;top:0;width:230px;height:108px;padding:20px 16px;display:flex;flex-direction:column;justify-content:center;overflow:hidden}.betteam{font-size:24px;line-height:1;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.betdesc{margin-top:9px;font-size:15px;line-height:1;font-weight:900;color:#c7c7cc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.winlinebrand{position:absolute;left:51%;top:21px;transform:translateX(-50%);width:148px;height:42px;display:grid;place-items:center}.winlinebrand img{display:block;width:142px;max-height:40px;object-fit:contain}
+.oddsbox{position:absolute;right:0;top:-1px;width:128px;height:70px;background:linear-gradient(135deg,#176eff,#0b4df5);color:#fff;clip-path:polygon(12% 0,100% 0,92% 100%,0 100%);display:grid;place-items:center;padding:0 10px 0 18px;font-size:38px;line-height:1;font-weight:950;font-style:italic;letter-spacing:-.055em;border-radius:0 13px 0 0}
+.profitbox{position:absolute;right:-1px;bottom:-1px;width:56%;height:43px;border:1px solid #55555b;border-radius:12px;background:linear-gradient(135deg,#1a1a1d,#0c0c0e);display:flex;align-items:center;justify-content:center;gap:8px;padding:0 12px;white-space:nowrap;overflow:hidden}.profitbox strong{font-size:16px;color:var(--orange);font-weight:950}.profitbox span{font-size:10px;color:#c2c2c7;font-weight:850}
+.actions{height:32px;display:grid;grid-template-columns:1fr 1.2fr;border-top:1px solid #29292e}.act{padding:7px 8px;font-size:8px}.drawer{width:min(860px,94vw)}.preview{margin:auto 0;background:transparent;border:0;border-radius:0;padding:0;overflow:auto}.preview .aircard{width:760px;height:198px;min-width:760px;margin:auto}.preview .factbar{height:60px;padding-left:35px}.preview .facttext{font-size:18px}.preview .betpanel{top:70px;height:124px}.preview .teammark{width:126px;height:122px}.preview .teammark img{width:94px;height:94px}.preview .betcopy{left:126px;width:250px;height:122px;padding:22px 18px}.preview .betteam{font-size:28px}.preview .betdesc{font-size:17px}.preview .winlinebrand{width:170px;height:48px;top:22px}.preview .winlinebrand img{width:164px;max-height:46px}.preview .oddsbox{width:146px;height:78px;font-size:44px}.preview .profitbox{height:48px}.preview .profitbox strong{font-size:18px}.preview .profitbox span{font-size:11px}
 @media(max-width:1100px){.app{grid-template-columns:240px 1fr}.work{grid-template-columns:1fr}.rightcol{grid-template-columns:1fr 1fr}.top{grid-template-columns:1fr}.air{max-width:none}.metrics{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.app{display:block}.side{position:relative;height:auto}.main{padding:16px}.match{grid-template-columns:1fr auto 1fr;padding:18px 12px}.logo{display:none}.score{font-size:42px}.code{font-size:22px}.cards{grid-template-columns:1fr}.rightcol{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}}
 </style></head><body>
