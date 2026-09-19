@@ -1,17 +1,14 @@
 import sharp from "sharp";
-import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { WINLINE_LOGO_PNG_BASE64 } from "./winline-logo.js";
 
 const WIDTH = 820;
 const HEIGHT = 211;
 const STAKE_DEFAULT = 1000;
-
-const templateUrl = new URL("../assets/card-template.webp", import.meta.url);
 const fontUrl = new URL("../assets/sofia-sans-condensed-italic.woff2", import.meta.url);
 const fontPath = fileURLToPath(fontUrl);
-
-const templatePromise = readFile(templateUrl);
 const logoCache = new Map();
+const winlineLogo = Buffer.from(WINLINE_LOGO_PNG_BASE64, "base64");
 
 const TEAM = {
   ANA:["АНАХАЙМ","#FC4C02"],BOS:["БОСТОН","#FFB81C"],BUF:["БАФФАЛО","#003087"],
@@ -27,26 +24,17 @@ const TEAM = {
   WSH:["ВАШИНГТОН","#C8102E"],WPG:["ВИННИПЕГ","#041E42"]
 };
 
-const upper = (v) => String(v ?? "").trim().toUpperCase();
-const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
+const upper=v=>String(v??"").trim().toUpperCase();
+const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 
 function escapeMarkup(value){
-  return String(value ?? "")
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&apos;");
+  return String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&apos;");
 }
-
-function normalizeDecimalText(value){
-  return upper(value).replace(/([+-]?\d+)\.(\d+)/g,"$1,$2");
-}
-
-function highlightedFactMarkup(text, teamName){
+function normalizeDecimalText(value){return upper(value).replace(/([+-]?\d+)\.(\d+)/g,"$1,$2")}
+function highlight(text,teamName){
   const source=normalizeDecimalText(text);
-  const escapedTeam=String(teamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-  const re=new RegExp("("+(escapedTeam?escapedTeam+"|":"")+"\\d+\\s+ИЗ\\s+\\d+|\\d+\\s*\\/\\s*\\d+)","gi");
+  const escaped=String(teamName||"").replace(/[.*+?^$()|[\]\\{}]/g,"\\$&");
+  const re=new RegExp("("+(escaped?escaped+"|":"")+"\\d+\\s+ИЗ\\s+\\d+|\\d+\\s*\\/\\s*\\d+)","gi");
   let out="",last=0,m;
   while((m=re.exec(source))){
     out+=escapeMarkup(source.slice(last,m.index));
@@ -57,25 +45,29 @@ function highlightedFactMarkup(text, teamName){
   return out||escapeMarkup(source);
 }
 
-async function textLayer({
-  markup,
-  width,
-  height,
-  size,
-  color="#FFFFFF",
-  align="left"
-}){
+function baseTemplateSvg(teamColor){
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="820" height="211" viewBox="0 0 820 211">
+    <defs>
+      <linearGradient id="g" x1="0" x2="1"><stop stop-color="#0a0a0c"/><stop offset=".55" stop-color="#121215"/><stop offset="1" stop-color="#09090b"/></linearGradient>
+      <linearGradient id="b" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#236aff"/><stop offset="1" stop-color="#0647ea"/></linearGradient>
+    </defs>
+    <rect width="820" height="211" fill="none"/>
+    <rect x="2" y="4" width="816" height="56" rx="12" fill="url(#g)" stroke="#606067" stroke-width="1.2"/>
+    <rect x="10" y="12" width="7" height="40" rx="3.5" fill="${teamColor}"/>
+    <path d="M2 72 Q2 64 12 64 H672 L650 153 H12 Q2 153 2 143Z" fill="url(#g)" stroke="#606067" stroke-width="1.2"/>
+    <path d="M650 64 H806 Q818 64 816 77 L803 142 Q801 153 789 153 H630Z" fill="url(#b)" stroke="#606067" stroke-width="1.2"/>
+    <path d="M430 153 H803 Q813 153 813 163 V197 Q813 207 803 207 H420 Q410 207 412 197 L419 164 Q421 153 430 153Z" fill="url(#g)" stroke="#606067" stroke-width="1.2"/>
+    <line x1="141" y1="65" x2="141" y2="153" stroke="#44444b"/>
+  </svg>`);
+}
+
+async function textLayer({markup,width,height,size,color="#FFFFFF",align="left"}){
   return sharp({
     text:{
       text:`<span foreground="${color}">${markup}</span>`,
       font:`Sofia Sans Condensed ${size}`,
       fontfile:fontPath,
-      width,
-      height,
-      align,
-      justify:false,
-      rgba:true,
-      wrap:"none"
+      width,height,align,justify:false,rgba:true,wrap:"none"
     }
   }).png().toBuffer();
 }
@@ -84,21 +76,12 @@ async function fetchLogo(url){
   if(!url)return null;
   if(logoCache.has(url))return logoCache.get(url);
   try{
-    const response=await fetch(url,{
-      signal:AbortSignal.timeout(3500),
-      headers:{"User-Agent":"HOH-Broadcast-Renderer/1.0"}
-    });
+    const response=await fetch(url,{signal:AbortSignal.timeout(3500),headers:{"User-Agent":"HOH-Broadcast-Renderer/1.0"}});
     if(!response.ok)throw new Error("logo HTTP "+response.status);
     const source=Buffer.from(await response.arrayBuffer());
-    const png=await sharp(source,{density:240})
-      .resize(88,88,{fit:"contain",background:{r:0,g:0,b:0,alpha:0}})
-      .png()
-      .toBuffer();
-    logoCache.set(url,png);
-    return png;
-  }catch{
-    return null;
-  }
+    const png=await sharp(source,{density:240}).resize(82,82,{fit:"contain",background:{r:0,g:0,b:0,alpha:0}}).png().toBuffer();
+    logoCache.set(url,png);return png;
+  }catch{return null}
 }
 
 export function normalizePayload(input={}){
@@ -112,65 +95,35 @@ export function normalizePayload(input={}){
   const stake=clamp(Number(input.stake)||STAKE_DEFAULT,1,1000000);
   const priced=Number.isFinite(odds)&&odds>1;
   const profit=priced?Math.round((odds-1)*stake):null;
-  const logoUrl=String(input.team_logo_url||input.logo_url||(
-    team?`https://assets.nhle.com/logos/nhl/svg/${team}_light.svg`:""
-  ));
+  const logoUrl=String(input.team_logo_url||input.logo_url||(team?`https://assets.nhle.com/logos/nhl/svg/${team}_light.svg`:""));
   return {team,teamName,teamColor,fact,market,odds,stake,priced,profit,logoUrl};
 }
 
 export async function renderCard(input={}){
   const p=normalizePayload(input);
-  const template=await templatePromise;
   const logo=await fetchLogo(p.logoUrl);
-
-  const fact=await textLayer({
-    markup:highlightedFactMarkup(p.fact,p.teamName),
-    width:724,height:48,size:22,align:"left"
-  });
-  const teamName=await textLayer({
-    markup:escapeMarkup(p.teamName),
-    width:235,height:38,size:38,align:"left"
-  });
-  const market=await textLayer({
-    markup:escapeMarkup(p.market),
-    width:235,height:29,size:22,color:"#D6D6DA",align:"left"
-  });
-  const odds=await textLayer({
-    markup:escapeMarkup(p.priced?p.odds.toFixed(2):"—"),
-    width:136,height:68,size:p.priced?58:46,align:"center"
-  });
-  const profitMarkup=p.priced
-    ? `<span foreground="#FF641E">+${escapeMarkup(p.profit.toLocaleString("ru-RU"))} РУБ</span>  <span foreground="#D4D4D8">(ПРИ СТАВКЕ ${escapeMarkup(p.stake.toLocaleString("ru-RU"))} РУБ.)</span>`
-    : `<span foreground="#FF641E">ЛИНИЯ НЕ НАЙДЕНА</span>  <span foreground="#D4D4D8">WINLINE</span>`;
-  const profit=await textLayer({
-    markup:profitMarkup,
-    width:346,height:39,size:p.priced?22:18,align:"center"
-  });
-
+  const base=await sharp(baseTemplateSvg(p.teamColor)).png().toBuffer();
+  const [fact,teamName,market,odds,profit]=await Promise.all([
+    textLayer({markup:highlight(p.fact,p.teamName),width:720,height:44,size:22}),
+    textLayer({markup:escapeMarkup(p.teamName),width:255,height:38,size:38}),
+    textLayer({markup:escapeMarkup(p.market),width:255,height:27,size:22,color:"#D6D6DA"}),
+    textLayer({markup:escapeMarkup(p.priced?p.odds.toFixed(2):"—"),width:138,height:68,size:p.priced?58:46,align:"center"}),
+    textLayer({markup:p.priced
+      ?`<span foreground="#FF641E">+${escapeMarkup(p.profit.toLocaleString("ru-RU"))} РУБ</span>  <span foreground="#D4D4D8">(ПРИ СТАВКЕ ${escapeMarkup(p.stake.toLocaleString("ru-RU"))} РУБ.)</span>`
+      :`<span foreground="#FF641E">ЛИНИЯ НЕ НАЙДЕНА</span>  <span foreground="#D4D4D8">WINLINE</span>`,
+      width:346,height:39,size:p.priced?22:18,align:"center"})
+  ]);
+  const winline=await sharp(winlineLogo).resize(178,49,{fit:"contain"}).png().toBuffer();
   const composites=[
-    {input:{create:{width:7,height:43,channels:4,background:p.teamColor}},left:8,top:14},
-    {input:fact,left:44,top:12},
-    {input:teamName,left:153,top:94},
-    {input:market,left:153,top:134},
-    {input:odds,left:656,top:83},
-    {input:profit,left:435,top:164}
+    {input:fact,left:45,top:11},
+    {input:teamName,left:152,top:91},
+    {input:market,left:152,top:130},
+    {input:winline,left:430,top:88},
+    {input:odds,left:656,top:77},
+    {input:profit,left:437,top:160}
   ];
-
-  if(logo){
-    composites.push({input:logo,left:31,top:92});
-  }else{
-    const fallback=await textLayer({
-      markup:escapeMarkup(p.team),
-      width:88,height:88,size:28,color:"#D8D8DC",align:"center"
-    });
-    composites.push({input:fallback,left:31,top:92});
-  }
-
-  return sharp(template)
-    .ensureAlpha()
-    .composite(composites)
-    .png({compressionLevel:9,adaptiveFiltering:true})
-    .toBuffer();
+  if(logo) composites.push({input:logo,left:31,top:79});
+  else composites.push({input:await textLayer({markup:escapeMarkup(p.team),width:82,height:82,size:28,color:"#D8D8DC",align:"center"}),left:31,top:79});
+  return sharp(base).ensureAlpha().composite(composites).png({compressionLevel:9,adaptiveFiltering:true}).toBuffer();
 }
-
 export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
