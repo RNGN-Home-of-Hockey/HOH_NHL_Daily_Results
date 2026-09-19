@@ -37,13 +37,17 @@ async function putMe(request,env){
   if(body?.display_username!==undefined&&!username)return json({ok:false,error:"invalid_username",detail:"3–24 символа: буквы, цифры, _"},400);
   if(body?.display_username===undefined)username=current?.display_username||null;
 
-  if(username&&String(current?.display_username||"").toLowerCase()!==username.toLowerCase()){
+  if(username&&usernameNorm(current?.display_username)!==usernameNorm(username)){
     const changed=Date.parse(String(current?.username_changed_at||"").replace(" ","T")+"Z");
     if(Number.isFinite(changed)&&Date.now()-changed<24*3600*1000){
       return json({ok:false,error:"username_change_cooldown",next_change_at:new Date(changed+24*3600*1000).toISOString()},409);
     }
-    const exists=await env.DB.prepare("SELECT telegram_user_id FROM app_user_profiles WHERE display_username_norm=? AND telegram_user_id<>? LIMIT 1").bind(usernameNorm(username),auth.user.id).first();
+    const wanted=usernameNorm(username);
+    const exists=await env.DB.prepare("SELECT telegram_user_id FROM app_user_profiles WHERE display_username_norm=? AND telegram_user_id<>? LIMIT 1").bind(wanted,auth.user.id).first();
     if(exists)return json({ok:false,error:"username_taken"},409);
+    // Compatibility with profiles created before display_username_norm existed.
+    const legacy=await env.DB.prepare("SELECT telegram_user_id,display_username FROM app_user_profiles WHERE display_username_norm IS NULL AND telegram_user_id<>? AND display_username IS NOT NULL").bind(auth.user.id).all().catch(()=>({results:[]}));
+    if((legacy.results||[]).some(x=>usernameNorm(x.display_username)===wanted))return json({ok:false,error:"username_taken"},409);
   }
 
   const profileName=body?.profile_name===undefined?(current?.profile_name||null):cleanText(body.profile_name,40);
@@ -71,7 +75,7 @@ async function putMe(request,env){
     avatarMime=a.mime;avatarBase64=a.base64;avatarBytes=a.bytes;
   }
 
-  const usernameChanged=username&&String(current?.display_username||"").toLowerCase()!==username.toLowerCase()?new Date().toISOString().replace("T"," ").replace("Z",""):current?.username_changed_at||null;
+  const usernameChanged=username&&usernameNorm(current?.display_username)!==usernameNorm(username)?new Date().toISOString().replace("T"," ").replace("Z",""):current?.username_changed_at||null;
   await env.DB.prepare(`
     INSERT INTO app_user_profiles
       (telegram_user_id,display_username,display_username_norm,profile_name,birth_date,city,hockey_since_year,favorite_team_tri,favorite_player,
