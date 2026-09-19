@@ -26,7 +26,7 @@ async function sendComment(id){const ta=document.getElementById('v20CommentText'
 async function backFromNews(){const ctx=S.returnCtx||{};if(ctx.playerId){H.state.profile=false;await H.openPlayer(ctx.playerId);return}H.state.profile=false;const tabs=document.getElementById('tabs');if(tabs)tabs.style.display='grid';const t=document.querySelector('.tab[data-tab="games"]');if(t)t.click();setTimeout(mountHomeNews,160)}
 css();document.querySelectorAll('.v15Version').forEach(x=>x.textContent='V20');
 const oldPlayer=H.openPlayer;
-if(typeof oldPlayer==='function')H.openPlayer=async function(id){await oldPlayer(id);await mountPlayerNews(Number(id))};
+if(typeof oldPlayer==='function')H.openPlayer=async function(id){await oldPlayer(id)};
 const oldRun=H.runCore;
 H.runCore=function(){const r=typeof oldRun==='function'?oldRun.apply(this,arguments):undefined;setTimeout(mountHomeNews,120);return r};
 document.addEventListener('click',e=>{const tab=e.target.closest?.('.tab');if(tab?.dataset.tab==='games')setTimeout(mountHomeNews,180)},true);
