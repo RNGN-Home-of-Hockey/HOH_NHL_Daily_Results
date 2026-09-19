@@ -47,7 +47,7 @@ jobs:
           const events=[];
           for(const cm of sport[2].matchAll(/<Country\b([^>]*)>([\s\S]*?)<\/Country>/gi)){
             for(const tm of cm[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
-              const ta=attrs(tm[1]); if(String(ta.Id)!=='142'&&!/^NHL$/i.test(String(ta.Name||'').trim()))continue;
+              const ta=attrs(tm[1]); if(String(ta.Id)!=='142'&&!/NHL/i.test(String(ta.Name||'').trim()))continue;
               for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
                 const ma=attrs(mm[1]),lines=[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1]));
                 events.push({ma,lines});
@@ -131,3 +131,4 @@ jobs:
           npx wrangler d1 execute hoh-data-core --remote --command "SELECT e.game_pk,e.winline_event_id,MAX(CASE WHEN m.winline_market_id=e.winline_event_id||':main_1x2:1' THEN m.odds END) p1,MAX(CASE WHEN m.winline_market_id=e.winline_event_id||':main_1x2:X' THEN m.odds END) x,MAX(CASE WHEN m.winline_market_id=e.winline_event_id||':main_1x2:2' THEN m.odds END) p2 FROM winline_events e LEFT JOIN winline_markets m ON m.winline_event_id=e.winline_event_id GROUP BY e.game_pk,e.winline_event_id ORDER BY e.game_pk;"
 
 # preseason refresh trigger 2026-09-19
+\n# preseason tournament refresh trigger 2026-09-19b\n
