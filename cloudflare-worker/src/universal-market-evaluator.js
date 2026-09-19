@@ -170,7 +170,7 @@ function evaluateTeamTotals(game, team, opponent, teamRows, oppRows) {
           score: confluenceScore(attack, defense, window) + 7 + lineUtilityBonus("team_total", line),
           eyebrow: `СОВПАДЕНИЕ ТРЕНДОВ · ${team}`,
           value: `${attack.hits}/${window} + ${defense.hits}/${window}`,
-          title: `${team}: ${sideLabel} ${line} — ${attack.hits}/${window}; ${opponent} по пропущенным — ${defense.hits}/${window}`,
+          title: teamTotalConfluenceTitle(team, opponent, side, line, attack.hits, defense.hits, window),
           explanation: `Совпали собственный голевой тренд ${team} и то, сколько пропускает ${opponent}, на одной и той же линии.`,
           evidence: {
             window,
@@ -194,6 +194,15 @@ function evaluateTeamTotals(game, team, opponent, teamRows, oppRows) {
     }
   }
   return out;
+}
+
+function teamTotalConfluenceTitle(team, opponent, side, line, attackHits, defenseHits, window) {
+  const threshold = Math.floor(Number(line)) + 1;
+  if (side === "over") {
+    return `${team} забивал ${threshold}+ гола в ${attackHits} из ${window} последних матчей; ${opponent} пропускал ${threshold}+ гола в ${defenseHits} из ${window}`;
+  }
+  const maxGoals = Math.floor(Number(line));
+  return `${team} забивал не больше ${maxGoals} гола в ${attackHits} из ${window} последних матчей; ${opponent} пропускал не больше ${maxGoals} гола в ${defenseHits} из ${window}`;
 }
 
 function evaluateHandicaps(game, team, rows) {
