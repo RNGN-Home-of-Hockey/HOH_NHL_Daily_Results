@@ -238,6 +238,161 @@ async function setCardStatus(request,env,cardId){
   }
   return json({ok:true,action:"status_updated",render,card:await loadCard(env.DB,cardId)});
 }
+
+async function renderedCardRoute(env,cardId){
+  if(!env.DB)return json({ok:false,error:"missing_d1_binding"},503);
+  const row=await env.DB.prepare(
+    "SELECT card_id,render_hash,render_png_base64,render_bytes,rendered_at FROM broadcast_cards WHERE card_id=? LIMIT 1;"
+  ).bind(cardId).first();
+  if(!row||!row.render_png_base64)return json({ok:false,error:"render_not_found"},404);
+  try{
+    const raw=atob(String(row.render_png_base64));
+    const bytes=new Uint8Array(raw.length);
+    for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+    return new Response(bytes,{status:200,headers:{
+      "Content-Type":"image/png",
+      "Content-Length":String(bytes.length),
+      "Cache-Control":"public, max-age=31536000, immutable",
+      "ETag":`"`{String(row.render_hash||"")}`",
+      "X-HOH-Render-Hash":String(row.render_hash||""),
+      "X-Content-Type-Options":"nosniff"
+    }});
+  }catch(error){
+    console.error("stored broadcast PNG decode failed",error);
+    return json({ok:false,error:"render_decode_failed"},500);
+  }
+}
+
+async function ensureRenderedCard(env,cardId){
+  const row=await loadCardForRender(env.DB,cardId);
+  if(!row)throw new Error("card_not_found");
+  const payload=rendererPayloadFromRow(row);
+  if(!Number.isFinite(Number(payload.odds))||Number(payload.odds)<=1)throw new Error("winline_price_required");
+  const body=JSON.stringify(payload);
+  const hash=await sha256Hex(body);
+  if(String(row.render_hash||"")===hash&&row.render_png_base64){
+    return {cached:true,hash,bytes:Number(row.render_bytes||0),rendered_at:row.rendered_at||null};
+  }
+  const base=String(env.BROADCAST_RENDERER_URL||"https://hoh-broadcast-renderer.vercel.app").replace(/\/+$/,"");
+  const response=await fetch(base+"/api/render-card",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","Accept":"image/png"},
+    body,
+    signal:AbortSignal.timeout(12000),
+  });
+  if(!response.ok){
+    const message=await response.text().catch(()=>"");
+    throw new Error(`renderer_http_`{response.status}`{message?": "+message.slice(0,240):""}`);
+  }
+  const type=String(response.headers.get("content-type")||"").toLowerCase();
+  if(!type.includes("image/png"))throw new Error("renderer_invalid_content_type");
+  const bytes=new Uint8Array(await response.arrayBuffer());
+  if(bytes.length<100||bytes.length>2_000_000)throw new Error("renderer_invalid_png_size");
+  const base64=bytesToBase64(bytes);
+  await env.DB.prepare(`
+    UPDATE broadcast_cards
+    SET render_hash=?,render_png_base64=?,render_bytes=?,rendered_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+    WHERE card_id=?;
+  `).bind(hash,base64,bytes.length,cardId).run();
+  return {cached:false,hash,bytes:bytes.length,rendered_at:new Date().toISOString()};
+}
+
+async function loadCardForRender(db,cardId){
+  return db.prepare(`
+    SELECT bc.*,
+           g.home_tri,g.away_tri,
+           ht.name_ru AS home_name_ru,ht.name_en AS home_name,ht.logo_url AS home_logo,
+           at.name_ru AS away_name_ru,at.name_en AS away_name,at.logo_url AS away_logo
+    FROM broadcast_cards bc
+    LEFT JOIN games g ON g.game_pk=bc.game_pk
+    LEFT JOIN teams ht ON ht.tri_code=g.home_tri
+    LEFT JOIN teams at ON at.tri_code=g.away_tri
+    WHERE bc.card_id=? LIMIT 1;
+  `).bind(cardId).first();
+}
+
+function rendererPayloadFromRow(row){
+  const candidate=parsePayload(row.payload_json);
+  const tri=renderTeamCode(row,candidate);
+  const meta=TEAM_META[tri]||{name:tri||"КОМАНДА",color:"#00E6C3"};
+  const logo=tri===String(row.home_tri||"").toUpperCase()?row.home_logo:row.away_logo;
+  const market=candidate.market&&typeof candidate.market==="object"?candidate.market:{};
+  const odds=Number(market.odds??row.manual_odds);
+  return {
+    team:tri,
+    team_name:meta.name,
+    team_color:meta.color,
+    team_logo_url:logo||undefined,
+    fact:renderFactText(candidate,row),
+    market:renderMarketText(candidate,row,meta.name),
+    odds:Number.isFinite(odds)&&odds>1?odds:null,
+    stake:1000,
+  };
+}
+
+function parsePayload(value){
+  try{return value?JSON.parse(value):{}}catch{return{}}
+}
+function renderTeamCode(row,candidate){
+  const away=String(row.away_tri||"").toUpperCase(),home=String(row.home_tri||"").toUpperCase();
+  const market=candidate.market&&typeof candidate.market==="object"?candidate.market:{};
+  const values=[market.subject,market.side,candidate.evidence?.team,candidate.team_tri,candidate.evidence?.subject_team,row.suggested_market_subject];
+  for(const raw of values){const tri=String(raw||"").toUpperCase();if(tri===away||tri===home)return tri}
+  const hay=[candidate.title,candidate.value,market.label,row.headline_ru,row.stat_text_ru].filter(Boolean).join(" ");
+  if(away&&new RegExp("\\b"+away+"\\b","i").test(hay))return away;
+  if(home&&new RegExp("\\b"+home+"\\b","i").test(hay))return home;
+  for(const [tri,meta] of Object.entries(TEAM_META)){
+    if((tri===away||tri===home)&&hay.toUpperCase().includes(meta.name))return tri;
+  }
+  return away||home||"";
+}
+function renderDisplayText(value){
+  let s=String(value??"");
+  for(const [tri,meta] of Object.entries(TEAM_META))s=s.replace(new RegExp("\\b"+tri+"\\b","gi"),meta.name);
+  return s.replace(/([+-]?\d+)\.(\d+)/g,"$1,$2").toUpperCase();
+}
+function renderLineText(value){
+  const n=Number(value);if(!Number.isFinite(n))return"";
+  const abs=Math.abs(n).toString().replace(".",",");
+  return (n>0?"+":n<0?"-":"")+abs;
+}
+function renderMarketText(candidate,row,teamName){
+  const m=candidate.market&&typeof candidate.market==="object"?candidate.market:{};
+  const type=String(m.type||row.suggested_market_type||"").toLowerCase();
+  const side=String(m.side||"").toLowerCase();
+  const line=Number(m.line);
+  if(type==="handicap"){
+    let value=Number.isFinite(line)?line:null;
+    if(value===null){const found=String(m.label||row.stat_text_ru||"").match(/([+-]\d+(?:[.,]\d+)?)/);if(found)value=Number(found[1].replace(",","."))}
+    return "ФОРА "+(value===null?"":renderLineText(value))+" ГОЛА";
+  }
+  if(type==="team_total")return (side==="under"?"ИТМ ":"ИТБ ")+(Number.isFinite(line)?String(Math.abs(line)).replace(".",","):"")+" ГОЛА";
+  if(type==="game_total")return (side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+(Number.isFinite(line)?String(line).replace(".",","):"");
+  if(type==="moneyline")return"ПОБЕДА";
+  if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";
+  if(type==="period_2_result")return"2-Й ПЕРИОД · ПОБЕДА";
+  const fallback=renderDisplayText(m.label||row.stat_text_ru||"СТАВКА WINLINE").replace(teamName,"").replace(/^\s*[·—-]+\s*/,"").trim();
+  return fallback||"СТАВКА WINLINE";
+}
+function renderFactText(candidate,row){
+  const m=candidate.market&&typeof candidate.market==="object"?candidate.market:{};
+  let s=renderDisplayText(candidate.title||row.headline_ru||candidate.value||row.stat_text_ru||"");
+  if(String(m.type||row.suggested_market_type||"").toLowerCase()==="handicap"&&!/ФОРУ[^А-ЯЁ]*[+-]?\d+(?:,\d+)?\s+ГОЛА/.test(s)){
+    s=s.replace(/ФОРУ\s+([+-]?\d+(?:,\d+)?)/,"ФОРУ $1 ГОЛА");
+  }
+  return s;
+}
+async function sha256Hex(value){
+  const data=new TextEncoder().encode(String(value));
+  const digest=await crypto.subtle.digest("SHA-256",data);
+  return [...new Uint8Array(digest)].map(v=>v.toString(16).padStart(2,"0")).join("");
+}
+function bytesToBase64(bytes){
+  let out="";
+  for(let i=0;i<bytes.length;i+=0x8000)out+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+  return btoa(out);
+}
+
 async function ensureGameRow(db,game){
   const exists=await db.prepare(`SELECT game_pk FROM games WHERE game_pk=? LIMIT 1;`).bind(game.game_pk).first();
   if(exists)return {ok:true,existing:true};
