@@ -108,6 +108,7 @@ function normalizePlayers(){
 function version(){document.querySelectorAll('.v15Version,.v19Version').forEach(x=>{if(x.textContent!=='V22')x.textContent='V22'})}
 
 css();placeEye();mountMine();normalizePlayers();version();
+me(true).then(d=>{const p=d?.profile;if(p?.exists&&p.theme_mode&&H.theme?.()!==p.theme_mode)H.setTheme?.(p.theme_mode)}).catch(()=>{});
 const obs=new MutationObserver(()=>{requestAnimationFrame(()=>{placeEye();mountMine();normalizePlayers();version()})});
 obs.observe(document.documentElement,{childList:true,subtree:true});
 document.addEventListener('click',e=>{if(e.target.closest?.('.tab,[id="v15Back"]'))setTimeout(()=>{placeEye();mountMine()},60)},true);
