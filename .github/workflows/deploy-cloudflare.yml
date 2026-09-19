@@ -2,12 +2,16 @@ name: Deploy Cloudflare Worker
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Refresh Center player salaries"]
+    types: [completed]
   push:
     branches: [main]
     paths:
       - '.github/workflows/deploy-cloudflare.yml'
       - 'cloudflare-worker/src/**'
       - 'migrations/**'
+      - 'player_salary_2026_27.json'
       - 'wrangler.jsonc'
       - 'package.json'
 
@@ -20,6 +24,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
