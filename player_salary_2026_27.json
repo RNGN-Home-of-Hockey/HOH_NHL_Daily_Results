@@ -2,7 +2,7 @@
   "season": "2026-27",
   "source": "MarkerZone NHL salaries 2026-27",
   "source_url": "https://www.markerzone.com/hockey/stats/nhl/salaries.php?a=168",
-  "generated_at": "2026-09-19T10:50:49.001056+00:00",
+  "generated_at": "2026-09-19T10:54:58.507740+00:00",
   "nhl_pool": 1301,
   "source_contracts": 1474,
   "players": {
@@ -3843,6 +3843,18 @@
       "cap_hit": 4200000,
       "aav": 4200000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Zachary-Bolduc-61796",
+      "match_method": "exact_name",
+      "match_score": null
+    },
+    "8481716": {
+      "team": "",
+      "position": "C",
+      "full_name_en": "Dmitry Voronkov",
+      "nhl_name": "Dmitri Voronkov",
+      "salary_cash": 4175000,
+      "cap_hit": 4175000,
+      "aav": 4175000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Dmitry-Voronkov-62344",
       "match_method": "exact_name",
       "match_score": null
     },
@@ -8898,6 +8910,18 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
+    "8484476": {
+      "team": "STL",
+      "position": "C",
+      "full_name_en": "Nikita Susuyev",
+      "nhl_name": "Nikita Susuev",
+      "salary_cash": 850000,
+      "cap_hit": 955000,
+      "aav": 955000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Nikita-Susuyev-68570",
+      "match_method": "exact_name",
+      "match_score": null
+    },
     "8484794": {
       "team": "DET",
       "position": "RW",
@@ -9615,6 +9639,18 @@
       "cap_hit": 942500,
       "aav": 942500,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Justin-Ertel-62801",
+      "match_method": "exact_name",
+      "match_score": null
+    },
+    "8482951": {
+      "team": "",
+      "position": "LW",
+      "full_name_en": "Robert Flinton",
+      "nhl_name": "Cooper Flinton",
+      "salary_cash": 850000,
+      "cap_hit": 942500,
+      "aav": 942500,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Robert-Flinton-65742",
       "match_method": "exact_name",
       "match_score": null
     },
@@ -15525,14 +15561,6 @@
       "best_score": 0.5333
     },
     {
-      "full_name_en": "Dmitry Voronkov",
-      "team": "",
-      "position": "C",
-      "salary_cash": 4175000,
-      "aav": 4175000,
-      "best_score": 0.3226
-    },
-    {
       "full_name_en": "Max Domi",
       "team": "TOR",
       "position": "C",
@@ -15554,7 +15582,7 @@
       "position": "D",
       "salary_cash": 1750000,
       "aav": 1750000,
-      "best_score": 0.3704
+      "best_score": 0.3333
     },
     {
       "full_name_en": "Juuso Parssinen",
@@ -15890,7 +15918,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 970000,
-      "best_score": 0.5
+      "best_score": 0.4516
     },
     {
       "full_name_en": "Patrick Thomas",
@@ -16005,14 +16033,6 @@
       "best_score": 0.4545
     },
     {
-      "full_name_en": "Nikita Susuyev",
-      "team": "STL",
-      "position": "C",
-      "salary_cash": 850000,
-      "aav": 955000,
-      "best_score": 0.2069
-    },
-    {
       "full_name_en": "Tuomas Uronen",
       "team": "VGK",
       "position": "RW",
@@ -16042,7 +16062,7 @@
       "position": "D",
       "salary_cash": 855000,
       "aav": 950000,
-      "best_score": 0.3448
+      "best_score": 0.3226
     },
     {
       "full_name_en": "Artyom Duda",
@@ -16106,15 +16126,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 942500,
-      "best_score": 0.4444
-    },
-    {
-      "full_name_en": "Robert Flinton",
-      "team": "",
-      "position": "LW",
-      "salary_cash": 850000,
-      "aav": 942500,
-      "best_score": 0.7857
+      "best_score": 0.4348
     },
     {
       "full_name_en": "Jackson Hallum",
@@ -16426,7 +16438,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 901666,
-      "best_score": 0.3871
+      "best_score": 0.3333
     },
     {
       "full_name_en": "Justin Holl",
@@ -16466,7 +16478,7 @@
       "position": "RW",
       "salary_cash": 855000,
       "aav": 899166,
-      "best_score": 0.4667
+      "best_score": 0.3846
     },
     {
       "full_name_en": "Ben Hemmerling",
@@ -16602,7 +16614,7 @@
       "position": "RW",
       "salary_cash": 775000,
       "aav": 867500,
-      "best_score": 0.4444
+      "best_score": 0.4
     },
     {
       "full_name_en": "Ludwig Persson",
@@ -16650,7 +16662,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 850000,
-      "best_score": 0.4667
+      "best_score": 0.4138
     },
     {
       "full_name_en": "Anton Blidh",
@@ -16698,7 +16710,7 @@
       "position": "LW",
       "salary_cash": 850000,
       "aav": 850000,
-      "best_score": 0.3571
+      "best_score": 0.3333
     },
     {
       "full_name_en": "Jakub Demek",
@@ -16730,7 +16742,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 850000,
-      "best_score": 0.56
+      "best_score": 0.32
     },
     {
       "full_name_en": "Taylor Gauthier",
@@ -16890,7 +16902,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 850000,
-      "best_score": 0.3846
+      "best_score": 0.3478
     },
     {
       "full_name_en": "Jaxson Stauber",
@@ -16906,7 +16918,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 850000,
-      "best_score": 0.4167
+      "best_score": 0.32
     },
     {
       "full_name_en": "Djibril Toure",
@@ -16914,7 +16926,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 850000,
-      "best_score": 0.5
+      "best_score": 0.4286
     },
     {
       "full_name_en": "William Trudeau",
