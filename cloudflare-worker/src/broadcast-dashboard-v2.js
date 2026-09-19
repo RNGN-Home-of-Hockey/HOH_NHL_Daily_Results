@@ -456,10 +456,12 @@ function applyPersistedState(cards){
     const id=candidateCardId(c),p=map.get(id);
     c.__cardId=id;
     if(p){
+      c.__persisted=true;
       c.__status=String(p.status||"draft");
       c.__renderHash=p.render_hash||null;
       c.__renderedAt=p.rendered_at||null;
     }else{
+      c.__persisted=false;
       c.__status=c.__status||"draft";
       c.__renderHash=null;
       c.__renderedAt=null;
@@ -490,11 +492,13 @@ function renderCards(cards){
   document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b));
 }
 async function ensureDraft(c){
-  if(c.__cardId&&c.__status!=="draft"&&c.__status!=="hidden")return c.__cardId;
+  if(c.__cardId&&c.__persisted)return c.__cardId;
   const d=await operatorApi('/api/broadcast/operator/drafts/from-insight',{method:'POST',body:JSON.stringify({game_pk:Number(selected),card:c})});
   c.__cardId=d.card?.card_id||d.card_id||c.__cardId;
   if(!c.__cardId)throw new Error('Не удалось создать эфирную карточку');
   c.__status=d.card?.status||'draft';
+  c.__persisted=true;
+  c.__renderHash=d.card?.render_hash||null;
   return c.__cardId;
 }
 async function setBroadcastStatus(c,status){
