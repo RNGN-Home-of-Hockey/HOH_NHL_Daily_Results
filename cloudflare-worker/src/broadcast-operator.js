@@ -4,6 +4,19 @@ import { BROADCAST_CARD_CSS } from "./broadcast-card-theme.js";
 
 const NHL_BASE = "https://api-web.nhle.com/v1";
 const ALLOWED_STATUSES = new Set(["draft","preview","shown","hidden"]);
+const TEAM_META={
+  ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
+  CGY:{name:"КАЛГАРИ",color:"#D2001C"},CAR:{name:"КАРОЛИНА",color:"#CE1126"},CHI:{name:"ЧИКАГО",color:"#CF0A2C"},
+  COL:{name:"КОЛОРАДО",color:"#6F263D"},CBJ:{name:"КОЛАМБУС",color:"#002654"},DAL:{name:"ДАЛЛАС",color:"#006847"},
+  DET:{name:"ДЕТРОЙТ",color:"#CE1126"},EDM:{name:"ЭДМОНТОН",color:"#FF4C00"},FLA:{name:"ФЛОРИДА",color:"#C8102E"},
+  LAK:{name:"ЛОС-АНДЖЕЛЕС",color:"#A2AAAD"},MIN:{name:"МИННЕСОТА",color:"#154734"},MTL:{name:"МОНРЕАЛЬ",color:"#AF1E2D"},
+  NSH:{name:"НЭШВИЛЛ",color:"#FFB81C"},NJD:{name:"НЬЮ-ДЖЕРСИ",color:"#CE1126"},NYI:{name:"АЙЛЕНДЕРС",color:"#00539B"},
+  NYR:{name:"РЕЙНДЖЕРС",color:"#0038A8"},OTT:{name:"ОТТАВА",color:"#C52032"},PHI:{name:"ФИЛАДЕЛЬФИЯ",color:"#F74902"},
+  PIT:{name:"ПИТТСБУРГ",color:"#FCB514"},SJS:{name:"САН-ХОСЕ",color:"#006D75"},SEA:{name:"СИЭТЛ",color:"#99D9D9"},
+  STL:{name:"СЕНТ-ЛУИС",color:"#002F87"},TBL:{name:"ТАМПА-БЭЙ",color:"#002868"},TOR:{name:"ТОРОНТО",color:"#003E7E"},
+  UTA:{name:"ЮТА",color:"#71AFE5"},VAN:{name:"ВАНКУВЕР",color:"#00843D"},VGK:{name:"ВЕГАС",color:"#B4975A"},
+  WSH:{name:"ВАШИНГТОН",color:"#C8102E"},WPG:{name:"ВИННИПЕГ",color:"#041E42"}
+};
 
 export async function handleBroadcastOperatorRequest(request, env, path) {
   if (path === "/broadcast/operator") {
@@ -20,6 +33,12 @@ export async function handleBroadcastOperatorRequest(request, env, path) {
   if (path === "/broadcast/overlay") {
     if (request.method !== "GET") return json({ok:false,error:"method_not_allowed"},405);
     return html(OVERLAY_HTML,{cache:"no-store"});
+  }
+
+  const renderedMatch=/^\/api\/broadcast\/rendered\/([^/]+)\.png$/.exec(path);
+  if(renderedMatch){
+    if(request.method!=="GET")return json({ok:false,error:"method_not_allowed"},405);
+    return renderedCardRoute(env,decodeURIComponent(renderedMatch[1]));
   }
 
   if (!path.startsWith("/api/broadcast/operator/")) return null;
@@ -163,7 +182,7 @@ async function persistDraft(db,card,meta){
       headline_ru=excluded.headline_ru,stat_text_ru=excluded.stat_text_ru,source_note_ru=excluded.source_note_ru,
       suggested_market_type=excluded.suggested_market_type,suggested_market_subject=excluded.suggested_market_subject,
       manual_odds=excluded.manual_odds,odds_is_demo=excluded.odds_is_demo,payload_json=excluded.payload_json,
-      status='draft',shown_at=NULL,updated_at=CURRENT_TIMESTAMP;
+      status='draft',shown_at=NULL,render_hash=NULL,render_png_base64=NULL,render_bytes=NULL,rendered_at=NULL,updated_at=CURRENT_TIMESTAMP;
   `).bind(
     card.card_id,card.game_pk,card.headline_ru,card.stat_text_ru,card.source_note_ru,
     card.suggested_market_type,card.suggested_market_subject,card.manual_odds,card.odds_is_demo,card.payload_json||null,
@@ -184,7 +203,8 @@ async function editCard(request,env,cardId){
   const odds=body.manual_odds===null||body.manual_odds===""?null:Number(body.manual_odds);
   if(odds!==null&&(!Number.isFinite(odds)||odds<1.01||odds>100))return json({ok:false,error:"invalid_manual_odds"},400);
   await env.DB.prepare(`
-    UPDATE broadcast_cards SET headline_ru=?,stat_text_ru=?,source_note_ru=?,manual_odds=?,odds_is_demo=?,updated_at=CURRENT_TIMESTAMP
+    UPDATE broadcast_cards SET headline_ru=?,stat_text_ru=?,source_note_ru=?,manual_odds=?,odds_is_demo=?,
+      render_hash=NULL,render_png_base64=NULL,render_bytes=NULL,rendered_at=NULL,updated_at=CURRENT_TIMESTAMP
     WHERE card_id=?;
   `).bind(headline,stat,source,odds,body.odds_is_demo===false?0:1,cardId).run();
   return json({ok:true,action:"card_updated",card:await loadCard(env.DB,cardId)});
@@ -197,25 +217,27 @@ async function setCardStatus(request,env,cardId){
   try{body=await request.json()}catch{return json({ok:false,error:"invalid_json"},400)}
   const target=String(body.status||"").trim().toLowerCase();
   if(!ALLOWED_STATUSES.has(target))return json({ok:false,error:"invalid_status"},400);
-  if(target==="shown"&&String(current.status)!=="preview") {
-    return json({ok:false,error:"preview_required_before_show",current_status:current.status},409);
-  }
-  if(target==="preview") {
+
+  let render=null;
+  if(target==="shown"){
+    try{render=await ensureRenderedCard(env,cardId)}catch(error){
+      console.error("broadcast card render failed",error);
+      return json({ok:false,error:"render_failed",message:String(error?.message||error)},502);
+    }
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE broadcast_cards SET status='hidden',updated_at=CURRENT_TIMESTAMP WHERE status='shown' AND card_id<>?;`).bind(cardId),
+      env.DB.prepare(`UPDATE broadcast_cards SET status='shown',shown_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE card_id=?;`).bind(cardId),
+    ]);
+  } else if(target==="preview"){
     await env.DB.batch([
       env.DB.prepare(`UPDATE broadcast_cards SET status='draft',updated_at=CURRENT_TIMESTAMP WHERE status='preview' AND card_id<>?;`).bind(cardId),
       env.DB.prepare(`UPDATE broadcast_cards SET status='preview',shown_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE card_id=?;`).bind(cardId),
     ]);
-  } else if(target==="shown") {
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE broadcast_cards SET status='hidden',updated_at=CURRENT_TIMESTAMP WHERE status='shown' AND card_id<>?;`).bind(cardId),
-      env.DB.prepare(`UPDATE broadcast_cards SET status='shown',shown_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE card_id=? AND status='preview';`).bind(cardId),
-    ]);
   } else {
     await env.DB.prepare(`UPDATE broadcast_cards SET status=?,shown_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE card_id=?;`).bind(target,cardId).run();
   }
-  return json({ok:true,action:"status_updated",card:await loadCard(env.DB,cardId)});
+  return json({ok:true,action:"status_updated",render,card:await loadCard(env.DB,cardId)});
 }
-
 async function ensureGameRow(db,game){
   const exists=await db.prepare(`SELECT game_pk FROM games WHERE game_pk=? LIMIT 1;`).bind(game.game_pk).first();
   if(exists)return {ok:true,existing:true};
