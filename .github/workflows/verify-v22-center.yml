@@ -8,6 +8,9 @@ on:
       - '.github/workflows/verify-v22-center.yml'
       - 'cloudflare-worker/src/telegram-center-v22-ui.js'
       - 'cloudflare-worker/src/telegram-center-v22-profiles.js'
+      - 'cloudflare-worker/src/telegram-center-v21-spoilers-ui.js'
+      - 'cloudflare-worker/src/telegram-center-roster-maintenance.js'
+      - 'cloudflare-worker/src/telegram-center-v17-player-data.js'
       - 'cloudflare-worker/src/telegram-center-v19-ui.js'
       - 'cloudflare-worker/src/telegram-center-v20-ui.js'
       - 'cloudflare-worker/src/telegram-center-v20-news.js'
@@ -16,6 +19,8 @@ on:
       - 'cloudflare-worker/src/telegram-center-vk-maintenance.js'
       - 'cloudflare-worker/src/team-current-routes.js'
       - 'migrations/0028_user_profiles_and_exact_player_news.sql'
+      - 'migrations/0030_user_profile_no_spoilers.sql'
+      - 'migrations/0031_player_profile_physical.sql'
 
 permissions:
   contents: read
@@ -41,14 +46,14 @@ jobs:
           for(const x of ['/telegram-app/v21.js','/telegram-app/v22.js'])if(!shell.includes(x))throw new Error('shell missing '+x);
 
           const v22=await text('/telegram-app/v22.js');
-          for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich'])if(!v22.includes(x))throw new Error('V22 missing '+x);
+          for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers'])if(!v22.includes(x))throw new Error('V22 missing '+x);
 
           const v19=await text('/telegram-app/v19.js');
           for(const x of ['v19LastGameRich','v19OddsMatch','v19TeamVk','TEAM_RU','mountPlayerTeamOdds','v19MetaSecond'])if(!v19.includes(x))throw new Error('V19 upgrade missing '+x);
           const v15team=await text('/telegram-app/v15-team.js');
           for(const x of ['cupText','v15SeriesSpoiler','Финал Кубка Стэнли','v15OddsMatch','nextOdds'])if(!v15team.includes(x))throw new Error('team UI upgrade missing '+x);
           const v21=await text('/telegram-app/v21.js');
-          if(!v21.includes('v15SeriesSpoiler'))throw new Error('series spoiler masking missing');
+          for(const x of ['v15SeriesSpoiler','HOHSetNoSpoilers','hoh-spoilers-change'])if(!v21.includes(x))throw new Error('spoiler contract missing '+x);
 
           const matthews=await json('/api/telegram-center-v17/players/8479318');
           for(const k of ['primary_country_code','birth_date','height_cm','weight_kg','team_logo'])if(!matthews.player?.[k])throw new Error('Matthews profile missing '+k);
@@ -62,6 +67,7 @@ jobs:
 
           const v20=await text('/telegram-app/v20.js');
           for(const x of ['limit=15','v20NewsExtra','v20More','v20CommentAvatar','HOHEnsureCommentIdentity'])if(!v20.includes(x))throw new Error('V20 upgrade missing '+x);
+          if(v20.includes("H.openPlayer=async function(id){await oldPlayer(id);await mountPlayerNews"))throw new Error('player news still mounted');
 
           const news=await json('/api/telegram-center-v20/news/home?limit=15');
           if((news.news||[]).length<15)throw new Error('home news <15');
