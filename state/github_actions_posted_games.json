@@ -53,7 +53,11 @@
     "2026010008": true,
     "2026010009": true,
     "2026010011": true,
-    "2026010013": true
+    "2026010013": true,
+    "2026010010": true,
+    "2026010012": true,
+    "2026010014": true
   },
-  "force_repost": {}
+  "force_repost": {},
+  "bot_commands_version": "2026-09-21-v1"
 }
