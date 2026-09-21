@@ -421,9 +421,29 @@ function finiteMarketLine(...values){for(const v of values){if(v===null||v===und
 function marketLineFromType(v){const m=String(v||"").match(/:([+-]?\d+(?:\.\d+)?)$/);return m?m[1]:null}
 function isoOrNull(v){const raw=String(v||"").trim();const t=Date.parse(raw.includes("T")?raw:raw.replace(" ","T")+"Z");return Number.isFinite(t)?new Date(t).toISOString():null}
 function broadcastWinlineMaxAgeMs(game){const left=Date.parse(String(game?.scheduled_start_utc||""))-Date.now();if(!Number.isFinite(left))return 7*60*60*1000;if(left>6*60*60*1000)return 7*60*60*1000;if(left>60*60*1000)return 75*60*1000;return 25*60*1000}
-function mergeBroadcastInsights(statisticalInsights,pricedInsights){
-  const pricedById=new Map((pricedInsights||[]).map(card=>[String(card?.id||""),card]));
-  return (statisticalInsights||[]).map(card=>pricedById.get(String(card?.id||""))||stripDemoPrice(card));
+export function mergeBroadcastInsights(statisticalInsights,pricedInsights){
+  const out=[],seenIds=new Set(),pricedMarkets=new Set();
+  for(const card of pricedInsights||[]){
+    const id=String(card?.id||"");
+    if(id&&seenIds.has(id))continue;
+    out.push(card);
+    if(id)seenIds.add(id);
+    pricedMarkets.add(broadcastExactMarketKey(card?.market));
+  }
+  for(const card of statisticalInsights||[]){
+    const id=String(card?.id||"");
+    if(id&&seenIds.has(id))continue;
+    // Do not append a second unpriced story for an exact market that already
+    // has a real Winline card. The priced story is the source of truth.
+    if(pricedMarkets.has(broadcastExactMarketKey(card?.market)))continue;
+    out.push(stripDemoPrice(card));
+    if(id)seenIds.add(id);
+  }
+  return out;
+}
+function broadcastExactMarketKey(market){
+  const line=market?.line===null||market?.line===undefined||market?.line===""?"none":Number(market.line).toFixed(2);
+  return [market?.type||"unknown",market?.period||"GAME",market?.subject||"all",market?.side||"none",line].join(":");
 }
 function stripDemoPrice(card){
   const copy=typeof structuredClone==="function"?structuredClone(card):JSON.parse(JSON.stringify(card));
