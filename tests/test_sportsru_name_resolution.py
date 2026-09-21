@@ -90,6 +90,27 @@ def main() -> None:
         else:
             raise AssertionError("English-name publication guard did not fire")
 
+        mixed = [
+            bot.ScoringEvent(
+                period=1,
+                period_type="REGULAR",
+                time="02.00",
+                team_for="SEA",
+                home_goals=0,
+                away_goals=1,
+                scorer="Yegor Бориков",
+                assists=[],
+                scorer_id=444,
+                assist_ids=[],
+            )
+        ]
+        try:
+            bot.assert_no_english_scoring_names(mixed)
+        except RuntimeError as exc:
+            assert "Yegor Бориков" in str(exc)
+        else:
+            raise AssertionError("Mixed Latin/Cyrillic publication guard did not fire")
+
         print("SPORTSRU_ON_DEMAND_NAME_RESOLUTION_OK")
     finally:
         bot.http_get_text = original_get
