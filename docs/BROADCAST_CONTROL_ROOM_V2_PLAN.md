@@ -10,42 +10,43 @@ Goal: make the broadcast dashboard safe for many parallel NHL games/operators an
 - [ ] Production smoke: two games can be ON AIR at the same time without replacing each other.
 
 ## P1 — operator presence and locks
-- [ ] Add operator identity stored in the browser.
-- [ ] Add a short renewable match lock/lease (target: 90 s) so two people cannot accidentally run the same match.
-- [ ] Show operator/lock state in the left match list.
-- [ ] Allow explicit takeover after expiry; never permanently lock a match.
+- [x] Add operator identity stored in the browser.
+- [x] Add a 90-second renewable match lease; heartbeat every 30 seconds.
+- [x] Show operator/lock state in the left match list.
+- [x] Let a new operator acquire the room automatically after the previous lease expires.
 
 ## P2 — AIR SCORE
-- [ ] Keep statistical/evidence score separate from editorial usefulness.
-- [ ] Calculate `air_score 0..100` from clarity, strength, sample relevance, price utility, freshness and market usefulness.
-- [ ] Penalize very low-value/safe prices and weak/ambiguous combined stories.
-- [ ] Explain the score with 2–3 short reason tags.
-- [ ] Sort the default queue by `air_score`, with live urgency handled separately.
-- [ ] Never label AIR SCORE as probability or win chance.
+- [x] Keep statistical/evidence score separate from editorial usefulness.
+- [x] Calculate `air_score 0..100` from evidence strength, sample relevance, price utility, market clarity and presentation complexity.
+- [x] Penalize very low-value/safe prices, missing exact lines and weak price-vs-history stories.
+- [x] Explain the score with up to three short reason tags.
+- [x] Sort the default queue by AIR SCORE, while live cards retain urgency priority.
+- [x] Explicitly mark AIR SCORE as editorial broadcast utility, never win probability.
 
 ## P3 — readable samples and copy
-- [ ] <=30 games: use natural counts, e.g. “14 из 20”.
-- [ ] 31–99 games: lead with percentage, show exact sample secondarily, e.g. “74% · 80 игр”.
-- [ ] >=100 games: lead with percentage and rounded scale, e.g. “68% · 200+ игр”; exact count stays in details.
-- [ ] Rewrite handicap facts into plain Russian when that is clearer (e.g. “не проигрывал в 2+ шайбы”).
-- [ ] Combine two venue samples into one primary story and keep split detail secondary.
+- [x] <=30 games: keep natural counts, e.g. “14 из 20”.
+- [x] 31–99 games: lead with percentage and show exact sample, e.g. “74% · 80 игр”.
+- [x] >=100 games: lead with percentage and rounded scale, e.g. “68% · 200+ игр”; exact count stays in details.
+- [ ] Rewrite selected handicap facts into plain Russian when that is clearer (e.g. “не проигрывал в 2+ шайбы”).
+- [x] Combine two venue samples into one primary percentage story and keep team splits secondary.
 
 ## P4 — card hierarchy/UI
-- [ ] Put AIR SCORE and reason tags at the top of the card.
-- [ ] Separate “best for air” (top 3) from the rest.
-- [ ] De-emphasize cards with no exact Winline line or weak editorial utility.
-- [ ] Make headline, market, odds and action scannable in 2–3 seconds.
-- [ ] Add compact details drawer for exact sample/evidence.
+- [x] Put AIR SCORE and reason tags at the top of the card.
+- [x] Separate “ТОП ДЛЯ ЭФИРА” (up to 3 real Winline lines, AIR SCORE >=55) from the rest.
+- [x] De-emphasize cards with no exact Winline line or weak editorial utility.
+- [x] Keep headline, market, odds and action visually scannable.
+- [x] Add “ДЕТАЛИ” drawer with exact sample, historical rate, price-implied rate, statistical score and explanation.
 
 ## P5 — supervisor view
-- [ ] Left rail: ON AIR / operator / strong-card count / no-strong-lines state per game.
+- [~] Left rail already shows ON AIR / active operator per game; strong-card count still pending.
 - [ ] Global view of all active rooms without mixing their overlays.
 - [ ] Recent action log: who showed/removed what and when.
 
 ## P6 — validation
-- [ ] Automated concurrency tests for 15 different games.
-- [ ] Same-game collision/lock tests.
+- [ ] Automated concurrency test for 15 different games.
+- [ ] Same-game collision/lease test.
 - [ ] D1 write/read load smoke.
 - [ ] Overlay isolation smoke.
-- [ ] AIR SCORE fixtures for obvious good/bad examples.
-- [ ] Copy/sample-format fixtures for 20, 80, 200+ game samples.
+- [x] AIR SCORE fixtures for obvious good/bad examples.
+- [x] Copy/sample-format fixtures for 20, 80 and 200+ game samples.
+- [x] AIR SCORE + lease schema fixtures are part of mandatory product CI.

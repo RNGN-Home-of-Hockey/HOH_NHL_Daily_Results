@@ -220,7 +220,10 @@ jobs:
           npm test
 
       - name: Broadcast Operator safety
-        run: node tests/validate_broadcast_operator.mjs
+        run: |
+          node tests/validate_broadcast_operator.mjs
+          node tests/validate_broadcast_operator_leases.mjs
+          node tests/validate_broadcast_air_score.mjs
 
       - name: Worker dry run
         run: |

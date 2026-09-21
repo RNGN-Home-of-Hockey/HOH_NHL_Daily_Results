@@ -67,10 +67,10 @@ export async function buildBettingInsights(db, game, options = {}) {
   } catch (error) {
     console.error("winline market adapter failed", error);
   }
-  return (pricedPortfolio||[]).map(annotateAirUtility);
+  return (pricedPortfolio||[]).map((card)=>annotateAirUtility(card,game));
 }
 
-export function annotateAirUtility(input) {
+export function annotateAirUtility(input, game=null) {
   const card={...input,evidence:input?.evidence?{...input.evidence}:{}};
   const market=card.market||{};
   const sourceScore=finiteAirScore(card.portfolio_score,card.score,55);
@@ -147,7 +147,7 @@ export function annotateAirUtility(input) {
     historical_minus_implied:Number.isFinite(gap)?roundAir3(gap):null,
     real_winline_price:realPrice,
   };
-  const formatted=formatBroadcastTitle(card,{sample,hitRate});
+  const formatted=formatBroadcastTitle(card,{sample,hitRate,game});
   card.broadcast_title=formatted.title;
   if(formatted.detail)card.broadcast_detail=formatted.detail;
   return card;
@@ -159,6 +159,7 @@ export function formatBroadcastTitle(card, precomputed={}) {
   const sample=Number(precomputed.sample||editorialSampleSize(card)||0);
   const rate=Number(precomputed.hitRate);
   const hitRate=Number.isFinite(rate)?rate:editorialHitRate(card);
+  const game=precomputed.game||null;
   const original=String(card?.title||card?.value||"").trim();
   if(!sample||sample<=30||!Number.isFinite(hitRate))return {title:original,detail:null};
   const pct=Math.round(hitRate*100);
@@ -174,8 +175,8 @@ export function formatBroadcastTitle(card, precomputed={}) {
   let detail=null;
   const away=evidence.away,home=evidence.home;
   if(away&&home&&Number.isFinite(Number(away.hits))&&Number.isFinite(Number(away.sample))&&Number.isFinite(Number(home.hits))&&Number.isFinite(Number(home.sample))){
-    const awayTeam=String(evidence.away_team||card?.away_tri||"ГОСТИ");
-    const homeTeam=String(evidence.home_team||card?.home_tri||"ХОЗЯЕВА");
+    const awayTeam=String(game?.away_tri||evidence.away_team||card?.away_tri||"ГОСТИ");
+    const homeTeam=String(game?.home_tri||evidence.home_team||card?.home_tri||"ХОЗЯЕВА");
     detail=awayTeam+" в гостях "+away.hits+"/"+away.sample+" · "+homeTeam+" дома "+home.hits+"/"+home.sample;
   }else if(sample>=100){
     detail="Точная выборка: "+sample+" игр";

@@ -18,7 +18,7 @@ const splitTotal=annotateAirUtility({
   title:'NYR в гостях и BOS дома: ТБ 4.5 — 17/20 и 13/20',
   evidence:{away:{hits:17,sample:20,hit_rate:0.85},home:{hits:13,sample:20,hit_rate:0.65}},
   market:{type:'game_total',side:'over',line:4.5,label:'ТБ 4.5',odds:1.38,odds_is_demo:false,odds_source:'provider_live'}
-});
+},{away_tri:'NYR',home_tri:'BOS'});
 const huge=annotateAirUtility({
   score:78,
   title:'Большая историческая выборка',
@@ -30,6 +30,7 @@ assert.ok(bostonHome.air_score>safeHandicap.air_score,'good price + 14/20 must o
 assert.ok(safeHandicap.broadcast_title.includes('74%'),'80-game sample should be percentage-first');
 assert.ok(safeHandicap.broadcast_title.includes('80 ИГР'),'80-game exact sample should stay visible');
 assert.ok(splitTotal.broadcast_title.includes('75%'),'two 20-game venue splits should become one combined percentage');
+assert.equal(splitTotal.broadcast_detail,'NYR в гостях 17/20 · BOS дома 13/20','combined split keeps readable team-level detail');
 assert.ok(huge.broadcast_title.includes('200+ ИГР'),'100+ samples should use rounded scale');
 assert.equal(bostonHome.broadcast_title,'BOS выиграл 14 из последних 20 матчей дома','<=30 samples stay as natural counts');
 assert.equal(bostonHome.air_meta.meaning,'editorial_broadcast_utility_not_probability');
