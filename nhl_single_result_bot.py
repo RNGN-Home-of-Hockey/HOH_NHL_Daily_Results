@@ -56,6 +56,7 @@ HOH_DATA_CORE_URL = _env_str("HOH_DATA_CORE_URL", "https://hoh-nhl-daily-results
 TELEGRAM_INTERACTIVE_ENABLED = _env_bool("TELEGRAM_INTERACTIVE_ENABLED", True)
 HOH_CHANNEL_URL = _env_str("HOH_CHANNEL_URL", "http://t.me/home_of_hockey").strip() or "http://t.me/home_of_hockey"
 BOT_COMMANDS_VERSION = "2026-09-21-v1"
+SPORTSRU_NAMES_PATH = _env_str("SPORTSRU_NAMES_PATH", "ru_full_names.json").strip() or "ru_full_names.json"
 
 TEAM_RU = {
     "ANA": "Анахайм", "ARI": "Аризона", "BOS": "Бостон", "BUF": "Баффало", "CGY": "Калгари", "CAR": "Каролина",
@@ -287,6 +288,62 @@ def _player_name_from_id(details: dict, roster_names: Dict[int, str], *keys: str
         if pid and pid in roster_names:
             return roster_names[pid]
     return ""
+
+
+def _contains_cyrillic(value: str) -> bool:
+    return bool(re.search(r"[А-Яа-яЁё]", str(value or "")))
+
+
+def _sportsru_short_name(full_name_ru: str) -> str:
+    """Keep Sports.ru spelling, but use the surname form used in goal summaries."""
+    name = _clean_person_name(full_name_ru)
+    if not name:
+        return ""
+    parts = name.split()
+    if len(parts) <= 1:
+        return name
+    particles = {"ван", "вон", "фон", "де", "дер", "ден", "ла", "ле", "ди", "да", "дель"}
+    if len(parts) >= 3 and parts[-2].lower().strip(".\'’") in particles:
+        return " ".join(parts[-2:])
+    return parts[-1]
+
+
+def load_sportsru_names(path: str = SPORTSRU_NAMES_PATH) -> Dict[int, str]:
+    """Player-id -> Sports.ru Russian display name. Never invent transliterations here."""
+    p = pathlib.Path(path)
+    if not p.exists():
+        print(f"[WARN] Sports.ru name cache missing: {path}")
+        return {}
+    try:
+        raw = json.loads(p.read_text("utf-8") or "{}")
+    except Exception as exc:
+        print(f"[WARN] Sports.ru name cache unreadable: {exc}")
+        return {}
+    out: Dict[int, str] = {}
+    for raw_id, raw_name in (raw or {}).items():
+        try:
+            pid = int(raw_id)
+        except Exception:
+            continue
+        name = _sportsru_short_name(str(raw_name or ""))
+        if pid > 0 and name and _contains_cyrillic(name):
+            out[pid] = name
+    dbg("Sports.ru names loaded:", len(out))
+    return out
+
+
+def apply_sportsru_names(events: List[ScoringEvent], names_by_id: Dict[int, str]) -> List[ScoringEvent]:
+    """Use the shared Sports.ru cache for every NHL event that exposes player ids."""
+    for ev in events:
+        if ev.scorer_id and ev.scorer_id in names_by_id:
+            ev.scorer = names_by_id[ev.scorer_id]
+        if ev.assist_ids:
+            translated: List[str] = []
+            for idx, original in enumerate(ev.assists):
+                pid = ev.assist_ids[idx] if idx < len(ev.assist_ids) else 0
+                translated.append(names_by_id.get(pid, original))
+            ev.assists = _clean_assists(translated)
+    return events
 
 
 def _is_valid_player_name(s: str) -> bool:
@@ -979,12 +1036,12 @@ def get_winning_shootout_name(
     if not official_has_shootout:
         return None
 
+    if sportsru_winner and sportsru_winner.scorer_ru and _is_valid_player_name(sportsru_winner.scorer_ru):
+        return _clean_person_name(sportsru_winner.scorer_ru)
+
     for ev in events:
         if ev.period_type == "SHOOTOUT" and ev.is_shootout_winner and _is_valid_player_name(ev.scorer):
             return _clean_person_name(ev.scorer)
-
-    if sportsru_winner and sportsru_winner.scorer_ru and _is_valid_player_name(sportsru_winner.scorer_ru):
-        return _clean_person_name(sportsru_winner.scorer_ru)
 
     scored_attempts = [
         ev for ev in events
@@ -1021,10 +1078,6 @@ def build_single_match_text(
         f"{he} <b>«{hn}»: {meta.home_score}</b> ({hmark})",
         f"{ae} <b>«{an}»: {meta.away_score}</b> ({amark})",
     ])
-    if winning_so_name:
-        head_lines.append("")
-        head_lines.append(f"<b>Победный буллит — {winning_so_name}</b>")
-
     regular_and_ot = [ev for ev in events if ev.period_type != "SHOOTOUT"]
 
     marks = compute_player_marks(events)
@@ -1238,6 +1291,7 @@ def main() -> None:
     resend_last_day = _env_bool("RESEND_LAST_DAY", False)
 
     standings = fetch_standings_map()
+    sportsru_names = load_sportsru_names()
     state = load_state(STATE_PATH)
     posted: Dict[str, bool] = state.get("posted", {}) or {}
     force_repost: Dict[str, bool] = state.get("force_repost", {}) or {}
@@ -1294,6 +1348,7 @@ def main() -> None:
         evs, official_has_shootout = fetch_scoring_official(meta.gamePk, meta.home_tri, meta.away_tri)
         sru_home, sru_away, sru_so_winner, _ = fetch_sportsru_goals(meta.home_tri, meta.away_tri)
         merged = merge_official_with_sportsru(evs, sru_home, sru_away, meta.home_tri, meta.away_tri)
+        merged = apply_sportsru_names(merged, sportsru_names)
 
         text = build_single_match_text(
             meta=meta,
