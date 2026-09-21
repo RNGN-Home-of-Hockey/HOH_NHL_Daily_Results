@@ -189,6 +189,7 @@ function statement(sql){
   };
 }
 function execute(sql,args){
+  if (/INSERT INTO broadcast_operator_actions/.test(sql)) return changes(1);
   if (/SET render_hash=\?/.test(sql) && /render_png_base64=\?/.test(sql)) {
     const [hash,png,bytes,id]=args;
     const c=cards.get(String(id));

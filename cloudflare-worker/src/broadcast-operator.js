@@ -56,6 +56,11 @@ export async function handleBroadcastOperatorRequest(request, env, path) {
   const openBroadcastOperator=String(env.BROADCAST_OPERATOR_OPEN||"")==="1";
   if (!openBroadcastOperator && !(await managementAuthorized(request,env))) return json({ok:false,error:"unauthorized"},401);
 
+  if (path === "/api/broadcast/operator/actions") {
+    if (request.method !== "GET") return json({ok:false,error:"method_not_allowed"},405);
+    return listOperatorActions(request,env);
+  }
+
   const leaseMatch = /^\/api\/broadcast\/operator\/leases\/(\d+)$/.exec(path);
   if (leaseMatch) {
     const gamePk=positiveInt(leaseMatch[1]);
@@ -259,7 +264,58 @@ async function setCardStatus(request,env,cardId){
   } else {
     await env.DB.prepare(`UPDATE broadcast_cards SET status=?,shown_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE card_id=?;`).bind(target,cardId).run();
   }
+  if(target==="shown"||target==="hidden"){
+    await recordOperatorAction(env.DB,{
+      gamePk:current.game_pk,
+      cardId,
+      action:target,
+      operatorId:normalizeOperatorId(body.operator_id)||"legacy",
+      operatorName:normalizeOperatorName(body.operator_name,body.operator_id||"legacy"),
+      headline:current.headline_ru,
+      statText:current.stat_text_ru,
+    });
+  }
   return json({ok:true,action:"status_updated",render,card:await loadCard(env.DB,cardId)});
+}
+
+async function listOperatorActions(request,env){
+  const url=new URL(request.url);
+  const requested=Number(url.searchParams.get("limit")||30);
+  const limit=Math.max(1,Math.min(50,Number.isFinite(requested)?Math.floor(requested):30));
+  const gamePk=positiveInt(url.searchParams.get("game"));
+  const sql=`
+    SELECT a.id,a.game_pk,a.card_id,a.action,a.operator_id,a.operator_name,a.headline_ru,a.stat_text_ru,a.created_at,
+           g.away_tri,g.home_tri
+    FROM broadcast_operator_actions a
+    LEFT JOIN games g ON g.game_pk=a.game_pk
+    ${gamePk?"WHERE a.game_pk=?":""}
+    ORDER BY a.id DESC
+    LIMIT ?;
+  `;
+  const stmt=env.DB.prepare(sql);
+  const result=gamePk?await stmt.bind(gamePk,limit).all():await stmt.bind(limit).all();
+  return json({ok:true,actions:result.results||[],scope:{game_pk:gamePk||null},limit});
+}
+
+async function recordOperatorAction(db,{gamePk,cardId,action,operatorId,operatorName,headline,statText}){
+  try{
+    await db.prepare(`
+      INSERT INTO broadcast_operator_actions(
+        game_pk,card_id,action,operator_id,operator_name,headline_ru,stat_text_ru,created_at
+      ) VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP);
+    `).bind(
+      gamePk,
+      String(cardId||"").slice(0,180),
+      String(action||"").slice(0,24),
+      String(operatorId||"legacy").slice(0,96),
+      String(operatorName||"Оператор").slice(0,48),
+      String(headline||"").slice(0,240),
+      String(statText||"").slice(0,240),
+    ).run();
+  }catch(error){
+    // Action history must never block the live broadcast path.
+    console.error("broadcast operator action log failed",error);
+  }
 }
 
 async function getOperatorLease(env,gamePk){

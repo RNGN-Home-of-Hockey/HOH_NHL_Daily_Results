@@ -38,9 +38,9 @@ Goal: make the broadcast dashboard safe for many parallel NHL games/operators an
 - [x] Add “ДЕТАЛИ” drawer with exact sample, historical rate, price-implied rate, statistical score and explanation.
 
 ## P5 — supervisor view
-- [~] Left rail already shows ON AIR / active operator per game; strong-card count still pending.
-- [ ] Global view of all active rooms without mixing their overlays.
-- [ ] Recent action log: who showed/removed what and when.
+- [~] Left rail shows ON AIR + active operator per game; strong-card count/no-strong-lines summary is still pending.
+- [x] Left match rail acts as the global room view: ON AIR and active operator are visible without mixing overlays.
+- [x] Recent global action log: operator, match, show/remove action, card and timestamp.
 
 ## P6 — validation
 - [x] Automated concurrency test keeps 15 different games ON AIR simultaneously.
