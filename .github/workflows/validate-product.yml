@@ -8,6 +8,7 @@ on:
       - '.github/workflows/center-player-meta.yml'
       - '.github/workflows/nhl-single-results.yml'
       - 'cloudflare-worker/**'
+      - 'vercel-broadcast-renderer/**'
       - 'migrations/**'
       - 'tools/**'
       - 'tests/**'
@@ -22,6 +23,7 @@ on:
       - '.github/workflows/center-player-meta.yml'
       - '.github/workflows/nhl-single-results.yml'
       - 'cloudflare-worker/**'
+      - 'vercel-broadcast-renderer/**'
       - 'migrations/**'
       - 'tools/**'
       - 'tests/**'
@@ -204,6 +206,12 @@ jobs:
         run: |
           node tests/validate_market_line_evaluator.mjs
           node tests/validate_universal_market_evaluator.mjs
+
+      - name: Broadcast renderer
+        working-directory: vercel-broadcast-renderer
+        run: |
+          npm install --no-audit --no-fund
+          npm test
 
       - name: Broadcast Operator safety
         run: node tests/validate_broadcast_operator.mjs

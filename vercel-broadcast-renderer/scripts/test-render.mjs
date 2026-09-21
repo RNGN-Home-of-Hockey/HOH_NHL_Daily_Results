@@ -3,7 +3,7 @@ import { renderCard } from "../lib/render-card.js";
 
 const sample={
   team:"CAR",
-  fact:"КАРОЛИНА ЗАКРЫЛА ФОРУ +1,5 В 19 ИЗ 20 ПОСЛЕДНИХ МАТЧЕЙ",
+  fact:"КАРОЛИНА ЗАКРЫЛА ФОРУ +1,5 В 83 МАТЧАХ ПОДРЯД",
   market:"ФОРА +1,5 ГОЛА",
   odds:1.30,
   stake:1000,

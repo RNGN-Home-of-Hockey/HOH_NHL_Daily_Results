@@ -104,22 +104,35 @@ export async function renderCard(input={}){
   const p=normalizePayload(input);
   const logo=await fetchLogo(p.logoUrl);
   const base=await sharp(baseTemplateSvg(p.teamColor)).png().toBuffer();
-  const [fact,teamName,market,odds,profit]=await Promise.all([
+  const profitMainText=p.priced
+    ?`+${p.profit.toLocaleString("ru-RU")} РУБ`
+    :"ЛИНИЯ НЕ НАЙДЕНА";
+  const profitNoteText=p.priced
+    ?`(ПРИ СТАВКЕ ${p.stake.toLocaleString("ru-RU")} РУБ.)`
+    :"WINLINE";
+  const [fact,teamName,market,odds,profitMain,profitNote]=await Promise.all([
     textLayer({markup:highlight(p.fact,p.teamName),width:720,height:44,size:22}),
-    textLayer({markup:escapeMarkup(p.teamName),width:255,height:38,size:38}),
-    textLayer({markup:escapeMarkup(p.market),width:255,height:27,size:22,color:"#D6D6DA"}),
-    textLayer({markup:escapeMarkup(p.priced?p.odds.toFixed(2):"—"),width:138,height:68,size:p.priced?58:46,align:"center"}),
-    textLayer({markup:p.priced
-      ?`<span foreground="#FF641E">+${escapeMarkup(p.profit.toLocaleString("ru-RU"))} РУБ</span>  <span foreground="#D4D4D8">(ПРИ СТАВКЕ ${escapeMarkup(p.stake.toLocaleString("ru-RU"))} РУБ.)</span>`
-      :`<span foreground="#FF641E">ЛИНИЯ НЕ НАЙДЕНА</span>  <span foreground="#D4D4D8">WINLINE</span>`,
-      width:346,height:39,size:p.priced?22:18,align:"center"})
+    textLayer({markup:escapeMarkup(p.teamName),width:255,height:36,size:36}),
+    textLayer({markup:escapeMarkup(p.market),width:255,height:23,size:20,color:"#D6D6DA"}),
+    textLayer({markup:escapeMarkup(p.priced?p.odds.toFixed(2):"—"),width:156,height:64,size:p.priced?58:46,align:"center"}),
+    textLayer({
+      markup:escapeMarkup(profitMainText),
+      width:160,height:30,size:p.priced?(profitMainText.length>12?19:22):17,
+      color:"#FF641E",align:"center"
+    }),
+    textLayer({
+      markup:escapeMarkup(profitNoteText),
+      width:210,height:23,size:p.priced?15:14,
+      color:"#D4D4D8",align:"center"
+    })
   ]);
   const composites=[
-    {input:fact,left:45,top:11},
-    {input:teamName,left:152,top:91},
-    {input:market,left:152,top:130},
-    {input:odds,left:656,top:77},
-    {input:profit,left:437,top:160}
+    {input:fact,left:45,top:16},
+    {input:teamName,left:152,top:84},
+    {input:market,left:152,top:128},
+    {input:odds,left:645,top:84},
+    {input:profitMain,left:430,top:169},
+    {input:profitNote,left:590,top:174}
   ];
   if(logo) composites.push({input:logo,left:31,top:79});
   else composites.push({input:await textLayer({markup:escapeMarkup(p.team),width:82,height:82,size:28,color:"#D8D8DC",align:"center"}),left:31,top:79});
