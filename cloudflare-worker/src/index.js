@@ -889,28 +889,45 @@ function seriesText(meta) {
   return pieces.join(", ");
 }
 
-async function sendMenu(env, chatId) {
-  return sendText(env, chatId, "Меню HOH NHL Results", {
+async function sendMenu(env, chatId, threadId = null) {
+  const today = currentCalendarDayPT();
+  const text = [
+    "🏒 <b>HOH · Результаты НХЛ</b>",
+    "",
+    "Расписание и результаты считаются по календарному дню Лос-Анджелеса (PT).",
+    "Выбери день, затем конкретный матч или все завершённые матчи дня.",
+    "",
+    "Произвольная дата: <code>/schedule YYYY-MM-DD</code>",
+  ].join("\n");
+  return sendText(env, chatId, text, {
     inline_keyboard: [
-      [{ text: "Показать последние матчи", callback_data: "latest_matches" }],
-      [{ text: "Загрузить заново последний игровой день", callback_data: "resend_last_day" }],
-      [{ text: "Расписание по дням", callback_data: "schedule_overview" }],
+      [
+        { text: "🗓 Сегодня", callback_data: `day:${today}` },
+        { text: "↩️ Вчера", callback_data: `day:${addDays(today, -1)}` },
+      ],
+      [{ text: "📅 Выбрать день", callback_data: "schedule_overview" }],
+      [{ text: "✅ Последние матчи", callback_data: "latest_matches" }],
     ],
-  });
+  }, threadId, "HTML");
 }
 
-async function sendText(env, chatId, text, replyMarkup = null) {
+async function sendText(env, chatId, text, replyMarkup = null, threadId = null, parseMode = null) {
   const payload = {
     chat_id: chatId,
     text,
     disable_web_page_preview: true,
   };
 
-  if (env.TELEGRAM_THREAD_ID) {
+  if (threadId) {
+    payload.message_thread_id = Number(threadId);
+  } else if (String(chatId) === menuChatId(env) && env.TELEGRAM_THREAD_ID) {
     payload.message_thread_id = Number(env.TELEGRAM_THREAD_ID);
   }
   if (replyMarkup) {
     payload.reply_markup = replyMarkup;
+  }
+  if (parseMode) {
+    payload.parse_mode = parseMode;
   }
 
   return telegramRequest(env, "sendMessage", payload);
