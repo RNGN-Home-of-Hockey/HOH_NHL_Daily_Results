@@ -270,7 +270,7 @@ async function ensureRenderedCard(env,cardId){
   const payload=rendererPayloadFromRow(row);
   if(!Number.isFinite(Number(payload.odds))||Number(payload.odds)<=1)throw new Error("winline_price_required");
   const body=JSON.stringify(payload);
-  const hash=await sha256Hex("renderer-v10-spacing-team-accent-2026-09-21:"+body);
+  const hash=await sha256Hex("renderer-v11-accent-align-profit-up-2026-09-21:"+body);
   if(String(row.render_hash||"")===hash&&row.render_png_base64){
     return {cached:true,hash,bytes:Number(row.render_bytes||0),rendered_at:row.rendered_at||null};
   }
