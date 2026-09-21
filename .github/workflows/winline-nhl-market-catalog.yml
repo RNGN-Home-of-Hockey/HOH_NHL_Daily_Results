@@ -1,4 +1,5 @@
 name: Winline NHL Market Catalog
+# catalog schema: broadcast-market-audit-v2
 on:
   push:
     branches: [main]
