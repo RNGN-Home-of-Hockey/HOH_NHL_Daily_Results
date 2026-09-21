@@ -1,6 +1,16 @@
 const DEFAULT_CENTER_WEBHOOK_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram/center?v=20260921-1";
 const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v3";
 const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
+const CENTER_POLL_OFFSET_KEY = "telegram_center_poll_offset_v1";
+const CENTER_POLL_STATUS_KEY = "telegram_center_poll_status_v1";
+const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v1";
+const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app";
+
+function centerDeliveryMode(env) {
+  return String(env.TELEGRAM_CENTER_DELIVERY_MODE || "webhook").trim().toLowerCase() === "polling"
+    ? "polling"
+    : "webhook";
+}
 
 export async function handleTelegramProductBotRequest(request, env, path) {
   if (path === "/api/telegram-app/setup") {
@@ -167,7 +177,10 @@ export async function handleTelegramProductBotRequest(request, env, path) {
 }
 
 async function centerStatus(request, env) {
-  const webhookRefresh = await ensureTelegramCenterWebhook(env);
+  const deliveryMode = centerDeliveryMode(env);
+  const deliverySetup = deliveryMode === "polling"
+    ? await ensureTelegramCenterPolling(env)
+    : await ensureTelegramCenterWebhook(env);
   const centerTokenConfigured = Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim());
   const webhookSecretConfigured = Boolean(String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim());
 
@@ -232,15 +245,19 @@ async function centerStatus(request, env) {
 
   const expectedWebhook = String(env.TELEGRAM_CENTER_WEBHOOK_URL || "").trim() || DEFAULT_CENTER_WEBHOOK_URL;
   const webhookMatchesExpected = webhook.ok && webhook.url === expectedWebhook;
+  const pollingReady = webhook.ok && !webhook.url;
   const lastEvent = await readCenterDiagnostic(env);
+  const polling = await readCenterPollingStatus(env);
 
   return json({
-    ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok && webhookMatchesExpected,
+    ok: centerTokenConfigured && bot.ok && webhook.ok
+      && (deliveryMode === "polling" ? pollingReady && deliverySetup.ok : webhookSecretConfigured && webhookMatchesExpected && deliverySetup.ok),
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-21-v10",
+    runtime_marker: "telegram-center-2026-09-21-v11",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     webhook_secret_mode: "sha256_hex",
+    delivery_mode: deliveryMode,
     mini_app_url: miniAppUrl(request, env),
     expected_webhook_url: expectedWebhook,
     repair_webhook_url: `${new URL(request.url).origin}/api/telegram/center/repair-webhook`,
@@ -249,7 +266,8 @@ async function centerStatus(request, env) {
     commands,
     menu_button: menuButton,
     webhook_matches_expected: webhookMatchesExpected,
-    webhook_refresh: webhookRefresh,
+    delivery_setup: deliverySetup,
+    polling,
     last_event: lastEvent,
   });
 }
@@ -367,6 +385,304 @@ export async function ensureTelegramCenterWebhook(env, { force = false } = {}) {
     menu_button_ok: payload.menu_button_ok,
   };
 }
+
+
+export async function ensureTelegramCenterPolling(env, { force = false } = {}) {
+  const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim();
+  if (!token) return { ok: false, mode: "polling", error: "missing_telegram_center_token" };
+
+  if (!force && env.DB && (await ensureDiagnosticTable(env))) {
+    try {
+      const row = await env.DB.prepare(
+        "SELECT meta_value FROM data_core_meta WHERE meta_key=? LIMIT 1"
+      ).bind(CENTER_POLL_SETUP_KEY).first();
+      const saved = row?.meta_value ? JSON.parse(String(row.meta_value)) : null;
+      const setupAt = Date.parse(String(saved?.setup_at || ""));
+      if (saved?.ok && Number.isFinite(setupAt) && Date.now() - setupAt < CENTER_WEBHOOK_REFRESH_MS) {
+        return { ...saved, skipped: "recently_configured" };
+      }
+    } catch (error) {
+      console.log("telegram_center_poll_setup_read_failed", {
+        error: String(error?.message || error || "unknown"),
+      });
+    }
+  }
+
+  const miniApp = String(env.TELEGRAM_MINI_APP_URL || "").trim() || CENTER_DEFAULT_MINI_APP_URL;
+  const [deleteWebhook, commandsResult, menuButtonResult] = await Promise.all([
+    telegramRequest(env, "deleteWebhook", { drop_pending_updates: false }),
+    telegramRequest(env, "setMyCommands", {
+      commands: [
+        { command: "menu", description: "Открыть меню HOH NHL Center" },
+        { command: "app", description: "Открыть приложение HOH NHL Center" },
+        { command: "help", description: "Помощь по HOH NHL Center" },
+      ],
+    }),
+    telegramRequest(env, "setChatMenuButton", {
+      menu_button: {
+        type: "web_app",
+        text: "HOH NHL Center",
+        web_app: { url: miniApp },
+      },
+    }),
+  ]);
+
+  const webhookInfo = await telegramRequest(env, "getWebhookInfo", {});
+  const webhookUrl = webhookInfo.ok ? String(webhookInfo.response?.result?.url || "") : "";
+  const ok = deleteWebhook.ok && commandsResult.ok && menuButtonResult.ok && webhookInfo.ok && !webhookUrl;
+  const payload = {
+    ok,
+    mode: "polling",
+    setup_at: new Date().toISOString(),
+    webhook_disabled: !webhookUrl,
+    commands_ok: Boolean(commandsResult.ok),
+    menu_button_ok: Boolean(menuButtonResult.ok),
+    error: ok
+      ? null
+      : deleteWebhook.response?.description
+        || deleteWebhook.error
+        || commandsResult.response?.description
+        || commandsResult.error
+        || menuButtonResult.response?.description
+        || menuButtonResult.error
+        || webhookInfo.response?.description
+        || webhookInfo.error
+        || "telegram_polling_setup_failed",
+  };
+
+  if (env.DB && (await ensureDiagnosticTable(env))) {
+    try {
+      await env.DB.prepare(`
+        INSERT INTO data_core_meta (meta_key, meta_value, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(meta_key) DO UPDATE SET
+          meta_value=excluded.meta_value,
+          updated_at=CURRENT_TIMESTAMP
+      `).bind(CENTER_POLL_SETUP_KEY, JSON.stringify(payload)).run();
+    } catch (error) {
+      console.log("telegram_center_poll_setup_write_failed", {
+        error: String(error?.message || error || "unknown"),
+      });
+    }
+  }
+  console.log("telegram_center_polling_configured", payload);
+  return payload;
+}
+
+
+export async function pollTelegramCenterUpdates(env) {
+  const setup = await ensureTelegramCenterPolling(env);
+  const pollStartedAt = new Date().toISOString();
+  if (!setup.ok) {
+    await writeCenterPollingStatus(env, {
+      ok: false,
+      polled_at: pollStartedAt,
+      error: setup.error || "polling_setup_failed",
+      updates_received: 0,
+      updates_processed: 0,
+    });
+    return { ok: false, error: setup.error || "polling_setup_failed" };
+  }
+
+  let lastOffset = 0;
+  if (env.DB && (await ensureDiagnosticTable(env))) {
+    try {
+      const row = await env.DB.prepare(
+        "SELECT meta_value FROM data_core_meta WHERE meta_key=? LIMIT 1"
+      ).bind(CENTER_POLL_OFFSET_KEY).first();
+      lastOffset = Number(row?.meta_value || 0) || 0;
+    } catch (error) {
+      console.log("telegram_center_poll_offset_read_failed", {
+        error: String(error?.message || error || "unknown"),
+      });
+    }
+  }
+
+  const payload = {
+    timeout: 0,
+    limit: 100,
+    allowed_updates: ["message"],
+  };
+  if (lastOffset > 0) payload.offset = lastOffset + 1;
+
+  const updatesResult = await telegramRequest(env, "getUpdates", payload);
+  if (!updatesResult.ok) {
+    const error = updatesResult.response?.description || updatesResult.error || "telegram_get_updates_failed";
+    await writeCenterPollingStatus(env, {
+      ok: false,
+      polled_at: pollStartedAt,
+      error,
+      updates_received: 0,
+      updates_processed: 0,
+      last_offset: lastOffset,
+    });
+    console.log("telegram_center_poll_failed", { error });
+    return { ok: false, error };
+  }
+
+  const updates = Array.isArray(updatesResult.response?.result) ? updatesResult.response.result : [];
+  let processed = 0;
+  let latestOffset = lastOffset;
+
+  for (const update of updates) {
+    const updateId = Number(update?.update_id || 0);
+    if (!Number.isSafeInteger(updateId) || updateId <= latestOffset) continue;
+
+    const outcome = await processPolledCenterUpdate(env, update);
+    if (outcome.retry) break;
+
+    latestOffset = updateId;
+    processed += 1;
+    await writeCenterPollingOffset(env, latestOffset);
+  }
+
+  const status = {
+    ok: true,
+    polled_at: pollStartedAt,
+    updates_received: updates.length,
+    updates_processed: processed,
+    last_offset: latestOffset,
+    error: null,
+  };
+  await writeCenterPollingStatus(env, status);
+  console.log("telegram_center_poll_complete", status);
+  return status;
+}
+
+
+async function processPolledCenterUpdate(env, update) {
+  const message = update?.message || null;
+  const updateId = Number(update?.update_id || 0) || null;
+  if (!message || message.chat?.type !== "private") {
+    await recordCenterDiagnostic(env, {
+      stage: "poll_update_skipped",
+      delivery_mode: "polling",
+      update_id: updateId,
+      reason: "unsupported_update",
+      has_message: Boolean(message),
+      chat_type: message?.chat?.type || null,
+    });
+    return { retry: false, handled: false };
+  }
+
+  const command = commandName(message.text || "");
+  if (!["/start", "/menu", "/help", "/app"].includes(command)) {
+    await recordCenterDiagnostic(env, {
+      stage: "poll_update_skipped",
+      delivery_mode: "polling",
+      update_id: updateId,
+      reason: "private_command_not_handled",
+      command,
+    });
+    return { retry: false, handled: false };
+  }
+
+  const chatId = message.chat?.id;
+  if (!chatId) return { retry: false, handled: false };
+
+  const centerText = "🏒 HOH NHL Center\n\nТвой персональный центр NHL:\n\n• игроки\n• команды\n• матчи\n• уведомления\n• статистика";
+  const miniApp = String(env.TELEGRAM_MINI_APP_URL || "").trim() || CENTER_DEFAULT_MINI_APP_URL;
+  const primary = await telegramRequest(env, "sendMessage", {
+    chat_id: chatId,
+    text: centerText,
+    disable_web_page_preview: true,
+    reply_markup: {
+      inline_keyboard: [[
+        {
+          text: "🏒 Открыть HOH NHL Center",
+          web_app: { url: miniApp },
+        },
+      ]],
+    },
+  });
+
+  let fallback = null;
+  if (!primary.ok) {
+    fallback = await telegramRequest(env, "sendMessage", {
+      chat_id: chatId,
+      text: `${centerText}\n\nОткрыть приложение: ${miniApp}`,
+      disable_web_page_preview: true,
+    });
+  }
+
+  const delivered = primary.ok || Boolean(fallback?.ok);
+  const error = delivered
+    ? null
+    : fallback?.response?.description
+      || fallback?.error
+      || primary.response?.description
+      || primary.error
+      || "telegram_send_failed";
+
+  await recordCenterDiagnostic(env, {
+    stage: "command_processed",
+    delivery_mode: "polling",
+    update_id: updateId,
+    command,
+    primary_delivered: primary.ok,
+    fallback_attempted: Boolean(fallback),
+    fallback_delivered: Boolean(fallback?.ok),
+    delivered,
+    telegram_error: error,
+  });
+
+  console.log("telegram_center_poll_command", {
+    update_id: updateId,
+    command,
+    delivered,
+    error,
+  });
+  return { retry: !delivered, handled: true, delivered, error };
+}
+
+
+async function writeCenterPollingOffset(env, offset) {
+  if (!env.DB || !(await ensureDiagnosticTable(env))) return;
+  await env.DB.prepare(`
+    INSERT INTO data_core_meta (meta_key, meta_value, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(meta_key) DO UPDATE SET
+      meta_value=excluded.meta_value,
+      updated_at=CURRENT_TIMESTAMP
+  `).bind(CENTER_POLL_OFFSET_KEY, String(offset)).run();
+}
+
+
+async function writeCenterPollingStatus(env, value) {
+  if (!env.DB || !(await ensureDiagnosticTable(env))) return;
+  await env.DB.prepare(`
+    INSERT INTO data_core_meta (meta_key, meta_value, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(meta_key) DO UPDATE SET
+      meta_value=excluded.meta_value,
+      updated_at=CURRENT_TIMESTAMP
+  `).bind(CENTER_POLL_STATUS_KEY, JSON.stringify(value)).run();
+}
+
+
+async function readCenterPollingStatus(env) {
+  if (!env.DB || !(await ensureDiagnosticTable(env))) return null;
+  try {
+    const [statusRow, offsetRow] = await Promise.all([
+      env.DB.prepare("SELECT meta_value, updated_at FROM data_core_meta WHERE meta_key=? LIMIT 1").bind(CENTER_POLL_STATUS_KEY).first(),
+      env.DB.prepare("SELECT meta_value, updated_at FROM data_core_meta WHERE meta_key=? LIMIT 1").bind(CENTER_POLL_OFFSET_KEY).first(),
+    ]);
+    let status = null;
+    try {
+      status = statusRow?.meta_value ? JSON.parse(String(statusRow.meta_value)) : null;
+    } catch {
+      status = { raw: String(statusRow?.meta_value || "") };
+    }
+    return {
+      ...(status || {}),
+      last_offset: Number(offsetRow?.meta_value || status?.last_offset || 0) || 0,
+      persisted_at: statusRow?.updated_at || null,
+    };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error || "polling_status_read_failed") };
+  }
+}
+
 
 async function setupMiniAppButton(request, env) {
   if (request.method !== "POST") {

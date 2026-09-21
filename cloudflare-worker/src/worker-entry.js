@@ -5,7 +5,7 @@ import { handleBroadcastRequest } from "./broadcast-dashboard-v2.js";
 import { buildLiveGameSnapshot } from "./live-betting-engine.js";
 import { handleControlCenterRequest } from "./control-center.js";
 import { handleTelegramMiniAppRequest } from "./telegram-mini-app.js";
-import { ensureTelegramCenterWebhook, handleTelegramProductBotRequest } from "./telegram-product-bot.js";
+import { handleTelegramProductBotRequest, pollTelegramCenterUpdates } from "./telegram-product-bot.js";
 import { handleTeamCurrentRequest } from "./team-current-routes.js";
 import { getCenterNotificationStatus, runCenterNotificationTick } from "./telegram-center-notification-engine.js";
 import { runCenterScheduleMaintenance } from "./telegram-center-schedule-maintenance.js";
@@ -94,11 +94,15 @@ export default {
   async scheduled(controller, env, ctx) {
     const cron = String(controller?.cron || "");
 
-    ctx.waitUntil(
-      ensureTelegramCenterWebhook(env).catch((error) => {
-        console.error("scheduled Telegram Center webhook refresh failed", error);
-      }),
-    );
+    if (cron === "* * * * *") {
+      ctx.waitUntil(
+        pollTelegramCenterUpdates(env).catch((error) => {
+          console.error("scheduled Telegram Center polling failed", error);
+        }),
+      );
+      return;
+    }
+
     if (cron === "*/2 * * * *") {
       if (env.DB) {
         ctx.waitUntil(
