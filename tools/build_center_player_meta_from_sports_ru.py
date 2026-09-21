@@ -133,7 +133,7 @@ def parse_sports_roster(html: str) -> list[SportsPlayer]:
         text = " ".join(row.stripped_strings)
         if not text or not any(word in text.lower() for word in POS_RU):
             continue
-        link = row.find("a", href=re.compile(r"/hockey/(?:person|player)/|/hockey/[^/]+/"))
+        link = row.find("a", href=re.compile(r"/tags/\d+/?|/hockey/(?:person|player)/|/hockey/[^/]+/"))
         if not link:
             continue
         raw_name = " ".join(link.stripped_strings).strip()

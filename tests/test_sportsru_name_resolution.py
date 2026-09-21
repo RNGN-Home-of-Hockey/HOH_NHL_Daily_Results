@@ -51,6 +51,31 @@ def main() -> None:
         assert names == {111: "Бориков", 222: "Хэмилтон"}, names
         bot.assert_no_english_scoring_names(events)
 
+        # Current Sports.ru club rosters are the preferred fast path and use
+        # /tags/<id>/ player links rather than the old /hockey/person/<slug>/ pages.
+        roster_html = """
+        <table>
+          <tr><td><a href="/tags/161155082/">Итан Кардуэлл</a></td><td>нападающий</td></tr>
+          <tr><td><a href="/tags/999000001/">Эрик Полкамп</a></td><td>защитник</td></tr>
+          <tr><td><a href="/tags/999000002/">Джимми Хантингтон</a></td><td>нападающий</td></tr>
+        </table>
+        """
+        original_fake = bot.http_get_text
+        roster_calls = []
+        def roster_get(url: str, timeout: int = 30) -> str:
+            roster_calls.append(url)
+            if "/hockey/club/san-jose-sharks/team/" in url:
+                return roster_html
+            raise RuntimeError("unexpected profile fallback " + url)
+        bot.http_get_text = roster_get
+        roster_names = bot.fetch_sportsru_team_roster_names("SJS")
+        assert "Итан Кардуэлл" in roster_names, roster_names
+        assert bot.resolve_sportsru_name_from_team_roster("Ethan Cardwell", roster_names) == "Итан Кардуэлл"
+        assert bot.resolve_sportsru_name_from_team_roster("Eric Pohlkamp", roster_names) == "Эрик Полкамп"
+        assert bot.resolve_sportsru_name_from_team_roster("Jimmy Huntington", roster_names) == "Джимми Хантингтон"
+        assert len(roster_calls) == 1, roster_calls
+        bot.http_get_text = original_fake
+
         before = len(calls)
         more = [
             bot.ScoringEvent(

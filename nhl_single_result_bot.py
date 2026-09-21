@@ -17,6 +17,7 @@ import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, date
+from difflib import SequenceMatcher
 from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus, urljoin
 
@@ -136,6 +137,9 @@ def _get_with_retries(url: str, timeout: int = 30, tries: int = 3, backoff: floa
             return r.json()
         except Exception as e:
             last = e
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status in (400, 401, 403, 404):
+                raise
             if attempt < tries:
                 sleep_s = backoff * (2 ** (attempt - 1))
                 dbg(f"retry {attempt}/{tries} for {url} after {sleep_s:.2f}s: {repr(e)}")
@@ -350,6 +354,108 @@ def _sportsru_person_slug(full_name_en: str) -> str:
     return _sportsru_latin_norm(full_name_en).replace(" ", "-")
 
 
+SPORTSRU_CYR_LAT = {
+    "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ё":"e","ж":"zh","з":"z","и":"i","й":"i",
+    "к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f",
+    "х":"kh","ц":"ts","ч":"ch","ш":"sh","щ":"shch","ъ":"","ы":"y","ь":"","э":"e","ю":"yu","я":"ya",
+}
+
+
+def _sportsru_ru_latin(value: str) -> str:
+    raw = "".join(SPORTSRU_CYR_LAT.get(ch, ch) for ch in str(value or "").lower().replace("ё", "е"))
+    raw = unicodedata.normalize("NFKD", raw)
+    raw = "".join(ch for ch in raw if not unicodedata.combining(ch))
+    raw = re.sub(r"[^a-z0-9]+", " ", raw).strip()
+    return raw.replace("kh", "h").replace("ts", "c").replace("iy", "i").replace("yy", "y")
+
+
+def _sportsru_name_similarity(full_name_en: str, name_ru: str) -> float:
+    en = _sportsru_latin_norm(full_name_en)
+    ru = _sportsru_ru_latin(name_ru)
+    if not en or not ru:
+        return 0.0
+    best = SequenceMatcher(None, en, ru).ratio()
+    ep, rp = en.split(), ru.split()
+    if len(ep) >= 2 and len(rp) >= 2:
+        first = SequenceMatcher(None, ep[0], rp[0]).ratio()
+        last = SequenceMatcher(None, ep[-1], rp[-1]).ratio()
+        best = max(best, 0.68 * last + 0.32 * first)
+    return best
+
+
+def _sportsru_team_roster_url(team_tri: str) -> str:
+    slugs = SPORTSRU_SLUGS.get(str(team_tri or "").upper(), [])
+    if not slugs:
+        return ""
+    return f"{SPORTSRU_HOST}/hockey/club/{slugs[0]}/team/"
+
+
+def fetch_sportsru_team_roster_names(team_tri: str) -> List[str]:
+    """Return full Russian player names from the current Sports.ru club roster."""
+    if not HAS_BS:
+        return []
+    url = _sportsru_team_roster_url(team_tri)
+    if not url:
+        return []
+    try:
+        page = http_get_text(url, timeout=12)
+    except Exception as exc:
+        dbg(f"Sports.ru roster fetch failed {team_tri} {url}: {exc}")
+        return []
+
+    soup = BS(page, "html.parser")
+    names: List[str] = []
+    seen = set()
+    position_words = ("вратарь", "защитник", "нападающий")
+
+    for row in soup.find_all("tr"):
+        text = " ".join(row.stripped_strings)
+        if not any(word in text.lower() for word in position_words):
+            continue
+        links = row.find_all("a")
+        for link in links:
+            name = _clean_person_name(" ".join(link.stripped_strings))
+            if len(name.split()) < 2 or not _contains_cyrillic(name) or _contains_latin(name):
+                continue
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
+            break
+
+    # Fallback for alternate Sports.ru layouts where roster items are not table rows.
+    if not names:
+        for row in soup.find_all(["li", "div"]):
+            text = " ".join(row.stripped_strings)
+            if not any(word in text.lower() for word in position_words):
+                continue
+            for link in row.find_all("a"):
+                name = _clean_person_name(" ".join(link.stripped_strings))
+                if len(name.split()) < 2 or not _contains_cyrillic(name) or _contains_latin(name):
+                    continue
+                if name not in seen:
+                    seen.add(name)
+                    names.append(name)
+                break
+    dbg(f"Sports.ru roster {team_tri}: {len(names)} names from {url}")
+    return names
+
+
+def resolve_sportsru_name_from_team_roster(full_name_en: str, roster_names: List[str]) -> str:
+    scored = sorted(
+        ((_sportsru_name_similarity(full_name_en, name), name) for name in roster_names),
+        reverse=True,
+    )
+    if not scored:
+        return ""
+    best_score, best_name = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0.0
+    if best_score >= 0.70 and best_score - second_score >= 0.045:
+        dbg(f"Sports.ru roster match {full_name_en} -> {best_name} ({best_score:.3f}, margin {best_score-second_score:.3f})")
+        return best_name
+    dbg(f"Sports.ru roster no confident match {full_name_en}: best={best_name} score={best_score:.3f} margin={best_score-second_score:.3f}")
+    return ""
+
+
 def _sportsru_profile_name(url: str, expected_full_name_en: str) -> str:
     """Read and validate the Russian H1 from a Sports.ru hockey person/player page."""
     if not HAS_BS:
@@ -418,13 +524,24 @@ def resolve_event_people_from_sportsru(
     events: List[ScoringEvent],
     names_by_id: Dict[int, str],
 ) -> List[ScoringEvent]:
-    """Resolve fresh scorers/assists from Sports.ru immediately before rendering."""
+    """Resolve fresh scorers/assists from Sports.ru immediately before rendering.
+
+    Fast path: one current Sports.ru roster page per scoring team.
+    Slow fallback: individual profile lookup only when roster matching misses.
+    """
     if not SPORTSRU_ON_DEMAND_ENABLED:
         return events
 
     resolved_by_english: Dict[str, str] = {}
+    team_rosters: Dict[str, List[str]] = {}
 
-    def resolve_one(pid: int, current: str) -> str:
+    def roster_for(team_tri: str) -> List[str]:
+        tri = upper(team_tri)
+        if tri not in team_rosters:
+            team_rosters[tri] = fetch_sportsru_team_roster_names(tri)
+        return team_rosters[tri]
+
+    def resolve_one(pid: int, current: str, team_tri: str) -> str:
         current = _clean_person_name(current)
         if not current:
             return current
@@ -440,7 +557,10 @@ def resolve_event_people_from_sportsru(
         if key in resolved_by_english:
             return resolved_by_english[key] or current
 
-        full_ru = resolve_sportsru_player_name(current)
+        full_ru = resolve_sportsru_name_from_team_roster(current, roster_for(team_tri))
+        if not full_ru:
+            full_ru = resolve_sportsru_player_name(current)
+
         short_ru = _sportsru_short_name(full_ru) if full_ru else ""
         resolved_by_english[key] = short_ru
         if short_ru:
@@ -453,12 +573,12 @@ def resolve_event_people_from_sportsru(
         return current
 
     for ev in events:
-        ev.scorer = resolve_one(int(ev.scorer_id or 0), ev.scorer)
+        ev.scorer = resolve_one(int(ev.scorer_id or 0), ev.scorer, ev.team_for)
         if ev.assists:
             translated: List[str] = []
             for idx, original in enumerate(ev.assists):
                 pid = int(ev.assist_ids[idx]) if idx < len(ev.assist_ids) and ev.assist_ids[idx] else 0
-                translated.append(resolve_one(pid, original))
+                translated.append(resolve_one(pid, original, ev.team_for))
             ev.assists = _clean_assists(translated)
     return events
 
