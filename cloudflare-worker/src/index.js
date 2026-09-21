@@ -1068,6 +1068,71 @@ function commandName(text) {
   return text.trim().split(/\s+/)[0].toLowerCase().split("@", 1)[0];
 }
 
+function commandArgument(text) {
+  const parts = String(text || "").trim().split(/\s+/, 2);
+  return parts.length > 1 ? parts[1].trim() : "";
+}
+
+function normalizeDay(value) {
+  const s = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return "";
+  }
+  const date = new Date(`${s}T12:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== s) {
+    return "";
+  }
+  return s;
+}
+
+function currentCalendarDayPT(now = new Date()) {
+  return partsInTimeZone(now, "America/Los_Angeles").date;
+}
+
+function competitionTitle(metas) {
+  const counts = new Map();
+  for (const meta of metas || []) {
+    const gameType = Number(meta?.gameType || 0);
+    if (gameType) {
+      counts.set(gameType, (counts.get(gameType) || 0) + 1);
+    }
+  }
+  let winner = 0;
+  let best = -1;
+  for (const [gameType, count] of counts) {
+    if (count > best) {
+      winner = gameType;
+      best = count;
+    }
+  }
+  return ({
+    1: "Предсезонка НХЛ",
+    2: "Регулярный чемпионат НХЛ",
+    3: "Плей-офф НХЛ",
+  })[winner] || "НХЛ";
+}
+
+function formatRuDay(day) {
+  const months = [
+    "", "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+  ];
+  const [, month, dom] = String(day).split("-");
+  return `${Number(dom)} ${months[Number(month)] || month}`;
+}
+
+function formatTimePT(date) {
+  const parts = partsInTimeZone(date, "America/Los_Angeles");
+  return `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 function currentHockeyDayPT(now = new Date()) {
   const pt = partsInTimeZone(now, "America/Los_Angeles");
   return pt.hour >= 6 ? pt.date : addDays(pt.date, -1);
@@ -1084,12 +1149,14 @@ function partsInTimeZone(date, timeZone) {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
+    minute: "2-digit",
     hour12: false,
   }).formatToParts(date);
   const value = (type) => parts.find((part) => part.type === type)?.value || "";
   return {
     date: `${value("year")}-${value("month")}-${value("day")}`,
     hour: Number(value("hour")),
+    minute: Number(value("minute")),
   };
 }
 
