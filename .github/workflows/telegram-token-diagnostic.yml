@@ -1,0 +1,52 @@
+name: Telegram Token Diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/telegram-token-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  identify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Identify legacy Telegram bot token
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
+            echo "LEGACY_TELEGRAM_BOT_TOKEN_MISSING"
+            exit 0
+          fi
+          python - <<'PY'
+          import json, os, urllib.request
+          token=os.environ["TELEGRAM_BOT_TOKEN"]
+          def call(method):
+              req=urllib.request.Request(
+                  f"https://api.telegram.org/bot{token}/{method}",
+                  data=b"{}",
+                  headers={"Content-Type":"application/json"},
+                  method="POST",
+              )
+              with urllib.request.urlopen(req, timeout=20) as r:
+                  return json.load(r)
+          me=call("getMe")
+          wh=call("getWebhookInfo")
+          result=me.get("result") or {}
+          info=wh.get("result") or {}
+          print("LEGACY_BOT_IDENTITY", json.dumps({
+              "ok": bool(me.get("ok")),
+              "id": result.get("id"),
+              "username": result.get("username"),
+              "first_name": result.get("first_name"),
+              "webhook_url": info.get("url") or "",
+              "pending_update_count": int(info.get("pending_update_count") or 0),
+              "last_error_message": info.get("last_error_message"),
+          }, ensure_ascii=False))
+          PY
