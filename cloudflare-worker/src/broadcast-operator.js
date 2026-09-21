@@ -9,7 +9,7 @@ const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
   CGY:{name:"КАЛГАРИ",color:"#D2001C"},CAR:{name:"КАРОЛИНА",color:"#CE1126"},CHI:{name:"ЧИКАГО",color:"#CF0A2C"},
   COL:{name:"КОЛОРАДО",color:"#6F263D"},CBJ:{name:"КОЛАМБУС",color:"#002654"},DAL:{name:"ДАЛЛАС",color:"#006847"},
-  DET:{name:"ДЕТРОЙТ",color:"#CE1126"},EDM:{name:"ЭДМОНТОН",color:"#FF4C00"},FLA:{name:"ФЛОРИДА",color:"#C8102E"},
+  DET:{name:"ДЕТРОЙТ",color:"#CE1126"},EDM:{name:"ЭДМОНТОН",color:"#FF4C00"},FLA:{name:"ФЛОРИДА",color:"#041E42"},
   LAK:{name:"ЛОС-АНДЖЕЛЕС",color:"#A2AAAD"},MIN:{name:"МИННЕСОТА",color:"#154734"},MTL:{name:"МОНРЕАЛЬ",color:"#AF1E2D"},
   NSH:{name:"НЭШВИЛЛ",color:"#FFB81C"},NJD:{name:"НЬЮ-ДЖЕРСИ",color:"#CE1126"},NYI:{name:"АЙЛЕНДЕРС",color:"#00539B"},
   NYR:{name:"РЕЙНДЖЕРС",color:"#0038A8"},OTT:{name:"ОТТАВА",color:"#C52032"},PHI:{name:"ФИЛАДЕЛЬФИЯ",color:"#F74902"},
@@ -270,7 +270,7 @@ async function ensureRenderedCard(env,cardId){
   const payload=rendererPayloadFromRow(row);
   if(!Number.isFinite(Number(payload.odds))||Number(payload.odds)<=1)throw new Error("winline_price_required");
   const body=JSON.stringify(payload);
-  const hash=await sha256Hex("renderer-v9-carolina-canonical-2026-09-21:"+body);
+  const hash=await sha256Hex("renderer-v10-spacing-team-accent-2026-09-21:"+body);
   if(String(row.render_hash||"")===hash&&row.render_png_base64){
     return {cached:true,hash,bytes:Number(row.render_bytes||0),rendered_at:row.rendered_at||null};
   }
