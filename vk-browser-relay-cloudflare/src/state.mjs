@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { connect, launch } from "@cloudflare/playwright";
 import { endpoints, claim, complete, fail, heartbeat } from "./api.mjs";
-import { diagnostics, isAuthenticated, publishVkChannel } from "./vk.mjs";
+import { composer, diagnostics, isAuthenticated, publishVkChannel } from "./vk.mjs";
 
 const STATE_KEY = "vkStorageState";
 const LOGIN_SESSION_KEY = "loginSessionId";
