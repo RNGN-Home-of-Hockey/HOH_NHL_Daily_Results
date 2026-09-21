@@ -482,7 +482,8 @@ async function api(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)thr
 async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} ближайших игр · предсезонка + регулярка + плей-офф`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null);await refreshActions();void warmQueueSummaries();if(!actionTimer)actionTimer=setInterval(refreshActions,15000)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
 function renderAir(card){const air=$('#air'),text=$('#airtext');if(card){air.classList.add('live');text.textContent=`${card.headline_ru}: ${card.stat_text_ru}`}else{air.classList.remove('live');text.textContent='Сейчас ничего не показано'}}
 function queueSummaryFresh(g){
-  const t=Date.parse(String(g?.queue_summary_generated_at||'').replace(' ','T')+'Z');
+  const raw=String(g?.queue_summary_generated_at||'').trim();
+  const t=Date.parse(raw.includes('T')?raw:(raw?raw.replace(' ','T')+'Z':''));
   const live=['LIVE','CRIT'].includes(String(g?.game_state||'').toUpperCase());
   return Number.isFinite(t)&&(Date.now()-t)<(live?45000:5*60*1000);
 }
