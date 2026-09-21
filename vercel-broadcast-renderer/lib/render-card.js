@@ -43,23 +43,24 @@ function normalizeDecimalText(value){
 
 function fontSizeForFact(text){
   const n=String(text||"").length;
-  if(n<=58)return 20;
-  if(n<=70)return 18;
-  if(n<=82)return 16;
-  return 14;
+  if(n<=58)return 29;
+  if(n<=70)return 27;
+  if(n<=82)return 25;
+  if(n<=94)return 23;
+  return 21;
 }
 
 function fontSizeForTeam(text){
   const n=String(text||"").length;
-  if(n<=9)return 33;
-  if(n<=13)return 30;
-  if(n<=17)return 27;
-  return 24;
+  if(n<=9)return 49;
+  if(n<=13)return 43;
+  if(n<=17)return 37;
+  return 32;
 }
 
 function fontSizeForMarket(text){
   const n=String(text||"").length;
-  return n<=20?18:n<=28?16:14;
+  return n<=20?28:n<=28?24:21;
 }
 
 function highlightFact(text, teamName){
@@ -140,38 +141,38 @@ export async function renderCard(input={}){
       borderRadius:4,backgroundColor:p.teamColor
     }}),
     e("div",{style:{
-      ...baseStyle,left:44,top:19,width:724,height:48,alignItems:"center",
-      whiteSpace:"nowrap",fontSize:fontSizeForFact(p.fact),letterSpacing:"0.1px"
-    }},...factParts.map((part,i)=>e("span",{key:i,style:{color:part.hot?"#FF641E":"#FFFFFF"}},part.text))),
+      ...baseStyle,left:44,top:15,width:732,height:52,alignItems:"center",
+      whiteSpace:"nowrap",fontSize:fontSizeForFact(p.fact),letterSpacing:"-0.15px"
+    }},...factParts.map((part,i)=>e("span",{key:i,style:{color:part.hot&&upper(part.text)===p.teamName?"#FF641E":"#FFFFFF"}},part.text))),
     e("div",{style:{
-      ...baseStyle,left:17,top:90,width:116,height:108,
+      ...baseStyle,left:17,top:79,width:116,height:91,
       alignItems:"center",justifyContent:"center"
     }},logoData
-      ? e("img",{src:logoData,width:88,height:88,style:{objectFit:"contain"}})
+      ? e("img",{src:logoData,width:98,height:98,style:{objectFit:"contain"}})
       : e("span",{style:{fontSize:24,color:"#D8D8DC"}},p.team)
     ),
     e("div",{style:{
-      ...baseStyle,left:153,top:94,width:235,height:38,alignItems:"center",
-      whiteSpace:"nowrap",fontSize:fontSizeForTeam(p.teamName)
+      ...baseStyle,left:153,top:82,width:270,height:54,alignItems:"center",
+      whiteSpace:"nowrap",fontSize:fontSizeForTeam(p.teamName),letterSpacing:"-0.35px"
     }},p.teamName),
     e("div",{style:{
-      ...baseStyle,left:153,top:134,width:235,height:29,alignItems:"center",
-      whiteSpace:"nowrap",fontSize:fontSizeForMarket(p.market),color:"#D6D6DA"
+      ...baseStyle,left:153,top:132,width:270,height:36,alignItems:"center",
+      whiteSpace:"nowrap",fontSize:fontSizeForMarket(p.market),color:"#D6D6DA",letterSpacing:"-0.15px"
     }},p.market),
     e("div",{style:{
-      ...baseStyle,left:656,top:90,width:136,height:68,alignItems:"center",
-      justifyContent:"center",whiteSpace:"nowrap",fontSize:p.priced?48:38,
-      letterSpacing:"-1px"
+      ...baseStyle,left:648,top:82,width:148,height:76,alignItems:"center",
+      justifyContent:"center",whiteSpace:"nowrap",fontSize:p.priced?64:48,
+      letterSpacing:"-1.5px"
     }},p.priced?p.odds.toFixed(2):"—"),
     e("div",{style:{
-      ...baseStyle,left:435,top:171,width:346,height:39,alignItems:"center",
-      justifyContent:"center",whiteSpace:"nowrap",gap:10
+      ...baseStyle,left:435,top:164,width:346,height:42,alignItems:"center",
+      justifyContent:"center",whiteSpace:"nowrap",gap:14
     }},
-      e("span",{style:{fontSize:p.priced?20:16,color:"#FF641E"}},p.priced
+      e("span",{style:{fontSize:p.priced?29:21,color:"#FF641E"}},p.priced
         ?"+"+p.profit.toLocaleString("ru-RU")+" РУБ"
         :"ЛИНИЯ НЕ НАЙДЕНА"
       ),
-      e("span",{style:{fontSize:10,color:"#D4D4D8"}},p.priced
+      e("span",{style:{fontSize:16,color:"#D4D4D8"}},p.priced
         ?"(ПРИ СТАВКЕ "+p.stake.toLocaleString("ru-RU")+" РУБ.)"
         :"WINLINE"
       )
@@ -191,4 +192,4 @@ export async function renderCard(input={}){
 }
 
 export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
-export const RENDER_VERSION="2026-09-21-layout-v6-user-template";
+export const RENDER_VERSION="2026-09-21-layout-v7-carolina-canonical";
