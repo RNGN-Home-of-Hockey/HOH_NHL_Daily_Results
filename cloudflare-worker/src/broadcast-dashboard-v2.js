@@ -642,6 +642,27 @@ function candidateCardId(c){
   const raw="insight-"+String(selected)+"-"+String(c?.id||c?.insight_type||c?.type||"insight");
   return raw.replace(/[^a-zA-Z0-9_.:-]+/g,"-").slice(0,180);
 }
+function syncPersistedCard(card){
+  if(!card||!currentData)return;
+  const id=String(card.card_id||"");
+  if(!id)return;
+  const list=Array.isArray(currentData.persisted_cards)?currentData.persisted_cards:[];
+  currentData.persisted_cards=list;
+  if(String(card.status)==='shown'){
+    for(const p of list){
+      if(String(p.card_id)!==id&&String(p.status)==='shown')p.status='hidden';
+    }
+  }
+  const i=list.findIndex(p=>String(p.card_id)===id);
+  if(i>=0)list[i]={...list[i],...card};
+  else list.push({...card});
+}
+function syncGameOnAir(cardId,status){
+  const g=games.find(x=>Number(x.game_pk)===Number(selected));if(!g)return;
+  if(status==='shown')g.on_air_card_id=cardId;
+  else if(String(g.on_air_card_id||'')===String(cardId))g.on_air_card_id=null;
+  renderGames();
+}
 function applyPersistedState(cards){
   const persisted=currentData?.persisted_cards||[];
   const map=new Map(persisted.map(p=>[String(p.card_id),p]));
@@ -728,6 +749,7 @@ async function ensureDraft(c){
   c.__status=d.card?.status||'draft';
   c.__persisted=true;
   c.__renderHash=d.card?.render_hash||null;
+  syncPersistedCard(d.card);
   return c.__cardId;
 }
 async function setBroadcastStatus(c,status){
@@ -735,6 +757,8 @@ async function setBroadcastStatus(c,status){
   const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(id)+'/status',{method:'POST',body:JSON.stringify({status,card:status==='shown'?c:undefined,...identity()})});
   c.__status=d.card?.status||status;
   c.__renderHash=d.card?.render_hash||c.__renderHash||null;
+  syncPersistedCard(d.card);
+  syncGameOnAir(id,c.__status);
   const s=await api('/api/broadcast/state?game='+encodeURIComponent(selected));
   renderAir(s.on_air);
   await refreshActions();
