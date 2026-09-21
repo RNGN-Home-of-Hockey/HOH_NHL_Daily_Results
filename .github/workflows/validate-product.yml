@@ -3,6 +3,10 @@ name: Validate HOH product
 on:
   pull_request:
     paths:
+      - 'nhl_single_result_bot.py'
+      - 'ru_full_names.json'
+      - '.github/workflows/center-player-meta.yml'
+      - '.github/workflows/nhl-single-results.yml'
       - 'cloudflare-worker/**'
       - 'migrations/**'
       - 'tools/**'
@@ -13,6 +17,10 @@ on:
   push:
     branches: [main]
     paths:
+      - 'nhl_single_result_bot.py'
+      - 'ru_full_names.json'
+      - '.github/workflows/center-player-meta.yml'
+      - '.github/workflows/nhl-single-results.yml'
       - 'cloudflare-worker/**'
       - 'migrations/**'
       - 'tools/**'
@@ -52,7 +60,7 @@ jobs:
 
       - name: Python syntax and rank invariant
         run: |
-          python -m py_compile tools/build_compact_snapshots.py tools/build_current_team_snapshots.py tools/build_data_core_meta.py tools/build_center_player_pronunciations_from_eliteprospects.py tools/build_hoh_youtube_media.py tools/analyze_center_player_name_fit.py
+          python -m py_compile nhl_single_result_bot.py tools/build_center_player_meta_from_sports_ru.py tools/build_compact_snapshots.py tools/build_current_team_snapshots.py tools/build_data_core_meta.py tools/build_center_player_pronunciations_from_eliteprospects.py tools/build_hoh_youtube_media.py tools/analyze_center_player_name_fit.py
           python - <<'PY'
           import sys
           sys.path.insert(0, 'tools')
