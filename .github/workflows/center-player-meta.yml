@@ -3,7 +3,7 @@ name: Refresh Center Russian player names
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 5 * * 2"
+    - cron: "17 5 * * *"
   push:
     paths:
       - "tools/build_center_player_meta_from_sports_ru.py"
