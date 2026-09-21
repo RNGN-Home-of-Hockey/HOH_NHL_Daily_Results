@@ -1,5 +1,5 @@
 const DEFAULT_CENTER_WEBHOOK_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram/center";
-const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v1";
+const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v2";
 const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
 
 export async function handleTelegramProductBotRequest(request, env, path) {
@@ -174,10 +174,15 @@ async function centerStatus(request, env) {
   let bot = { ok: false, error: "missing_telegram_center_token" };
   let webhook = { ok: false, error: "missing_telegram_center_token" };
 
+  let commands = { ok: false, error: "missing_telegram_center_token" };
+  let menuButton = { ok: false, error: "missing_telegram_center_token" };
+
   if (centerTokenConfigured) {
-    const [getMe, getWebhookInfo] = await Promise.all([
+    const [getMe, getWebhookInfo, getCommands, getMenuButton] = await Promise.all([
       telegramRequest(env, "getMe", {}),
       telegramRequest(env, "getWebhookInfo", {}),
+      telegramRequest(env, "getMyCommands", {}),
+      telegramRequest(env, "getChatMenuButton", {}),
     ]);
 
     if (getMe.ok) {
@@ -195,6 +200,13 @@ async function centerStatus(request, env) {
       };
     }
 
+    commands = getCommands.ok
+      ? { ok: true, items: getCommands.response?.result || [] }
+      : { ok: false, status_code: getCommands.status_code || null, error: getCommands.response?.description || getCommands.error || "telegram_get_commands_failed" };
+    menuButton = getMenuButton.ok
+      ? { ok: true, value: getMenuButton.response?.result || null }
+      : { ok: false, status_code: getMenuButton.status_code || null, error: getMenuButton.response?.description || getMenuButton.error || "telegram_get_menu_button_failed" };
+
     if (getWebhookInfo.ok) {
       const info = getWebhookInfo.response?.result || {};
       webhook = {
@@ -204,6 +216,9 @@ async function centerStatus(request, env) {
         last_error_date: info.last_error_date || null,
         last_error_message: info.last_error_message || null,
         max_connections: info.max_connections || null,
+        ip_address: info.ip_address || null,
+        allowed_updates: Array.isArray(info.allowed_updates) ? info.allowed_updates : null,
+        last_synchronization_error_date: info.last_synchronization_error_date || null,
         has_custom_certificate: Boolean(info.has_custom_certificate),
       };
     } else {
@@ -222,7 +237,7 @@ async function centerStatus(request, env) {
   return json({
     ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok && webhookMatchesExpected,
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-21-v8",
+    runtime_marker: "telegram-center-2026-09-21-v9",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     webhook_secret_mode: "sha256_hex",
@@ -231,6 +246,8 @@ async function centerStatus(request, env) {
     repair_webhook_url: `${new URL(request.url).origin}/api/telegram/center/repair-webhook`,
     bot,
     webhook,
+    commands,
+    menu_button: menuButton,
     webhook_matches_expected: webhookMatchesExpected,
     webhook_refresh: webhookRefresh,
     last_event: lastEvent,
