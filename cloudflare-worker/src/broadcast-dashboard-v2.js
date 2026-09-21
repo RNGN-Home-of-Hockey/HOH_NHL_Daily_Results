@@ -32,7 +32,7 @@ export async function handleBroadcastRequest(request, env, path) {
 
   if (path === "/api/broadcast/state") {
     if (request.method !== "GET") return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
-    return broadcastStateRoute(env);
+    return broadcastStateRoute(request, env);
   }
 
   const gameMatch = /^\/api\/broadcast\/games\/(\d+)$/.exec(path);
@@ -92,10 +92,13 @@ async function broadcastGamesRoute(env) {
   }
 }
 
-async function broadcastStateRoute(env) {
+async function broadcastStateRoute(request, env) {
   if (!env.DB) return jsonResponse({ ok:false, error:"missing_d1_binding" },503);
   try {
-    const shown = await env.DB.prepare(`
+    const url=new URL(request.url);
+    const requested=Number(url.searchParams.get("game")||0);
+    const gamePk=Number.isSafeInteger(requested)&&requested>0?requested:null;
+    const sql=`
       SELECT bc.card_id,bc.game_pk,bc.headline_ru,bc.stat_text_ru,bc.source_note_ru,bc.shown_at,bc.status,
              bc.suggested_market_type,bc.suggested_market_subject,bc.manual_odds,bc.odds_is_demo,bc.payload_json,
              bc.render_hash,bc.render_bytes,bc.rendered_at,
@@ -106,17 +109,18 @@ async function broadcastStateRoute(env) {
       LEFT JOIN games g ON g.game_pk=bc.game_pk
       LEFT JOIN teams ht ON ht.tri_code=g.home_tri
       LEFT JOIN teams at ON at.tri_code=g.away_tri
-      WHERE bc.status='shown'
+      WHERE bc.status='shown'${gamePk?" AND bc.game_pk=?":""}
       ORDER BY bc.shown_at DESC,bc.updated_at DESC
       LIMIT 1;
-    `).first();
-    return jsonResponse({ ok:true, on_air:shown||null });
+    `;
+    const stmt=env.DB.prepare(sql);
+    const shown=gamePk?await stmt.bind(gamePk).first():await stmt.first();
+    return jsonResponse({ ok:true, scope:{game_pk:gamePk}, on_air:shown||null });
   } catch (error) {
     console.error("broadcast state failed", error);
     return jsonResponse({ ok:false, error:"broadcast_state_failed" },500);
   }
 }
-
 async function broadcastGameRoute(env, gamePk) {
   if (!env.DB) return jsonResponse({ ok:false, error:"missing_d1_binding" },503);
   if (!Number.isSafeInteger(gamePk) || gamePk<=0) return jsonResponse({ ok:false,error:"invalid_game_pk" },400);
@@ -357,7 +361,7 @@ async function operatorApi(url,opts={}){const headers={...(opts.headers||{})};if
 function fmtDate(v){if(!v)return'';const d=new Date(v);return d.toLocaleString('ru-RU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).replace(',',' ·')}
 function typeLabel(t){const n=Number(t);return n===1?'Предсезонка':n===3?'Плей-офф':'Регулярка'}
 async function api(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
-async function load(){try{const [g,s]=await Promise.all([api('/api/broadcast/games'),api('/api/broadcast/state')]);games=g.games||[];$('#counts').textContent=`${g.counts.games} ближайших игр · предсезонка + регулярка + плей-офф`;renderAir(s.on_air);const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
+async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} ближайших игр · предсезонка + регулярка + плей-офф`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
 function renderAir(card){const air=$('#air'),text=$('#airtext');if(card){air.classList.add('live');text.textContent=`${card.headline_ru}: ${card.stat_text_ru}`}else{air.classList.remove('live');text.textContent='Сейчас ничего не показано'}}
 function renderGames(){
   const selectedGame=games.find(g=>Number(g.game_pk)===Number(selected));
@@ -372,7 +376,7 @@ function renderGames(){
   document.querySelectorAll('.gamegroup').forEach(d=>d.addEventListener('toggle',()=>{groupOpen[Number(d.dataset.type)]=d.open}));
   document.querySelectorAll('.game').forEach(b=>b.onclick=()=>selectGame(Number(b.dataset.id)));
 }
-async function selectGame(id){selected=id;renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const d=await api('/api/broadcast/games/'+id);currentData=d;historicalCards=d.cards||[];renderGame(d);await refreshLive(id,true)}
+async function selectGame(id){selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id))]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];renderAir(s.on_air);renderGame(d);await refreshLive(id,true)}
 function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[side+'_name']||tri,logo=g[side+'_logo'];return `<div class="team ${side==='home'?'home':''}">${side==='home'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}<div class="logo">${logo?`<img src="${esc(logo)}" alt="">`:`<span class="fallback">${esc(tri)}</span>`}</div>${side==='away'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}</div>`}
 function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct==null||!Number.isFinite(Number(a.faceoff_pct))?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct==null||!Number.isFinite(Number(h.faceoff_pct))?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
@@ -511,7 +515,7 @@ async function setBroadcastStatus(c,status){
   const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(id)+'/status',{method:'POST',body:JSON.stringify({status})});
   c.__status=d.card?.status||status;
   c.__renderHash=d.card?.render_hash||c.__renderHash||null;
-  const s=await api('/api/broadcast/state');
+  const s=await api('/api/broadcast/state?game='+encodeURIComponent(selected));
   renderAir(s.on_air);
   return d;
 }

@@ -2,6 +2,24 @@ import { strict as assert } from 'node:assert';
 import { handleBroadcastOperatorRequest } from '../cloudflare-worker/src/broadcast-operator.js';
 
 const cards = new Map([
+  ['other-card', {
+    card_id:'other-card',
+    game_pk:2026020002,
+    headline_ru:'OTHER GAME CARD',
+    stat_text_ru:'ПОБЕДА',
+    source_note_ru:'fixture',
+    suggested_market_type:'moneyline',
+    suggested_market_subject:'BOS',
+    manual_odds:1.80,
+    odds_is_demo:0,
+    payload_json:'{}',
+    status:'shown',
+    shown_at:new Date().toISOString(),
+    render_hash:'other-hash',
+    render_png_base64:'iVBORw0KGgo=',
+    render_bytes:8,
+    rendered_at:new Date().toISOString(),
+  }],
   ['test-card', {
     card_id:'test-card',
     game_pk:2026020001,
@@ -70,6 +88,7 @@ assert.equal(cards.get('test-card').status,'draft');
 r=await callStatus('shown',true);
 assert.equal(r.status,200,'one click SHOW should render and go on air');
 assert.equal(cards.get('test-card').status,'shown');
+assert.equal(cards.get('other-card').status,'shown','SHOW must not hide a card from another game');
 assert.ok(cards.get('test-card').shown_at,'shown card must receive shown_at');
 assert.ok(cards.get('test-card').render_hash,'shown card must receive render hash');
 assert.ok(cards.get('test-card').render_png_base64,'shown card must cache the rendered PNG');
@@ -141,16 +160,16 @@ function execute(sql,args){
     return changes(c?1:0);
   }
   if (/SET status='draft'/.test(sql) && /status='preview'/.test(sql)) {
-    const except=String(args[0]);
-    for(const c of cards.values())if(c.status==='preview'&&c.card_id!==except)c.status='draft';
+    const [gamePk,exceptRaw]=args;const except=String(exceptRaw);
+    for(const c of cards.values())if(c.status==='preview'&&Number(c.game_pk)===Number(gamePk)&&c.card_id!==except)c.status='draft';
     return changes(1);
   }
   if (/SET status='preview'/.test(sql)) {
     const c=cards.get(String(args[0]));if(c){c.status='preview';c.shown_at=null;}return changes(c?1:0);
   }
   if (/SET status='hidden'/.test(sql) && /status='shown'/.test(sql)) {
-    const except=String(args[0]);
-    for(const c of cards.values())if(c.status==='shown'&&c.card_id!==except){c.status='hidden';c.shown_at=null;}
+    const [gamePk,exceptRaw]=args;const except=String(exceptRaw);
+    for(const c of cards.values())if(c.status==='shown'&&Number(c.game_pk)===Number(gamePk)&&c.card_id!==except){c.status='hidden';c.shown_at=null;}
     return changes(1);
   }
   if (/SET status='shown'/.test(sql)) {

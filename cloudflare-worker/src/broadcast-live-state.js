@@ -5,7 +5,10 @@ export async function handleBroadcastLiveStateRequest(request, env, path) {
   }
   if (!env.DB) return json({ ok:false, error:"missing_d1_binding" },503);
 
-  const card = await env.DB.prepare(`
+  const url=new URL(request.url);
+  const requested=Number(url.searchParams.get("game")||0);
+  const gamePk=Number.isSafeInteger(requested)&&requested>0?requested:null;
+  const statement=env.DB.prepare(`
     SELECT
       card_id,
       game_pk,
@@ -18,13 +21,15 @@ export async function handleBroadcastLiveStateRequest(request, env, path) {
       odds_is_demo,
       shown_at
     FROM broadcast_cards
-    WHERE status='shown'
+    WHERE status='shown'${gamePk?" AND game_pk=?":""}
     ORDER BY shown_at DESC
     LIMIT 1;
-  `).first();
+  `);
+  const card=gamePk?await statement.bind(gamePk).first():await statement.first();
 
   return json({
     ok:true,
+    scope:{game_pk:gamePk},
     on_air: card ? {
       ...card,
       odds_is_demo: Number(card.odds_is_demo || 0),

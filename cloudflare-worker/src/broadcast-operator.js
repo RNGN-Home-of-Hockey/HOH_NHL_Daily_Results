@@ -226,12 +226,12 @@ async function setCardStatus(request,env,cardId){
       return json({ok:false,error:"render_failed",message:String(error?.message||error)},502);
     }
     await env.DB.batch([
-      env.DB.prepare(`UPDATE broadcast_cards SET status='hidden',updated_at=CURRENT_TIMESTAMP WHERE status='shown' AND card_id<>?;`).bind(cardId),
+      env.DB.prepare(`UPDATE broadcast_cards SET status='hidden',shown_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE status='shown' AND game_pk=? AND card_id<>?;`).bind(current.game_pk,cardId),
       env.DB.prepare(`UPDATE broadcast_cards SET status='shown',shown_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE card_id=?;`).bind(cardId),
     ]);
   } else if(target==="preview"){
     await env.DB.batch([
-      env.DB.prepare(`UPDATE broadcast_cards SET status='draft',updated_at=CURRENT_TIMESTAMP WHERE status='preview' AND card_id<>?;`).bind(cardId),
+      env.DB.prepare(`UPDATE broadcast_cards SET status='draft',updated_at=CURRENT_TIMESTAMP WHERE status='preview' AND game_pk=? AND card_id<>?;`).bind(current.game_pk,cardId),
       env.DB.prepare(`UPDATE broadcast_cards SET status='preview',shown_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE card_id=?;`).bind(cardId),
     ]);
   } else {
@@ -458,7 +458,7 @@ function browserApp(){
   function ensureToken(){if(token)return true;token=prompt('Operator key')||'';if(token)sessionStorage.setItem('hohOperatorToken',token);return Boolean(token)}
   async function load(){try{if(!/^\d+$/.test(game)){const list=await fetch('/api/broadcast/games',{cache:'no-store'}).then(r=>r.json());game=String(list.games?.[0]?.game_pk||'');if(!game){input();return}history.replaceState(null,'','/broadcast/operator?game='+encodeURIComponent(game))}$('#content').innerHTML='<div class="empty">Загрузка…</div>';const [m,b]=await Promise.all([fetch('/api/matchup/'+game+'?window=20&min_confidence=0',{cache:'no-store'}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||('matchup HTTP '+r.status));return d}),fetch('/api/broadcast/games/'+game,{cache:'no-store'}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||('broadcast HTTP '+r.status));return d})]);matchup=m;persisted=b.persisted_cards||[];render()}catch(e){$('#content').innerHTML='<div class="empty error">'+esc(e.message)+'</div>'}}
   function input(){$('#content').innerHTML='<div class="empty"><h2>Game ID</h2><input id="game"><button id="go">Открыть</button></div>';$('#go').onclick=()=>{game=$('#game').value.trim();location.href='/broadcast/operator?game='+encodeURIComponent(game)}}
-  function render(){const g=matchup.game;$('#content').innerHTML=`<section class="hero"><div><div class="eyebrow">OPERATOR · MANUAL ONLY</div><h1>${esc(g.away_tri)} — ${esc(g.home_tri)}</h1><p>${esc(g.start_utc||'')}</p></div><div class="links"><a href="/matchup?game=${game}">Matchup Lab</a><a href="/broadcast?game=${game}">Broadcast</a><a href="/broadcast/overlay" target="_blank">Overlay</a></div></section><section class="grid"><article class="panel"><h3>Market Lab → draft</h3>${(matchup.top_markets||[]).map((m,i)=>`<div class="candidate"><span><b>${esc(m.label)}</b><small>${Math.round(Number(m.combined_rate)*100)}% · conf ${m.confidence}</small></span><button data-market="${i}">В черновик</button></div>`).join('')}</article><article class="panel"><h3>Player cards → draft</h3>${(matchup.player_markets||[]).map((c,i)=>`<div class="candidate"><span><b>${esc(c.market?.label||c.title)}</b><small>${esc(c.value||'')} · score ${Math.round(Number(c.score||0))}</small></span><button data-player="${i}">В черновик</button></div>`).join('')||'<div class="empty small">Нет player cards</div>'}</article></section><section class="panel"><h3>Persisted Broadcast cards</h3><div id="saved">${savedHtml()}</div></section>`;document.querySelectorAll('[data-market]').forEach(b=>b.onclick=()=>draftMarket(Number(b.dataset.market),b));document.querySelectorAll('[data-player]').forEach(b=>b.onclick=()=>draftPlayer(Number(b.dataset.player),b));bindSaved()}
+  function render(){const g=matchup.game;$('#content').innerHTML=`<section class="hero"><div><div class="eyebrow">OPERATOR · MANUAL ONLY</div><h1>${esc(g.away_tri)} — ${esc(g.home_tri)}</h1><p>${esc(g.start_utc||'')}</p></div><div class="links"><a href="/matchup?game=${game}">Matchup Lab</a><a href="/broadcast?game=${game}">Broadcast</a><a href="/broadcast/overlay?game=${game}" target="_blank">Overlay этого матча</a></div></section><section class="grid"><article class="panel"><h3>Market Lab → draft</h3>${(matchup.top_markets||[]).map((m,i)=>`<div class="candidate"><span><b>${esc(m.label)}</b><small>${Math.round(Number(m.combined_rate)*100)}% · conf ${m.confidence}</small></span><button data-market="${i}">В черновик</button></div>`).join('')}</article><article class="panel"><h3>Player cards → draft</h3>${(matchup.player_markets||[]).map((c,i)=>`<div class="candidate"><span><b>${esc(c.market?.label||c.title)}</b><small>${esc(c.value||'')} · score ${Math.round(Number(c.score||0))}</small></span><button data-player="${i}">В черновик</button></div>`).join('')||'<div class="empty small">Нет player cards</div>'}</article></section><section class="panel"><h3>Persisted Broadcast cards</h3><div id="saved">${savedHtml()}</div></section>`;document.querySelectorAll('[data-market]').forEach(b=>b.onclick=()=>draftMarket(Number(b.dataset.market),b));document.querySelectorAll('[data-player]').forEach(b=>b.onclick=()=>draftPlayer(Number(b.dataset.player),b));bindSaved()}
   function savedHtml(){return persisted.map(c=>`<div class="saved"><div><b>${esc(c.headline_ru)}</b><small>${esc(c.stat_text_ru)} · ${esc(c.status)}</small></div><div class="actions">${c.status!=='shown'?`<button data-edit="${esc(c.card_id)}">Edit</button>`:''}${c.status==='draft'||c.status==='hidden'?`<button data-status="preview" data-card="${esc(c.card_id)}">PREVIEW</button>`:''}${c.status==='preview'?`<button class="show" data-status="shown" data-card="${esc(c.card_id)}">SHOW</button><button data-status="draft" data-card="${esc(c.card_id)}">BACK</button>`:''}${c.status==='shown'?`<button class="hide" data-status="hidden" data-card="${esc(c.card_id)}">HIDE</button>`:''}</div></div>`).join('')||'<div class="empty small">Черновиков пока нет</div>'}
   function bindSaved(){document.querySelectorAll('[data-status]').forEach(b=>b.onclick=()=>status(b.dataset.card,b.dataset.status,b));document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(b.dataset.edit))}
   async function draftMarket(i,b){if(!ensureToken())return;const m=matchup.top_markets[i];b.disabled=true;try{await api('/api/broadcast/operator/drafts/from-market',{method:'POST',body:JSON.stringify({game_pk:Number(game),window:20,market:m})});await reloadBroadcast()}catch(e){alert(e.message)}finally{b.disabled=false}}
@@ -481,10 +481,12 @@ html,body{margin:0;width:100%;height:100%;background:transparent!important;overf
 </style></head><body><div class="stage"><img id="cardimg" alt=""></div>
 <script>
 let current="";
+const overlayGame=new URLSearchParams(location.search).get("game")||"";
+const stateUrl="/api/broadcast/state"+(overlayGame?"?game="+encodeURIComponent(overlayGame):"");
 async function tick(){
   const img=document.getElementById("cardimg");
   try{
-    const r=await fetch("/api/broadcast/state",{cache:"no-store"});
+    const r=await fetch(stateUrl,{cache:"no-store"});
     const d=await r.json();
     const c=d&&d.on_air;
     if(!c||!c.render_hash){
