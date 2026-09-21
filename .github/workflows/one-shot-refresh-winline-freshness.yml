@@ -1,0 +1,53 @@
+name: One-shot refresh Winline freshness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-refresh-winline-freshness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - name: Force next scheduled Winline sync
+        run: npx wrangler d1 execute hoh-data-core --remote --command "DELETE FROM data_core_meta WHERE meta_key='winline_feed_sync_state';"
+      - name: Verify fresh MTL plus 1.5 price
+        run: |
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const started=Date.now();
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          let status=null;
+          for(let i=0;i<24;i++){
+            await sleep(i===0?5000:5000);
+            const r=await fetch(base+'/api/winline/center/status',{headers:{accept:'application/json'},cache:'no-store'});
+            status=await r.json();
+            const fetched=Date.parse(status?.feed_sync?.last_sync?.fetched_at||'');
+            console.log('POLL',i,JSON.stringify({fetched_at:status?.feed_sync?.last_sync?.fetched_at,markets:status?.markets,active:status?.active_markets,latest_market_update:status?.latest_market_update}));
+            if(Number.isFinite(fetched)&&fetched>=started-5000)break;
+          }
+          const fetched=Date.parse(status?.feed_sync?.last_sync?.fetched_at||'');
+          if(!Number.isFinite(fetched)||fetched<started-5000)throw new Error('Fresh Winline cron sync not observed');
+
+          const br=await fetch(base+'/api/broadcast/games/2026020002',{headers:{accept:'application/json'},cache:'no-store'});
+          const bd=await br.json();
+          if(!br.ok)throw new Error('broadcast HTTP '+br.status+' '+JSON.stringify(bd));
+          const matches=(bd.cards||[]).filter(c=>c?.market?.type==='handicap'&&c?.market?.subject==='MTL'&&Number(c?.market?.line)===1.5);
+          console.log('MTL_PLUS_1_5',JSON.stringify(matches.map(c=>({title:c.title,market:c.market})),null,2));
+          const priced=matches.find(c=>Number(c?.market?.odds)>1&&c?.market?.odds_source==='provider_live');
+          if(!priced)throw new Error('MTL +1.5 still has no live Winline price');
+          console.log('WINLINE_FRESHNESS_FIX_OK',JSON.stringify({odds:priced.market.odds,updated_at:priced.market.updated_at,market_id:priced.market.market_id,provider_market_count:bd.provider_market_count}));
+          JS
