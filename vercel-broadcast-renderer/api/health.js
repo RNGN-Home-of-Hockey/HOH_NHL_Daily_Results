@@ -11,4 +11,4 @@ export default function handler(req,res){
   });
 }
 
-// layout v6 user-template deploy trigger
+// layout v7 Carolina canonical deploy trigger
