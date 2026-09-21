@@ -1,0 +1,88 @@
+name: Deploy Broadcast Renderer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vercel-broadcast-renderer/**'
+      - '.github/workflows/deploy-broadcast-renderer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-broadcast-renderer-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Vercel credentials status
+        id: creds
+        shell: bash
+        run: |
+          if [ -n "${VERCEL_TOKEN:-}" ]; then
+            echo "configured=1" >> "$GITHUB_OUTPUT"
+            echo "Vercel deploy credential is configured."
+          else
+            echo "configured=0" >> "$GITHUB_OUTPUT"
+            echo "VERCEL_TOKEN is not configured; renderer deployment is skipped."
+          fi
+
+      - name: Resolve production project
+        if: steps.creds.outputs.configured == '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vercel-broadcast-renderer/.vercel
+          code=$(curl -sS -o /tmp/vercel-project.json -w '%{http_code}'             -H "Authorization: Bearer $VERCEL_TOKEN"             "https://api.vercel.com/v9/projects/hoh-broadcast-renderer")
+          test "$code" = "200" || { echo "Cannot access Vercel project hoh-broadcast-renderer (HTTP $code)"; cat /tmp/vercel-project.json; exit 2; }
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const p=JSON.parse(fs.readFileSync('/tmp/vercel-project.json','utf8'));
+          if(!p.id||!p.accountId)throw new Error('Vercel project response missing id/accountId');
+          fs.writeFileSync('vercel-broadcast-renderer/.vercel/project.json',JSON.stringify({projectId:p.id,orgId:p.accountId}));
+          console.log('Resolved Vercel project:',p.name,p.id,p.accountId);
+          JS
+
+      - name: Pull production settings
+        if: steps.creds.outputs.configured == '1'
+        working-directory: vercel-broadcast-renderer
+        run: npx vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
+
+      - name: Build renderer
+        if: steps.creds.outputs.configured == '1'
+        working-directory: vercel-broadcast-renderer
+        run: npx vercel@latest build --prod --token "$VERCEL_TOKEN"
+
+      - name: Deploy renderer
+        if: steps.creds.outputs.configured == '1'
+        working-directory: vercel-broadcast-renderer
+        run: npx vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+
+      - name: Verify production version
+        if: steps.creds.outputs.configured == '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            body="$(curl -fsSL --max-time 10 https://hoh-broadcast-renderer.vercel.app/api/health || true)"
+            echo "health: $body"
+            if echo "$body" | grep -q '2026-09-21-layout-v3'; then
+              echo "BROADCAST_RENDERER_PRODUCTION_OK"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Production renderer did not report layout v3"
+          exit 1
