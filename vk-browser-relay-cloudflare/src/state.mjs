@@ -96,11 +96,12 @@ export class VkRelayState extends DurableObject {
             await page.waitForTimeout(2000);
             const currentUrl = page.url();
             const authenticated = await isAuthenticated(page).catch(() => false);
-            const looksLoggedIn = authenticated
-              && /^https:\/\/(?:www\.)?vk\.(?:ru|com)\//i.test(currentUrl)
-              && !/(?:login|join|restore|auth)/i.test(currentUrl);
+            const onVkChannel = /^https:\/\/(?:www\.)?vk\.(?:ru|com)\/im\/channels\//i.test(currentUrl);
+            const channelComposer = onVkChannel ? await composer(page).catch(() => null) : null;
+            const composerVisible = Boolean(channelComposer && await channelComposer.isVisible().catch(() => false));
+            const looksReady = authenticated && onVkChannel && composerVisible;
 
-            if (looksLoggedIn) consecutiveAuthenticated += 1;
+            if (looksReady) consecutiveAuthenticated += 1;
             else consecutiveAuthenticated = 0;
 
             if (consecutiveAuthenticated >= 2) {
@@ -110,11 +111,11 @@ export class VkRelayState extends DurableObject {
                 status: "saved",
                 savedAt: new Date().toISOString(),
                 url: currentUrl,
+                composerVisible: true,
               });
               await this.notifyHeartbeats(true);
-              await this.ctx.storage.delete(LOGIN_SESSION_KEY);
-              await this.ctx.storage.delete(LOGIN_LIVE_VIEW_KEY);
-              await this.ctx.storage.delete(LOGIN_SAVE_TOKEN_KEY);
+              // Keep the one-time viewer token and Live View URL valid for the rest
+              // of this browser session so the human page does not suddenly turn 410.
               return;
             }
           }
@@ -130,7 +131,13 @@ export class VkRelayState extends DurableObject {
             savedAt: new Date().toISOString(),
           });
         } finally {
+          // Give the user a short window to see the successful channel page before
+          // closing Live View, then clean up ephemeral login handles.
+          await page.waitForTimeout(15000).catch(() => undefined);
           await browser?.close().catch(() => undefined);
+          await this.ctx.storage.delete(LOGIN_SESSION_KEY);
+          await this.ctx.storage.delete(LOGIN_LIVE_VIEW_KEY);
+          await this.ctx.storage.delete(LOGIN_SAVE_TOKEN_KEY);
         }
       })());
 
@@ -168,6 +175,10 @@ export class VkRelayState extends DurableObject {
     const storedToken = await this.ctx.storage.get(LOGIN_SAVE_TOKEN_KEY);
     const liveViewUrl = await this.ctx.storage.get(LOGIN_LIVE_VIEW_KEY);
     if (!token || token !== storedToken || !liveViewUrl) {
+      const status = await this.ctx.storage.get("loginStatus");
+      if (status && status.status === "saved") {
+        return html("<h2>VK-сессия уже сохранена.</h2><p>Live View больше не нужен — можно закрыть вкладку.</p>");
+      }
       return html("<h2>Эта ссылка входа уже недействительна. Запусти новую VK login-сессию.</h2>", 410);
     }
     return Response.redirect(liveViewUrl, 302);
