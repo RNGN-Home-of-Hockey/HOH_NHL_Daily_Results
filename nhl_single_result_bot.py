@@ -12,6 +12,8 @@ import json
 import time
 import textwrap
 import pathlib
+import html
+import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, date
@@ -50,6 +52,10 @@ DRY_RUN = _env_bool("DRY_RUN", False)
 DEBUG_VERBOSE = _env_bool("DEBUG_VERBOSE", False)
 STATE_PATH = _env_str("STATE_PATH", "state/posted_games.json").strip() or "state/posted_games.json"
 TARGET_DATE = _env_str("TARGET_DATE", "").strip()
+HOH_DATA_CORE_URL = _env_str("HOH_DATA_CORE_URL", "https://hoh-nhl-daily-results.znamteam-903.workers.dev").strip().rstrip("/")
+TELEGRAM_INTERACTIVE_ENABLED = _env_bool("TELEGRAM_INTERACTIVE_ENABLED", True)
+HOH_CHANNEL_URL = _env_str("HOH_CHANNEL_URL", "http://t.me/home_of_hockey").strip() or "http://t.me/home_of_hockey"
+BOT_COMMANDS_VERSION = "2026-09-21-v1"
 
 TEAM_RU = {
     "ANA": "Анахайм", "ARI": "Аризона", "BOS": "Бостон", "BUF": "Баффало", "CGY": "Калгари", "CAR": "Каролина",
@@ -162,6 +168,7 @@ class GameMeta:
     away_tri: str
     home_score: int
     away_score: int
+    game_type: int = 0
     series_game: Optional[int] = None
     home_series_wins: Optional[int] = None
     away_series_wins: Optional[int] = None
@@ -177,6 +184,8 @@ class ScoringEvent:
     away_goals: int
     scorer: str
     assists: List[str] = field(default_factory=list)
+    scorer_id: Optional[int] = None
+    assist_ids: List[int] = field(default_factory=list)
     is_shootout_winner: bool = False
     is_shootout_scored: bool = False
 
