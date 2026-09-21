@@ -565,12 +565,129 @@ async function sendLatestMatches(env, chatId, threadId = null) {
   }
 }
 
-async function sendScheduleOverview(env, chatId) {
+async function sendScheduleOverview(env, chatId, threadId = null) {
   try {
-    await sendText(env, chatId, await scheduleOverviewText(env));
+    const today = currentCalendarDayPT();
+    const daysBack = envInt(env.MENU_SCHEDULE_DAYS_BACK, 2, 0, 7);
+    const daysForward = envInt(env.MENU_SCHEDULE_DAYS_FORWARD, 7, 1, 21);
+    const rows = [];
+    const lines = [
+      "🗓 <b>Расписание НХЛ</b>",
+      "",
+      "Игровой день считается по календарной дате Лос-Анджелеса (PT). Выбери день:",
+    ];
+
+    const buttons = [];
+    for (const day of dateRange(today, -daysBack, daysForward)) {
+      const metas = await metasForDay(day);
+      const finals = metas.filter((m) => isFinalState(m.state)).length;
+      const live = metas.filter((m) => isLiveishState(m.state)).length;
+      const icon = day === today ? "•" : finals === metas.length && metas.length ? "✅" : live ? "🔴" : "🗓";
+      buttons.push({
+        text: `${icon} ${formatDay(day)} · ${metas.length}`,
+        callback_data: `day:${day}`,
+      });
+    }
+    for (let i = 0; i < buttons.length; i += 2) {
+      rows.push(buttons.slice(i, i + 2));
+    }
+    rows.push([{ text: "🏠 Меню", callback_data: "menu" }]);
+
+    await sendText(env, chatId, lines.join("\n"), { inline_keyboard: rows }, threadId, "HTML");
     return { ok: true };
   } catch (error) {
-    await sendText(env, chatId, `Не получилось загрузить расписание: ${error.message}`);
+    await sendText(env, chatId, `Не получилось загрузить расписание: ${error.message}`, null, threadId);
+    return { ok: false, error: error.message };
+  }
+}
+
+async function sendScheduleDay(env, chatId, day, threadId = null) {
+  try {
+    const metas = await metasForDay(day);
+    const total = metas.length;
+    const finalCount = metas.filter((meta) => isFinalState(meta.state)).length;
+    const liveCount = metas.filter((meta) => isLiveishState(meta.state)).length;
+    const upcomingCount = Math.max(0, total - finalCount - liveCount);
+    const competition = competitionTitle(metas);
+    const lines = [
+      `🗓 <b>${escapeHtml(competition)} • ${formatRuDay(day)} • ${total} ${pluralRu(total, "матч", "матча", "матчей")}</b>`,
+      "",
+      `Лос-Анджелес (PT) · завершено <b>${finalCount}</b> · в игре <b>${liveCount}</b> · впереди <b>${upcomingCount}</b>`,
+    ];
+    const keyboard = [];
+
+    if (!metas.length) {
+      lines.push("", "На этот игровой день матчей не найдено.");
+    } else {
+      lines.push("");
+      metas.forEach((meta, index) => {
+        const away = TEAM_RU[meta.awayTri] || meta.awayTri;
+        const home = TEAM_RU[meta.homeTri] || meta.homeTri;
+        const awayEmoji = TEAM_EMOJI[meta.awayTri] || "";
+        const homeEmoji = TEAM_EMOJI[meta.homeTri] || "";
+        let tail = formatTimePT(meta.gameDateUTC);
+        let button = `🕒 ${tail} · ${meta.awayTri} — ${meta.homeTri}`;
+        if (isFinalState(meta.state)) {
+          tail = `<b>${meta.awayScore}:${meta.homeScore}</b> ✅`;
+          button = `✅ ${meta.awayTri} ${meta.awayScore}:${meta.homeScore} ${meta.homeTri}`;
+        } else if (isLiveishState(meta.state)) {
+          tail = `<b>${meta.awayScore}:${meta.homeScore}</b> 🔴 LIVE`;
+          button = `🔴 ${meta.awayTri} ${meta.awayScore}:${meta.homeScore} ${meta.homeTri}`;
+        }
+        lines.push(
+          `${index + 1}. ${awayEmoji} «${escapeHtml(away)}» — ${homeEmoji} «${escapeHtml(home)}» · ${tail}`,
+        );
+        keyboard.push([{ text: button.slice(0, 64), callback_data: `game:${meta.gamePk}` }]);
+      });
+    }
+
+    if (finalCount > 0) {
+      keyboard.push([{
+        text: finalCount === total ? "📋 Все результаты дня" : `📋 Завершённые матчи · ${finalCount}/${total}`,
+        callback_data: `full:${day}`,
+      }]);
+    }
+    keyboard.push([
+      { text: "← День", callback_data: `day:${addDays(day, -1)}` },
+      { text: "🏠 Меню", callback_data: "menu" },
+      { text: "День →", callback_data: `day:${addDays(day, 1)}` },
+    ]);
+
+    await sendText(env, chatId, lines.join("\n"), { inline_keyboard: keyboard }, threadId, "HTML");
+    return { ok: true, games: total };
+  } catch (error) {
+    await sendText(env, chatId, `Не получилось загрузить день: ${error.message}`, null, threadId);
+    return { ok: false, error: error.message };
+  }
+}
+
+async function dispatchGameResult(env, chatId, gamePk, threadId = null) {
+  try {
+    const result = await triggerRepositoryDispatch(env, eventName(env, "GITHUB_DISPATCH_EVENT_POLL", "nhl_poll"), {
+      source: "telegram_menu_game",
+      gamepk: String(gamePk),
+      target_chat_id: String(chatId),
+      target_thread_id: threadId ? String(threadId) : "",
+    });
+    return { ok: true, ...result };
+  } catch (error) {
+    await sendText(env, chatId, `Не получилось запустить карточку матча: ${error.message}`, null, threadId);
+    return { ok: false, error: error.message };
+  }
+}
+
+async function dispatchFullDay(env, chatId, day, threadId = null) {
+  try {
+    const result = await triggerRepositoryDispatch(env, eventName(env, "GITHUB_DISPATCH_EVENT_POLL", "nhl_poll"), {
+      source: "telegram_menu_full_day",
+      date: day,
+      full_day: "true",
+      target_chat_id: String(chatId),
+      target_thread_id: threadId ? String(threadId) : "",
+    });
+    return { ok: true, ...result };
+  } catch (error) {
+    await sendText(env, chatId, `Не получилось собрать результаты дня: ${error.message}`, null, threadId);
     return { ok: false, error: error.message };
   }
 }
