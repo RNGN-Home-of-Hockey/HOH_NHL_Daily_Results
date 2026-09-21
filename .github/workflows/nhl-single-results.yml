@@ -1,6 +1,10 @@
 name: NHL Single Result Bot
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nhl-single-results.yml'
   repository_dispatch:
     types:
       - nhl_poll
