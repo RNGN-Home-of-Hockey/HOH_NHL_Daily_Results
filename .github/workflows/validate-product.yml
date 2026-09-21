@@ -211,7 +211,9 @@ jobs:
       - name: Broadcast renderer
         working-directory: vercel-broadcast-renderer
         run: |
-          curl -fsSL --retry 3 --retry-delay 2 'https://raw.githubusercontent.com/google/fonts/main/ofl/sofiasanscondensed/SofiaSansCondensed-Italic%5Bwght%5D.ttf' -o assets/sofia-sans-condensed-italic.ttf
+          python3 -m pip install --quiet fonttools
+          curl -fsSL --retry 3 --retry-delay 2 'https://raw.githubusercontent.com/google/fonts/main/ofl/sofiasanscondensed/SofiaSansCondensed-Italic%5Bwght%5D.ttf' -o /tmp/sofia-sans-condensed-variable.ttf
+          python3 -m fontTools.varLib.instancer /tmp/sofia-sans-condensed-variable.ttf wght=700 --output assets/sofia-sans-condensed-italic.ttf
           test -s assets/sofia-sans-condensed-italic.ttf
           file assets/sofia-sans-condensed-italic.ttf
           npm install --no-audit --no-fund
