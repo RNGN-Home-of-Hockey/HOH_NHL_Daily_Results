@@ -104,8 +104,11 @@ function mismatchSignal(game,team,opponent,current,histories,side){
   const oppVenue=venueSummary(histories.get(opponent)||[],oppIsHome);
   const venueConfirmed=venueSupports(side,teamVenue,oppVenue);
 
-  const teamRoll=bestRollingRank(side,[t20,t10],totalTeams);
-  const oppRoll=bestDefenseRollingRank(side,[o20,o10],totalTeams);
+  // Editorial hierarchy: L20 is the primary rolling window whenever it is
+  // available and still confirms the season signal. L10 is supporting context;
+  // a hotter 10-game rank must not replace the more stable 20-game story.
+  const teamRoll=preferredRollingRank(side,t20,t10,totalTeams);
+  const oppRoll=preferredDefenseRollingRank(side,o20,o10,totalTeams);
   const seasonGap=Math.abs(seasonOppRank-seasonTeamRank);
   const rollingGap=(Number.isFinite(teamRoll.rank)&&Number.isFinite(oppRoll.rank))?Math.abs(oppRoll.rank-teamRoll.rank):0;
 
@@ -118,9 +121,11 @@ function mismatchSignal(game,team,opponent,current,histories,side){
 
   const seasonTeamValue=seasonValue(team,"xgf60");
   const seasonOppValue=seasonValue(opponent,"xga60");
+  const teamShort=rollingSupportText(t10,teamRoll.window);
+  const oppShort=rollingSupportText(o10,oppRoll.window);
   const title=side==="over"
-    ? `${team} — №${seasonTeamRank} НХЛ ПО xGF/60 ЗА СЕЗОН И №${teamRoll.rank} ЗА ПОСЛЕДНИЕ ${teamRoll.window}; ${opponent} — ${oppRoll.rank}-Й ПО xGA/60`
-    : `${team} — ${seasonTeamRank}-Й НХЛ ПО xGF/60 ЗА СЕЗОН И ${teamRoll.rank}-Й ЗА ПОСЛЕДНИЕ ${teamRoll.window}; ${opponent} — №${oppRoll.rank} ПО xGA/60`;
+    ? `${team} — №${seasonTeamRank} НХЛ ПО xGF/60 ЗА СЕЗОН И №${teamRoll.rank} ЗА ПОСЛЕДНИЕ ${teamRoll.window}${teamShort}; ${opponent} — ${oppRoll.rank}-Й ПО xGA/60${oppShort}`
+    : `${team} — ${seasonTeamRank}-Й НХЛ ПО xGF/60 ЗА СЕЗОН И ${teamRoll.rank}-Й ЗА ПОСЛЕДНИЕ ${teamRoll.window}${teamShort}; ${opponent} — №${oppRoll.rank} ПО xGA/60${oppShort}`;
 
   const venueText=venueExplanation(team,opponent,teamIsHome,oppIsHome,teamVenue,oppVenue);
   return {
@@ -137,8 +142,12 @@ function mismatchSignal(game,team,opponent,current,histories,side){
       rank_gap:seasonGap,
       rolling_team_rank:teamRoll.rank,
       rolling_team_window:teamRoll.window,
+      rolling_team_rank_20:t20,
+      rolling_team_rank_10:t10,
       rolling_opponent_rank:oppRoll.rank,
       rolling_opponent_window:oppRoll.window,
+      rolling_opponent_rank_20:o20,
+      rolling_opponent_rank_10:o10,
       venue_sample:Math.min(Number(teamVenue?.sample||0),Number(oppVenue?.sample||0)),
       venue_confirmed:venueConfirmed,
       multi_window_confirmed:true,
@@ -181,23 +190,24 @@ function venueExplanation(team,opponent,teamHome,oppHome,teamVenue,oppVenue){
   return `${team} ${teamHome?"дома":"в гостях"}: ${fmt(teamVenue.xgf60,2)} xGF/60 за ${teamVenue.sample} матчей; ${opponent} ${oppHome?"дома":"в гостях"}: ${fmt(oppVenue.xga60,2)} xGA/60 за ${oppVenue.sample} матчей.`;
 }
 
-function bestRollingRank(side,ranks,totalTeams){
-  const pairs=[{rank:ranks[0],window:20},{rank:ranks[1],window:10}].filter(x=>Number.isFinite(x.rank));
-  pairs.sort((a,b)=>{
-    const av=side==="over"?a.rank:totalTeams-a.rank+1;
-    const bv=side==="over"?b.rank:totalTeams-b.rank+1;
-    return av-bv||b.window-a.window;
-  });
-  return pairs[0]||{rank:null,window:null};
+function preferredRollingRank(side,r20,r10,totalTeams){
+  if(Number.isFinite(r20)&&rollingConfirmsAttack(side,r20,totalTeams))return{rank:r20,window:20};
+  if(Number.isFinite(r10)&&rollingConfirmsAttack(side,r10,totalTeams))return{rank:r10,window:10};
+  return{rank:Number.isFinite(r20)?r20:r10,window:Number.isFinite(r20)?20:10};
 }
-function bestDefenseRollingRank(side,ranks,totalTeams){
-  const pairs=[{rank:ranks[0],window:20},{rank:ranks[1],window:10}].filter(x=>Number.isFinite(x.rank));
-  pairs.sort((a,b)=>{
-    const av=side==="over"?totalTeams-a.rank+1:a.rank;
-    const bv=side==="over"?totalTeams-b.rank+1:b.rank;
-    return av-bv||b.window-a.window;
-  });
-  return pairs[0]||{rank:null,window:null};
+function preferredDefenseRollingRank(side,r20,r10,totalTeams){
+  if(Number.isFinite(r20)&&rollingConfirmsDefense(side,r20,totalTeams))return{rank:r20,window:20};
+  if(Number.isFinite(r10)&&rollingConfirmsDefense(side,r10,totalTeams))return{rank:r10,window:10};
+  return{rank:Number.isFinite(r20)?r20:r10,window:Number.isFinite(r20)?20:10};
+}
+function rollingConfirmsAttack(side,rank,totalTeams){
+  return side==="over"?rank<=8:rank>=totalTeams-7;
+}
+function rollingConfirmsDefense(side,rank,totalTeams){
+  return side==="over"?rank>=totalTeams-7:rank<=8;
+}
+function rollingSupportText(rank10,primaryWindow){
+  return primaryWindow===20&&Number.isFinite(rank10)?` (№${rank10} ЗА 10)`:"";
 }
 
 function seasonRank(team,metric,direction){
