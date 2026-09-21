@@ -298,6 +298,10 @@ def _contains_cyrillic(value: str) -> bool:
     return bool(re.search(r"[А-Яа-яЁё]", str(value or "")))
 
 
+def _contains_latin(value: str) -> bool:
+    return bool(re.search(r"[A-Za-z]", str(value or "")))
+
+
 def _sportsru_short_name(full_name_ru: str) -> str:
     """Keep Sports.ru spelling, but use the surname form used in goal summaries."""
     name = _clean_person_name(full_name_ru)
@@ -422,12 +426,14 @@ def resolve_event_people_from_sportsru(
 
     def resolve_one(pid: int, current: str) -> str:
         current = _clean_person_name(current)
-        if not current or _contains_cyrillic(current):
+        if not current:
+            return current
+        if _contains_cyrillic(current) and not _contains_latin(current):
             return current
 
         if pid > 0:
             cached = _clean_person_name(names_by_id.get(pid, ""))
-            if cached and _contains_cyrillic(cached):
+            if cached and _contains_cyrillic(cached) and not _contains_latin(cached):
                 return cached
 
         key = _sportsru_latin_norm(current)
@@ -468,7 +474,7 @@ def assert_no_english_scoring_names(
 
     def add(name: str, pid: int = 0) -> None:
         clean = _clean_person_name(name)
-        if not clean or _contains_cyrillic(clean) or not _is_valid_player_name(clean):
+        if not clean or not _contains_latin(clean) or not _is_valid_player_name(clean):
             return
         key = (clean, int(pid or 0))
         if key in seen:
