@@ -1,5 +1,5 @@
-const DEFAULT_CENTER_WEBHOOK_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram/center";
-const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v2";
+const DEFAULT_CENTER_WEBHOOK_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram/center?v=20260921-1";
+const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v3";
 const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
 
 export async function handleTelegramProductBotRequest(request, env, path) {
@@ -230,14 +230,14 @@ async function centerStatus(request, env) {
     }
   }
 
-  const expectedWebhook = `${new URL(request.url).origin}/telegram/center`;
+  const expectedWebhook = String(env.TELEGRAM_CENTER_WEBHOOK_URL || "").trim() || DEFAULT_CENTER_WEBHOOK_URL;
   const webhookMatchesExpected = webhook.ok && webhook.url === expectedWebhook;
   const lastEvent = await readCenterDiagnostic(env);
 
   return json({
     ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok && webhookMatchesExpected,
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-21-v9",
+    runtime_marker: "telegram-center-2026-09-21-v10",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     webhook_secret_mode: "sha256_hex",

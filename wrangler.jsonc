@@ -29,7 +29,7 @@
     "GITHUB_DISPATCH_EVENT_POLL": "nhl_poll",
     "GITHUB_DISPATCH_EVENT_RESEND": "resend_last_day",
     "CLOUDFLARE_CRON_ENABLED": "1",
-    "TELEGRAM_CENTER_WEBHOOK_URL": "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram/center",
+    "TELEGRAM_CENTER_WEBHOOK_URL": "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram/center?v=20260921-1",
     "TELEGRAM_LIVE_NOTIFICATIONS_ENABLED": "0",
     "WINLINE_FEED_SYNC_ENABLED": "1",
     "BROADCAST_OPERATOR_OPEN": "1",
