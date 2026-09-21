@@ -2,6 +2,10 @@ name: Deploy Autopost VK Browser Relay (Paid Cloudflare)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-autopost-vk-browser-relay-paid.yml'
 
 permissions:
   contents: read
