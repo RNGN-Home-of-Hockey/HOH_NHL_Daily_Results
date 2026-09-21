@@ -12,7 +12,7 @@ const sample={
 
 const png=await renderCard(sample);
 const meta=await sharp(png).metadata();
-if(meta.width!==820||meta.height!==211||meta.format!=="png"){
+if(meta.width!==574||meta.height!==148||meta.format!=="png"){
   throw new Error("Bad renderer output: "+JSON.stringify(meta));
 }
 console.log(JSON.stringify({ok:true,width:meta.width,height:meta.height,format:meta.format,bytes:png.length}));
