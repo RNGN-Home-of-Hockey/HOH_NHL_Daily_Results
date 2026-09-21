@@ -10,8 +10,8 @@ function row(pk,team,p1,p2,p3){
     corsi_for_pct:52,fenwick_for_pct:52,shot_share_pct:52,
   };
 }
-const away=Array.from({length:10},(_,i)=>row(100+i,"COL",1,1,1));
-const home=Array.from({length:10},(_,i)=>row(200+i,"LAK",1,1,1));
+const away=Array.from({length:10},(_,i)=>row(100+i,"COL",2,2,2));
+const home=Array.from({length:10},(_,i)=>row(200+i,"LAK",2,2,2));
 const cards=buildPeriodMarketInsightsForRows(game,away,home);
 for(const p of [1,2,3]){
   const c=cards.find(x=>x.market?.type==="game_total"&&x.market?.period===`P${p}`&&x.market?.line===1.5&&x.market?.side==="over");
