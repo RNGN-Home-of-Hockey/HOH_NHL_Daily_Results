@@ -536,7 +536,7 @@ def resolve_event_people_from_sportsru(
     team_rosters: Dict[str, List[str]] = {}
 
     def roster_for(team_tri: str) -> List[str]:
-        tri = upper(team_tri)
+        tri = str(team_tri or "").upper()
         if tri not in team_rosters:
             team_rosters[tri] = fetch_sportsru_team_roster_names(tri)
         return team_rosters[tri]
