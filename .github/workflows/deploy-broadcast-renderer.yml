@@ -64,9 +64,7 @@ jobs:
         if: steps.creds.outputs.configured == '1'
         working-directory: vercel-broadcast-renderer
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq woff2
-          woff2_decompress assets/sofia-sans-condensed-italic.woff2
+          curl -fsSL --retry 3 --retry-delay 2 'https://raw.githubusercontent.com/google/fonts/main/ofl/sofiasanscondensed/SofiaSansCondensed-Italic%5Bwght%5D.ttf' -o assets/sofia-sans-condensed-italic.ttf
           test -s assets/sofia-sans-condensed-italic.ttf
           file assets/sofia-sans-condensed-italic.ttf
 
