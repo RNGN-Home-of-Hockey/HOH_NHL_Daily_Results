@@ -102,6 +102,9 @@ jobs:
           [ -f "$BOT_STATE_PATH" ] || echo '{"posted":{}}' > "$BOT_STATE_PATH"
           cat "$BOT_STATE_PATH"
 
+      - name: Compile bot
+        run: python -m py_compile nhl_single_result_bot.py
+
       - name: Run bot
         env:
           GAME_PK: ${{ env.GAME_PK }}
@@ -112,6 +115,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
+          TELEGRAM_INTERACTIVE_ENABLED: 1
+          HOH_CHANNEL_URL: http://t.me/home_of_hockey
           DEBUG_VERBOSE: 1
         run: python nhl_single_result_bot.py
 
