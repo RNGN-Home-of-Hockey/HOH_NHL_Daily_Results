@@ -13,6 +13,7 @@ assert.match(colOver.title,/COL/);
 assert.match(colOver.title,/№1 НХЛ ПО БРОСКАМ/);
 assert.equal(colOver.category,"advanced_market");
 assert.equal(colOver.evidence.sample,82);
+assert.equal(colOver.evidence.source,"user_supplied_advanced_team_csv");
 
 const colMoneyline=cards.find(c=>c.market.type==="moneyline"&&c.market.subject==="COL");
 assert.ok(colMoneyline,"dominant team should get moneyline advanced context");
