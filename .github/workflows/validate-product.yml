@@ -61,6 +61,7 @@ jobs:
       - name: Python syntax and rank invariant
         run: |
           python -m py_compile nhl_single_result_bot.py tools/build_center_player_meta_from_sports_ru.py tools/build_compact_snapshots.py tools/build_current_team_snapshots.py tools/build_data_core_meta.py tools/build_center_player_pronunciations_from_eliteprospects.py tools/build_hoh_youtube_media.py tools/analyze_center_player_name_fit.py
+          python tests/test_sportsru_name_resolution.py
           python - <<'PY'
           import sys
           sys.path.insert(0, 'tools')

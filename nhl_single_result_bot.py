@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, date
 from zoneinfo import ZoneInfo
+from urllib.parse import quote_plus, urljoin
 
 import requests
 
@@ -57,6 +58,9 @@ TELEGRAM_INTERACTIVE_ENABLED = _env_bool("TELEGRAM_INTERACTIVE_ENABLED", True)
 HOH_CHANNEL_URL = _env_str("HOH_CHANNEL_URL", "http://t.me/home_of_hockey").strip() or "http://t.me/home_of_hockey"
 BOT_COMMANDS_VERSION = "2026-09-21-v1"
 SPORTSRU_NAMES_PATH = _env_str("SPORTSRU_NAMES_PATH", "ru_full_names.json").strip() or "ru_full_names.json"
+SPORTSRU_ON_DEMAND_ENABLED = _env_bool("SPORTSRU_ON_DEMAND_ENABLED", True)
+SPORTSRU_HOST = "https://www.sports.ru"
+SPORTSRU_SEARCH_URL = SPORTSRU_HOST + "/search/?q="
 
 TEAM_RU = {
     "ANA": "Анахайм", "ARI": "Аризона", "BOS": "Бостон", "BUF": "Баффало", "CGY": "Калгари", "CAR": "Каролина",
@@ -330,6 +334,165 @@ def load_sportsru_names(path: str = SPORTSRU_NAMES_PATH) -> Dict[int, str]:
             out[pid] = name
     dbg("Sports.ru names loaded:", len(out))
     return out
+
+
+def _sportsru_latin_norm(value: str) -> str:
+    raw = unicodedata.normalize("NFKD", str(value or ""))
+    raw = raw.encode("ascii", "ignore").decode("ascii").lower()
+    return re.sub(r"[^a-z0-9]+", " ", raw).strip()
+
+
+def _sportsru_person_slug(full_name_en: str) -> str:
+    return _sportsru_latin_norm(full_name_en).replace(" ", "-")
+
+
+def _sportsru_profile_name(url: str, expected_full_name_en: str) -> str:
+    """Read and validate the Russian H1 from a Sports.ru hockey person/player page."""
+    if not HAS_BS:
+        return ""
+    try:
+        page = http_get_text(url, timeout=20)
+    except Exception as exc:
+        dbg(f"Sports.ru profile fetch failed {url}: {exc}")
+        return ""
+
+    soup = BS(page, "html.parser")
+    heading = soup.find("h1") or soup.find("h2")
+    if not heading:
+        return ""
+    name_ru = _clean_person_name(" ".join(heading.stripped_strings))
+    if len(name_ru.split()) < 2 or not _contains_cyrillic(name_ru):
+        return ""
+
+    expected = _sportsru_latin_norm(expected_full_name_en)
+    if expected:
+        body = _sportsru_latin_norm(" ".join(soup.stripped_strings))
+        if expected not in body:
+            return ""
+    return name_ru
+
+
+def resolve_sportsru_player_name(full_name_en: str) -> str:
+    """Resolve one fresh NHL player directly from Sports.ru, independent of roster caches."""
+    full_name_en = _clean_person_name(full_name_en)
+    slug = _sportsru_person_slug(full_name_en)
+    if not SPORTSRU_ON_DEMAND_ENABLED or not HAS_BS or not slug:
+        return ""
+
+    direct_urls = (
+        f"{SPORTSRU_HOST}/hockey/person/{slug}/",
+        f"{SPORTSRU_HOST}/hockey/player/{slug}/",
+    )
+    tried = set()
+    for url in direct_urls:
+        tried.add(url)
+        name_ru = _sportsru_profile_name(url, full_name_en)
+        if name_ru:
+            return name_ru
+
+    try:
+        search_html = http_get_text(SPORTSRU_SEARCH_URL + quote_plus(full_name_en), timeout=20)
+        soup = BS(search_html, "html.parser")
+        links = soup.select('a[href*="/hockey/person/"], a[href*="/hockey/player/"]')
+        for link in links[:8]:
+            href = str(link.get("href") or "").strip()
+            if not href:
+                continue
+            url = urljoin(SPORTSRU_HOST, href)
+            if url in tried:
+                continue
+            tried.add(url)
+            name_ru = _sportsru_profile_name(url, full_name_en)
+            if name_ru:
+                return name_ru
+    except Exception as exc:
+        dbg(f"Sports.ru search failed for {full_name_en}: {exc}")
+    return ""
+
+
+def resolve_event_people_from_sportsru(
+    events: List[ScoringEvent],
+    names_by_id: Dict[int, str],
+) -> List[ScoringEvent]:
+    """Resolve fresh scorers/assists from Sports.ru immediately before rendering."""
+    if not SPORTSRU_ON_DEMAND_ENABLED:
+        return events
+
+    resolved_by_english: Dict[str, str] = {}
+
+    def resolve_one(pid: int, current: str) -> str:
+        current = _clean_person_name(current)
+        if not current or _contains_cyrillic(current):
+            return current
+
+        if pid > 0:
+            cached = _clean_person_name(names_by_id.get(pid, ""))
+            if cached and _contains_cyrillic(cached):
+                return cached
+
+        key = _sportsru_latin_norm(current)
+        if key in resolved_by_english:
+            return resolved_by_english[key] or current
+
+        full_ru = resolve_sportsru_player_name(current)
+        short_ru = _sportsru_short_name(full_ru) if full_ru else ""
+        resolved_by_english[key] = short_ru
+        if short_ru:
+            if pid > 0:
+                names_by_id[pid] = short_ru
+            print(f"[INFO] Sports.ru on-demand resolved {pid or '-'}: {current} -> {short_ru}")
+            return short_ru
+
+        print(f"[WARN] Sports.ru on-demand unresolved {pid or '-'}: {current}")
+        return current
+
+    for ev in events:
+        ev.scorer = resolve_one(int(ev.scorer_id or 0), ev.scorer)
+        if ev.assists:
+            translated: List[str] = []
+            for idx, original in enumerate(ev.assists):
+                pid = int(ev.assist_ids[idx]) if idx < len(ev.assist_ids) and ev.assist_ids[idx] else 0
+                translated.append(resolve_one(pid, original))
+            ev.assists = _clean_assists(translated)
+    return events
+
+
+def assert_no_english_scoring_names(
+    events: List[ScoringEvent],
+    official_has_shootout: bool = False,
+    sportsru_winner: Optional[SRUShootoutWinner] = None,
+) -> None:
+    """Never publish a result containing Latin scorer/assist names."""
+    unresolved: List[str] = []
+    seen = set()
+
+    def add(name: str, pid: int = 0) -> None:
+        clean = _clean_person_name(name)
+        if not clean or _contains_cyrillic(clean) or not _is_valid_player_name(clean):
+            return
+        key = (clean, int(pid or 0))
+        if key in seen:
+            return
+        seen.add(key)
+        unresolved.append(f"{clean} (player_id={pid})" if pid else clean)
+
+    for ev in events:
+        if ev.period_type == "SHOOTOUT":
+            continue
+        add(ev.scorer, int(ev.scorer_id or 0))
+        for idx, assist in enumerate(ev.assists):
+            pid = int(ev.assist_ids[idx]) if idx < len(ev.assist_ids) and ev.assist_ids[idx] else 0
+            add(assist, pid)
+
+    if official_has_shootout:
+        winner = get_winning_shootout_name(events, True, sportsru_winner)
+        add(winner or "")
+
+    if unresolved:
+        raise RuntimeError(
+            "Sports.ru Russian name resolution incomplete; refusing publication: "
+            + ", ".join(unresolved)
+        )
 
 
 def apply_sportsru_names(events: List[ScoringEvent], names_by_id: Dict[int, str]) -> List[ScoringEvent]:
@@ -1142,10 +1305,16 @@ def build_game_result_for_meta(
     evs, official_has_shootout = fetch_scoring_official(meta.gamePk, meta.home_tri, meta.away_tri)
     # Sports.ru roster cache is the primary shared spelling source by NHL player id.
     evs = apply_sportsru_names(evs, sportsru_names)
-    # Match page is an additional Sports.ru source for fresh prospects not yet in the daily roster cache.
+    # Fresh preseason/camp players can appear in NHL play-by-play before they reach
+    # the daily Sports.ru roster cache. Resolve those individual profiles now.
+    evs = resolve_event_people_from_sportsru(evs, sportsru_names)
+    # Match page remains an additional Sports.ru source when its goal summary is populated.
     sru_home, sru_away, sru_so_winner, _ = fetch_sportsru_goals(meta.home_tri, meta.away_tri)
     merged = merge_official_with_sportsru(evs, sru_home, sru_away, meta.home_tri, meta.away_tri)
     merged = apply_sportsru_names(merged, sportsru_names)
+    # Hard publication guard: unresolved English scorer/assist names must fail
+    # the run instead of leaking into Telegram.
+    assert_no_english_scoring_names(merged, official_has_shootout, sru_so_winner)
     return build_single_match_text(
         meta=meta,
         standings=standings,
