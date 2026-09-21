@@ -167,7 +167,7 @@ for(let i=0;i<15;i++){
 for(let i=0;i<15;i++)assert.equal(cards.get('parallel-'+i).status,'shown','parallel match '+i+' must remain ON AIR');
 assert.equal(cards.get('insight-2026020001-fixture').status,'shown','existing game must remain ON AIR after 15 other rooms change');
 assert.equal(cards.get('other-card').status,'shown','second existing game must remain ON AIR after 15 other rooms change');
-assert.equal(renderCalls,16,'each new parallel card renders once');
+assert.equal(renderCalls,17,'15 parallel cards render once each after the stale-price regression rerender');
 
 console.log('BROADCAST_OPERATOR_ON_DEMAND_RENDER_OK');
 console.log('BROADCAST_15_GAME_CONCURRENCY_OK');
