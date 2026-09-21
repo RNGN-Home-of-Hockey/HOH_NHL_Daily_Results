@@ -211,6 +211,10 @@ jobs:
       - name: Broadcast renderer
         working-directory: vercel-broadcast-renderer
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq woff2
+          woff2_decompress assets/sofia-sans-condensed-italic.woff2
+          test -s assets/sofia-sans-condensed-italic.ttf
           npm install --no-audit --no-fund
           npm test
 

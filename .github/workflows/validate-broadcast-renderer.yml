@@ -22,5 +22,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Prepare bundled TTF font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq woff2
+          woff2_decompress assets/sofia-sans-condensed-italic.woff2
+          test -s assets/sofia-sans-condensed-italic.ttf
+          file assets/sofia-sans-condensed-italic.ttf
       - run: npm install --no-audit --no-fund
       - run: npm test

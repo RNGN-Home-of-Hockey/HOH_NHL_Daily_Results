@@ -8,7 +8,7 @@ const HEIGHT = 211;
 const STAKE_DEFAULT = 1000;
 
 const templateUrl = new URL("../assets/card-template.webp", import.meta.url);
-const fontUrl = new URL("../assets/sofia-sans-condensed-italic.woff2", import.meta.url);
+const fontUrl = new URL("../assets/sofia-sans-condensed-italic.ttf", import.meta.url);
 
 const templatePromise = readFile(templateUrl);
 const fontPromise = readFile(fontUrl);
