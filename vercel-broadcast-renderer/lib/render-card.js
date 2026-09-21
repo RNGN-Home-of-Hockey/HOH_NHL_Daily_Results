@@ -10,7 +10,13 @@ const STAKE_DEFAULT = 1000;
 const templateUrl = new URL("../assets/card-template.webp", import.meta.url);
 const fontUrl = new URL("../assets/sofia-sans-condensed-italic.ttf", import.meta.url);
 
-const templatePromise = readFile(templateUrl);
+const templatePromise = readFile(templateUrl).then((source)=>{
+  if(source.length>=12&&source.subarray(0,4).toString("ascii")==="RIFF"){
+    const declared=source.readUInt32LE(4)+8;
+    if(declared>0&&declared<=source.length)return source.subarray(0,declared);
+  }
+  return source;
+});
 const fontPromise = readFile(fontUrl);
 const logoCache = new Map();
 
