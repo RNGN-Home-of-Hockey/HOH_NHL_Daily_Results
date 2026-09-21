@@ -88,12 +88,12 @@ jobs:
           for i in $(seq 1 24); do
             body="$(curl -fsSL --max-time 10 https://hoh-broadcast-renderer.vercel.app/api/health || true)"
             echo "health: $body"
-            if echo "$body" | grep -q '2026-09-21-layout-v6-user-template'; then
+            if echo "$body" | grep -q '2026-09-21-layout-v7-carolina-canonical'; then
               echo "BROADCAST_RENDERER_PRODUCTION_OK"
               break
             fi
             if [ "$i" = "24" ]; then
-              echo "Production renderer did not report layout v6"
+              echo "Production renderer did not report layout v7 Carolina canonical"
               exit 1
             fi
             sleep 5
