@@ -23,7 +23,7 @@ const TEAM = {
   ANA:["АНАХАЙМ","#FC4C02"],BOS:["БОСТОН","#FFB81C"],BUF:["БАФФАЛО","#003087"],
   CGY:["КАЛГАРИ","#D2001C"],CAR:["КАРОЛИНА","#CE1126"],CHI:["ЧИКАГО","#CF0A2C"],
   COL:["КОЛОРАДО","#6F263D"],CBJ:["КОЛАМБУС","#002654"],DAL:["ДАЛЛАС","#006847"],
-  DET:["ДЕТРОЙТ","#CE1126"],EDM:["ЭДМОНТОН","#FF4C00"],FLA:["ФЛОРИДА","#C8102E"],
+  DET:["ДЕТРОЙТ","#CE1126"],EDM:["ЭДМОНТОН","#FF4C00"],FLA:["ФЛОРИДА","#041E42"],
   LAK:["ЛОС-АНДЖЕЛЕС","#A2AAAD"],MIN:["МИННЕСОТА","#154734"],MTL:["МОНРЕАЛЬ","#AF1E2D"],
   NSH:["НЭШВИЛЛ","#FFB81C"],NJD:["НЬЮ-ДЖЕРСИ","#CE1126"],NYI:["АЙЛЕНДЕРС","#00539B"],
   NYR:["РЕЙНДЖЕРС","#0038A8"],OTT:["ОТТАВА","#C52032"],PHI:["ФИЛАДЕЛЬФИЯ","#F74902"],
@@ -99,7 +99,7 @@ export function normalizePayload(input={}){
   const team=upper(input.team||input.team_tri);
   const meta=TEAM[team]||[upper(input.team_name)||team||"КОМАНДА","#00E6C3"];
   const teamName=upper(input.team_name)||meta[0];
-  const teamColor=String(input.team_color||meta[1]||"#00E6C3");
+  const teamColor=String((TEAM[team]&&TEAM[team][1])||input.team_color||meta[1]||"#00E6C3");
   const fact=normalizeDecimalText(input.fact||input.headline||"");
   const market=normalizeDecimalText(input.market||input.bet||"");
   const odds=Number(input.odds);
@@ -137,13 +137,13 @@ export async function renderCard(input={}){
     background:"transparent",fontFamily:"SofiaHOH",fontStyle:"italic",fontWeight:700
   }},
     e("div",{style:{
-      position:"absolute",display:"flex",left:8,top:14,width:7,height:43,
+      position:"absolute",display:"flex",left:13,top:14,width:7,height:43,
       borderRadius:4,backgroundColor:p.teamColor
     }}),
     e("div",{style:{
       ...baseStyle,left:44,top:15,width:732,height:52,alignItems:"center",
-      whiteSpace:"nowrap",fontSize:fontSizeForFact(p.fact),letterSpacing:"-0.15px"
-    }},...factParts.map((part,i)=>e("span",{key:i,style:{color:part.hot&&upper(part.text)===p.teamName?"#FF641E":"#FFFFFF"}},part.text))),
+      whiteSpace:"nowrap",fontSize:fontSizeForFact(p.fact),letterSpacing:"0px"
+    }},...factParts.map((part,i)=>e("span",{key:i,style:{color:part.hot&&upper(part.text)===p.teamName?"#FF641E":"#FFFFFF"}},String(part.text).replace(/ /g,"\u00A0")))),
     e("div",{style:{
       ...baseStyle,left:17,top:79,width:116,height:91,
       alignItems:"center",justifyContent:"center"
@@ -192,4 +192,4 @@ export async function renderCard(input={}){
 }
 
 export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
-export const RENDER_VERSION="2026-09-21-layout-v7-carolina-canonical";
+export const RENDER_VERSION="2026-09-21-layout-v8-spacing-team-accent";
