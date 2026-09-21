@@ -1,0 +1,28 @@
+{
+  "$schema":"../node_modules/wrangler/config-schema.json",
+  "name":"rngn-vk-browser-relay-paid",
+  "main":"src/index.mjs",
+  "compatibility_date":"2026-09-21",
+  "compatibility_flags":["nodejs_compat"],
+  "workers_dev":true,
+  "observability":{
+    "enabled":true,
+    "logs":{"enabled":true,"head_sampling_rate":1}
+  },
+  "browser":{"binding":"BROWSER"},
+  "durable_objects":{
+    "bindings":[
+      {"name":"RELAY_STATE","class_name":"VkRelayState"}
+    ]
+  },
+  "migrations":[
+    {"tag":"v1","new_sqlite_classes":["VkRelayState"]}
+  ],
+  "triggers":{"crons":["* * * * *"]},
+  "vars":{
+    "GOTBALL_BASE_URL":"https://rngn-social-media-autopost-gotball.rgfantasy.workers.dev",
+    "BOLSHE_BASE_URL":"https://rngn-social-media-autopost.rgfantasy.workers.dev",
+    "GOTBALL_CHANNEL_ID":"channel-gotball-vk-broadcast",
+    "BOLSHE_CHANNEL_ID":"channel-bolshe-vk-broadcast"
+  }
+}
