@@ -58,14 +58,14 @@ export class VkRelayState extends DurableObject {
           const previous = await connect(this.env.BROWSER, previousSessionId);
           await previous.close();
         } catch {
-          // Stale Browser Run sessions are expected after the Live View idle timeout.
+          // Stale Browser Run sessions are expected after idle timeout.
         }
         await this.ctx.storage.delete(LOGIN_SESSION_KEY);
         await this.ctx.storage.delete(LOGIN_SAVE_TOKEN_KEY);
         await this.ctx.storage.delete(LOGIN_LIVE_VIEW_KEY);
       }
 
-      browser = await launch(this.env.BROWSER, { keep_alive: 300000, recording: true });
+      browser = await launch(this.env.BROWSER, { keep_alive: 600000, recording: true });
       const context = await browser.newContext();
       const page = await context.newPage();
       await page.goto("https://vk.ru/", { waitUntil: "domcontentloaded", timeout: 45_000 });
@@ -73,8 +73,9 @@ export class VkRelayState extends DurableObject {
       const cdp = await context.newCDPSession(page);
       const { devtoolsFrontendUrl } = await cdp.send("Cloudflare.getLiveView", {
         mode: "tab",
-        expiresInMs: 300000,
+        expiresInMs: 600000,
       });
+
       const sessionId = browser.sessionId();
       const saveToken = crypto.randomUUID();
       await this.ctx.storage.put(LOGIN_SESSION_KEY, sessionId);
@@ -83,21 +84,73 @@ export class VkRelayState extends DurableObject {
 
       const url = new URL(request.url);
       const viewerUrl = `${url.origin}/admin/login/view?token=${encodeURIComponent(saveToken)}`;
-      const saveUrl = `${url.origin}/admin/login/save?token=${encodeURIComponent(saveToken)}&sessionId=${encodeURIComponent(sessionId)}`;
-      const wantsJson = request.headers.get("accept")?.includes("application/json");
+      const statusUrl = `${url.origin}/admin/login/status?token=${encodeURIComponent(saveToken)}`;
 
+      // Keep this exact browser/context alive while the human logs in. Once VK reaches
+      // an authenticated feed/channel page, persist storageState from the same context.
+      this.ctx.waitUntil((async () => {
+        try {
+          const deadline = Date.now() + 9 * 60 * 1000;
+          let consecutiveAuthenticated = 0;
+          while (Date.now() < deadline) {
+            await page.waitForTimeout(2000);
+            const currentUrl = page.url();
+            const authenticated = await isAuthenticated(page).catch(() => false);
+            const looksLoggedIn = authenticated
+              && /^https:\/\/(?:www\.)?vk\.(?:ru|com)\//i.test(currentUrl)
+              && !/(?:login|join|restore|auth)/i.test(currentUrl);
+
+            if (looksLoggedIn) consecutiveAuthenticated += 1;
+            else consecutiveAuthenticated = 0;
+
+            if (consecutiveAuthenticated >= 2) {
+              const storageState = await context.storageState({ indexedDB: true });
+              await this.setStorageState(storageState);
+              await this.ctx.storage.put("loginStatus", {
+                status: "saved",
+                savedAt: new Date().toISOString(),
+                url: currentUrl,
+              });
+              await this.notifyHeartbeats(true);
+              await this.ctx.storage.delete(LOGIN_SESSION_KEY);
+              await this.ctx.storage.delete(LOGIN_LIVE_VIEW_KEY);
+              await this.ctx.storage.delete(LOGIN_SAVE_TOKEN_KEY);
+              return;
+            }
+          }
+
+          await this.ctx.storage.put("loginStatus", {
+            status: "timeout",
+            savedAt: new Date().toISOString(),
+          });
+        } catch (error) {
+          await this.ctx.storage.put("loginStatus", {
+            status: "error",
+            error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+            savedAt: new Date().toISOString(),
+          });
+        } finally {
+          await browser?.close().catch(() => undefined);
+        }
+      })());
+
+      await this.ctx.storage.put("loginStatus", {
+        status: "waiting",
+        startedAt: new Date().toISOString(),
+      });
+
+      const wantsJson = request.headers.get("accept")?.includes("application/json");
       if (wantsJson) {
-        return json({ ok: true, viewerUrl, saveUrl, sessionId });
+        return json({ ok: true, viewerUrl, statusUrl, sessionId });
       }
 
       return html(`<!doctype html><html><meta charset="utf-8"><title>VK login</title>
-        <style>body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;padding:0 20px}a,button{font-size:18px}.box{padding:20px;border:1px solid #ddd;border-radius:16px;margin:20px 0}</style>
+        <style>body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;padding:0 20px}a{font-size:18px}.box{padding:20px;border:1px solid #ddd;border-radius:16px;margin:20px 0}</style>
         <h1>VK Browser Run — вход</h1>
-        <div class="box"><p>1. Открой Live View и войди в редакционный VK-аккаунт.</p>
+        <div class="box"><p>Открой Live View и войди в редакционный VK-аккаунт.</p>
         <p><a href="${viewerUrl}" target="_blank" rel="noopener">Открыть VK Live View</a></p></div>
-        <div class="box"><p>2. После входа и проверки доступа к VK Каналу нажми:</p>
-        <p><a href="${saveUrl}">Сохранить VK-сессию</a></p></div>
-        <p>Сессия Browser Run будет ждать до 5 минут бездействия.</p></html>`);
+        <p>После успешного входа сессия сохранится автоматически. Никакую отдельную кнопку Save нажимать не нужно.</p>
+        <p><a href="${statusUrl}">Проверить статус сохранения</a></p></html>`);
     } catch (error) {
       await browser?.close().catch(() => undefined);
       const message = error instanceof Error ? error.message : String(error);
@@ -118,6 +171,19 @@ export class VkRelayState extends DurableObject {
       return html("<h2>Эта ссылка входа уже недействительна. Запусти новую VK login-сессию.</h2>", 410);
     }
     return Response.redirect(liveViewUrl, 302);
+  }
+
+  async loginStatus(request) {
+    const url = new URL(request.url);
+    const token = url.searchParams.get("token") || "";
+    const storedToken = await this.ctx.storage.get(LOGIN_SAVE_TOKEN_KEY);
+    // If token was removed after successful auto-save, admins can still inspect status.
+    if (!adminAuthorized(request, this.env) && storedToken && token !== storedToken) {
+      return json({ ok: false, error: "unauthorized" }, 401);
+    }
+    const status = await this.ctx.storage.get("loginStatus");
+    const configured = Boolean(await this.storageState());
+    return json({ ok: true, configured, status: status ?? { status: "unknown" } });
   }
 
   async saveLogin(request) {
@@ -254,6 +320,7 @@ export class VkRelayState extends DurableObject {
     const path = new URL(request.url).pathname;
     if (path === "/admin/login/start") return this.startLogin(request);
     if (path === "/admin/login/view") return this.viewLogin(request);
+    if (path === "/admin/login/status") return this.loginStatus(request);
     if (path === "/admin/login/save") return this.saveLogin(request);
     if (path === "/admin/status") return this.status(request);
     if (path === "/drain") return this.drain(request);
