@@ -113,7 +113,7 @@ advanced_scored AS (
     ) END AS rank_fenwick_pct_5v5
   FROM advanced_summary a
 )
-INSERT INTO team_current_snapshots(
+INSERT OR REPLACE INTO team_current_snapshots(
   team_tri,window_games,as_of_utc,sample_size,league_teams,
   gf_pg,ga_pg,goal_diff_pg,total_pg,corsi_pct,fenwick_pct,p2_diff_pg,
   rank_gf,rank_ga,rank_goal_diff,rank_total,rank_corsi,rank_fenwick,rank_p2_diff,
@@ -132,54 +132,15 @@ SELECT
   CURRENT_TIMESTAMP
 FROM base_scored b
 LEFT JOIN advanced_scored a
-  ON a.team_tri=b.team_tri AND a.window_games=b.window_games
-ON CONFLICT(team_tri,window_games) DO UPDATE SET
-  as_of_utc=excluded.as_of_utc,
-  sample_size=excluded.sample_size,
-  league_teams=excluded.league_teams,
-  gf_pg=excluded.gf_pg,
-  ga_pg=excluded.ga_pg,
-  goal_diff_pg=excluded.goal_diff_pg,
-  total_pg=excluded.total_pg,
-  corsi_pct=excluded.corsi_pct,
-  fenwick_pct=excluded.fenwick_pct,
-  p2_diff_pg=excluded.p2_diff_pg,
-  rank_gf=excluded.rank_gf,
-  rank_ga=excluded.rank_ga,
-  rank_goal_diff=excluded.rank_goal_diff,
-  rank_total=excluded.rank_total,
-  rank_corsi=excluded.rank_corsi,
-  rank_fenwick=excluded.rank_fenwick,
-  rank_p2_diff=excluded.rank_p2_diff,
-  advanced_sample_size=excluded.advanced_sample_size,
-  advanced_league_teams=excluded.advanced_league_teams,
-  xgf_pct_5v5=excluded.xgf_pct_5v5,
-  xgf60_5v5=excluded.xgf60_5v5,
-  xga60_5v5=excluded.xga60_5v5,
-  corsi_pct_5v5=excluded.corsi_pct_5v5,
-  fenwick_pct_5v5=excluded.fenwick_pct_5v5,
-  pdo_5v5=excluded.pdo_5v5,
-  gsax_5v5=excluded.gsax_5v5,
-  rank_xgf_pct_5v5=excluded.rank_xgf_pct_5v5,
-  rank_xgf60_5v5=excluded.rank_xgf60_5v5,
-  rank_xga60_5v5=excluded.rank_xga60_5v5,
-  rank_corsi_pct_5v5=excluded.rank_corsi_pct_5v5,
-  rank_fenwick_pct_5v5=excluded.rank_fenwick_pct_5v5,
-  computed_at=excluded.computed_at;
+  ON a.team_tri=b.team_tri AND a.window_games=b.window_games;
 
-INSERT INTO data_core_meta(meta_key,meta_value,updated_at)
+INSERT OR REPLACE INTO data_core_meta(meta_key,meta_value,updated_at)
 SELECT 'compact.team_current_snapshots',CAST(COUNT(*) AS TEXT),CURRENT_TIMESTAMP
-FROM team_current_snapshots
-ON CONFLICT(meta_key) DO UPDATE SET
-  meta_value=excluded.meta_value,
-  updated_at=CURRENT_TIMESTAMP;
+FROM team_current_snapshots;
 
-INSERT INTO data_core_meta(meta_key,meta_value,updated_at)
+INSERT OR REPLACE INTO data_core_meta(meta_key,meta_value,updated_at)
 VALUES(
   'build.current_created_at',
   strftime('%Y-%m-%dT%H:%M:%fZ','now'),
   CURRENT_TIMESTAMP
-)
-ON CONFLICT(meta_key) DO UPDATE SET
-  meta_value=excluded.meta_value,
-  updated_at=CURRENT_TIMESTAMP;
+);
