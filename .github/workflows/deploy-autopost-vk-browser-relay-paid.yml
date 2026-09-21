@@ -93,7 +93,7 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const data = JSON.parse(fs.readFileSync('/tmp/vk-paid-login.json','utf8'));
-          if (!data.viewerUrl || !data.saveUrl) {
+          if (!data.viewerUrl || !data.statusUrl) {
             console.error('Paid relay response:', data);
             throw new Error('Paid Browser Run login URLs were not returned');
           }
@@ -102,12 +102,13 @@ jobs:
             'This Browser Run session is on the paid HOH Cloudflare account.\n\n' +
             '1. [Open VK Live View](' + data.viewerUrl + ') and log into VK.\n' +
             '2. Open the target VK Channel and verify that the composer is visible.\n' +
-            '3. [Save the VK session](' + data.saveUrl + ').\n\n' +
+            '3. The relay saves the session automatically after it detects the authenticated VK page.\n' +
+            '4. [Check saved-session status](' + data.statusUrl + ').\n\n' +
             'Do this within a few minutes so the interactive browser session does not idle out.\n'
           );
           console.log('PAID_BROWSER_RUN_LOGIN_READY');
           NODE
 
           echo "VIEWER_URL=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/vk-paid-login.json','utf8')).viewerUrl")"
-          echo "SAVE_URL=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/vk-paid-login.json','utf8')).saveUrl")"
+          echo "STATUS_URL=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/vk-paid-login.json','utf8')).statusUrl")"
           rm -f /tmp/vk-paid-login.json
