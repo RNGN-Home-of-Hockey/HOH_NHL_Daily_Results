@@ -161,14 +161,30 @@ export function formatBroadcastTitle(card, precomputed={}) {
   const hitRate=Number.isFinite(rate)?rate:editorialHitRate(card);
   const game=precomputed.game||null;
   const original=String(card?.title||card?.value||"").trim();
-  if(!sample||sample<=30||!Number.isFinite(hitRate))return {title:original,detail:null};
-  const pct=Math.round(hitRate*100);
-  const sampleLabel=sample>=100?String(Math.floor(sample/100)*100)+"+ ИГР":String(sample)+" ИГР";
+  if(!sample||!Number.isFinite(hitRate))return {title:original,detail:null};
+
   const type=String(market.type||"").toLowerCase();
+  const line=Number(market.line);
+  const pct=Math.round(hitRate*100);
+  const hits=editorialHitCount(card,sample,hitRate);
+  const sampleLabel=sample>=100?String(Math.floor(sample/100)*100)+"+ ИГР":String(sample)+" ИГР";
   const label=String(market.label||"").trim().toUpperCase().replace(/\./g,",");
   let title;
-  if(type==="moneyline")title="ПОБЕДА — В "+pct+"% МАТЧЕЙ · "+sampleLabel;
-  else if(type==="handicap")title="ФОРА "+signedAirLine(market.line)+" ПРОШЛА В "+pct+"% МАТЧЕЙ · "+sampleLabel;
+
+  // A positive hockey handicap is much easier to understand as "didn't lose by N+",
+  // while a negative handicap is simply "won by N+". Keep the betting market below
+  // the headline, but make the fact itself normal spoken Russian.
+  if(type==="handicap"&&Number.isFinite(line)&&line!==0){
+    const margin=Math.max(1,Math.floor(Math.abs(line)+0.5));
+    const plain=line>0
+      ?"БЕЗ ПОРАЖЕНИЯ В "+margin+"+ ШАЙБЫ"
+      :"ПОБЕДА В "+margin+"+ ШАЙБЫ";
+    title=sample<=30&&Number.isFinite(hits)
+      ?plain+" — "+hits+" ИЗ "+sample+" МАТЧЕЙ"
+      :plain+" — "+pct+"% МАТЧЕЙ · "+sampleLabel;
+  } else if(sample<=30) {
+    return {title:original,detail:null};
+  } else if(type==="moneyline")title="ПОБЕДА — В "+pct+"% МАТЧЕЙ · "+sampleLabel;
   else if(type==="game_total"||type==="team_total")title=(label||"ТОТАЛ")+" ПРОШЁЛ В "+pct+"% МАТЧЕЙ · "+sampleLabel;
   else title=pct+"% МАТЧЕЙ · "+sampleLabel;
 
@@ -191,6 +207,13 @@ function editorialSampleSize(card){
   const candidates=[card?.sample,e.sample,e.sample_size,e.window,e.games,e.cover?.sample,e.attack?.sample]
     .map(Number).filter(v=>Number.isFinite(v)&&v>0);
   return candidates.length?Math.max(...candidates):0;
+}
+function editorialHitCount(card,sample,hitRate){
+  const e=card?.evidence||{};
+  const direct=[e.hits,e.cover?.hits,e.attack?.hits].map(Number).find(Number.isFinite);
+  if(Number.isFinite(direct))return Math.max(0,Math.round(direct));
+  if(Number.isFinite(sample)&&sample>0&&Number.isFinite(hitRate))return Math.max(0,Math.round(sample*hitRate));
+  return null;
 }
 function editorialHitRate(card){
   const e=card?.evidence||{};

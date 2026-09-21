@@ -27,7 +27,7 @@ Goal: make the broadcast dashboard safe for many parallel NHL games/operators an
 - [x] <=30 games: keep natural counts, e.g. “14 из 20”.
 - [x] 31–99 games: lead with percentage and show exact sample, e.g. “74% · 80 игр”.
 - [x] >=100 games: lead with percentage and rounded scale, e.g. “68% · 200+ игр”; exact count stays in details.
-- [ ] Rewrite selected handicap facts into plain Russian when that is clearer (e.g. “не проигрывал в 2+ шайбы”).
+- [x] Rewrite handicap facts into plain Russian: positive handicap → “без поражения в N+ шайбы”, negative handicap → “победа в N+ шайбы”.
 - [x] Combine two venue samples into one primary percentage story and keep team splits secondary.
 
 ## P4 — card hierarchy/UI
@@ -43,10 +43,10 @@ Goal: make the broadcast dashboard safe for many parallel NHL games/operators an
 - [ ] Recent action log: who showed/removed what and when.
 
 ## P6 — validation
-- [ ] Automated concurrency test for 15 different games.
-- [ ] Same-game collision/lease test.
+- [x] Automated concurrency test keeps 15 different games ON AIR simultaneously.
+- [x] Same-game collision/lease test, including takeover after expiry.
 - [ ] D1 write/read load smoke.
-- [ ] Overlay isolation smoke.
+- [x] Per-game state/overlay isolation smoke.
 - [x] AIR SCORE fixtures for obvious good/bad examples.
 - [x] Copy/sample-format fixtures for 20, 80 and 200+ game samples.
 - [x] AIR SCORE + lease schema fixtures are part of mandatory product CI.

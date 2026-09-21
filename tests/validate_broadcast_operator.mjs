@@ -117,14 +117,54 @@ assert.equal(r.status,200,'cached card can return on air in one click');
 assert.equal(cards.get('test-card').status,'shown');
 assert.equal(renderCalls,1,'unchanged card must reuse stored PNG instead of rerendering');
 
+// 15 separate matches must be able to stay ON AIR simultaneously.
+for(let i=0;i<15;i++){
+  const id='parallel-'+i;
+  cards.set(id,{
+    card_id:id,
+    game_pk:2026020100+i,
+    headline_ru:'CAR TEST '+i,
+    stat_text_ru:'ФОРА +1,5 ГОЛА',
+    source_note_ru:'parallel fixture',
+    suggested_market_type:'handicap',
+    suggested_market_subject:'CAR',
+    manual_odds:1.30,
+    odds_is_demo:0,
+    payload_json:JSON.stringify({
+      id:'parallel-'+i,
+      title:'CAR ЗАКРЫЛА ФОРУ +1.5',
+      market:{type:'handicap',subject:'CAR',side:'home',line:1.5,label:'CAR +1.5',odds:1.30,odds_is_demo:false,odds_source:'provider_live'}
+    }),
+    status:'draft',
+    shown_at:null,
+    render_hash:null,
+    render_png_base64:null,
+    render_bytes:null,
+    rendered_at:null,
+  });
+}
+for(let i=0;i<15;i++){
+  const id='parallel-'+i;
+  const response=await callCardStatus(id,'shown',true);
+  assert.equal(response.status,200,'parallel match '+i+' must enter ON AIR');
+}
+for(let i=0;i<15;i++)assert.equal(cards.get('parallel-'+i).status,'shown','parallel match '+i+' must remain ON AIR');
+assert.equal(cards.get('test-card').status,'shown','existing game must remain ON AIR after 15 other rooms change');
+assert.equal(cards.get('other-card').status,'shown','second existing game must remain ON AIR after 15 other rooms change');
+assert.equal(renderCalls,16,'each new parallel card renders once');
+
 console.log('BROADCAST_OPERATOR_ON_DEMAND_RENDER_OK');
+console.log('BROADCAST_15_GAME_CONCURRENCY_OK');
 
 globalThis.fetch=originalFetch;
 
 function callStatus(status,authorized){
-  return handleBroadcastOperatorRequest(new Request('https://example.test/api/broadcast/operator/cards/test-card/status',{
+  return callCardStatus('test-card',status,authorized);
+}
+function callCardStatus(cardId,status,authorized){
+  return handleBroadcastOperatorRequest(new Request('https://example.test/api/broadcast/operator/cards/'+encodeURIComponent(cardId)+'/status',{
     method:'POST',headers:authorized?authHeaders():{'content-type':'application/json'},body:JSON.stringify({status}),
-  }),env,'/api/broadcast/operator/cards/test-card/status');
+  }),env,'/api/broadcast/operator/cards/'+cardId+'/status');
 }
 function authHeaders(){return {'authorization':'Bearer operator-secret','content-type':'application/json'};}
 

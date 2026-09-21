@@ -29,10 +29,18 @@ const huge=annotateAirUtility({
 assert.ok(bostonHome.air_score>safeHandicap.air_score,'good price + 14/20 must outrank low-price 59/80');
 assert.ok(safeHandicap.broadcast_title.includes('74%'),'80-game sample should be percentage-first');
 assert.ok(safeHandicap.broadcast_title.includes('80 ИГР'),'80-game exact sample should stay visible');
+assert.ok(safeHandicap.broadcast_title.startsWith('БЕЗ ПОРАЖЕНИЯ В 2+ ШАЙБЫ'),'positive +1.5 handicap should be human-readable');
 assert.ok(splitTotal.broadcast_title.includes('75%'),'two 20-game venue splits should become one combined percentage');
 assert.equal(splitTotal.broadcast_detail,'NYR в гостях 17/20 · BOS дома 13/20','combined split keeps readable team-level detail');
 assert.ok(huge.broadcast_title.includes('200+ ИГР'),'100+ samples should use rounded scale');
-assert.equal(bostonHome.broadcast_title,'BOS выиграл 14 из последних 20 матчей дома','<=30 samples stay as natural counts');
+assert.equal(bostonHome.broadcast_title,'BOS выиграл 14 из последних 20 матчей дома','<=30 non-handicap samples stay as natural counts');
+const shortHandicap=annotateAirUtility({
+  score:82,
+  title:'CAR закрыла фору -1.5 в 14 из последних 20 матчей',
+  evidence:{sample:20,hits:14,hit_rate:0.70},
+  market:{type:'handicap',subject:'CAR',side:'CAR',line:-1.5,label:'CAR -1.5',odds:2.05,odds_is_demo:false,odds_source:'provider_live'}
+});
+assert.equal(shortHandicap.broadcast_title,'ПОБЕДА В 2+ ШАЙБЫ — 14 ИЗ 20 МАТЧЕЙ','short handicap sample should keep count but use plain language');
 assert.equal(bostonHome.air_meta.meaning,'editorial_broadcast_utility_not_probability');
 console.log('BROADCAST_AIR_SCORE_OK',JSON.stringify({
   bostonHome:bostonHome.air_score,
