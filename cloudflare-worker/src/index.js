@@ -149,6 +149,13 @@ async function handleRequest(request, env) {
     return dataCoreImportGameRoute(request, env);
   }
 
+  if (path === "/api/telegram/legacy/status") {
+    if (request.method !== "GET") {
+      return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
+    }
+    return legacyTelegramStatusRoute(env);
+  }
+
   if (["/api/setup-webhook", "/setup-webhook"].includes(path)) {
     return setupWebhook(request, env);
   }
@@ -339,6 +346,92 @@ async function setupWebhook(request, env) {
     telegram.ok ? 200 : 500,
   );
 }
+
+
+function legacyWebhookUrl(env) {
+  const base = String(env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
+  return `${base || "https://hoh-nhl-daily-results.znamteam-903.workers.dev"}/api/telegram`;
+}
+
+export async function ensureLegacyTelegramWebhook(env) {
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    return { ok: false, error: "missing_TELEGRAM_BOT_TOKEN" };
+  }
+  const verifySecret = webhookSecret(env);
+  if (!verifySecret) {
+    return { ok: false, error: "missing_telegram_webhook_verify_secret" };
+  }
+
+  const expectedUrl = legacyWebhookUrl(env);
+  const before = await telegramRequest(env, "getWebhookInfo", {});
+  const beforeInfo = before.ok ? (before.response?.result || {}) : {};
+  const needsRepair =
+    !before.ok ||
+    String(beforeInfo.url || "") !== expectedUrl ||
+    Boolean(beforeInfo.last_error_message);
+
+  let setWebhook = { ok: true, skipped: true };
+  if (needsRepair) {
+    setWebhook = await telegramRequest(env, "setWebhook", {
+      url: expectedUrl,
+      secret_token: verifySecret,
+      allowed_updates: ["message", "channel_post", "callback_query"],
+      drop_pending_updates: false,
+    });
+  }
+
+  const commands = await setBotCommands(env);
+  const after = await telegramRequest(env, "getWebhookInfo", {});
+  const info = after.ok ? (after.response?.result || {}) : {};
+  const ok =
+    setWebhook.ok &&
+    commands.ok &&
+    after.ok &&
+    String(info.url || "") === expectedUrl;
+
+  const result = {
+    ok,
+    repaired: needsRepair && Boolean(setWebhook.ok),
+    expected_webhook_url: expectedUrl,
+    actual_webhook_url: String(info.url || ""),
+    pending_update_count: Number(info.pending_update_count || 0),
+    last_error_date: info.last_error_date || null,
+    last_error_message: info.last_error_message || null,
+    commands_ok: Boolean(commands.ok),
+  };
+  console.log("legacy_telegram_webhook_health", result);
+  return result;
+}
+
+async function legacyTelegramStatusRoute(env) {
+  const repair = await ensureLegacyTelegramWebhook(env);
+  const [me, webhook] = await Promise.all([
+    telegramRequest(env, "getMe", {}),
+    telegramRequest(env, "getWebhookInfo", {}),
+  ]);
+  const bot = me.ok ? (me.response?.result || {}) : {};
+  const info = webhook.ok ? (webhook.response?.result || {}) : {};
+  return jsonResponse({
+    ok: Boolean(repair.ok && me.ok && webhook.ok),
+    service: "hoh-nhl-daily-results-legacy-bot",
+    bot: {
+      ok: Boolean(me.ok),
+      id: bot.id ?? null,
+      username: bot.username || null,
+      first_name: bot.first_name || null,
+    },
+    webhook: {
+      ok: Boolean(webhook.ok),
+      url: String(info.url || ""),
+      pending_update_count: Number(info.pending_update_count || 0),
+      last_error_date: info.last_error_date || null,
+      last_error_message: info.last_error_message || null,
+      allowed_updates: Array.isArray(info.allowed_updates) ? info.allowed_updates : null,
+    },
+    repair,
+  }, repair.ok ? 200 : 502);
+}
+
 
 async function sendMenuRoute(request, env) {
   if (!(await isManagementAuthorized(request, env))) {

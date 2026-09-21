@@ -83,6 +83,31 @@ jobs:
           }));
           JS
 
+      - name: Repair and verify legacy Telegram bot
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram/legacy/status';
+          let last=null;
+          for(let i=0;i<15;i++){
+            const r=await fetch(url,{headers:{accept:'application/json'},cache:'no-store'});
+            last=await r.json().catch(()=>({}));
+            console.log('LEGACY_TELEGRAM_STATUS',i+1,JSON.stringify(last));
+            if(r.ok&&last?.ok&&last?.bot?.username==='hoh_nhl_daily_results_bot'&&
+               last?.webhook?.url==='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram'){
+              console.log('LEGACY_TELEGRAM_WEBHOOK_OK',JSON.stringify({
+                pending:last.webhook.pending_update_count,
+                last_error:last.webhook.last_error_message,
+                repaired:last.repair?.repaired||false
+              }));
+              process.exit(0);
+            }
+            await new Promise(res=>setTimeout(res,2000));
+          }
+          throw new Error('Legacy Telegram bot webhook unhealthy: '+JSON.stringify(last));
+          JS
+
       - name: Verify Telegram Center polling tick
         shell: bash
         run: |

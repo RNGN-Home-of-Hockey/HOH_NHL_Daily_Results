@@ -1,4 +1,4 @@
-import worker from "./index.js";
+import worker, { ensureLegacyTelegramWebhook } from "./index.js";
 import { getBackfillStatus, runBackfillStep } from "./data-core-backfill.js";
 import { getBackfillJob, runPersistentBackfillTick } from "./data-core-backfill-job.js";
 import { handleBroadcastRequest } from "./broadcast-dashboard-v2.js";
@@ -101,6 +101,14 @@ export default {
         }),
       );
       return;
+    }
+
+    if (cron === "*/5 * * * *") {
+      ctx.waitUntil(
+        ensureLegacyTelegramWebhook(env).catch((error) => {
+          console.error("scheduled legacy Telegram webhook repair failed", error);
+        }),
+      );
     }
 
     if (cron === "*/2 * * * *") {
