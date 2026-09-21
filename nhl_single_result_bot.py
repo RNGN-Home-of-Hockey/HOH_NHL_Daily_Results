@@ -1213,7 +1213,8 @@ def send_telegram_text(
 ) -> bool:
     token = _telegram_token()
     default_chat = _env_str("TELEGRAM_CHAT_ID", DEFAULT_TELEGRAM_CHAT_ID).strip()
-    target_chat = chat_id if chat_id is not None else default_chat
+    workflow_target_chat = _env_str("TELEGRAM_TARGET_CHAT_ID", "").strip()
+    target_chat = chat_id if chat_id is not None else (workflow_target_chat or default_chat)
     if not token or target_chat in (None, ""):
         print("[ERR] Telegram token/chat_id not set")
         return False
@@ -1231,7 +1232,10 @@ def send_telegram_text(
     if message_thread_id is not None:
         payload["message_thread_id"] = int(message_thread_id)
     elif chat_id is None:
-        thread = _env_str("TELEGRAM_THREAD_ID", "").strip()
+        if workflow_target_chat:
+            thread = _env_str("TELEGRAM_TARGET_THREAD_ID", "").strip()
+        else:
+            thread = _env_str("TELEGRAM_THREAD_ID", "").strip()
         if thread:
             try:
                 payload["message_thread_id"] = int(thread)
