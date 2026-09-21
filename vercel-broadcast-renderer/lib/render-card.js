@@ -122,20 +122,21 @@ export async function renderCard(input={}){
     }),
     textLayer({
       markup:escapeMarkup(profitNoteText),
-      width:210,height:23,size:p.priced?15:14,
+      width:210,height:22,size:p.priced?13:13,
       color:"#D4D4D8",align:"center"
     })
   ]);
   const composites=[
-    {input:fact,left:45,top:16},
+    {input:fact,left:45,top:21},
     {input:teamName,left:152,top:84},
     {input:market,left:152,top:128},
-    {input:odds,left:645,top:84},
-    {input:profitMain,left:430,top:169},
-    {input:profitNote,left:590,top:174}
+    {input:odds,left:647,top:92},
+    {input:profitMain,left:430,top:176},
+    {input:profitNote,left:590,top:181}
   ];
-  if(logo) composites.push({input:logo,left:31,top:79});
-  else composites.push({input:await textLayer({markup:escapeMarkup(p.team),width:82,height:82,size:28,color:"#D8D8DC",align:"center"}),left:31,top:79});
+  if(logo) composites.push({input:logo,left:31,top:84});
+  else composites.push({input:await textLayer({markup:escapeMarkup(p.team),width:82,height:82,size:28,color:"#D8D8DC",align:"center"}),left:31,top:84});
   return sharp(base).ensureAlpha().composite(composites).png({compressionLevel:9,adaptiveFiltering:true}).toBuffer();
 }
 export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
+export const RENDER_VERSION="2026-09-21-layout-v3";
