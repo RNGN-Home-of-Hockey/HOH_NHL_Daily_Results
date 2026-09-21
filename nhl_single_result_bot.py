@@ -1876,6 +1876,12 @@ def main() -> None:
     standings = fetch_standings_map()
     sportsru_names = load_sportsru_names()
     state = load_state(STATE_PATH)
+
+    # Interactive commands are polled by the same minute-level job. They do not
+    # change or delay the no-repeat semantics of automatic result posting.
+    process_telegram_updates(state, standings, sportsru_names)
+    save_state(STATE_PATH, state)
+
     posted: Dict[str, bool] = state.get("posted", {}) or {}
     force_repost: Dict[str, bool] = state.get("force_repost", {}) or {}
 
