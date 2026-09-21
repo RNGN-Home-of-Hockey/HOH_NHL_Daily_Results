@@ -871,16 +871,16 @@ def merge_official_with_sportsru(
             g = sru_home[h_i]
             h_i += 1
             if g.scorer_ru:
-                ev.scorer = _clean_person_name(g.scorer_ru)
+                ev.scorer = _sportsru_short_name(g.scorer_ru) or _clean_person_name(g.scorer_ru)
             if g.assists_ru:
-                ev.assists = _clean_assists(g.assists_ru)
+                ev.assists = _clean_assists([_sportsru_short_name(a) or a for a in g.assists_ru])
         elif ev.team_for == away_tri and a_i < len(sru_away):
             g = sru_away[a_i]
             a_i += 1
             if g.scorer_ru:
-                ev.scorer = _clean_person_name(g.scorer_ru)
+                ev.scorer = _sportsru_short_name(g.scorer_ru) or _clean_person_name(g.scorer_ru)
             if g.assists_ru:
-                ev.assists = _clean_assists(g.assists_ru)
+                ev.assists = _clean_assists([_sportsru_short_name(a) or a for a in g.assists_ru])
 
         ev.assists = _clean_assists(ev.assists)
         out.append(ev)
@@ -1037,7 +1037,7 @@ def get_winning_shootout_name(
         return None
 
     if sportsru_winner and sportsru_winner.scorer_ru and _is_valid_player_name(sportsru_winner.scorer_ru):
-        return _clean_person_name(sportsru_winner.scorer_ru)
+        return _sportsru_short_name(sportsru_winner.scorer_ru) or _clean_person_name(sportsru_winner.scorer_ru)
 
     for ev in events:
         if ev.period_type == "SHOOTOUT" and ev.is_shootout_winner and _is_valid_player_name(ev.scorer):
@@ -1131,6 +1131,28 @@ def build_single_match_text(
         lines.append(f"{meta.home_score}:{meta.away_score} – {winning_so_name}")
 
     return "\n".join(lines).strip()
+
+
+def build_game_result_for_meta(
+    meta: GameMeta,
+    standings: Dict[str, TeamRecord],
+    sportsru_names: Dict[int, str],
+) -> str:
+    """One authoritative result renderer for autopost, menu and whole-day output."""
+    evs, official_has_shootout = fetch_scoring_official(meta.gamePk, meta.home_tri, meta.away_tri)
+    # Sports.ru roster cache is the primary shared spelling source by NHL player id.
+    evs = apply_sportsru_names(evs, sportsru_names)
+    # Match page is an additional Sports.ru source for fresh prospects not yet in the daily roster cache.
+    sru_home, sru_away, sru_so_winner, _ = fetch_sportsru_goals(meta.home_tri, meta.away_tri)
+    merged = merge_official_with_sportsru(evs, sru_home, sru_away, meta.home_tri, meta.away_tri)
+    merged = apply_sportsru_names(merged, sportsru_names)
+    return build_single_match_text(
+        meta=meta,
+        standings=standings,
+        events=merged,
+        official_has_shootout=official_has_shootout,
+        sportsru_winner=sru_so_winner,
+    )
 
 
 def load_state(path: str) -> Dict[str, Any]:
@@ -1345,21 +1367,7 @@ def main() -> None:
                 failed_posts += 1
             continue
 
-        evs, official_has_shootout = fetch_scoring_official(meta.gamePk, meta.home_tri, meta.away_tri)
-        sru_home, sru_away, sru_so_winner, _ = fetch_sportsru_goals(meta.home_tri, meta.away_tri)
-        merged = merge_official_with_sportsru(evs, sru_home, sru_away, meta.home_tri, meta.away_tri)
-        merged = apply_sportsru_names(merged, sportsru_names)
-
-        text = build_single_match_text(
-            meta=meta,
-            standings=standings,
-            events=merged,
-            official_has_shootout=official_has_shootout,
-            sportsru_winner=sru_so_winner,
-        )
-
-        dbg("official_has_shootout:", official_has_shootout)
-        dbg("sportsru_so_winner:", getattr(sru_so_winner, "scorer_ru", None))
+        text = build_game_result_for_meta(meta, standings, sportsru_names)
         dbg("Single match preview:\n" + text[:900].replace("\n", "¶") + "…")
         sent_ok = send_telegram_text(text)
         if not sent_ok:
