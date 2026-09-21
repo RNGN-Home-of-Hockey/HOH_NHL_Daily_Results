@@ -1,11 +1,18 @@
+import React from "react";
+import satori from "satori";
 import sharp from "sharp";
-import { fileURLToPath } from "node:url";
+import { createFont, woff2 } from "fonteditor-core";
+import { readFile } from "node:fs/promises";
 
 const WIDTH = 820;
 const HEIGHT = 211;
 const STAKE_DEFAULT = 1000;
+
+const templateUrl = new URL("../assets/card-template.webp", import.meta.url);
 const fontUrl = new URL("../assets/sofia-sans-condensed-italic.woff2", import.meta.url);
-const fontPath = fileURLToPath(fontUrl);
+
+const templatePromise = readFile(templateUrl);
+const fontPromise = (async()=>{await woff2.init();const source=await readFile(fontUrl);const font=createFont(source,{type:"woff2"});return Buffer.from(font.write({type:"ttf"}));})();
 const logoCache = new Map();
 
 const TEAM = {
@@ -22,67 +29,65 @@ const TEAM = {
   WSH:["ВАШИНГТОН","#C8102E"],WPG:["ВИННИПЕГ","#041E42"]
 };
 
-const upper=v=>String(v??"").trim().toUpperCase();
-const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
+const e = React.createElement;
+const upper = (v) => String(v ?? "").trim().toUpperCase();
+const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
 
-function escapeMarkup(value){
-  return String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&apos;");
+function normalizeDecimalText(value){
+  return upper(value).replace(/([+-]?\d+)\.(\d+)/g,"$1,$2");
 }
-function normalizeDecimalText(value){return upper(value).replace(/([+-]?\d+)\.(\d+)/g,"$1,$2")}
-function highlight(text,teamName){
+
+function fontSizeForFact(text){
+  const n=String(text||"").length;
+  if(n<=58)return 20;
+  if(n<=70)return 18;
+  if(n<=82)return 16;
+  return 14;
+}
+
+function fontSizeForTeam(text){
+  const n=String(text||"").length;
+  if(n<=9)return 33;
+  if(n<=13)return 30;
+  if(n<=17)return 27;
+  return 24;
+}
+
+function fontSizeForMarket(text){
+  const n=String(text||"").length;
+  return n<=20?18:n<=28?16:14;
+}
+
+function highlightFact(text, teamName){
   const source=normalizeDecimalText(text);
-  const escaped=String(teamName||"").replace(/[.*+?^$()|[\]\\{}]/g,"\\$&");
-  const re=new RegExp("("+(escaped?escaped+"|":"")+"\\d+\\s+ИЗ\\s+\\d+|\\d+\\s*\\/\\s*\\d+)","gi");
-  let out="",last=0,m;
+  const escaped=String(teamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const parts=[];
+  const re=new RegExp("(" + (escaped?escaped+"|":"") + "\\d+\\s+ИЗ\\s+\\d+|\\d+\\s*\\/\\s*\\d+)","gi");
+  let last=0,m;
   while((m=re.exec(source))){
-    out+=escapeMarkup(source.slice(last,m.index));
-    out+=`<span foreground="#FF641E">${escapeMarkup(m[0])}</span>`;
+    if(m.index>last)parts.push({text:source.slice(last,m.index),hot:false});
+    parts.push({text:m[0],hot:true});
     last=m.index+m[0].length;
   }
-  out+=escapeMarkup(source.slice(last));
-  return out||escapeMarkup(source);
+  if(last<source.length)parts.push({text:source.slice(last),hot:false});
+  return parts.length?parts:[{text:source,hot:false}];
 }
 
-function baseTemplateSvg(teamColor){
-  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="820" height="211" viewBox="0 0 820 211">
-    <defs>
-      <linearGradient id="g" x1="0" x2="1"><stop stop-color="#0a0a0c"/><stop offset=".55" stop-color="#121215"/><stop offset="1" stop-color="#09090b"/></linearGradient>
-      <linearGradient id="b" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#236aff"/><stop offset="1" stop-color="#0647ea"/></linearGradient>
-    </defs>
-    <rect width="820" height="211" fill="none"/>
-    <rect x="2" y="4" width="816" height="56" rx="12" fill="url(#g)" stroke="#606067" stroke-width="1.2"/>
-    <rect x="10" y="12" width="7" height="40" rx="3.5" fill="${teamColor}"/>
-    <path d="M2 72 Q2 64 12 64 H672 L650 153 H12 Q2 153 2 143Z" fill="url(#g)" stroke="#606067" stroke-width="1.2"/>
-    <path d="M650 64 H806 Q818 64 816 77 L803 142 Q801 153 789 153 H630Z" fill="url(#b)" stroke="#606067" stroke-width="1.2"/>
-    <path d="M430 153 H803 Q813 153 813 163 V197 Q813 207 803 207 H420 Q410 207 412 197 L419 164 Q421 153 430 153Z" fill="url(#g)" stroke="#606067" stroke-width="1.2"/>
-    <line x1="141" y1="65" x2="141" y2="153" stroke="#44444b"/>
-    <rect x="425" y="84" width="184" height="54" rx="27" fill="#080808" stroke="#ff641e" stroke-width="5"/>
-    <text x="440" y="120" fill="#fff" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="900" font-style="italic">WINLINE</text>
-    <circle cx="578" cy="111" r="18" fill="#ff641e"/>
-  </svg>`);
-}
-
-async function textLayer({markup,width,height,size,color="#FFFFFF",align="left"}){
-  return sharp({
-    text:{
-      text:`<span foreground="${color}">${markup}</span>`,
-      font:`Sofia Sans Condensed ${size}`,
-      fontfile:fontPath,
-      width,height,align,justify:false,rgba:true,wrap:"none"
-    }
-  }).png().toBuffer();
-}
-
-async function fetchLogo(url){
+async function asDataUri(url){
   if(!url)return null;
+  if(url.startsWith("data:"))return url;
   if(logoCache.has(url))return logoCache.get(url);
   try{
     const response=await fetch(url,{signal:AbortSignal.timeout(3500),headers:{"User-Agent":"HOH-Broadcast-Renderer/1.0"}});
     if(!response.ok)throw new Error("logo HTTP "+response.status);
-    const source=Buffer.from(await response.arrayBuffer());
-    const png=await sharp(source,{density:240}).resize(82,82,{fit:"contain",background:{r:0,g:0,b:0,alpha:0}}).png().toBuffer();
-    logoCache.set(url,png);return png;
-  }catch{return null}
+    const type=response.headers.get("content-type")||"image/svg+xml";
+    const buf=Buffer.from(await response.arrayBuffer());
+    const data="data:"+type+";base64,"+buf.toString("base64");
+    logoCache.set(url,data);
+    return data;
+  }catch{
+    return null;
+  }
 }
 
 export function normalizePayload(input={}){
@@ -96,48 +101,90 @@ export function normalizePayload(input={}){
   const stake=clamp(Number(input.stake)||STAKE_DEFAULT,1,1000000);
   const priced=Number.isFinite(odds)&&odds>1;
   const profit=priced?Math.round((odds-1)*stake):null;
-  const logoUrl=String(input.team_logo_url||input.logo_url||(team?`https://assets.nhle.com/logos/nhl/svg/${team}_light.svg`:""));
+  const logoUrl=String(input.team_logo_url||input.logo_url||(
+    team?`https://assets.nhle.com/logos/nhl/svg/${team}_light.svg`:""
+  ));
   return {team,teamName,teamColor,fact,market,odds,stake,priced,profit,logoUrl};
 }
 
 export async function renderCard(input={}){
   const p=normalizePayload(input);
-  const logo=await fetchLogo(p.logoUrl);
-  const base=await sharp(baseTemplateSvg(p.teamColor)).png().toBuffer();
-  const profitMainText=p.priced
-    ?`+${p.profit.toLocaleString("ru-RU")} РУБ`
-    :"ЛИНИЯ НЕ НАЙДЕНА";
-  const profitNoteText=p.priced
-    ?`(ПРИ СТАВКЕ ${p.stake.toLocaleString("ru-RU")} РУБ.)`
-    :"WINLINE";
-  const [fact,teamName,market,odds,profitMain,profitNote]=await Promise.all([
-    textLayer({markup:highlight(p.fact,p.teamName),width:720,height:44,size:22}),
-    textLayer({markup:escapeMarkup(p.teamName),width:255,height:36,size:36}),
-    textLayer({markup:escapeMarkup(p.market),width:255,height:23,size:20,color:"#D6D6DA"}),
-    textLayer({markup:escapeMarkup(p.priced?p.odds.toFixed(2):"—"),width:156,height:64,size:p.priced?58:46,align:"center"}),
-    textLayer({
-      markup:escapeMarkup(profitMainText),
-      width:160,height:30,size:p.priced?(profitMainText.length>12?19:22):17,
-      color:"#FF641E",align:"center"
-    }),
-    textLayer({
-      markup:escapeMarkup(profitNoteText),
-      width:210,height:22,size:p.priced?13:13,
-      color:"#D4D4D8",align:"center"
-    })
+  const [template,font,logoData]=await Promise.all([
+    templatePromise,
+    fontPromise,
+    asDataUri(p.logoUrl)
   ]);
-  const composites=[
-    {input:fact,left:45,top:18},
-    {input:teamName,left:152,top:84},
-    {input:market,left:152,top:128},
-    {input:odds,left:647,top:90},
-    {input:profitMain,left:430,top:169},
-    {input:profitNote,left:590,top:175}
-  ];
-  if(logo) composites.push({input:logo,left:31,top:86});
-  else composites.push({input:await textLayer({markup:escapeMarkup(p.team),width:82,height:82,size:28,color:"#D8D8DC",align:"center"}),left:31,top:86});
-  const full=await sharp(base).ensureAlpha().composite(composites).png({compressionLevel:9,adaptiveFiltering:true}).toBuffer();
-  return sharp(full).resize(574,148,{fit:"fill"}).png({compressionLevel:9,adaptiveFiltering:true}).toBuffer();
+
+  const factParts=highlightFact(p.fact,p.teamName);
+  const baseStyle={
+    position:"absolute",
+    display:"flex",
+    overflow:"hidden",
+    fontFamily:"SofiaHOH",
+    fontStyle:"italic",
+    fontWeight:700,
+    color:"#FFFFFF",
+    lineHeight:1
+  };
+
+  const overlay=e("div",{style:{
+    position:"relative",display:"flex",width:WIDTH,height:HEIGHT,
+    background:"transparent",fontFamily:"SofiaHOH",fontStyle:"italic",fontWeight:700
+  }},
+    e("div",{style:{
+      position:"absolute",display:"flex",left:8,top:14,width:7,height:43,
+      borderRadius:4,backgroundColor:p.teamColor
+    }}),
+    e("div",{style:{
+      ...baseStyle,left:44,top:19,width:724,height:48,alignItems:"center",
+      whiteSpace:"nowrap",fontSize:fontSizeForFact(p.fact),letterSpacing:"0.1px"
+    }},...factParts.map((part,i)=>e("span",{key:i,style:{color:part.hot?"#FF641E":"#FFFFFF"}},part.text))),
+    e("div",{style:{
+      ...baseStyle,left:17,top:90,width:116,height:108,
+      alignItems:"center",justifyContent:"center"
+    }},logoData
+      ? e("img",{src:logoData,width:88,height:88,style:{objectFit:"contain"}})
+      : e("span",{style:{fontSize:24,color:"#D8D8DC"}},p.team)
+    ),
+    e("div",{style:{
+      ...baseStyle,left:153,top:94,width:235,height:38,alignItems:"center",
+      whiteSpace:"nowrap",fontSize:fontSizeForTeam(p.teamName)
+    }},p.teamName),
+    e("div",{style:{
+      ...baseStyle,left:153,top:134,width:235,height:29,alignItems:"center",
+      whiteSpace:"nowrap",fontSize:fontSizeForMarket(p.market),color:"#D6D6DA"
+    }},p.market),
+    e("div",{style:{
+      ...baseStyle,left:656,top:90,width:136,height:68,alignItems:"center",
+      justifyContent:"center",whiteSpace:"nowrap",fontSize:p.priced?48:38,
+      letterSpacing:"-1px"
+    }},p.priced?p.odds.toFixed(2):"—"),
+    e("div",{style:{
+      ...baseStyle,left:435,top:171,width:346,height:39,alignItems:"center",
+      justifyContent:"center",whiteSpace:"nowrap",gap:10
+    }},
+      e("span",{style:{fontSize:p.priced?20:16,color:"#FF641E"}},p.priced
+        ?"+"+p.profit.toLocaleString("ru-RU")+" РУБ"
+        :"ЛИНИЯ НЕ НАЙДЕНА"
+      ),
+      e("span",{style:{fontSize:10,color:"#D4D4D8"}},p.priced
+        ?"(ПРИ СТАВКЕ "+p.stake.toLocaleString("ru-RU")+" РУБ.)"
+        :"WINLINE"
+      )
+    )
+  );
+
+  const svg=await satori(overlay,{
+    width:WIDTH,height:HEIGHT,
+    fonts:[{name:"SofiaHOH",data:font,weight:700,style:"italic"}]
+  });
+
+  return sharp(template)
+    .ensureAlpha()
+    .composite([{input:Buffer.from(svg)}])
+    .png({compressionLevel:9,adaptiveFiltering:true})
+    .toBuffer();
 }
-export const RENDER_SIZE={width:574,height:148};
-export const RENDER_VERSION="2026-09-21-layout-v4";
+
+export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
+export const RENDER_VERSION="2026-09-21-layout-v5-static-template";

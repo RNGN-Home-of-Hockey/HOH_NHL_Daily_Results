@@ -10,6 +10,9 @@
     "test": "node scripts/test-render.mjs"
   },
   "dependencies": {
-    "sharp": "0.34.3"
+    "react": "18.3.1",
+    "satori": "0.12.2",
+    "sharp": "0.34.3",
+    "fonteditor-core": "2.6.3"
   }
 }
