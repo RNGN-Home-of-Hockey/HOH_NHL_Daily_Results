@@ -35,6 +35,12 @@ export async function handleBroadcastRequest(request, env, path) {
     return broadcastStateRoute(request, env);
   }
 
+  const summaryMatch = /^\/api\/broadcast\/queue-summary\/(\d+)$/.exec(path);
+  if (summaryMatch) {
+    if (request.method !== "GET") return jsonResponse({ ok:false,error:"method_not_allowed" },405);
+    return broadcastQueueSummaryRoute(env,Number(summaryMatch[1]));
+  }
+
   const gameMatch = /^\/api\/broadcast\/games\/(\d+)$/.exec(path);
   if (gameMatch) {
     if (request.method !== "GET") return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
@@ -54,12 +60,15 @@ async function broadcastGamesRoute(env) {
                ht.name_en AS home_name,ht.name_ru AS home_name_ru,ht.logo_url AS home_logo,
                at.name_en AS away_name,at.name_ru AS away_name_ru,at.logo_url AS away_logo,
                bol.operator_name,bol.operator_id,bol.expires_at AS operator_expires_at,
-               onair.card_id AS on_air_card_id
+               onair.card_id AS on_air_card_id,
+               bqs.strong_count,bqs.priced_count,bqs.total_count,bqs.top_air_score,
+               bqs.generated_at AS queue_summary_generated_at
         FROM games g
         LEFT JOIN teams ht ON ht.tri_code=g.home_tri
         LEFT JOIN teams at ON at.tri_code=g.away_tri
         LEFT JOIN broadcast_operator_leases bol ON bol.game_pk=g.game_pk AND datetime(bol.expires_at)>datetime('now')
         LEFT JOIN broadcast_cards onair ON onair.game_pk=g.game_pk AND onair.status='shown'
+        LEFT JOIN broadcast_queue_summaries bqs ON bqs.game_pk=g.game_pk
         WHERE g.game_type IN (1,2,3)
           AND (
             UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT')
@@ -94,6 +103,102 @@ async function broadcastGamesRoute(env) {
     console.error("broadcast games failed", error);
     return jsonResponse({ ok:false, error:"broadcast_games_failed" }, 500);
   }
+}
+
+async function broadcastQueueSummaryRoute(env,gamePk){
+  if(!env.DB)return jsonResponse({ok:false,error:"missing_d1_binding"},503);
+  if(!Number.isSafeInteger(gamePk)||gamePk<=0)return jsonResponse({ok:false,error:"invalid_game_pk"},400);
+  try{
+    const [game,cached]=await Promise.all([
+      env.DB.prepare(`
+        SELECT game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score
+        FROM games WHERE game_pk=? AND game_type IN (1,2,3) LIMIT 1;
+      `).bind(gamePk).first(),
+      env.DB.prepare(`
+        SELECT game_pk,strong_count,priced_count,total_count,top_air_score,generated_at
+        FROM broadcast_queue_summaries WHERE game_pk=? LIMIT 1;
+      `).bind(gamePk).first(),
+    ]);
+    if(!game)return jsonResponse({ok:false,error:"game_not_found"},404);
+    const live=["LIVE","CRIT"].includes(String(game.game_state||"").toUpperCase());
+    const maxAgeMs=live?45_000:5*60_000;
+    const generatedAt=Date.parse(String(cached?.generated_at||"").replace(" ","T")+"Z");
+    if(cached&&Number.isFinite(generatedAt)&&(Date.now()-generatedAt)<maxAgeMs){
+      return jsonResponse({ok:true,cached:true,summary:normalizeQueueSummary(cached)});
+    }
+    const summary=await computeBroadcastQueueSummary(env.DB,game);
+    await persistBroadcastQueueSummary(env.DB,gamePk,summary);
+    return jsonResponse({ok:true,cached:false,summary:{...summary,game_pk:gamePk,generated_at:new Date().toISOString()}});
+  }catch(error){
+    console.error("broadcast queue summary failed",error);
+    return jsonResponse({ok:false,error:"broadcast_queue_summary_failed"},500);
+  }
+}
+
+async function computeBroadcastQueueSummary(db,game){
+  let providerMarkets=[];
+  try{providerMarkets=await loadBroadcastWinlineMarkets(db,game)}catch{}
+  const statisticalInsights=await buildBettingInsights(db,game);
+  let cards=statisticalInsights||[];
+  if(providerMarkets.length){
+    const pricedInsights=await buildBettingInsights(db,game,{
+      provider_markets:providerMarkets,
+      market_max_age_ms:broadcastWinlineMaxAgeMs(game),
+    });
+    cards=mergeBroadcastInsights(statisticalInsights,pricedInsights);
+  }else{
+    cards=cards.map(stripDemoPrice);
+  }
+  return summarizeBroadcastQueueCards(cards);
+}
+
+export function summarizeBroadcastQueueCards(cards){
+  const list=Array.isArray(cards)?cards:[];
+  const priced=list.filter(isRealBroadcastPrice);
+  const strong=priced.filter(c=>Number(c?.air_score)>=55);
+  const top=strong.reduce((m,c)=>Math.max(m,Number(c?.air_score)||0),0);
+  return {
+    strong_count:strong.length,
+    priced_count:priced.length,
+    total_count:list.length,
+    top_air_score:top||null,
+  };
+}
+function isRealBroadcastPrice(card){
+  const odds=Number(card?.market?.odds);
+  return Number.isFinite(odds)&&odds>1&&card?.market?.odds_is_demo===false&&card?.market?.odds_source==="provider_live";
+}
+async function persistBroadcastQueueSummary(db,gamePk,summary){
+  try{
+    await db.prepare(`
+      INSERT INTO broadcast_queue_summaries(game_pk,strong_count,priced_count,total_count,top_air_score,generated_at)
+      VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(game_pk) DO UPDATE SET
+        strong_count=excluded.strong_count,
+        priced_count=excluded.priced_count,
+        total_count=excluded.total_count,
+        top_air_score=excluded.top_air_score,
+        generated_at=CURRENT_TIMESTAMP;
+    `).bind(
+      gamePk,
+      Number(summary?.strong_count||0),
+      Number(summary?.priced_count||0),
+      Number(summary?.total_count||0),
+      summary?.top_air_score==null?null:Number(summary.top_air_score),
+    ).run();
+  }catch(error){
+    console.error("broadcast queue summary persist failed",error);
+  }
+}
+function normalizeQueueSummary(row){
+  return {
+    game_pk:Number(row?.game_pk||0),
+    strong_count:Number(row?.strong_count||0),
+    priced_count:Number(row?.priced_count||0),
+    total_count:Number(row?.total_count||0),
+    top_air_score:row?.top_air_score==null?null:Number(row.top_air_score),
+    generated_at:row?.generated_at||null,
+  };
 }
 
 async function broadcastStateRoute(request, env) {
@@ -205,6 +310,7 @@ async function broadcastGameRoute(env, gamePk) {
       }else{
         bettingInsights=(statisticalInsights||[]).map(stripDemoPrice);
       }
+      await persistBroadcastQueueSummary(env.DB,gamePk,summarizeBroadcastQueueCards(bettingInsights));
     } catch (error) {
       bettingInsightsDegraded=true;
       console.error("broadcast betting insights degraded", error);
@@ -227,6 +333,7 @@ async function broadcastGameRoute(env, gamePk) {
       top_players:playerStats,
       events,
       cards:bettingInsights,
+      queue_summary:summarizeBroadcastQueueCards(bettingInsights),
       betting_insights_degraded:bettingInsightsDegraded,
       provider_market_count:providerMarkets.length,
       data_degraded_sections:dataDegradedSections,
@@ -359,7 +466,7 @@ function jsResponse(js){return new Response(js,{status:200,headers:{"Content-Typ
 function pngResponse(base64){const raw=atob(base64);const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i+=1)bytes[i]=raw.charCodeAt(i);return new Response(bytes,{status:200,headers:{"Content-Type":"image/png","Cache-Control":"public, max-age=31536000, immutable","X-Content-Type-Options":"nosniff"}})}
 
 function browserApp(){
-const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],liveCards=[],liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null;
+const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],liveCards=[],liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null,queueWarmRunning=false;
 const operatorId=(()=>{let v=localStorage.getItem('hohBroadcastOperatorId')||'';if(!v){v='op-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));localStorage.setItem('hohBroadcastOperatorId',v)}return v})();
 let operatorName=localStorage.getItem('hohBroadcastOperatorName')||'';
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -372,13 +479,66 @@ function syncLeaseToGame(gamePk,lease){const g=games.find(x=>Number(x.game_pk)==
 function fmtDate(v){if(!v)return'';const d=new Date(v);return d.toLocaleString('ru-RU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).replace(',',' ·')}
 function typeLabel(t){const n=Number(t);return n===1?'Предсезонка':n===3?'Плей-офф':'Регулярка'}
 async function api(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
-async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} ближайших игр · предсезонка + регулярка + плей-офф`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null);await refreshActions();if(!actionTimer)actionTimer=setInterval(refreshActions,15000)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
+async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} ближайших игр · предсезонка + регулярка + плей-офф`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null);await refreshActions();void warmQueueSummaries();if(!actionTimer)actionTimer=setInterval(refreshActions,15000)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
 function renderAir(card){const air=$('#air'),text=$('#airtext');if(card){air.classList.add('live');text.textContent=`${card.headline_ru}: ${card.stat_text_ru}`}else{air.classList.remove('live');text.textContent='Сейчас ничего не показано'}}
+function queueSummaryFresh(g){
+  const t=Date.parse(String(g?.queue_summary_generated_at||'').replace(' ','T')+'Z');
+  const live=['LIVE','CRIT'].includes(String(g?.game_state||'').toUpperCase());
+  return Number.isFinite(t)&&(Date.now()-t)<(live?45000:5*60*1000);
+}
+function queueBadge(g){
+  const strong=Number(g?.strong_count);
+  if(Number.isFinite(strong)&&g?.queue_summary_generated_at){
+    if(strong>0)return `<b class="strongpill">${strong} СИЛЬН${strong===1?'АЯ':'ЫХ'}</b>`;
+    return '<span class="noline">НЕТ СИЛЬНЫХ ЛИНИЙ</span>';
+  }
+  return '<span class="summarywait">ПРОВЕРЯЮ ЛИНИИ…</span>';
+}
+function syncQueueSummary(gamePk,summary){
+  if(!summary)return;
+  const g=games.find(x=>Number(x.game_pk)===Number(gamePk));if(!g)return;
+  g.strong_count=Number(summary.strong_count||0);
+  g.priced_count=Number(summary.priced_count||0);
+  g.total_count=Number(summary.total_count||0);
+  g.top_air_score=summary.top_air_score==null?null:Number(summary.top_air_score);
+  g.queue_summary_generated_at=summary.generated_at||new Date().toISOString();
+  renderGames();
+}
+function syncQueueSummaryFromCards(gamePk,cards){
+  const list=Array.isArray(cards)?cards:[];
+  const priced=list.filter(hasRealWinlinePrice);
+  const strong=priced.filter(c=>airScore(c)>=55);
+  syncQueueSummary(gamePk,{
+    strong_count:strong.length,
+    priced_count:priced.length,
+    total_count:list.length,
+    top_air_score:strong.length?Math.max(...strong.map(airScore)):null,
+    generated_at:new Date().toISOString(),
+  });
+}
+async function warmQueueSummaries(){
+  if(queueWarmRunning)return;
+  queueWarmRunning=true;
+  try{
+    const targets=games.filter(g=>!queueSummaryFresh(g)).slice(0,18);
+    let cursor=0;
+    const worker=async()=>{
+      while(cursor<targets.length){
+        const g=targets[cursor++];
+        try{
+          const d=await api('/api/broadcast/queue-summary/'+encodeURIComponent(g.game_pk));
+          if(d?.summary)syncQueueSummary(g.game_pk,d.summary);
+        }catch{}
+      }
+    };
+    await Promise.all([worker(),worker()]);
+  }finally{queueWarmRunning=false}
+}
 function renderGames(){
   const selectedGame=games.find(g=>Number(g.game_pk)===Number(selected));
   if(selectedGame)groupOpen[Number(selectedGame.game_type)]=true;
   const groups=[{type:1,label:'Предсезонка'},{type:2,label:'Регулярка'},{type:3,label:'Плей-офф'}];
-  const row=g=>{const room=[g.on_air_card_id?'<b class="pill">ON AIR</b>':'',g.operator_name?`<span class="roomop">${esc(g.operator_name)}</span>`:''].filter(Boolean).join(' ');return `<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span class="roomstate">${room}</span></div></button>`};
+  const row=g=>{const room=[g.on_air_card_id?'<b class="pill">ON AIR</b>':'',g.operator_name?`<span class="roomop">${esc(g.operator_name)}</span>`:''].filter(Boolean).join(' ');const q=queueBadge(g);return `<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span class="roomstate">${room}</span></div><div class="gqueue">${q}</div></button>`};
   $('#games').innerHTML=groups.map(group=>{
     const rows=games.filter(g=>Number(g.game_type)===group.type);
     if(!rows.length)return'';
@@ -387,11 +547,11 @@ function renderGames(){
   document.querySelectorAll('.gamegroup').forEach(d=>d.addEventListener('toggle',()=>{groupOpen[Number(d.dataset.type)]=d.open}));
   document.querySelectorAll('.game').forEach(b=>b.onclick=()=>selectGame(Number(b.dataset.id)));
 }
-async function selectGame(id){const previous=selected;if(previous&&Number(previous)!==Number(id))await releaseLease(previous);selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s,owned]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id)),acquireLease(id)]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];renderAir(s.on_air);renderGame(d);if(!owned){const sub=document.querySelector('.psub');if(sub)sub.textContent='Режим просмотра · матч ведёт '+(currentLease?.operator_name||'другой оператор')}await refreshLive(id,true)}
+async function selectGame(id){const previous=selected;if(previous&&Number(previous)!==Number(id))await releaseLease(previous);selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s,owned]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id)),acquireLease(id)]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];syncQueueSummary(id,d.queue_summary);renderAir(s.on_air);renderGame(d);if(!owned){const sub=document.querySelector('.psub');if(sub)sub.textContent='Режим просмотра · матч ведёт '+(currentLease?.operator_name||'другой оператор')}await refreshLive(id,true)}
 function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[side+'_name']||tri,logo=g[side+'_logo'];return `<div class="team ${side==='home'?'home':''}">${side==='home'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}<div class="logo">${logo?`<img src="${esc(logo)}" alt="">`:`<span class="fallback">${esc(tri)}</span>`}</div>${side==='away'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}</div>`}
 function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct==null||!Number.isFinite(Number(a.faceoff_pct))?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct==null||!Number.isFinite(Number(h.faceoff_pct))?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
-function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}merged.sort((a,b)=>{const live=Number(b?.kind==='live')-Number(a?.kind==='live');if(live)return live;return airScore(b)-airScore(a)});renderCards(merged.slice(0,12));const priced=merged.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');if(sub)sub.textContent=`Сигналов: ${merged.length} · точных линий Winline: ${priced} · очередь отсортирована по AIR SCORE`}
+function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}merged.sort((a,b)=>{const live=Number(b?.kind==='live')-Number(a?.kind==='live');if(live)return live;return airScore(b)-airScore(a)});renderCards(merged.slice(0,12));syncQueueSummaryFromCards(selected,merged);const priced=merged.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');if(sub)sub.textContent=`Сигналов: ${merged.length} · точных линий Winline: ${priced} · очередь отсортирована по AIR SCORE`}
 async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds)));renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);c.textContent=parts.join(' · ')+' · LIVE FEED '+new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}if(['LIVE','CRIT'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
 const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
@@ -630,7 +790,7 @@ ${BROADCAST_CARD_CSS}
 .hero{border:1px solid var(--line);border-radius:20px;background:linear-gradient(135deg,#111113,#0f0f11 65%,#18141f);overflow:hidden}.herohead{display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);font-size:10px;color:#777}.match{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:22px 26px;gap:20px}.team{display:flex;align-items:center;gap:14px}.team.home{justify-content:flex-end;text-align:right}.logo{width:58px;height:58px;border-radius:16px;border:1px solid #303036;background:#18181a;display:grid;place-items:center;overflow:hidden}.logo img{width:46px;height:46px;object-fit:contain}.fallback{font-size:18px;font-weight:950}.code{font-size:27px;font-weight:950;letter-spacing:-.05em}.name{margin-top:3px;color:#777;font-size:10px}.score{font-size:56px;font-weight:950;letter-spacing:-.08em}.score span{color:#46464d;margin:0 5px}.periods{text-align:center;color:var(--lav);font-size:9px;font-weight:900;letter-spacing:.09em;padding:0 18px 15px;text-transform:uppercase}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 14px}.metric{border:1px solid var(--line);background:#101012;border-radius:14px;padding:13px 14px}.mval{font-size:22px;font-weight:950;letter-spacing:-.05em}.mlabel{font-size:9px;color:#696970;letter-spacing:.12em;text-transform:uppercase;margin-top:4px}
 .work{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(330px,.65fr);gap:14px}.panel{border:1px solid var(--line);background:#0f0f11;border-radius:18px;overflow:hidden}.phead{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px}.ptitle{font-size:12px;font-weight:900}.psub{font-size:9px;color:#666}.cards{padding:12px;display:block}.queueblock+.queueblock{margin-top:12px}.queuehead,.queue-more>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 8px;color:#b7b7bf;font-size:9px;font-weight:950;letter-spacing:.12em;text-transform:uppercase}.queuehead b{min-width:22px;text-align:center;border:1px solid #34343b;border-radius:999px;padding:2px 6px;color:var(--green);letter-spacing:0}.queuehead.muted{color:#686870}.queue-more>summary{cursor:pointer;list-style:none;border-top:1px solid #28282d;padding-top:12px}.queue-more>summary::-webkit-details-marker{display:none}.queue-more>summary small{font-size:8px;color:#696971;letter-spacing:.04em}.cardgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card{border:1px solid #303036;border-radius:15px;background:#171719;overflow:hidden;position:relative}.card.featured{border-color:#44444d;box-shadow:0 0 0 1px rgba(131,230,177,.05)}.card.weak{opacity:.66}.card.weak:hover{opacity:.9}.card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--orange)}.card.lav:before{background:var(--lav)}.cardbody{padding:14px 15px 11px}.eyebrow{font-size:9px;color:#7c7c85;font-weight:900;letter-spacing:.13em}.cvalue{font-size:29px;font-weight:950;letter-spacing:-.06em;margin-top:12px}.ctitle{font-size:12px;font-weight:850;margin-top:8px}.cnote{font-size:9px;color:#73737b;margin-top:6px}.actions{display:grid;grid-template-columns:1fr 1.2fr;border-top:1px solid #29292e}.act{border:0;background:transparent;color:#aaa;padding:10px 8px;font-size:9px;font-weight:900;letter-spacing:.08em;cursor:pointer}.act:hover{background:#202024;color:#fff}.show{color:#111;background:var(--orange)}.show:hover{background:#ff6b36}.show[disabled]{background:#26262a;color:#64646b;cursor:not-allowed}.kind{position:absolute;right:10px;top:9px;font-size:8px;color:#65656d;text-transform:uppercase}
-.rightcol{display:grid;gap:14px;align-content:start}.roomstate{display:inline-flex;align-items:center;gap:5px}.roomop{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8d8d95}.actionlog{padding:4px 14px 12px;max-height:300px;overflow:auto}.actionrow{display:grid;grid-template-columns:38px 1fr;gap:8px;padding:9px 0;border-bottom:1px solid #242428}.actiontime{font-size:9px;color:var(--lav);font-weight:900}.actionmain{font-size:9px;color:#d7d7db}.actionmain b{color:#fff}.actionmeta{font-size:8px;color:#71717a;margin-top:3px;line-height:1.35}.players{padding:4px 14px 12px}.prow{display:grid;grid-template-columns:minmax(0,1fr) 28px 28px 28px 34px;gap:5px;align-items:center;padding:10px 0;border-bottom:1px solid #252529}.prow.head{padding:8px 0;color:#666;font-size:8px;text-transform:uppercase}.pname{font-size:10px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pmeta{font-size:8px;color:#6f6f76;margin-top:2px}.num{text-align:center;font-size:10px;font-weight:850}.events{padding:4px 14px 12px;max-height:310px;overflow:auto}.event{display:grid;grid-template-columns:44px 1fr auto;gap:8px;padding:9px 0;border-bottom:1px solid #242428}.etime{font-size:9px;color:var(--lav);font-weight:900}.etype{font-size:9px;font-weight:900}.edesc{font-size:8px;color:#73737b;margin-top:2px;line-height:1.35}.escore{font-size:11px;font-weight:950}.empty{padding:18px;color:#666;font-size:10px}
+.rightcol{display:grid;gap:14px;align-content:start}.roomstate{display:inline-flex;align-items:center;gap:5px}.roomop{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8d8d95}.gqueue{margin-top:6px;min-height:16px;display:flex;align-items:center}.strongpill{display:inline-block;font-size:8px;color:#0c1a12;background:var(--green);border-radius:999px;padding:3px 7px;font-weight:950;letter-spacing:.06em}.noline{font-size:8px;color:#777780;font-weight:850;letter-spacing:.06em}.summarywait{font-size:8px;color:#4f4f56;letter-spacing:.05em}.actionlog{padding:4px 14px 12px;max-height:300px;overflow:auto}.actionrow{display:grid;grid-template-columns:38px 1fr;gap:8px;padding:9px 0;border-bottom:1px solid #242428}.actiontime{font-size:9px;color:var(--lav);font-weight:900}.actionmain{font-size:9px;color:#d7d7db}.actionmain b{color:#fff}.actionmeta{font-size:8px;color:#71717a;margin-top:3px;line-height:1.35}.players{padding:4px 14px 12px}.prow{display:grid;grid-template-columns:minmax(0,1fr) 28px 28px 28px 34px;gap:5px;align-items:center;padding:10px 0;border-bottom:1px solid #252529}.prow.head{padding:8px 0;color:#666;font-size:8px;text-transform:uppercase}.pname{font-size:10px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pmeta{font-size:8px;color:#6f6f76;margin-top:2px}.num{text-align:center;font-size:10px;font-weight:850}.events{padding:4px 14px 12px;max-height:310px;overflow:auto}.event{display:grid;grid-template-columns:44px 1fr auto;gap:8px;padding:9px 0;border-bottom:1px solid #242428}.etime{font-size:9px;color:var(--lav);font-weight:900}.etype{font-size:9px;font-weight:900}.edesc{font-size:8px;color:#73737b;margin-top:2px;line-height:1.35}.escore{font-size:11px;font-weight:950}.empty{padding:18px;color:#666;font-size:10px}
 .detailfact{font-size:18px;font-weight:950;line-height:1.12;margin:12px 0}.detailmarket{font-size:13px;font-weight:900;color:var(--lav);margin:12px 0}.detailrows{border-top:1px solid #2b2b31;border-bottom:1px solid #2b2b31;margin:14px 0}.detailrows>div{display:flex;justify-content:space-between;gap:18px;padding:8px 0;border-bottom:1px solid #232328;font-size:10px}.detailrows>div:last-child{border-bottom:0}.detailrows span{color:#777780}.detailrows b{text-align:right}.detailnote{font-size:10px;color:#8a8a93;line-height:1.45;margin-top:8px}.drawerback{position:fixed;inset:0;background:rgba(0,0,0,.66);display:none;z-index:20}.drawerback.open{display:block}.drawer{position:absolute;right:0;top:0;bottom:0;width:min(520px,92vw);background:#101012;border-left:1px solid #303036;padding:24px;display:flex;flex-direction:column}.dtop{display:flex;justify-content:space-between;align-items:center}.dtitle{font-size:10px;letter-spacing:.16em;font-weight:900;color:#777}.close{border:1px solid #333;background:#171719;color:#aaa;border-radius:9px;padding:7px 10px;cursor:pointer}.preview{margin:auto 0;border-radius:24px;background:linear-gradient(135deg,#151517,#201a27);border:1px solid #37333f;padding:30px}.pvbrand{font-size:10px;letter-spacing:.16em;font-weight:950}.pveyebrow{margin-top:34px;color:var(--lav);font-size:10px;font-weight:900;letter-spacing:.12em}.pvvalue{font-size:58px;font-weight:950;letter-spacing:-.08em;margin-top:10px}.pvtitle{font-size:20px;font-weight:900;margin-top:10px;line-height:1.15}.pvnote{font-size:11px;color:#83838c;margin-top:12px}.dfoot{font-size:10px;color:#74747c;line-height:1.5;padding-top:20px}.legend{display:flex;gap:8px;align-items:center}.safe{display:inline-flex;align-items:center;gap:6px;color:#8d8d94}.safe:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green)}
 
 /* Fixed HOH × Winline broadcast-card template */

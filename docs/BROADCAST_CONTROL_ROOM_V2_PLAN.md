@@ -7,7 +7,7 @@ Goal: make the broadcast dashboard safe for many parallel NHL games/operators an
 - [x] Allow `/api/broadcast/state?game=<game_pk>`.
 - [x] Give every game its own overlay URL: `/broadcast/overlay?game=<game_pk>`.
 - [x] Add DB constraints: max one shown card and one preview card per game.
-- [ ] Production smoke: two games can be ON AIR at the same time without replacing each other.
+- [x] Production smoke creates two isolated ON AIR rooms in remote D1, verifies both through the deployed Worker, then cleans them up.
 
 ## P1 — operator presence and locks
 - [x] Add operator identity stored in the browser.
@@ -38,14 +38,14 @@ Goal: make the broadcast dashboard safe for many parallel NHL games/operators an
 - [x] Add “ДЕТАЛИ” drawer with exact sample, historical rate, price-implied rate, statistical score and explanation.
 
 ## P5 — supervisor view
-- [~] Left rail shows ON AIR + active operator per game; strong-card count/no-strong-lines summary is still pending.
+- [x] Left rail shows ON AIR + active operator + cached strong-line count / “НЕТ СИЛЬНЫХ ЛИНИЙ” per game; missing summaries warm lazily with a D1 cache.
 - [x] Left match rail acts as the global room view: ON AIR and active operator are visible without mixing overlays.
 - [x] Recent global action log: operator, match, show/remove action, card and timestamp.
 
 ## P6 — validation
 - [x] Automated concurrency test keeps 15 different games ON AIR simultaneously.
 - [x] Same-game collision/lease test, including takeover after expiry.
-- [ ] D1 write/read load smoke.
+- [x] Remote D1 write/read smoke runs after every Worker deploy and cleans up its probe row.
 - [x] Per-game state/overlay isolation smoke.
 - [x] AIR SCORE fixtures for obvious good/bad examples.
 - [x] Copy/sample-format fixtures for 20, 80 and 200+ game samples.

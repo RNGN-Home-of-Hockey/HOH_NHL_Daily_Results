@@ -48,6 +48,62 @@ jobs:
         run: npx wrangler d1 migrations apply hoh-data-core --remote
       - name: Deploy Worker
         run: npx wrangler deploy
+
+      - name: Smoke production D1 and broadcast isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          GAME_A=2999999001
+          GAME_B=2999999002
+          CARD_A="prod-smoke-a"
+          CARD_B="prod-smoke-b"
+          SMOKE_KEY="broadcast-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          SMOKE_PAYLOAD="ok-${GITHUB_SHA:0:12}"
+          cleanup() {
+            npx wrangler d1 execute hoh-data-core --remote --command "DELETE FROM games WHERE game_pk IN (${GAME_A},${GAME_B}); DELETE FROM broadcast_d1_smoke WHERE smoke_key='${SMOKE_KEY}';" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          cleanup
+
+          npx wrangler d1 execute hoh-data-core --remote --command "INSERT INTO broadcast_d1_smoke(smoke_key,payload,updated_at) VALUES('${SMOKE_KEY}','${SMOKE_PAYLOAD}',CURRENT_TIMESTAMP);"
+          READBACK="$(npx wrangler d1 execute hoh-data-core --remote --command "SELECT smoke_key,payload FROM broadcast_d1_smoke WHERE smoke_key='${SMOKE_KEY}';")"
+          echo "$READBACK"
+          grep -F "${SMOKE_PAYLOAD}" <<<"$READBACK" >/dev/null || { echo "D1 write/read smoke failed"; exit 1; }
+
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,last_synced_at)
+            VALUES(${GAME_A},'smoke',2,'2000-01-01T00:00:00Z','OFF','BOS','NYR',0,0,CURRENT_TIMESTAMP);
+            INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,last_synced_at)
+            VALUES(${GAME_B},'smoke',2,'2000-01-01T00:00:00Z','OFF','NYR','BOS',0,0,CURRENT_TIMESTAMP);
+            INSERT INTO broadcast_cards(card_id,game_pk,headline_ru,stat_text_ru,odds_is_demo,status,shown_at,created_at,updated_at)
+            VALUES('${CARD_A}',${GAME_A},'SMOKE A','ПОБЕДА',0,'shown',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+            INSERT INTO broadcast_cards(card_id,game_pk,headline_ru,stat_text_ru,odds_is_demo,status,shown_at,created_at,updated_at)
+            VALUES('${CARD_B}',${GAME_B},'SMOKE B','ПОБЕДА',0,'shown',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+          "
+
+          GAME_A="$GAME_A" GAME_B="$GAME_B" CARD_A="$CARD_A" CARD_B="$CARD_B" node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const checks=[
+            [process.env.GAME_A,process.env.CARD_A],
+            [process.env.GAME_B,process.env.CARD_B],
+          ];
+          for(const [game,card] of checks){
+            let last=null;
+            for(let i=0;i<10;i++){
+              const r=await fetch(base+'/api/broadcast/state?game='+game,{headers:{accept:'application/json'},cache:'no-store'});
+              last=await r.json().catch(()=>({}));
+              if(r.ok&&String(last?.on_air?.card_id)===card&&String(last?.on_air?.game_pk)===game)break;
+              await new Promise(res=>setTimeout(res,1000));
+            }
+            if(String(last?.on_air?.card_id)!==card||String(last?.on_air?.game_pk)!==game){
+              throw new Error('Per-game production state failed '+game+' '+JSON.stringify(last));
+            }
+            console.log('BROADCAST_PRODUCTION_ROOM_OK',game,card);
+          }
+          console.log('D1_WRITE_READ_SMOKE_OK',process.env.GAME_A,process.env.GAME_B);
+          console.log('BROADCAST_TWO_GAME_PRODUCTION_SMOKE_OK');
+          JS
+
       - name: Verify production Telegram Center
         shell: bash
         run: |
