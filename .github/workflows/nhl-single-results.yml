@@ -138,8 +138,10 @@ jobs:
           FULL_DAY_MENU: ${{ env.FULL_DAY_MENU }}
           STATE_PATH: ${{ env.BOT_STATE_PATH }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ env.TARGET_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_THREAD_ID: ${{ env.TARGET_THREAD_ID || secrets.TELEGRAM_THREAD_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
+          TELEGRAM_TARGET_CHAT_ID: ${{ env.TARGET_CHAT_ID }}
+          TELEGRAM_TARGET_THREAD_ID: ${{ env.TARGET_THREAD_ID }}
           TELEGRAM_INTERACTIVE_ENABLED: 0
           HOH_CHANNEL_URL: http://t.me/home_of_hockey
           DEBUG_VERBOSE: 1
