@@ -12,6 +12,7 @@ on:
       - 'cloudflare-worker/src/**'
       - 'migrations/**'
       - 'player_salary_2026_27.json'
+      - 'ru_full_names.json'
       - 'wrangler.jsonc'
       - 'package.json'
 
