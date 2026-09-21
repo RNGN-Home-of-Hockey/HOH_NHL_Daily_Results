@@ -14,33 +14,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Inspect live Winline feed and production mapping
+      - name: Compare Winline feeds and production mapping
         run: |
           node --input-type=module <<'JS'
           const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
-          const feed='https://back.winline.ru/banners/prematch_mainsports_eng';
           const decode=s=>String(s||'').replaceAll('&quot;','"').replaceAll('&amp;','&').replaceAll('&lt;','<').replaceAll('&gt;','>').replaceAll('&#39;',"'");
           const attrs=tag=>Object.fromEntries([...String(tag||'').matchAll(/([A-Za-z0-9_]+)="([^"]*)"/g)].map(m=>[m[1],decode(m[2])]));
-          const r=await fetch(feed,{headers:{accept:'application/xml,text/xml,*/*','user-agent':'HOH-Debug-MTL-TOR'}});
-          console.log('FEED_HTTP',r.status);
-          const xml=await r.text();
-          const sport=[...xml.matchAll(/<Sport\b([^>]*)>([\s\S]*?)<\/Sport>/gi)].find(m=>String(attrs(m[1]).Id)==='4');
-          if(!sport)throw new Error('Ice Hockey missing');
-          let found=0;
-          for(const tm of sport[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
-            const ta=attrs(tm[1]);
-            for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
-              const ma=attrs(mm[1]);
-              const names=[String(ma.Team1||''),String(ma.Team2||'')].map(x=>x.toLowerCase());
-              if(!(names.some(x=>x.includes('montreal canadiens'))&&names.some(x=>x.includes('toronto maple leafs'))))continue;
-              found++;
-              console.log('MATCH',JSON.stringify({tournament:ta.Name,tournament_id:ta.Id,...ma}));
-              const lines=[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1]));
-              console.log('LINE_COUNT',lines.length);
-              for(const l of lines) console.log('LINE',JSON.stringify(l));
+          for(const [feedName,feed] of Object.entries({
+            mainsports:'https://back.winline.ru/banners/prematch_mainsports_eng',
+            full:'https://back.winline.ru/banners/prematcheng'
+          })){
+            const r=await fetch(feed,{headers:{accept:'application/xml,text/xml,*/*','user-agent':'HOH-Debug-MTL-TOR'}});
+            console.log('FEED_HTTP',feedName,r.status);
+            const xml=await r.text();
+            const sport=[...xml.matchAll(/<Sport\b([^>]*)>([\s\S]*?)<\/Sport>/gi)].find(m=>String(attrs(m[1]).Id)==='4');
+            if(!sport){console.log('NO_HOCKEY',feedName);continue}
+            let found=0;
+            for(const tm of sport[2].matchAll(/<Tournament\b([^>]*)>([\s\S]*?)<\/Tournament>/gi)){
+              const ta=attrs(tm[1]);
+              for(const mm of tm[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
+                const ma=attrs(mm[1]);
+                const names=[String(ma.Team1||''),String(ma.Team2||'')].map(x=>x.toLowerCase());
+                if(!(names.some(x=>x.includes('montreal canadiens'))&&names.some(x=>x.includes('toronto maple leafs'))))continue;
+                found++;
+                console.log('MATCH',feedName,JSON.stringify({tournament:ta.Name,tournament_id:ta.Id,...ma}));
+                const lines=[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1]));
+                console.log('LINE_COUNT',feedName,lines.length);
+                for(const l of lines) console.log('LINE',feedName,JSON.stringify(l));
+              }
             }
+            console.log('FOUND',feedName,found);
           }
-          console.log('FOUND',found);
           const gr=await fetch(base+'/api/broadcast/games',{headers:{accept:'application/json'}});
           const gd=await gr.json();
           const g=(gd.games||[]).find(x=>new Set([x.away_tri,x.home_tri]).has('MTL')&&new Set([x.away_tri,x.home_tri]).has('TOR'));
@@ -55,7 +59,7 @@ jobs:
             console.log('BROADCAST_MARKETS',JSON.stringify({
               provider_market_count:bd.provider_market_count,
               degraded:bd.betting_insights_degraded,
-              cards:(bd.cards||[]).map(c=>({id:c.id,title:c.title,market:c.market,evidence:c.evidence}))
+              cards:(bd.cards||[]).map(c=>({id:c.id,title:c.title,market:c.market}))
             },null,2));
           }
           JS
