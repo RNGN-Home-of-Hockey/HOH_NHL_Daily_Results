@@ -1,5 +1,6 @@
 import snapshot from "../../data/advanced_team_snapshot_2024_2026.json" with { type: "json" };
 
+export const ADVANCED_TEAM_SNAPSHOT_VERSION="2025-26-v1";
 const TEAM_TOTAL_LINES=[1.5,2.5,3.5,4.5];
 const GAME_TOTAL_LINES=[4.5,5.5,6.5,7.5];
 const HANDICAP_LINES=[-2.5,-1.5,1.5,2.5];
@@ -107,7 +108,7 @@ function paceSignal(a,b,side){
       score,
       title:`${a} — №${ra}, ${b} — №${rb} НХЛ ПО ${m.label}`,
       explanation:`Сезон 2025/26: ${a} ${fmt(va,1)} ${m.unit}, ${b} ${fmt(vb,1)} ${m.unit}. Это контекст темпа для линии общего тотала, а не вероятность прохода.`,
-      evidence:{sample:82,season:"20252026",metric:m.key,away_rank:ra,home_rank:rb,away_value:va,home_value:vb,advanced_snapshot:true}
+      evidence:{sample:82,season:"20252026",metric:m.key,away_rank:ra,home_rank:rb,away_value:va,home_value:vb,advanced_snapshot:true,snapshot_version:ADVANCED_TEAM_SNAPSHOT_VERSION}
     });
   }
   return best(candidates);
@@ -122,7 +123,7 @@ function rankSignal(team,profile,metric,direction,maxRank,label,format){
     score:84+(maxRank-rank)+persistent,
     title:`${team} — №${rank} НХЛ ПО ${label} В 2025/26`,
     explanation:`${format(v)}. Лиговый ранг рассчитан по полному сезону 2025/26.${persistent?" Сильный профиль сохранялся и в 2024/25.":""}`,
-    evidence:{sample:82,season:"20252026",team,metric,rank,value:v,persistent_previous_season:Boolean(persistent),advanced_snapshot:true}
+    evidence:{sample:82,season:"20252026",team,metric,rank,value:v,persistent_previous_season:Boolean(persistent),advanced_snapshot:true,snapshot_version:ADVANCED_TEAM_SNAPSHOT_VERSION}
   };
 }
 
@@ -134,7 +135,7 @@ function defenseWeaknessSignal(team,metric,label,unit){
     score:80+(rank-26),
     title:`${team} — ${rank}-Й В НХЛ ПО ${label} В 2025/26`,
     explanation:`${fmt(v,metric.includes("60")?2:1)} ${unit}. Чем выше место здесь, тем лучше защита; ${rank}-е место — нижняя часть лиги.`,
-    evidence:{sample:82,season:"20252026",team,metric,rank,value:v,role:"opponent_weakness",advanced_snapshot:true}
+    evidence:{sample:82,season:"20252026",team,metric,rank,value:v,role:"opponent_weakness",advanced_snapshot:true,snapshot_version:ADVANCED_TEAM_SNAPSHOT_VERSION}
   };
 }
 function bottomAttackSignal(team,metric,label,unit){
@@ -145,7 +146,7 @@ function bottomAttackSignal(team,metric,label,unit){
     score:79+(rank-26),
     title:`${team} — ${rank}-Й В НХЛ ПО ${label} В 2025/26`,
     explanation:`${fmt(v,2)} ${unit}. Низкий сезонный объём атаки используется как контекст для индивидуального тотала меньше.`,
-    evidence:{sample:82,season:"20252026",team,metric,rank,value:v,role:"weak_attack",advanced_snapshot:true}
+    evidence:{sample:82,season:"20252026",team,metric,rank,value:v,role:"weak_attack",advanced_snapshot:true,snapshot_version:ADVANCED_TEAM_SNAPSHOT_VERSION}
   };
 }
 function eliteDefenseSignal(team,metric,label,unit){
@@ -156,7 +157,7 @@ function eliteDefenseSignal(team,metric,label,unit){
     score:84+(6-rank),
     title:`${team} — №${rank} НХЛ ПО ${label} В 2025/26`,
     explanation:`${fmt(v,2)} ${unit}. Низкое значение — сильный оборонительный профиль.`,
-    evidence:{sample:82,season:"20252026",team,metric,rank,value:v,role:"elite_defense",advanced_snapshot:true}
+    evidence:{sample:82,season:"20252026",team,metric,rank,value:v,role:"elite_defense",advanced_snapshot:true,snapshot_version:ADVANCED_TEAM_SNAPSHOT_VERSION}
   };
 }
 function matchupRankSignal(team,opponent,metric,label,format){
@@ -171,7 +172,7 @@ function matchupRankSignal(team,opponent,metric,label,format){
     score:84+Math.min(8,Math.floor(gap/3))+persistent,
     title:`${team} — №${rt} НХЛ ПО ${label}; ${opponent} — ${ro}-Й`,
     explanation:`2025/26: ${team} ${format(v)}, ${opponent} ${format(ov)}. Разница в лиговом ранге — ${gap} мест.${persistent?" Профиль устойчив два сезона.":""}`,
-    evidence:{sample:82,season:"20252026",team,opponent,metric,team_rank:rt,opponent_rank:ro,rank_gap:gap,team_value:v,opponent_value:ov,persistent_previous_season:Boolean(persistent),advanced_snapshot:true}
+    evidence:{sample:82,season:"20252026",team,opponent,metric,team_rank:rt,opponent_rank:ro,rank_gap:gap,team_value:v,opponent_value:ov,persistent_previous_season:Boolean(persistent),advanced_snapshot:true,snapshot_version:ADVANCED_TEAM_SNAPSHOT_VERSION}
   };
 }
 function persistentTop(team,metric,maxRank){
