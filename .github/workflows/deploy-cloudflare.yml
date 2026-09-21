@@ -59,11 +59,12 @@ jobs:
           console.log('TELEGRAM_CENTER_STATUS',JSON.stringify(d));
           if(!r.ok)throw new Error('Telegram Center status HTTP '+r.status);
           if(!d.ok)throw new Error('Telegram Center unhealthy '+JSON.stringify(d));
-          if(d.runtime_marker!=='telegram-center-2026-09-21-v7')throw new Error('Unexpected Telegram Center runtime '+String(d.runtime_marker));
+          if(d.runtime_marker!=='telegram-center-2026-09-21-v8')throw new Error('Unexpected Telegram Center runtime '+String(d.runtime_marker));
           if(!d.center_token_configured||!d.webhook_secret_configured)throw new Error('Telegram Center credentials incomplete');
           if(!d.bot?.ok||!d.bot?.username)throw new Error('Telegram Center bot unavailable');
           if(!d.webhook?.ok||!d.webhook_matches_expected)throw new Error('Telegram Center webhook mismatch '+JSON.stringify(d.webhook));
           if(!String(d.webhook.url||'').endsWith('/telegram/center'))throw new Error('Telegram Center webhook path invalid '+String(d.webhook.url));
+          if(!d.webhook_refresh?.ok)throw new Error('Telegram Center self-heal failed '+JSON.stringify(d.webhook_refresh));
           console.log('TELEGRAM_CENTER_PRODUCTION_SMOKE_OK',JSON.stringify({
             marker:d.runtime_marker,
             bot:d.bot.username,

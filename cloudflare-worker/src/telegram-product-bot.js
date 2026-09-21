@@ -167,6 +167,7 @@ export async function handleTelegramProductBotRequest(request, env, path) {
 }
 
 async function centerStatus(request, env) {
+  const webhookRefresh = await ensureTelegramCenterWebhook(env);
   const centerTokenConfigured = Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim());
   const webhookSecretConfigured = Boolean(String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim());
 
@@ -221,7 +222,7 @@ async function centerStatus(request, env) {
   return json({
     ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok && webhookMatchesExpected,
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-21-v7",
+    runtime_marker: "telegram-center-2026-09-21-v8",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     webhook_secret_mode: "sha256_hex",
@@ -231,6 +232,7 @@ async function centerStatus(request, env) {
     bot,
     webhook,
     webhook_matches_expected: webhookMatchesExpected,
+    webhook_refresh: webhookRefresh,
     last_event: lastEvent,
   });
 }
@@ -288,7 +290,25 @@ export async function ensureTelegramCenterWebhook(env, { force = false } = {}) {
     return { ok: false, error, expected_webhook_url: expectedWebhook };
   }
 
-  const webhookInfo = await telegramRequest(env, "getWebhookInfo", {});
+  const miniApp = String(env.TELEGRAM_MINI_APP_URL || "").trim()
+    || "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app";
+  const [commandsResult, menuButtonResult, webhookInfo] = await Promise.all([
+    telegramRequest(env, "setMyCommands", {
+      commands: [
+        { command: "menu", description: "Открыть меню HOH NHL Center" },
+        { command: "app", description: "Открыть приложение HOH NHL Center" },
+        { command: "help", description: "Помощь по HOH NHL Center" },
+      ],
+    }),
+    telegramRequest(env, "setChatMenuButton", {
+      menu_button: {
+        type: "web_app",
+        text: "HOH NHL Center",
+        web_app: { url: miniApp },
+      },
+    }),
+    telegramRequest(env, "getWebhookInfo", {}),
+  ]);
   const info = webhookInfo.ok ? webhookInfo.response?.result || {} : {};
   const repaired = webhookInfo.ok && info.url === expectedWebhook;
   const payload = {
@@ -298,6 +318,8 @@ export async function ensureTelegramCenterWebhook(env, { force = false } = {}) {
     pending_update_count: Number(info.pending_update_count || 0),
     last_error_message: info.last_error_message || null,
     repaired,
+    commands_ok: Boolean(commandsResult.ok),
+    menu_button_ok: Boolean(menuButtonResult.ok),
   };
 
   if (env.DB && (await ensureDiagnosticTable(env))) {
@@ -324,6 +346,8 @@ export async function ensureTelegramCenterWebhook(env, { force = false } = {}) {
     pending_update_count: Number(info.pending_update_count || 0),
     last_error_message: info.last_error_message || null,
     refreshed_at: payload.refreshed_at,
+    commands_ok: payload.commands_ok,
+    menu_button_ok: payload.menu_button_ok,
   };
 }
 
