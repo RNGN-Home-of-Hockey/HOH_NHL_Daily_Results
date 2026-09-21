@@ -7,16 +7,15 @@ const WIDTH = 820;
 const HEIGHT = 211;
 const STAKE_DEFAULT = 1000;
 
-const templateUrl = new URL("../assets/card-template.webp", import.meta.url);
+const templateHeadUrl = new URL("../assets/card-template-user.0.b64", import.meta.url);
+const templateTailUrl = new URL("../assets/card-template-user.b64", import.meta.url);
 const fontUrl = new URL("../assets/sofia-sans-condensed-italic.ttf", import.meta.url);
+const TEMPLATE_GAP="VXH9MwfwHF7A0BI7RRSR8chVN8wdaoMJWB7MTYrDDnHQ8BHB+fch6hItEJ0sJXiKj";
 
-const templatePromise = readFile(templateUrl).then((source)=>{
-  if(source.length>=12&&source.subarray(0,4).toString("ascii")==="RIFF"){
-    const declared=source.readUInt32LE(4)+8;
-    if(declared>0&&declared<=source.length)return source.subarray(0,declared);
-  }
-  return source;
-});
+const templatePromise = Promise.all([
+  readFile(templateHeadUrl,"utf8"),
+  readFile(templateTailUrl,"utf8")
+]).then(([head,tail])=>Buffer.from(head.trim()+TEMPLATE_GAP+tail.trim(),"base64"));
 const fontPromise = readFile(fontUrl);
 const logoCache = new Map();
 
@@ -192,4 +191,4 @@ export async function renderCard(input={}){
 }
 
 export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
-export const RENDER_VERSION="2026-09-21-layout-v5-static-template";
+export const RENDER_VERSION="2026-09-21-layout-v6-user-template";

@@ -11,4 +11,4 @@ export default function handler(req,res){
   });
 }
 
-// layout v5 static-template deploy trigger
+// layout v6 user-template deploy trigger
