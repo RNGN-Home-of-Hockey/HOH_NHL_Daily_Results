@@ -6,8 +6,7 @@ import { applyWinlineMarkets } from "../cloudflare-worker/src/winline-market-ada
 const now=new Date().toISOString();
 const game={game_pk:2026020997,away_tri:"COL",home_tri:"TOR"};
 const raw=buildAdvancedTeamSnapshotInsights(game);
-const portfolio=selectInsightPortfolio(raw,12);
-const priced=applyWinlineMarkets(portfolio,[{
+const matched=applyWinlineMarkets(raw,[{
   provider:"winline",
   event_id:"evt-advanced",
   market_id:"m-team-total",
@@ -21,13 +20,15 @@ const priced=applyWinlineMarkets(portfolio,[{
   status:"open",
   updated_at:now
 }],{now,max_age_ms:300000});
+const portfolio=selectInsightPortfolio(matched,12);
 
-assert.equal(priced.length,1,"only exact Winline market should survive");
-assert.equal(priced[0].market.type,"team_total");
-assert.equal(priced[0].market.subject,"COL");
-assert.equal(priced[0].market.line,3.5);
-assert.equal(priced[0].market.odds,1.87);
-assert.equal(priced[0].market.odds_is_demo,false);
-assert.match(priced[0].title,/№1 НХЛ ПО БРОСКАМ/);
-assert.equal(priced[0].category,"advanced_market");
-console.log("ADVANCED_WINLINE_LINK_OK",priced[0].title,priced[0].market.odds);
+assert.equal(matched.length,1,"only exact Winline market should survive matching");
+assert.equal(portfolio.length,1,"exact Winline line should survive portfolio pruning");
+assert.equal(portfolio[0].market.type,"team_total");
+assert.equal(portfolio[0].market.subject,"COL");
+assert.equal(portfolio[0].market.line,3.5);
+assert.equal(portfolio[0].market.odds,1.87);
+assert.equal(portfolio[0].market.odds_is_demo,false);
+assert.match(portfolio[0].title,/№1 НХЛ ПО БРОСКАМ/);
+assert.equal(portfolio[0].category,"advanced_market");
+console.log("ADVANCED_WINLINE_LINK_OK",portfolio[0].title,portfolio[0].market.odds);

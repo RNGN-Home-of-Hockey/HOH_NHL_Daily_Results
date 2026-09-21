@@ -51,26 +51,30 @@ export async function buildBettingInsights(db, game, options = {}) {
     ...advancedContextInsights,
   ]);
 
-  let portfolio;
+  // Match exact Winline selections before portfolio pruning.
+  // Otherwise a generic 2.5/1.5 candidate can win a family bucket and remove
+  // the actually offered 3.5 line before the adapter ever sees it.
+  let marketMatchedCandidates=rawPortfolio;
   try {
-    portfolio = selectInsightPortfolio(rawPortfolio, 12);
-  } catch (error) {
-    console.error("betting insight portfolio failed", error);
-    portfolio = [...rawPortfolio]
-      .sort((a, b) => Number(b?.score || 0) - Number(a?.score || 0))
-      .slice(0, 12);
-  }
-
-  let pricedPortfolio=portfolio;
-  try {
-    pricedPortfolio=applyWinlineMarkets(portfolio, options.provider_markets, {
+    marketMatchedCandidates=applyWinlineMarkets(rawPortfolio, options.provider_markets, {
       now: options.now,
       max_age_ms: options.market_max_age_ms,
     });
   } catch (error) {
     console.error("winline market adapter failed", error);
   }
-  return (pricedPortfolio||[]).map((card)=>annotateAirUtility(card,game));
+
+  let portfolio;
+  try {
+    portfolio = selectInsightPortfolio(marketMatchedCandidates, 12);
+  } catch (error) {
+    console.error("betting insight portfolio failed", error);
+    portfolio = [...(marketMatchedCandidates||[])]
+      .sort((a, b) => Number(b?.score || 0) - Number(a?.score || 0))
+      .slice(0, 12);
+  }
+
+  return (portfolio||[]).map((card)=>annotateAirUtility(card,game));
 }
 
 export function annotateAirUtility(input, game=null) {
