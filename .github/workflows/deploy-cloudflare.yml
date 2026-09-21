@@ -11,6 +11,7 @@ on:
       - '.github/workflows/deploy-cloudflare.yml'
       - 'cloudflare-worker/src/**'
       - 'migrations/**'
+      - 'tools/refresh_team_current_snapshots.sql'
       - 'player_salary_2026_27.json'
       - 'ru_full_names.json'
       - 'wrangler.jsonc'
@@ -46,6 +47,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Apply pending D1 migrations
         run: npx wrangler d1 migrations apply hoh-data-core --remote
+      - name: Refresh current team snapshots
+        run: npx wrangler d1 execute hoh-data-core --remote --file=tools/refresh_team_current_snapshots.sql
       - name: Deploy Worker
         run: npx wrangler deploy
 

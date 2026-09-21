@@ -232,6 +232,7 @@ jobs:
           node tests/validate_broadcast_priced_merge.mjs
           node tests/validate_period_market_insights.mjs
           node tests/validate_advanced_rolling_venue.mjs
+          python tests/validate_team_current_snapshot_refresh.py
 
       - name: Worker dry run
         run: |
