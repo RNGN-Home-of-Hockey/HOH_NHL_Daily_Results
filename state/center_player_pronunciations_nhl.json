@@ -138,7 +138,7 @@
     },
     "CAR": {
       "matched": 0,
-      "roster": 43,
+      "roster": 42,
       "source_url": "https://www.nhl.com/hurricanes/team/pronunciation-guide"
     },
     "CBJ": {
@@ -148,7 +148,7 @@
     },
     "CGY": {
       "matched": 0,
-      "roster": 40,
+      "roster": 41,
       "source_url": "https://www.nhl.com/flames/team/pronunciation-guide"
     },
     "CHI": {
@@ -158,7 +158,7 @@
     },
     "COL": {
       "matched": 0,
-      "roster": 42,
+      "roster": 41,
       "source_url": "https://www.nhl.com/avalanche/team/pronunciation-guide"
     },
     "DAL": {
@@ -173,17 +173,17 @@
     },
     "EDM": {
       "matched": 0,
-      "roster": 45,
+      "roster": 44,
       "source_url": "https://www.nhl.com/oilers/team/pronunciation-guide"
     },
     "FLA": {
       "matched": 0,
-      "roster": 44,
+      "roster": 45,
       "source_url": "https://www.nhl.com/panthers/team/pronunciation-guide"
     },
     "LAK": {
       "matched": 0,
-      "roster": 47,
+      "roster": 53,
       "source_url": "https://www.nhl.com/kings/team/pronunciation-guide"
     },
     "MIN": {
@@ -208,7 +208,7 @@
     },
     "NYI": {
       "matched": 0,
-      "roster": 43,
+      "roster": 44,
       "source_url": "https://www.nhl.com/islanders/team/pronunciation-guide"
     },
     "NYR": {
@@ -223,7 +223,7 @@
     },
     "PHI": {
       "matched": 0,
-      "roster": 44,
+      "roster": 40,
       "source_url": "https://www.nhl.com/flyers/team/pronunciation-guide"
     },
     "PIT": {
@@ -243,7 +243,7 @@
     },
     "STL": {
       "matched": 0,
-      "roster": 47,
+      "roster": 39,
       "source_url": "https://www.nhl.com/blues/team/pronunciation-guide"
     },
     "TBL": {
@@ -253,7 +253,7 @@
     },
     "TOR": {
       "matched": 0,
-      "roster": 50,
+      "roster": 47,
       "source_url": "https://www.nhl.com/mapleleafs/team/pronunciation-guide"
     },
     "UTA": {
@@ -268,7 +268,7 @@
     },
     "VGK": {
       "matched": 0,
-      "roster": 36,
+      "roster": 34,
       "source_url": "https://www.nhl.com/goldenknights/team/pronunciation-guide"
     },
     "WPG": {
