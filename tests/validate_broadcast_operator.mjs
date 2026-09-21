@@ -20,8 +20,8 @@ const cards = new Map([
     render_bytes:8,
     rendered_at:new Date().toISOString(),
   }],
-  ['test-card', {
-    card_id:'test-card',
+  ['insight-2026020001-fixture', {
+    card_id:'insight-2026020001-fixture',
     game_pk:2026020001,
     headline_ru:'КАРОЛИНА ЗАКРЫЛА ФОРУ +1,5 В 19 ИЗ 20 ПОСЛЕДНИХ МАТЧЕЙ',
     stat_text_ru:'ФОРА +1,5 ГОЛА',
@@ -84,38 +84,38 @@ assert.equal(r.status,200);assert.match(await r.text(),/HOME OF HOCKEY × WINLIN
 
 r=await callStatus('shown',false);
 assert.equal(r.status,401,'operator mutations must reject missing auth');
-assert.equal(cards.get('test-card').status,'draft');
+assert.equal(cards.get('insight-2026020001-fixture').status,'draft');
 
 r=await callStatus('shown',true);
 assert.equal(r.status,200,'one click SHOW should render and go on air');
-assert.equal(cards.get('test-card').status,'shown');
+assert.equal(cards.get('insight-2026020001-fixture').status,'shown');
 assert.equal(cards.get('other-card').status,'shown','SHOW must not hide a card from another game');
-assert.ok(cards.get('test-card').shown_at,'shown card must receive shown_at');
-assert.ok(cards.get('test-card').render_hash,'shown card must receive render hash');
-assert.ok(cards.get('test-card').render_png_base64,'shown card must cache the rendered PNG');
+assert.ok(cards.get('insight-2026020001-fixture').shown_at,'shown card must receive shown_at');
+assert.ok(cards.get('insight-2026020001-fixture').render_hash,'shown card must receive render hash');
+assert.ok(cards.get('insight-2026020001-fixture').render_png_base64,'shown card must cache the rendered PNG');
 assert.equal(renderCalls,1,'first SHOW should call Vercel renderer once');
 
 r=await handleBroadcastOperatorRequest(
-  new Request('https://example.test/api/broadcast/rendered/test-card.png'),
+  new Request('https://example.test/api/broadcast/rendered/insight-2026020001-fixture.png'),
   env,
-  '/api/broadcast/rendered/test-card.png'
+  '/api/broadcast/rendered/insight-2026020001-fixture.png'
 );
 assert.equal(r.status,200,'stored PNG must be publicly readable by overlay');
 assert.match(r.headers.get('content-type')||'',/image\/png/);
 assert.equal((await r.arrayBuffer()).byteLength,256);
 
-r=await handleBroadcastOperatorRequest(new Request('https://example.test/api/broadcast/operator/cards/test-card',{
+r=await handleBroadcastOperatorRequest(new Request('https://example.test/api/broadcast/operator/cards/insight-2026020001-fixture',{
   method:'PATCH',headers:authHeaders(),body:JSON.stringify({headline_ru:'Changed'}),
-}),env,'/api/broadcast/operator/cards/test-card');
+}),env,'/api/broadcast/operator/cards/insight-2026020001-fixture');
 assert.equal(r.status,409,'shown card must be locked against live editing');
 
 r=await callStatus('hidden',true);
-assert.equal(r.status,200);assert.equal(cards.get('test-card').status,'hidden');
-assert.equal(cards.get('test-card').shown_at,null);
+assert.equal(r.status,200);assert.equal(cards.get('insight-2026020001-fixture').status,'hidden');
+assert.equal(cards.get('insight-2026020001-fixture').shown_at,null);
 
 r=await callStatus('shown',true);
 assert.equal(r.status,200,'cached card can return on air in one click');
-assert.equal(cards.get('test-card').status,'shown');
+assert.equal(cards.get('insight-2026020001-fixture').status,'shown');
 assert.equal(renderCalls,1,'unchanged card must reuse stored PNG instead of rerendering');
 
 // Regression: UI can have a fresher Winline price than an old persisted draft.
@@ -129,8 +129,8 @@ const visible={
 };
 r=await callStatus('shown',true,visible);
 assert.equal(r.status,200,'SHOW with visible snapshot should succeed');
-assert.equal(cards.get('test-card').manual_odds,2.27,'persisted odds must match visible UI price');
-assert.equal(JSON.parse(cards.get('test-card').payload_json).market.odds,2.27,'payload odds must match visible UI price');
+assert.equal(cards.get('insight-2026020001-fixture').manual_odds,2.27,'persisted odds must match visible UI price');
+assert.equal(JSON.parse(cards.get('insight-2026020001-fixture').payload_json).market.odds,2.27,'payload odds must match visible UI price');
 assert.equal(renderCalls,2,'changed visible price must invalidate old rendered PNG');
 
 // 15 separate matches must be able to stay ON AIR simultaneously.
@@ -165,7 +165,7 @@ for(let i=0;i<15;i++){
   assert.equal(response.status,200,'parallel match '+i+' must enter ON AIR');
 }
 for(let i=0;i<15;i++)assert.equal(cards.get('parallel-'+i).status,'shown','parallel match '+i+' must remain ON AIR');
-assert.equal(cards.get('test-card').status,'shown','existing game must remain ON AIR after 15 other rooms change');
+assert.equal(cards.get('insight-2026020001-fixture').status,'shown','existing game must remain ON AIR after 15 other rooms change');
 assert.equal(cards.get('other-card').status,'shown','second existing game must remain ON AIR after 15 other rooms change');
 assert.equal(renderCalls,16,'each new parallel card renders once');
 
@@ -175,7 +175,7 @@ console.log('BROADCAST_15_GAME_CONCURRENCY_OK');
 globalThis.fetch=originalFetch;
 
 function callStatus(status,authorized,card=null){
-  return callCardStatus('test-card',status,authorized,card);
+  return callCardStatus('insight-2026020001-fixture',status,authorized,card);
 }
 function callCardStatus(cardId,status,authorized,card=null){
   return handleBroadcastOperatorRequest(new Request('https://example.test/api/broadcast/operator/cards/'+encodeURIComponent(cardId)+'/status',{
