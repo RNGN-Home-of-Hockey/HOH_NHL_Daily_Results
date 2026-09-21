@@ -47,12 +47,14 @@ jobs:
         working-directory: vk-browser-relay-cloudflare
         run: npx wrangler deploy --config wrangler.jsonc --name "$RELAY_NAME"
 
-      - name: Create temporary login admin secret
+      - name: Derive stable relay admin secret
         id: admin
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          secret="$(openssl rand -hex 32)"
+          secret="$(printf '%s' "$CF_TOKEN:rngn-vk-browser-relay-admin-v1" | sha256sum | awk '{print $1}')"
           echo "::add-mask::$secret"
           echo "secret=$secret" >> "$GITHUB_OUTPUT"
 
@@ -83,11 +85,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl --silent --show-error \
-            -X POST \
-            -H "Accept: application/json" \
-            -H "x-admin-secret: $ADMIN_SECRET" \
-            "$RELAY_URL/admin/login/start")"
+          response=""
+          for i in $(seq 1 15); do
+            response="$(curl --silent --show-error \
+              -X POST \
+              -H "Accept: application/json" \
+              -H "x-admin-secret: $ADMIN_SECRET" \
+              "$RELAY_URL/admin/login/start")"
+            if node -e 'const x=JSON.parse(process.argv[1]); process.exit(x.viewerUrl && x.statusUrl ? 0 : 1)' "$response" 2>/dev/null; then
+              break
+            fi
+            echo "Login endpoint not ready yet (attempt $i): $response"
+            sleep 2
+          done
           printf '%s' "$response" > /tmp/vk-paid-login.json
 
           node <<'NODE'
