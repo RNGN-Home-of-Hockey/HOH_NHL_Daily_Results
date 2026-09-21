@@ -23,6 +23,18 @@ on:
         description: "Set to true to resend the latest final hockey day"
         required: false
         default: "false"
+      full_day:
+        description: "Send all completed games for TARGET_DATE"
+        required: false
+        default: "false"
+      target_chat_id:
+        description: "Override Telegram chat for an interactive response"
+        required: false
+        default: ""
+      target_thread_id:
+        description: "Override Telegram thread for an interactive response"
+        required: false
+        default: ""
   schedule:
     - cron: "*/5 * * * *"
 
@@ -60,6 +72,9 @@ jobs:
           INPUT_DATE: ${{ github.event.inputs.date || github.event.client_payload.date }}
           INPUT_MATCH: ${{ github.event.inputs.match || github.event.client_payload.match }}
           INPUT_RESEND_LAST_DAY: ${{ github.event.inputs.resend_last_day || github.event.client_payload.resend_last_day }}
+          INPUT_FULL_DAY: ${{ github.event.inputs.full_day || github.event.client_payload.full_day }}
+          INPUT_TARGET_CHAT_ID: ${{ github.event.inputs.target_chat_id || github.event.client_payload.target_chat_id }}
+          INPUT_TARGET_THREAD_ID: ${{ github.event.inputs.target_thread_id || github.event.client_payload.target_thread_id }}
         run: |
           python - << 'PY'
           import os, re
@@ -68,6 +83,9 @@ jobs:
           dt = (os.getenv("INPUT_DATE") or "").strip()
           mt = (os.getenv("INPUT_MATCH") or "").strip()
           resend = (os.getenv("INPUT_RESEND_LAST_DAY") or "").strip()
+          full_day = (os.getenv("INPUT_FULL_DAY") or "").strip()
+          target_chat = (os.getenv("INPUT_TARGET_CHAT_ID") or "").strip()
+          target_thread = (os.getenv("INPUT_TARGET_THREAD_ID") or "").strip()
 
           q = ""
           if not gp and dt and mt:
@@ -89,11 +107,17 @@ jobs:
               fh.write(f"GAME_QUERY={q}\n")
               fh.write(f"TARGET_DATE={dt}\n")
               fh.write(f"RESEND_LAST_DAY={resend}\n")
+              fh.write(f"FULL_DAY_MENU={full_day}\n")
+              fh.write(f"TARGET_CHAT_ID={target_chat}\n")
+              fh.write(f"TARGET_THREAD_ID={target_thread}\n")
 
           print("GAME_PK:", gp or "(empty)")
           print("GAME_QUERY:", q or "(empty)")
           print("TARGET_DATE:", dt or "(empty)")
           print("RESEND_LAST_DAY:", resend or "(empty)")
+          print("FULL_DAY_MENU:", full_day or "(empty)")
+          print("TARGET_CHAT_ID:", target_chat or "(default)")
+          print("TARGET_THREAD_ID:", target_thread or "(default)")
           PY
 
       - name: Init state
@@ -111,11 +135,12 @@ jobs:
           GAME_QUERY: ${{ env.GAME_QUERY }}
           TARGET_DATE: ${{ env.TARGET_DATE }}
           RESEND_LAST_DAY: ${{ env.RESEND_LAST_DAY }}
+          FULL_DAY_MENU: ${{ env.FULL_DAY_MENU }}
           STATE_PATH: ${{ env.BOT_STATE_PATH }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
-          TELEGRAM_INTERACTIVE_ENABLED: 1
+          TELEGRAM_CHAT_ID: ${{ env.TARGET_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_THREAD_ID: ${{ env.TARGET_THREAD_ID || secrets.TELEGRAM_THREAD_ID }}
+          TELEGRAM_INTERACTIVE_ENABLED: 0
           HOH_CHANNEL_URL: http://t.me/home_of_hockey
           DEBUG_VERBOSE: 1
         run: python nhl_single_result_bot.py
