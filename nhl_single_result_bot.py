@@ -404,6 +404,7 @@ def _game_to_meta(g: dict) -> Optional[GameMeta]:
     atri = _upper_str(away.get("abbrev") or away.get("triCode") or away.get("teamAbbrev"))
     hscore = _first_int(home.get("score"))
     ascore = _first_int(away.get("score"))
+    game_type = _first_int(g.get("gameType"))
 
     series_game: Optional[int] = None
     home_series_wins: Optional[int] = None
@@ -446,6 +447,7 @@ def _game_to_meta(g: dict) -> Optional[GameMeta]:
         atri,
         hscore,
         ascore,
+        game_type,
         series_game,
         home_series_wins,
         away_series_wins,
@@ -575,6 +577,7 @@ def fetch_scoring_official(gamePk: int, home_tri: str, away_tri: str) -> Tuple[L
             official_has_shootout = True
 
             scorer = _extract_shootout_scorer(p, det, roster_names)
+            scorer_id = _first_int(det.get("scoringPlayerId"), det.get("shootingPlayerId"), det.get("playerId")) or None
 
             h = det.get("homeScore")
             a = det.get("awayScore")
@@ -610,6 +613,8 @@ def fetch_scoring_official(gamePk: int, home_tri: str, away_tri: str) -> Tuple[L
                         away_goals=a,
                         scorer=scorer,
                         assists=[],
+                        scorer_id=scorer_id,
+                        assist_ids=[],
                         is_shootout_winner=_is_deciding_shootout_goal(det),
                         is_shootout_scored=scored,
                     )
@@ -655,6 +660,15 @@ def fetch_scoring_official(gamePk: int, home_tri: str, away_tri: str) -> Tuple[L
             if sfb:
                 scorer = sfb
 
+        scorer_id = _first_int(det.get("scoringPlayerId"), det.get("shootingPlayerId"), det.get("playerId")) or None
+        assist_ids = [
+            pid for pid in (
+                _first_int(det.get("assist1PlayerId")),
+                _first_int(det.get("assist2PlayerId")),
+                _first_int(det.get("assist3PlayerId")),
+            ) if pid
+        ]
+
         assists: List[str] = []
         for k in _ASSIST_KEYS:
             nm = _extract_name(det.get(k))
@@ -679,6 +693,8 @@ def fetch_scoring_official(gamePk: int, home_tri: str, away_tri: str) -> Tuple[L
                 away_goals=_first_int(a),
                 scorer=_clean_person_name(scorer),
                 assists=_clean_assists(assists),
+                scorer_id=scorer_id,
+                assist_ids=assist_ids,
             )
         )
         prev_h, prev_a = _first_int(h), _first_int(a)
