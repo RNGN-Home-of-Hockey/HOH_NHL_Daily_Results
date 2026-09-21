@@ -467,7 +467,7 @@ async function ensureRenderedCard(env,cardId){
   const payload=rendererPayloadFromRow(row);
   if(!Number.isFinite(Number(payload.odds))||Number(payload.odds)<=1)throw new Error("winline_price_required");
   const body=JSON.stringify(payload);
-  const hash=await sha256Hex("renderer-v13-accent-cover-2026-09-21:"+body);
+  const hash=await sha256Hex("renderer-v14-broadcast-headline-2026-09-21:"+body);
   if(String(row.render_hash||"")===hash&&row.render_png_base64){
     return {cached:true,hash,bytes:Number(row.render_bytes||0),rendered_at:row.rendered_at||null};
   }
@@ -573,14 +573,12 @@ function renderMarketText(candidate,row,teamName){
   return fallback||"СТАВКА WINLINE";
 }
 function renderFactText(candidate,row){
-  const m=candidate.market&&typeof candidate.market==="object"?candidate.market:{};
-  const raw=applyTeamGrammar(candidate.title||row.headline_ru||candidate.value||row.stat_text_ru||"");
-  let s=renderDisplayText(raw);
-  for(const [tri,meta] of Object.entries(TEAM_META)) s=applyDisplayTeamGrammar(s,tri,meta.name);
-  if(String(m.type||row.suggested_market_type||"").toLowerCase()==="handicap"&&!/ФОРУ[^А-ЯЁ]*[+-]?\d+(?:,\d+)?\s+ГОЛА/.test(s)){
-    s=s.replace(/ФОРУ\s+([+-]?\d+(?:,\d+)?)/,"ФОРУ $1 ГОЛА");
-  }
-  return s;
+  // The persisted headline is the operator-approved broadcast copy.
+  // Never rebuild it from raw statistical payload_json.title: that can contain
+  // split samples such as 146/170 + 145/170 while Control Room already shows
+  // a simpler percentage headline.
+  const raw=String(row.headline_ru||candidate.broadcast_title||candidate.title||candidate.value||row.stat_text_ru||"").trim();
+  return renderDisplayText(raw);
 }
 async function sha256Hex(value){
   const data=new TextEncoder().encode(String(value));

@@ -54,8 +54,14 @@ globalThis.fetch=async (url,options={})=>{
     assert.equal(payload.team,'CAR');
     assert.equal(payload.team_name,'КАРОЛИНА');
     assert.equal(payload.market,'ФОРА +1,5 ГОЛА');
-    if(renderCalls===1)assert.equal(payload.odds,1.30);
-    if(renderCalls===2)assert.equal(payload.odds,2.27);
+    if(renderCalls===1){
+      assert.equal(payload.odds,1.30);
+      assert.equal(payload.fact,'КАРОЛИНА ЗАКРЫЛА ФОРУ +1,5 В 19 ИЗ 20 ПОСЛЕДНИХ МАТЧЕЙ');
+    }
+    if(renderCalls===2){
+      assert.equal(payload.odds,2.27);
+      assert.equal(payload.fact,'БЕЗ ПОРАЖЕНИЯ В 2+ ШАЙБЫ — 74% МАТЧЕЙ · 80 ИГР','renderer must use operator-visible broadcast headline, not raw payload title');
+    }
     const bytes=new Uint8Array(256);
     bytes.set([137,80,78,71,13,10,26,10]);
     return new Response(bytes,{status:200,headers:{'content-type':'image/png'}});
@@ -124,12 +130,15 @@ r=await callStatus('hidden',true);
 assert.equal(r.status,200);
 const visible={
   id:'fixture',
-  title:'CAR ЗАКРЫЛА ФОРУ +1.5 В 19 ИЗ 20 ПОСЛЕДНИХ МАТЧЕЙ',
+  title:'CAR ЗАКРЫЛА ФОРУ +1.5 В 59 ИЗ ПОСЛЕДНИХ 80 МАТЧЕЙ',
+  broadcast_title:'БЕЗ ПОРАЖЕНИЯ В 2+ ШАЙБЫ — 74% МАТЧЕЙ · 80 ИГР',
+  broadcast_detail:'Точная выборка: 59 из 80',
   market:{type:'handicap',subject:'CAR',side:'home',line:1.5,label:'CAR +1.5',odds:2.27,odds_is_demo:false,odds_source:'provider_live'}
 };
 r=await callStatus('shown',true,visible);
 assert.equal(r.status,200,'SHOW with visible snapshot should succeed');
 assert.equal(cards.get('insight-2026020001-fixture').manual_odds,2.27,'persisted odds must match visible UI price');
+assert.equal(cards.get('insight-2026020001-fixture').headline_ru,visible.broadcast_title,'persisted broadcast headline must match visible UI copy');
 assert.equal(JSON.parse(cards.get('insight-2026020001-fixture').payload_json).market.odds,2.27,'payload odds must match visible UI price');
 assert.equal(renderCalls,2,'changed visible price must invalidate old rendered PNG');
 
