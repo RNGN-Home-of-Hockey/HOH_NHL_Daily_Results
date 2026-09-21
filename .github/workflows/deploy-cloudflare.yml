@@ -59,13 +59,13 @@ jobs:
             r=await fetch(url,{headers:{accept:'application/json'},cache:'no-store'});
             d=await r.json().catch(()=>({}));
             console.log('TELEGRAM_CENTER_STATUS_ATTEMPT',i+1,JSON.stringify(d));
-            if(r.ok&&d.runtime_marker==='telegram-center-2026-09-21-v11')break;
+            if(r.ok&&d.runtime_marker==='telegram-center-2026-09-21-v12')break;
             await new Promise(res=>setTimeout(res,2000));
           }
           console.log('TELEGRAM_CENTER_STATUS',JSON.stringify(d));
           if(!r?.ok)throw new Error('Telegram Center status HTTP '+String(r?.status));
           if(!d?.ok)throw new Error('Telegram Center unhealthy '+JSON.stringify(d));
-          if(d.runtime_marker!=='telegram-center-2026-09-21-v11')throw new Error('Unexpected Telegram Center runtime '+String(d.runtime_marker));
+          if(d.runtime_marker!=='telegram-center-2026-09-21-v12')throw new Error('Unexpected Telegram Center runtime '+String(d.runtime_marker));
           if(!d.center_token_configured||!d.webhook_secret_configured)throw new Error('Telegram Center credentials incomplete');
           if(!d.bot?.ok||!d.bot?.username)throw new Error('Telegram Center bot unavailable');
           if(d.delivery_mode!=='polling')throw new Error('Telegram Center is not in polling mode '+String(d.delivery_mode));

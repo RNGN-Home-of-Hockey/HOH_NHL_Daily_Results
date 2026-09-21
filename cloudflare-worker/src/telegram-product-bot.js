@@ -253,7 +253,7 @@ async function centerStatus(request, env) {
     ok: centerTokenConfigured && bot.ok && webhook.ok
       && (deliveryMode === "polling" ? pollingReady && deliverySetup.ok : webhookSecretConfigured && webhookMatchesExpected && deliverySetup.ok),
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-21-v11",
+    runtime_marker: "telegram-center-2026-09-21-v12",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     webhook_secret_mode: "sha256_hex",
@@ -499,7 +499,7 @@ export async function pollTelegramCenterUpdates(env) {
   }
 
   const payload = {
-    timeout: 0,
+    timeout: 25,
     limit: 100,
     allowed_updates: ["message"],
   };
