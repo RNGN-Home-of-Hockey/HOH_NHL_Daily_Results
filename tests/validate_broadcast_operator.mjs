@@ -54,7 +54,8 @@ globalThis.fetch=async (url,options={})=>{
     assert.equal(payload.team,'CAR');
     assert.equal(payload.team_name,'КАРОЛИНА');
     assert.equal(payload.market,'ФОРА +1,5 ГОЛА');
-    assert.equal(payload.odds,1.30);
+    if(renderCalls===1)assert.equal(payload.odds,1.30);
+    if(renderCalls===2)assert.equal(payload.odds,2.27);
     const bytes=new Uint8Array(256);
     bytes.set([137,80,78,71,13,10,26,10]);
     return new Response(bytes,{status:200,headers:{'content-type':'image/png'}});
@@ -117,6 +118,21 @@ assert.equal(r.status,200,'cached card can return on air in one click');
 assert.equal(cards.get('test-card').status,'shown');
 assert.equal(renderCalls,1,'unchanged card must reuse stored PNG instead of rerendering');
 
+// Regression: UI can have a fresher Winline price than an old persisted draft.
+// SHOW must render the exact price the operator sees, not stale payload_json/manual_odds.
+r=await callStatus('hidden',true);
+assert.equal(r.status,200);
+const visible={
+  id:'fixture',
+  title:'CAR ЗАКРЫЛА ФОРУ +1.5 В 19 ИЗ 20 ПОСЛЕДНИХ МАТЧЕЙ',
+  market:{type:'handicap',subject:'CAR',side:'home',line:1.5,label:'CAR +1.5',odds:2.27,odds_is_demo:false,odds_source:'provider_live'}
+};
+r=await callStatus('shown',true,visible);
+assert.equal(r.status,200,'SHOW with visible snapshot should succeed');
+assert.equal(cards.get('test-card').manual_odds,2.27,'persisted odds must match visible UI price');
+assert.equal(JSON.parse(cards.get('test-card').payload_json).market.odds,2.27,'payload odds must match visible UI price');
+assert.equal(renderCalls,2,'changed visible price must invalidate old rendered PNG');
+
 // 15 separate matches must be able to stay ON AIR simultaneously.
 for(let i=0;i<15;i++){
   const id='parallel-'+i;
@@ -158,12 +174,12 @@ console.log('BROADCAST_15_GAME_CONCURRENCY_OK');
 
 globalThis.fetch=originalFetch;
 
-function callStatus(status,authorized){
-  return callCardStatus('test-card',status,authorized);
+function callStatus(status,authorized,card=null){
+  return callCardStatus('test-card',status,authorized,card);
 }
-function callCardStatus(cardId,status,authorized){
+function callCardStatus(cardId,status,authorized,card=null){
   return handleBroadcastOperatorRequest(new Request('https://example.test/api/broadcast/operator/cards/'+encodeURIComponent(cardId)+'/status',{
-    method:'POST',headers:authorized?authHeaders():{'content-type':'application/json'},body:JSON.stringify({status}),
+    method:'POST',headers:authorized?authHeaders():{'content-type':'application/json'},body:JSON.stringify({status,...(card?{card}: {})}),
   }),env,'/api/broadcast/operator/cards/'+cardId+'/status');
 }
 function authHeaders(){return {'authorization':'Bearer operator-secret','content-type':'application/json'};}
@@ -190,6 +206,18 @@ function statement(sql){
 }
 function execute(sql,args){
   if (/INSERT INTO broadcast_operator_actions/.test(sql)) return changes(1);
+  if (/UPDATE broadcast_cards/.test(sql) && /payload_json=\?/.test(sql) && /render_hash=NULL/.test(sql)) {
+    const [headline,stat,source,type,subject,odds,payload,id,gamePk]=args;
+    const c=cards.get(String(id));
+    if(c&&Number(c.game_pk)===Number(gamePk)){
+      c.headline_ru=String(headline);c.stat_text_ru=String(stat);c.source_note_ru=String(source);
+      c.suggested_market_type=String(type);c.suggested_market_subject=String(subject);
+      c.manual_odds=Number(odds);c.odds_is_demo=0;c.payload_json=String(payload);
+      c.render_hash=null;c.render_png_base64=null;c.render_bytes=null;c.rendered_at=null;
+      return changes(1);
+    }
+    return changes(0);
+  }
   if (/SET render_hash=\?/.test(sql) && /render_png_base64=\?/.test(sql)) {
     const [hash,png,bytes,id]=args;
     const c=cards.get(String(id));

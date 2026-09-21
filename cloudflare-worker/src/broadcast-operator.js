@@ -248,6 +248,11 @@ async function setCardStatus(request,env,cardId){
 
   let render=null;
   if(target==="shown"){
+    const snapshot=body.card&&typeof body.card==="object"?body.card:null;
+    if(snapshot){
+      const synced=await syncCardSnapshotForShow(env.DB,current,snapshot);
+      if(!synced.ok)return json(synced,synced.status||400);
+    }
     try{render=await ensureRenderedCard(env,cardId)}catch(error){
       console.error("broadcast card render failed",error);
       return json({ok:false,error:"render_failed",message:String(error?.message||error)},502);
@@ -316,6 +321,46 @@ async function recordOperatorAction(db,{gamePk,cardId,action,operatorId,operator
     // Action history must never block the live broadcast path.
     console.error("broadcast operator action log failed",error);
   }
+}
+
+async function syncCardSnapshotForShow(db,current,candidate){
+  const market=candidate?.market&&typeof candidate.market==="object"?candidate.market:{};
+  const odds=Number(market.odds);
+  if(!Number.isFinite(odds)||odds<=1){
+    return {ok:false,error:"invalid_visible_odds",status:409};
+  }
+  if(market.odds_is_demo!==false||String(market.odds_source||"")!=="provider_live"){
+    return {ok:false,error:"winline_price_required",status:409};
+  }
+  const expectedId=safeId(`insight-${current.game_pk}-${String(candidate.id||candidate.insight_type||candidate.type||"insight")}`);
+  if(expectedId!==String(current.card_id)){
+    return {ok:false,error:"card_snapshot_mismatch",status:409};
+  }
+  const subject=String(market.subject||market.side||candidate.evidence?.team||candidate.team_tri||"").slice(0,120);
+  const headline=String(candidate.broadcast_title||candidate.title||candidate.value||candidate.eyebrow||"HOH INSIGHT").slice(0,180);
+  const stat=String(market.label||candidate.value||"").slice(0,240);
+  const source=String(candidate.explanation||candidate.note||"HOH Data Core").slice(0,500);
+  const payload=JSON.stringify(candidate).slice(0,50000);
+  await db.prepare(`
+    UPDATE broadcast_cards
+    SET headline_ru=?,stat_text_ru=?,source_note_ru=?,
+        suggested_market_type=?,suggested_market_subject=?,
+        manual_odds=?,odds_is_demo=0,payload_json=?,
+        render_hash=NULL,render_png_base64=NULL,render_bytes=NULL,rendered_at=NULL,
+        updated_at=CURRENT_TIMESTAMP
+    WHERE card_id=? AND game_pk=?;
+  `).bind(
+    headline,
+    stat,
+    source,
+    String(market.type||candidate.insight_type||"insight").slice(0,80),
+    subject,
+    odds,
+    payload,
+    current.card_id,
+    current.game_pk,
+  ).run();
+  return {ok:true,odds};
 }
 
 async function getOperatorLease(env,gamePk){

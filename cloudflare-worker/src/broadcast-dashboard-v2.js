@@ -732,7 +732,7 @@ async function ensureDraft(c){
 }
 async function setBroadcastStatus(c,status){
   const id=await ensureDraft(c);
-  const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(id)+'/status',{method:'POST',body:JSON.stringify({status,...identity()})});
+  const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(id)+'/status',{method:'POST',body:JSON.stringify({status,card:status==='shown'?c:undefined,...identity()})});
   c.__status=d.card?.status||status;
   c.__renderHash=d.card?.render_hash||c.__renderHash||null;
   const s=await api('/api/broadcast/state?game='+encodeURIComponent(selected));
