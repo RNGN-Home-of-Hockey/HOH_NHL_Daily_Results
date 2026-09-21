@@ -136,7 +136,8 @@ export async function renderCard(input={}){
   ];
   if(logo) composites.push({input:logo,left:31,top:86});
   else composites.push({input:await textLayer({markup:escapeMarkup(p.team),width:82,height:82,size:28,color:"#D8D8DC",align:"center"}),left:31,top:86});
-  return sharp(base).ensureAlpha().composite(composites).resize(574,148,{fit:"fill"}).png({compressionLevel:9,adaptiveFiltering:true}).toBuffer();
+  const full=await sharp(base).ensureAlpha().composite(composites).png({compressionLevel:9,adaptiveFiltering:true}).toBuffer();
+  return sharp(full).resize(574,148,{fit:"fill"}).png({compressionLevel:9,adaptiveFiltering:true}).toBuffer();
 }
 export const RENDER_SIZE={width:574,height:148};
 export const RENDER_VERSION="2026-09-21-layout-v4";
