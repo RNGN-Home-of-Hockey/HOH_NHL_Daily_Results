@@ -58,16 +58,164 @@ export async function buildBettingInsights(db, game, options = {}) {
       .slice(0, 12);
   }
 
+  let pricedPortfolio=portfolio;
   try {
-    return applyWinlineMarkets(portfolio, options.provider_markets, {
+    pricedPortfolio=applyWinlineMarkets(portfolio, options.provider_markets, {
       now: options.now,
       max_age_ms: options.market_max_age_ms,
     });
   } catch (error) {
     console.error("winline market adapter failed", error);
-    return portfolio;
   }
+  return (pricedPortfolio||[]).map(annotateAirUtility);
 }
+
+export function annotateAirUtility(input) {
+  const card={...input,evidence:input?.evidence?{...input.evidence}:{}};
+  const market=card.market||{};
+  const sourceScore=finiteAirScore(card.portfolio_score,card.score,55);
+  const sample=editorialSampleSize(card);
+  const hitRate=editorialHitRate(card);
+  const odds=Number(market.odds);
+  const realPrice=Number.isFinite(odds)&&odds>1&&market.odds_is_demo===false;
+  const implied=realPrice?1/odds:null;
+  const gap=realPrice&&Number.isFinite(hitRate)?hitRate-implied:null;
+  let score=Math.max(25,Math.min(92,sourceScore));
+  const reasons=[];
+
+  if(realPrice){
+    if(odds<1.30){score-=28;reasons.push(["низкий кэф",-28]);}
+    else if(odds<1.40){score-=18;reasons.push(["низкий кэф",-18]);}
+    else if(odds<1.55){score-=8;reasons.push(["кэф ниже рабочего",-8]);}
+    else if(odds<=2.20){score+=10;reasons.push(["хороший кэф",10]);}
+    else if(odds<=2.80){score+=6;reasons.push(["интересный кэф",6]);}
+    else if(odds<=4){score+=1;}
+    else {score-=4;reasons.push(["высокий риск цены",-4]);}
+  }else{
+    score-=20;reasons.push(["нет точной линии",-20]);
+  }
+
+  if(Number.isFinite(gap)){
+    if(gap>=0.12){score+=16;reasons.push(["история заметно сильнее цены",16]);}
+    else if(gap>=0.06){score+=9;reasons.push(["история сильнее цены",9]);}
+    else if(gap>=0.02){score+=4;reasons.push(["есть запас к цене",4]);}
+    else if(gap>=-0.02){reasons.push(["история близка к цене",0]);}
+    else if(gap>=-0.07){score-=8;reasons.push(["история слабее цены",-8]);}
+    else {score-=15;reasons.push(["история заметно слабее цены",-15]);}
+  }
+
+  if(sample>0&&sample<6){score-=10;reasons.push(["малая выборка",-10]);}
+  else if(sample<10&&sample>0){score-=3;reasons.push(["небольшая выборка",-3]);}
+  else if(sample<=30&&sample>0){score+=6;reasons.push(["понятная выборка",6]);}
+  else if(sample<100){score+=3;reasons.push(["солидная выборка",3]);}
+  else if(sample>=100){score+=2;reasons.push(["большая выборка",2]);}
+
+  const type=String(market.type||"").toLowerCase();
+  const line=Number(market.line);
+  if(type==="moneyline"){score+=5;reasons.push(["понятный рынок",5]);}
+  if(type==="handicap"){
+    if(Number.isFinite(line)&&Math.abs(line)>=2.5){score-=5;reasons.push(["слишком безопасная фора",-5]);}
+    else if(Number.isFinite(line)&&Math.abs(line)===1.5){score+=2;}
+  }
+  if(type==="game_total"){
+    if(Number.isFinite(line)&&(line===5.5||line===6.5)){score+=3;}
+    else if(Number.isFinite(line)&&(line<=4.5||line>=7.5)){score-=5;reasons.push(["крайняя линия",-5]);}
+  }
+  if(type==="team_total"){
+    if(Number.isFinite(line)&&(line===2.5||line===3.5)){score+=3;}
+    else if(Number.isFinite(line)&&(line<=1.5||line>=4.5)){score-=5;reasons.push(["крайняя линия",-5]);}
+  }
+  if(card?.evidence_quality?.context_only){score-=8;reasons.push(["контекст, не прямой сигнал",-8]);}
+  if(String(card.title||"").length>110){score-=4;reasons.push(["сложная формулировка",-4]);}
+
+  const airScore=Math.max(0,Math.min(100,Math.round(score)));
+  const reasonTags=[...reasons]
+    .sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))
+    .map(x=>x[0])
+    .filter((v,i,a)=>a.indexOf(v)===i)
+    .slice(0,3);
+
+  card.air_score=airScore;
+  card.air_label=airScore>=85?"СИЛЬНО ДЛЯ ЭФИРА":airScore>=70?"ХОРОШО ДЛЯ ЭФИРА":airScore>=55?"СРЕДНЕ":airScore>=40?"СЛАБО":"НЕ ДЛЯ ЭФИРА";
+  card.air_reasons=reasonTags;
+  card.air_meta={
+    meaning:"editorial_broadcast_utility_not_probability",
+    source_score:Math.round(sourceScore*10)/10,
+    sample_size:sample||null,
+    historical_rate:Number.isFinite(hitRate)?roundAir3(hitRate):null,
+    implied_probability:Number.isFinite(implied)?roundAir3(implied):null,
+    historical_minus_implied:Number.isFinite(gap)?roundAir3(gap):null,
+    real_winline_price:realPrice,
+  };
+  const formatted=formatBroadcastTitle(card,{sample,hitRate});
+  card.broadcast_title=formatted.title;
+  if(formatted.detail)card.broadcast_detail=formatted.detail;
+  return card;
+}
+
+export function formatBroadcastTitle(card, precomputed={}) {
+  const evidence=card?.evidence||{};
+  const market=card?.market||{};
+  const sample=Number(precomputed.sample||editorialSampleSize(card)||0);
+  const rate=Number(precomputed.hitRate);
+  const hitRate=Number.isFinite(rate)?rate:editorialHitRate(card);
+  const original=String(card?.title||card?.value||"").trim();
+  if(!sample||sample<=30||!Number.isFinite(hitRate))return {title:original,detail:null};
+  const pct=Math.round(hitRate*100);
+  const sampleLabel=sample>=100?String(Math.floor(sample/100)*100)+"+ ИГР":String(sample)+" ИГР";
+  const type=String(market.type||"").toLowerCase();
+  const label=String(market.label||"").trim().toUpperCase().replace(/\./g,",");
+  let title;
+  if(type==="moneyline")title="ПОБЕДА — В "+pct+"% МАТЧЕЙ · "+sampleLabel;
+  else if(type==="handicap")title="ФОРА "+signedAirLine(market.line)+" ПРОШЛА В "+pct+"% МАТЧЕЙ · "+sampleLabel;
+  else if(type==="game_total"||type==="team_total")title=(label||"ТОТАЛ")+" ПРОШЁЛ В "+pct+"% МАТЧЕЙ · "+sampleLabel;
+  else title=pct+"% МАТЧЕЙ · "+sampleLabel;
+
+  let detail=null;
+  const away=evidence.away,home=evidence.home;
+  if(away&&home&&Number.isFinite(Number(away.hits))&&Number.isFinite(Number(away.sample))&&Number.isFinite(Number(home.hits))&&Number.isFinite(Number(home.sample))){
+    const awayTeam=String(evidence.away_team||card?.away_tri||"ГОСТИ");
+    const homeTeam=String(evidence.home_team||card?.home_tri||"ХОЗЯЕВА");
+    detail=awayTeam+" в гостях "+away.hits+"/"+away.sample+" · "+homeTeam+" дома "+home.hits+"/"+home.sample;
+  }else if(sample>=100){
+    detail="Точная выборка: "+sample+" игр";
+  }
+  return {title,detail};
+}
+
+function editorialSampleSize(card){
+  const e=card?.evidence||{};
+  const away=Number(e.away?.sample),home=Number(e.home?.sample);
+  if(Number.isFinite(away)&&away>0&&Number.isFinite(home)&&home>0)return away+home;
+  const candidates=[card?.sample,e.sample,e.sample_size,e.window,e.games,e.cover?.sample,e.attack?.sample]
+    .map(Number).filter(v=>Number.isFinite(v)&&v>0);
+  return candidates.length?Math.max(...candidates):0;
+}
+function editorialHitRate(card){
+  const e=card?.evidence||{};
+  const awayRate=Number(e.away?.hit_rate),homeRate=Number(e.home?.hit_rate);
+  const awayN=Number(e.away?.sample),homeN=Number(e.home?.sample);
+  if(Number.isFinite(awayRate)&&Number.isFinite(homeRate)){
+    if(Number.isFinite(awayN)&&Number.isFinite(homeN)&&awayN+homeN>0)return (awayRate*awayN+homeRate*homeN)/(awayN+homeN);
+    return (awayRate+homeRate)/2;
+  }
+  const direct=[e.hit_rate,e.average_rate,e.combined_rate,e.rate,e.cover?.rate,e.attack?.rate,e.home?.rate,e.away?.rate]
+    .map(Number).find(v=>Number.isFinite(v)&&v>=0&&v<=1);
+  if(Number.isFinite(direct))return direct;
+  const hits=Number(e.hits),sample=Number(e.sample||e.sample_size||e.window);
+  if(Number.isFinite(hits)&&Number.isFinite(sample)&&sample>0)return hits/sample;
+  const wins=Number(e.wins),games=Number(e.games);
+  if(Number.isFinite(wins)&&Number.isFinite(games)&&games>0)return wins/games;
+  return null;
+}
+function signedAirLine(value){
+  const n=Number(value);
+  if(!Number.isFinite(n))return"";
+  const abs=Math.abs(n).toFixed(1).replace(".",",");
+  return (n>0?"+":n<0?"-":"")+abs;
+}
+function finiteAirScore(...values){for(const value of values){const n=Number(value);if(Number.isFinite(n))return n}return 55}
+function roundAir3(value){return Math.round(Number(value)*1000)/1000}
 
 async function safeInsightBuild(label, factory) {
   try {

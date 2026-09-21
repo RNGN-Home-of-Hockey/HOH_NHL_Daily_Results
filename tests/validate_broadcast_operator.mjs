@@ -139,6 +139,7 @@ function statement(sql){
           }
           if (/SELECT card_id,render_hash,render_png_base64/.test(sql)) return clone(cards.get(String(args[0]))||null);
           if (/FROM broadcast_cards WHERE card_id=\?/.test(sql)) return clone(cards.get(String(args[0]))||null);
+          if (/FROM broadcast_operator_leases/.test(sql)) return null;
           throw new Error('Unhandled first SQL: '+sql);
         },
         async run(){ return execute(sql,args); },

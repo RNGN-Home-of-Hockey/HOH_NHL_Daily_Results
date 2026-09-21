@@ -174,7 +174,7 @@ async function createInsightDraft(request,env){
   const card={
     card_id:safeId(`insight-${gamePk}-${idBase}`),
     game_pk:gamePk,
-    headline_ru:String(candidate.title||candidate.value||candidate.eyebrow||"HOH INSIGHT").slice(0,180),
+    headline_ru:String(candidate.broadcast_title||candidate.title||candidate.value||candidate.eyebrow||"HOH INSIGHT").slice(0,180),
     stat_text_ru:String(market.label||candidate.value||"").slice(0,240),
     source_note_ru:String(candidate.explanation||candidate.note||"HOH Data Core").slice(0,500),
     suggested_market_type:String(market.type||candidate.insight_type||"insight").slice(0,80),

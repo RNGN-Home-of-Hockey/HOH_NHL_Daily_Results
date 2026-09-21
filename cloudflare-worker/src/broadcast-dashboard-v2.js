@@ -391,7 +391,7 @@ async function selectGame(id){const previous=selected;if(previous&&Number(previo
 function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[side+'_name']||tri,logo=g[side+'_logo'];return `<div class="team ${side==='home'?'home':''}">${side==='home'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}<div class="logo">${logo?`<img src="${esc(logo)}" alt="">`:`<span class="fallback">${esc(tri)}</span>`}</div>${side==='away'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}</div>`}
 function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct==null||!Number.isFinite(Number(a.faceoff_pct))?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct==null||!Number.isFinite(Number(h.faceoff_pct))?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
-function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}renderCards(merged.slice(0,12));const priced=merged.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');if(sub)sub.textContent=`Статистических сигналов: ${merged.length} · с точной линией Winline: ${priced} · Vercel вызывается только по кнопке ДАТЬ ПЛАШКУ`}
+function renderCombinedCards(){const seen=new Set();const merged=[];for(const c of [...liveCards,...historicalCards]){const k=c.id||`${c.type}:${c.market?.type||''}:${c.market?.subject||''}`;if(seen.has(k))continue;seen.add(k);merged.push(c)}merged.sort((a,b)=>{const live=Number(b?.kind==='live')-Number(a?.kind==='live');if(live)return live;return airScore(b)-airScore(a)});renderCards(merged.slice(0,12));const priced=merged.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');if(sub)sub.textContent=`Сигналов: ${merged.length} · точных линий Winline: ${priced} · очередь отсортирована по AIR SCORE`}
 async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds)));renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);c.textContent=parts.join(' · ')+' · LIVE FEED '+new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}if(['LIVE','CRIT'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
 const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
@@ -444,7 +444,7 @@ function marketDescription(card,team){
 }
 function factText(card){
   const m=card?.market||{};
-  let s=displayText(card?.title||card?.value||"");
+  let s=displayText(card?.broadcast_title||card?.title||card?.value||"");
   if(String(m.type||"").toLowerCase()==="handicap"&&!/ФОРУ[^А-ЯЁ]*[+-]?\\d+(?:,\\d+)?\\s+ГОЛА/.test(s)){
     s=s.replace(/ФОРУ\\s+([+-]?\\d+(?:,\\d+)?)/,"ФОРУ $1 ГОЛА");
   }
@@ -488,10 +488,14 @@ function applyPersistedState(cards){
     }
   }
 }
+function airScore(c){const n=Number(c?.air_score??c?.portfolio_score??c?.score);return Number.isFinite(n)?Math.max(0,Math.min(100,Math.round(n))):0}
+function airTone(score){return score>=85?'great':score>=70?'good':score>=55?'mid':'low'}
 function cardSummaryHtml(c){
-  const team=cardTeam(c),odds=Number(c?.market?.odds),priced=Number.isFinite(odds)&&odds>1,profit=profitParts(odds);
+  const team=cardTeam(c),odds=Number(c?.market?.odds),priced=Number.isFinite(odds)&&odds>1,profit=profitParts(odds),score=airScore(c),tone=airTone(score);
+  const reasons=(c?.air_reasons||[]).slice(0,3).map(x=>`<span>${esc(x)}</span>`).join('');
   return `<div class="signal">
-    <div class="signal-fact">${esc(factText(c))}</div>
+    <div class="airmeta ${tone}"><b>${score}</b><strong>${esc(c?.air_label||'AIR SCORE')}</strong><div>${reasons}</div></div>
+    <div class="signal-fact">${esc(factText(c))}</div>${c?.broadcast_detail?`<div class="signal-detail">${esc(displayText(c.broadcast_detail))}</div>`:''}
     <div class="signal-main">
       <div class="signal-copy">
         <div class="signal-team">${esc(team.name)}</div>
@@ -566,6 +570,7 @@ const DASHBOARD_HTML=String.raw`<!doctype html>
 <title>HOH Broadcast Control</title>
 <style>
 ${BROADCAST_CARD_CSS}
+.airmeta{display:flex;align-items:center;gap:7px;padding:8px 14px 7px;border-bottom:1px solid #29292f;font-size:10px}.airmeta>b{font-size:15px;min-width:28px}.airmeta>strong{font-size:9px;letter-spacing:.08em}.airmeta>div{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}.airmeta span{font-size:8px;color:#9a9aa2;border:1px solid #303037;border-radius:999px;padding:3px 6px}.airmeta.great>b,.airmeta.great>strong{color:var(--green)}.airmeta.good>b,.airmeta.good>strong{color:#d8ef9d}.airmeta.mid>b,.airmeta.mid>strong{color:#ffd28a}.airmeta.low>b,.airmeta.low>strong{color:#8b8b94}.signal-detail{padding:0 14px 9px;color:#7f7f88;font-size:9px;letter-spacing:.02em}
 
 :root{--bg:#080808;--side:#0b0b0c;--panel:#111113;--panel2:#17171a;--line:#2a2a2f;--text:#f8f8f6;--muted:#85858d;--orange:#ff5a1f;--lav:#c8b7ff;--lav2:#7869a7;--green:#83e6b1;--red:#ff6161}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}body{overflow-x:hidden}button{font:inherit}
