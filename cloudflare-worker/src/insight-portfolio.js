@@ -1,6 +1,7 @@
 const CONTEXT_CATEGORIES = new Set(["league_rank", "advanced_context", "goalie_context"]);
 
 const PRIMARY_PRIORITY = new Map([
+  ["advanced_rolling_venue", 8],
   ["advanced_market", 7],
   ["market_evaluator", 6],
   ["regulation_market", 6],

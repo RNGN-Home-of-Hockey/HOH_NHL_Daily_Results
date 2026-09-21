@@ -10,6 +10,7 @@ import { applyWinlineMarkets } from "./winline-market-adapter.js";
 import { buildSnapshotMarketContextInsights } from "./snapshot-market-context.js";
 import { buildPlayerMarketInsights } from "./player-market-insights.js";
 import { buildAdvancedTeamSnapshotInsights } from "./advanced-team-snapshot-insights.js";
+import { buildAdvancedRollingVenueInsights } from "./advanced-rolling-venue-insights.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -29,6 +30,7 @@ export async function buildBettingInsights(db, game, options = {}) {
   const snapshotContextInsights = await safeInsightBuild("snapshot_context", () => buildSnapshotMarketContextInsights(db, game));
   const playerMarketInsights = await safeInsightBuild("player_markets", () => buildPlayerMarketInsights(db, game));
   const advancedTeamSnapshotInsights = await safeInsightBuild("advanced_team_snapshot", () => buildAdvancedTeamSnapshotInsights(game));
+  const advancedRollingVenueInsights = await safeInsightBuild("advanced_rolling_venue", () => buildAdvancedRollingVenueInsights(db, game));
 
   let featureInsights = [];
   let rollingRankInsights = [];
@@ -46,6 +48,7 @@ export async function buildBettingInsights(db, game, options = {}) {
     ...snapshotContextInsights,
     ...playerMarketInsights,
     ...advancedTeamSnapshotInsights,
+    ...advancedRollingVenueInsights,
     ...featureInsights,
     ...rollingRankInsights,
     ...advancedContextInsights,
@@ -133,6 +136,10 @@ export function annotateAirUtility(input, game=null) {
     else if(Number.isFinite(line)&&(line<=1.5||line>=4.5)){score-=5;reasons.push(["крайняя линия",-5]);}
   }
   if(card?.evidence_quality?.context_only){score-=8;reasons.push(["контекст, не прямой сигнал",-8]);}
+  if(card?.evidence?.multi_window_confirmed){
+    score+=6;reasons.push(["сезон + форма совпадают",6]);
+    if(card?.evidence?.venue_confirmed){score+=4;reasons.push(["home/away подтверждает",4]);}
+  }
   if(card?.evidence?.advanced_snapshot){
     const rank=Number(card.evidence.rank||card.evidence.team_rank||0);
     const gap=Number(card.evidence.rank_gap||0);
