@@ -1379,6 +1379,487 @@ def latest_final_hockey_day() -> List[GameMeta]:
     return result
 
 
+RU_MONTHS = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля", 5: "мая", 6: "июня",
+    7: "июля", 8: "августа", 9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+}
+
+
+def _ru_day_label(day: date) -> str:
+    return f"{day.day} {RU_MONTHS[day.month]}"
+
+
+def _competition_title(metas: List[GameMeta]) -> str:
+    types = [m.game_type for m in metas if m.game_type]
+    if not types:
+        return "НХЛ"
+    game_type = max(set(types), key=types.count)
+    return {
+        1: "Предсезонка НХЛ",
+        2: "Регулярный чемпионат НХЛ",
+        3: "Плей-офф НХЛ",
+    }.get(game_type, "НХЛ")
+
+
+def _games_word(n: int) -> str:
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return "матч"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return "матча"
+    return "матчей"
+
+
+def _parse_menu_date(raw: str, fallback: Optional[date] = None) -> Optional[date]:
+    s = str(raw or "").strip()
+    if not s:
+        return fallback
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _menu_today_pt() -> date:
+    return datetime.now(PT_TZ).date()
+
+
+def games_for_pt_day(day: date) -> List[GameMeta]:
+    """All NHL games whose puck-drop belongs to the selected Los Angeles calendar day."""
+    dates = [
+        (day - timedelta(days=1)).isoformat(),
+        day.isoformat(),
+        (day + timedelta(days=1)).isoformat(),
+    ]
+    raw = _list_games_for_dates(dates)
+    by_id: Dict[int, GameMeta] = {}
+    for game in raw:
+        meta = _game_to_meta(game)
+        if not meta:
+            continue
+        if meta.gameDateUTC.astimezone(PT_TZ).date() != day:
+            continue
+        by_id[meta.gamePk] = meta
+    return sorted(by_id.values(), key=lambda m: (m.gameDateUTC, m.gamePk))
+
+
+def _game_status_bucket(meta: GameMeta) -> str:
+    if _is_final_state(meta.state):
+        return "final"
+    if _is_liveish_state(meta.state) or _upper_str(meta.state) in ("INTERMISSION",):
+        return "live"
+    return "upcoming"
+
+
+def build_schedule_menu(day: date) -> Tuple[str, Dict[str, Any], List[GameMeta]]:
+    metas = games_for_pt_day(day)
+    final_count = sum(1 for m in metas if _game_status_bucket(m) == "final")
+    live_count = sum(1 for m in metas if _game_status_bucket(m) == "live")
+    upcoming_count = len(metas) - final_count - live_count
+    comp = _competition_title(metas)
+
+    lines = [
+        f"🗓 <b>{html.escape(comp)} • {_ru_day_label(day)} • {len(metas)} {_games_word(len(metas))}</b>",
+        "",
+        f"Лос-Анджелес (PT) · завершено <b>{final_count}</b> · в игре <b>{live_count}</b> · впереди <b>{upcoming_count}</b>",
+    ]
+    if not metas:
+        lines.extend(["", "На этот игровой день матчей не найдено."])
+    else:
+        lines.append("")
+        for idx, meta in enumerate(metas, 1):
+            away_name = TEAM_RU.get(meta.away_tri, meta.away_tri)
+            home_name = TEAM_RU.get(meta.home_tri, meta.home_tri)
+            ae = TEAM_EMOJI.get(meta.away_tri, "")
+            he = TEAM_EMOJI.get(meta.home_tri, "")
+            bucket = _game_status_bucket(meta)
+            if bucket == "final":
+                tail = f"<b>{meta.away_score}:{meta.home_score}</b> ✅"
+            elif bucket == "live":
+                tail = f"<b>{meta.away_score}:{meta.home_score}</b> 🔴 LIVE"
+            else:
+                tail = meta.gameDateUTC.astimezone(PT_TZ).strftime("%H:%M")
+            lines.append(
+                f"{idx}. {ae} «{html.escape(away_name)}» — {he} «{html.escape(home_name)}» · {tail}"
+            )
+
+    keyboard: List[List[Dict[str, str]]] = []
+    for meta in metas:
+        bucket = _game_status_bucket(meta)
+        if bucket == "final":
+            label = f"✅ {meta.away_tri} {meta.away_score}:{meta.home_score} {meta.home_tri}"
+        elif bucket == "live":
+            label = f"🔴 {meta.away_tri} {meta.away_score}:{meta.home_score} {meta.home_tri}"
+        else:
+            local_time = meta.gameDateUTC.astimezone(PT_TZ).strftime("%H:%M")
+            label = f"🕒 {local_time} · {meta.away_tri} — {meta.home_tri}"
+        keyboard.append([{
+            "text": label[:64],
+            "callback_data": f"g:{meta.gamePk}:{day.isoformat()}",
+        }])
+
+    if final_count:
+        label = "📋 Все результаты дня" if final_count == len(metas) else f"📋 Завершённые матчи · {final_count}/{len(metas)}"
+        keyboard.append([{"text": label, "callback_data": f"f:{day.isoformat()}"}])
+
+    keyboard.append([
+        {"text": "← День", "callback_data": f"d:{(day - timedelta(days=1)).isoformat()}"},
+        {"text": "🏠 Меню", "callback_data": "m"},
+        {"text": "День →", "callback_data": f"d:{(day + timedelta(days=1)).isoformat()}"},
+    ])
+    return "\n".join(lines), {"inline_keyboard": keyboard}, metas
+
+
+def build_main_menu() -> Tuple[str, Dict[str, Any]]:
+    today = _menu_today_pt()
+    text = (
+        "🏒 <b>HOH · Результаты НХЛ</b>\n\n"
+        "Расписание и результаты сгруппированы по календарному дню Лос-Анджелеса (PT).\n"
+        "Выбери день, затем конкретный матч или весь завершённый игровой день.\n\n"
+        "Для произвольной даты: <code>/schedule YYYY-MM-DD</code>"
+    )
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "🗓 Сегодня", "callback_data": f"d:{today.isoformat()}"},
+                {"text": "↩️ Вчера", "callback_data": f"d:{(today - timedelta(days=1)).isoformat()}"},
+            ],
+            [
+                {"text": "2 дня назад", "callback_data": f"d:{(today - timedelta(days=2)).isoformat()}"},
+                {"text": "Завтра", "callback_data": f"d:{(today + timedelta(days=1)).isoformat()}"},
+            ],
+        ]
+    }
+    return text, keyboard
+
+
+def _find_game_for_menu(game_pk: int, day: Optional[date] = None) -> Optional[GameMeta]:
+    if day is not None:
+        for meta in games_for_pt_day(day):
+            if meta.gamePk == game_pk:
+                return meta
+    return get_meta_by_gamepk_scan_schedule(game_pk)
+
+
+def _subscription_footer() -> str:
+    url = html.escape(HOH_CHANNEL_URL, quote=True)
+    return f'🏒 <a href="{url}"><b>ПОДПИШИСЬ НА HOME OF HOCKEY: СМОТРИ ВСЕ МАТЧИ НХЛ</b></a>'
+
+
+def build_full_day_messages(
+    day: date,
+    standings: Dict[str, TeamRecord],
+    sportsru_names: Dict[int, str],
+    max_chars: int = 3800,
+) -> List[str]:
+    metas = games_for_pt_day(day)
+    finals = [m for m in metas if _is_final_state(m.state)]
+    if not finals:
+        return [
+            f"🗓 <b>{html.escape(_competition_title(metas))} • {_ru_day_label(day)}</b>\n\n"
+            "Завершённых матчей пока нет."
+        ]
+
+    total = len(metas)
+    comp = _competition_title(metas)
+    header = f"🗓 <b>{html.escape(comp)} • {_ru_day_label(day)} • {total} {_games_word(total)}</b>\n\n"
+    if len(finals) == total:
+        header += "Результаты надёжно спрятаны 👇"
+    else:
+        header += f"Завершено {len(finals)} из {total}. Результаты надёжно спрятаны 👇"
+
+    blocks: List[str] = []
+    for meta in finals:
+        try:
+            blocks.append(build_game_result_for_meta(meta, standings, sportsru_names))
+        except Exception as exc:
+            print(f"[ERR] whole-day game render failed {meta.gamePk}: {exc}")
+            hn = TEAM_RU.get(meta.home_tri, meta.home_tri)
+            an = TEAM_RU.get(meta.away_tri, meta.away_tri)
+            blocks.append(
+                f"{TEAM_EMOJI.get(meta.home_tri,'')} <b>«{html.escape(hn)}»: {meta.home_score}</b>\n"
+                f"{TEAM_EMOJI.get(meta.away_tri,'')} <b>«{html.escape(an)}»: {meta.away_score}</b>"
+            )
+
+    sep = "——————————————————"
+    footer = _subscription_footer()
+    messages: List[str] = []
+    current = header
+    continuation = f"🗓 <b>{html.escape(comp)} • {_ru_day_label(day)} • продолжение</b>"
+
+    for block in blocks:
+        piece = f"\n{sep}\n{block}"
+        reserve = len(footer) + 4
+        if len(current) + len(piece) + reserve > max_chars and current != header:
+            messages.append(current)
+            current = continuation + piece
+        elif len(current) + len(piece) + reserve > max_chars and current == header:
+            # A single game should normally fit. Keep valid HTML in its own message if it is unusually long.
+            messages.append(current)
+            current = continuation + piece
+        else:
+            current += piece
+
+    footer_piece = f"\n\n{footer}"
+    if len(current) + len(footer_piece) > max_chars:
+        messages.append(current)
+        current = footer
+    else:
+        current += footer_piece
+    messages.append(current)
+    return messages
+
+
+def send_schedule_message(
+    chat_id: Any,
+    day: date,
+    message_thread_id: Optional[int] = None,
+    edit_message_id: Optional[int] = None,
+) -> bool:
+    text, markup, _ = build_schedule_menu(day)
+    if edit_message_id is not None and edit_telegram_text(chat_id, edit_message_id, text, markup):
+        return True
+    return send_telegram_text(
+        text,
+        chat_id=chat_id,
+        reply_markup=markup,
+        message_thread_id=message_thread_id,
+    )
+
+
+def send_game_from_menu(
+    chat_id: Any,
+    game_pk: int,
+    day: Optional[date],
+    standings: Dict[str, TeamRecord],
+    sportsru_names: Dict[int, str],
+    message_thread_id: Optional[int] = None,
+) -> bool:
+    meta = _find_game_for_menu(game_pk, day)
+    if not meta:
+        return send_telegram_text(
+            "Матч не найден в доступном окне расписания.",
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+        )
+    if not _is_final_state(meta.state):
+        text = pending_game_text(meta)
+    else:
+        text = build_game_result_for_meta(meta, standings, sportsru_names)
+    back_day = day or meta.gameDateUTC.astimezone(PT_TZ).date()
+    markup = {"inline_keyboard": [[
+        {"text": "← К расписанию", "callback_data": f"d:{back_day.isoformat()}"},
+        {"text": "🏠 Меню", "callback_data": "m"},
+    ]]}
+    return send_telegram_text(
+        text,
+        chat_id=chat_id,
+        reply_markup=markup,
+        message_thread_id=message_thread_id,
+    )
+
+
+def send_full_day_from_menu(
+    chat_id: Any,
+    day: date,
+    standings: Dict[str, TeamRecord],
+    sportsru_names: Dict[int, str],
+    message_thread_id: Optional[int] = None,
+) -> bool:
+    messages = build_full_day_messages(day, standings, sportsru_names)
+    ok = True
+    for idx, text in enumerate(messages):
+        markup = None
+        if idx == len(messages) - 1:
+            markup = {"inline_keyboard": [[
+                {"text": "← К расписанию", "callback_data": f"d:{day.isoformat()}"},
+                {"text": "🏠 Меню", "callback_data": "m"},
+            ]]}
+        if not send_telegram_text(
+            text,
+            chat_id=chat_id,
+            reply_markup=markup,
+            message_thread_id=message_thread_id,
+        ):
+            ok = False
+    return ok
+
+
+def _handle_menu_command(
+    message: Dict[str, Any],
+    standings: Dict[str, TeamRecord],
+    sportsru_names: Dict[int, str],
+) -> None:
+    text = str(message.get("text") or "").strip()
+    if not text.startswith("/"):
+        return
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    if chat_id is None:
+        return
+    thread_id = message.get("message_thread_id")
+    command_token, *rest = text.split(maxsplit=1)
+    command = command_token.split("@", 1)[0].lower()
+    arg = rest[0].strip() if rest else ""
+    today = _menu_today_pt()
+
+    if command in ("/start", "/menu"):
+        menu_text, markup = build_main_menu()
+        send_telegram_text(menu_text, chat_id=chat_id, reply_markup=markup, message_thread_id=thread_id)
+        return
+    if command == "/today":
+        send_schedule_message(chat_id, today, thread_id)
+        return
+    if command == "/yesterday":
+        send_schedule_message(chat_id, today - timedelta(days=1), thread_id)
+        return
+    if command in ("/schedule", "/day"):
+        day = _parse_menu_date(arg, today)
+        if day is None:
+            send_telegram_text(
+                "Формат даты: <code>/schedule YYYY-MM-DD</code>",
+                chat_id=chat_id,
+                message_thread_id=thread_id,
+            )
+        else:
+            send_schedule_message(chat_id, day, thread_id)
+        return
+    if command == "/results":
+        day = _parse_menu_date(arg, today - timedelta(days=1))
+        if day is None:
+            send_telegram_text(
+                "Формат даты: <code>/results YYYY-MM-DD</code>",
+                chat_id=chat_id,
+                message_thread_id=thread_id,
+            )
+        else:
+            send_full_day_from_menu(chat_id, day, standings, sportsru_names, thread_id)
+        return
+    if command == "/game":
+        try:
+            game_pk = int(arg)
+        except Exception:
+            game_pk = 0
+        if game_pk <= 0:
+            send_telegram_text(
+                "Формат: <code>/game GAME_PK</code>",
+                chat_id=chat_id,
+                message_thread_id=thread_id,
+            )
+        else:
+            send_game_from_menu(chat_id, game_pk, None, standings, sportsru_names, thread_id)
+
+
+def _handle_callback(
+    callback: Dict[str, Any],
+    standings: Dict[str, TeamRecord],
+    sportsru_names: Dict[int, str],
+) -> None:
+    callback_id = str(callback.get("id") or "")
+    data = str(callback.get("data") or "")
+    message = callback.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    message_id = message.get("message_id")
+    thread_id = message.get("message_thread_id")
+    if chat_id is None:
+        answer_callback_query(callback_id)
+        return
+
+    if data == "m":
+        answer_callback_query(callback_id)
+        text, markup = build_main_menu()
+        if message_id and edit_telegram_text(chat_id, int(message_id), text, markup):
+            return
+        send_telegram_text(text, chat_id=chat_id, reply_markup=markup, message_thread_id=thread_id)
+        return
+
+    if data.startswith("d:"):
+        day = _parse_menu_date(data[2:])
+        if day is None:
+            answer_callback_query(callback_id, "Некорректная дата")
+            return
+        answer_callback_query(callback_id, "Загружаю расписание")
+        send_schedule_message(chat_id, day, thread_id, int(message_id) if message_id else None)
+        return
+
+    if data.startswith("g:"):
+        parts = data.split(":")
+        try:
+            game_pk = int(parts[1])
+        except Exception:
+            game_pk = 0
+        day = _parse_menu_date(parts[2]) if len(parts) >= 3 else None
+        if game_pk <= 0:
+            answer_callback_query(callback_id, "Матч не найден")
+            return
+        answer_callback_query(callback_id, "Загружаю матч")
+        send_game_from_menu(chat_id, game_pk, day, standings, sportsru_names, thread_id)
+        return
+
+    if data.startswith("f:"):
+        day = _parse_menu_date(data[2:])
+        if day is None:
+            answer_callback_query(callback_id, "Некорректная дата")
+            return
+        answer_callback_query(callback_id, "Собираю результаты дня")
+        send_full_day_from_menu(chat_id, day, standings, sportsru_names, thread_id)
+        return
+
+    answer_callback_query(callback_id)
+
+
+def process_telegram_updates(
+    state: Dict[str, Any],
+    standings: Dict[str, TeamRecord],
+    sportsru_names: Dict[int, str],
+) -> None:
+    """Poll menu commands without affecting result autoposting.
+
+    If this token ever gets a webhook, Telegram returns 409; autoposting remains
+    operational and we only log that the interactive transport needs to move to
+    the webhook.
+    """
+    if not TELEGRAM_INTERACTIVE_ENABLED or not _telegram_token():
+        return
+
+    set_bot_commands_if_needed(state)
+    offset = _first_int(state.get("telegram_update_offset"))
+    payload: Dict[str, Any] = {
+        "limit": 50,
+        "timeout": 0,
+        "allowed_updates": ["message", "callback_query"],
+    }
+    if offset > 0:
+        payload["offset"] = offset
+    data = telegram_api_request("getUpdates", payload, timeout=20)
+    if not data.get("ok"):
+        code = data.get("error_code")
+        desc = str(data.get("description") or "")
+        if code == 409:
+            print("[WARN] Telegram menu polling skipped: this bot token has an active webhook")
+        else:
+            print(f"[WARN] getUpdates failed: {code} {desc}")
+        return
+
+    updates = data.get("result") or []
+    for update in updates:
+        update_id = _first_int(update.get("update_id"))
+        try:
+            if isinstance(update.get("callback_query"), dict):
+                _handle_callback(update["callback_query"], standings, sportsru_names)
+            elif isinstance(update.get("message"), dict):
+                _handle_menu_command(update["message"], standings, sportsru_names)
+        except Exception as exc:
+            print(f"[ERR] Telegram interactive update {update_id} failed: {exc}")
+        finally:
+            if update_id >= 0:
+                state["telegram_update_offset"] = max(
+                    _first_int(state.get("telegram_update_offset")),
+                    update_id + 1,
+                )
+
+
 def pending_game_text(meta: GameMeta) -> str:
     matchup = f"{meta.away_tri} - {meta.home_tri}"
     if _is_not_started_state(meta.state):
