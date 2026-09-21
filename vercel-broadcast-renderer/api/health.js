@@ -10,3 +10,5 @@ export default function handler(req,res){
     auth_optional:Boolean(String(process.env.RENDER_SECRET||"").trim())
   });
 }
+
+// layout v4 deploy trigger
