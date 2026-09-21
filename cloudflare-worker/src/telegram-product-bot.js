@@ -1,3 +1,7 @@
+const DEFAULT_CENTER_WEBHOOK_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram/center";
+const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v1";
+const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
+
 export async function handleTelegramProductBotRequest(request, env, path) {
   if (path === "/api/telegram-app/setup") {
     return setupMiniAppButton(request, env);
@@ -217,7 +221,7 @@ async function centerStatus(request, env) {
   return json({
     ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok && webhookMatchesExpected,
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-21-v6",
+    runtime_marker: "telegram-center-2026-09-21-v7",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     webhook_secret_mode: "sha256_hex",
@@ -232,55 +236,95 @@ async function centerStatus(request, env) {
 }
 
 async function repairCenterWebhook(request, env) {
+  if (!(await managementAuthorized(request, env))) {
+    return json({ ok: false, error: "unauthorized" }, 401);
+  }
+  const result = await ensureTelegramCenterWebhook(env, { force: true });
+  return json({
+    ...result,
+    action: "repair_webhook",
+    secret_mode: "sha256_hex",
+  }, result.ok ? 200 : 502);
+}
+
+export async function ensureTelegramCenterWebhook(env, { force = false } = {}) {
   const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim();
   const secret = await telegramWebhookSecret(env);
-  if (!token) {
-    return json({ ok: false, error: "missing_telegram_center_token" }, 503);
-  }
-  if (!secret) {
-    return json({ ok: false, error: "missing_telegram_webhook_secret" }, 503);
+  const expectedWebhook = String(env.TELEGRAM_CENTER_WEBHOOK_URL || "").trim() || DEFAULT_CENTER_WEBHOOK_URL;
+  if (!token) return { ok: false, error: "missing_telegram_center_token", expected_webhook_url: expectedWebhook };
+  if (!secret) return { ok: false, error: "missing_telegram_webhook_secret", expected_webhook_url: expectedWebhook };
+
+  if (!force && env.DB && (await ensureDiagnosticTable(env))) {
+    try {
+      const row = await env.DB.prepare(
+        "SELECT meta_value FROM data_core_meta WHERE meta_key=? LIMIT 1"
+      ).bind(CENTER_WEBHOOK_REFRESH_KEY).first();
+      const saved = row?.meta_value ? JSON.parse(String(row.meta_value)) : null;
+      const refreshedAt = Date.parse(String(saved?.refreshed_at || ""));
+      if (Number.isFinite(refreshedAt) && Date.now() - refreshedAt < CENTER_WEBHOOK_REFRESH_MS) {
+        return {
+          ok: true,
+          skipped: "recently_refreshed",
+          expected_webhook_url: expectedWebhook,
+          refreshed_at: saved.refreshed_at,
+        };
+      }
+    } catch (error) {
+      console.log("telegram_center_webhook_refresh_state_read_failed", {
+        error: String(error?.message || error || "unknown"),
+      });
+    }
   }
 
-  const expectedWebhook = `${new URL(request.url).origin}/telegram/center`;
   const setWebhook = await telegramRequest(env, "setWebhook", {
     url: expectedWebhook,
     secret_token: secret,
     drop_pending_updates: false,
     allowed_updates: ["message"],
   });
-
   if (!setWebhook.ok) {
-    await recordCenterDiagnostic(env, {
-      stage: "webhook_repair_failed",
-      error: setWebhook.response?.description || setWebhook.error || "telegram_set_webhook_failed",
-    });
-    return json({
-      ok: false,
-      action: "repair_webhook",
-      error: setWebhook.response?.description || setWebhook.error || "telegram_set_webhook_failed",
-    }, 502);
+    const error = setWebhook.response?.description || setWebhook.error || "telegram_set_webhook_failed";
+    console.log("telegram_center_webhook_refresh_failed", { error });
+    return { ok: false, error, expected_webhook_url: expectedWebhook };
   }
 
   const webhookInfo = await telegramRequest(env, "getWebhookInfo", {});
   const info = webhookInfo.ok ? webhookInfo.response?.result || {} : {};
   const repaired = webhookInfo.ok && info.url === expectedWebhook;
-
-  await recordCenterDiagnostic(env, {
-    stage: "webhook_repaired",
-    repaired,
-    pending_update_count: Number(info.pending_update_count || 0),
-    last_error_message: info.last_error_message || null,
-  });
-
-  return json({
-    ok: repaired,
-    action: "repair_webhook",
-    secret_mode: "sha256_hex",
+  const payload = {
+    refreshed_at: new Date().toISOString(),
     expected_webhook_url: expectedWebhook,
     actual_webhook_url: info.url || null,
     pending_update_count: Number(info.pending_update_count || 0),
     last_error_message: info.last_error_message || null,
-  }, repaired ? 200 : 502);
+    repaired,
+  };
+
+  if (env.DB && (await ensureDiagnosticTable(env))) {
+    try {
+      await env.DB.prepare(`
+        INSERT INTO data_core_meta (meta_key, meta_value, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(meta_key) DO UPDATE SET
+          meta_value = excluded.meta_value,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(CENTER_WEBHOOK_REFRESH_KEY, JSON.stringify(payload)).run();
+    } catch (error) {
+      console.log("telegram_center_webhook_refresh_state_write_failed", {
+        error: String(error?.message || error || "unknown"),
+      });
+    }
+  }
+
+  console.log("telegram_center_webhook_refreshed", payload);
+  return {
+    ok: repaired,
+    expected_webhook_url: expectedWebhook,
+    actual_webhook_url: info.url || null,
+    pending_update_count: Number(info.pending_update_count || 0),
+    last_error_message: info.last_error_message || null,
+    refreshed_at: payload.refreshed_at,
+  };
 }
 
 async function setupMiniAppButton(request, env) {

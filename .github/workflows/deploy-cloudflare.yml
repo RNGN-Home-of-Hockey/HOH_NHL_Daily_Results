@@ -59,7 +59,7 @@ jobs:
           console.log('TELEGRAM_CENTER_STATUS',JSON.stringify(d));
           if(!r.ok)throw new Error('Telegram Center status HTTP '+r.status);
           if(!d.ok)throw new Error('Telegram Center unhealthy '+JSON.stringify(d));
-          if(d.runtime_marker!=='telegram-center-2026-09-21-v6')throw new Error('Unexpected Telegram Center runtime '+String(d.runtime_marker));
+          if(d.runtime_marker!=='telegram-center-2026-09-21-v7')throw new Error('Unexpected Telegram Center runtime '+String(d.runtime_marker));
           if(!d.center_token_configured||!d.webhook_secret_configured)throw new Error('Telegram Center credentials incomplete');
           if(!d.bot?.ok||!d.bot?.username)throw new Error('Telegram Center bot unavailable');
           if(!d.webhook?.ok||!d.webhook_matches_expected)throw new Error('Telegram Center webhook mismatch '+JSON.stringify(d.webhook));
