@@ -758,8 +758,23 @@ async function scheduleOverviewText(env) {
 }
 
 async function metasForDay(day) {
-  const games = await fetchGamesForDay(day);
-  return games.map(gameToMeta).filter(Boolean);
+  const apiDays = [addDays(day, -1), day, addDays(day, 1)];
+  const all = [];
+  for (const apiDay of apiDays) {
+    all.push(...(await fetchGamesForDay(apiDay)));
+  }
+  const seen = new Set();
+  return all
+    .map(gameToMeta)
+    .filter(Boolean)
+    .filter((meta) => {
+      if (seen.has(meta.gamePk) || toPTDate(meta.gameDateUTC) !== day) {
+        return false;
+      }
+      seen.add(meta.gamePk);
+      return true;
+    })
+    .sort((a, b) => a.gameDateUTC.getTime() - b.gameDateUTC.getTime());
 }
 
 async function fetchGamesForDay(day) {
@@ -804,6 +819,7 @@ function gameToMeta(game) {
   const homeScore = firstInt(home.score);
   const awayScore = firstInt(away.score);
   const state = upper(game.gameState || game.gameStatus);
+  const gameType = firstInt(game.gameType);
   const gameDateUTC = parseGameDate(game.startTimeUTC || game.gameDate);
 
   const series = game.seriesStatus || {};
@@ -849,6 +865,7 @@ function gameToMeta(game) {
     awayTri,
     homeScore,
     awayScore,
+    gameType,
     seriesGame,
     homeSeriesWins,
     awaySeriesWins,
