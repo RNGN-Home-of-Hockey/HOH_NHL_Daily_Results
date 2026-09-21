@@ -201,7 +201,9 @@ jobs:
           node tests/validate_mini_app_subscriptions.mjs
 
       - name: Market line evaluator
-        run: node tests/validate_market_line_evaluator.mjs
+        run: |
+          node tests/validate_market_line_evaluator.mjs
+          node tests/validate_universal_market_evaluator.mjs
 
       - name: Broadcast Operator safety
         run: node tests/validate_broadcast_operator.mjs

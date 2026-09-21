@@ -1,15 +1,24 @@
 import { withDemoOdds } from "./demo-winline-odds.js";
+import { applyTeamGrammar, lastGamesPhrase } from "./team-russian-grammar.js";
 
-const WINDOWS = [5, 10, 20];
+const HISTORY_LIMIT = 200;
+const STANDARD_WINDOWS = [5, 10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200];
 const GAME_TOTAL_LINES = [4.5, 5.5, 6.5, 7.5];
 const TEAM_TOTAL_LINES = [1.5, 2.5, 3.5, 4.5];
 const HANDICAP_LINES = [-2.5, -1.5, 1.5, 2.5];
 
-const MIN_RATE_BY_WINDOW = new Map([
-  [5, 0.80],
-  [10, 0.70],
-  [20, 0.65],
-]);
+function minimumRate(window) {
+  if (window <= 5) return 0.80;
+  if (window <= 10) return 0.70;
+  return 0.65;
+}
+
+function trendWindows(maxRows) {
+  const n = Math.min(HISTORY_LIMIT, Math.max(0, Number(maxRows) || 0));
+  const windows = STANDARD_WINDOWS.filter((w) => w <= n);
+  if (n >= 20 && !windows.includes(n)) windows.push(n);
+  return [...new Set(windows)].sort((a, b) => a - b);
+}
 
 export async function buildUniversalMarketInsights(db, game) {
   if (!db || !game?.game_pk || !game?.scheduled_start_utc) return [];
@@ -52,13 +61,13 @@ function recentRowsStatement(db, team, before) {
     FROM team_game_features
     WHERE team_tri=? AND scheduled_start_utc<?
     ORDER BY scheduled_start_utc DESC,game_pk DESC
-    LIMIT 20;
+    LIMIT ${HISTORY_LIMIT};
   `).bind(team, before);
 }
 
 function evaluateGameTotals(game, awayRows, homeRows) {
   const out = [];
-  for (const window of WINDOWS) {
+  for (const window of trendWindows(Math.min(awayRows.length, homeRows.length))) {
     const awaySample = awayRows.slice(0, window);
     const homeSample = homeRows.slice(0, window);
     if (awaySample.length < window || homeSample.length < window) continue;
@@ -70,7 +79,7 @@ function evaluateGameTotals(game, awayRows, homeRows) {
           : (r) => Number(r.total_goals) < line;
         const a = rateStats(awaySample, predicate);
         const h = rateStats(homeSample, predicate);
-        const threshold = MIN_RATE_BY_WINDOW.get(window);
+        const threshold = minimumRate(window);
         const averageRate = (a.rate + h.rate) / 2;
         const floor = threshold - 0.05;
         if (a.rate < floor || h.rate < floor || averageRate < threshold) continue;
@@ -113,7 +122,7 @@ function evaluateGameTotals(game, awayRows, homeRows) {
 
 function evaluateTeamTotals(game, team, opponent, teamRows, oppRows) {
   const out = [];
-  for (const window of WINDOWS) {
+  for (const window of trendWindows(teamRows.length)) {
     const teamSample = teamRows.slice(0, window);
     const oppSample = oppRows.slice(0, window);
     if (teamSample.length < window) continue;
@@ -124,7 +133,7 @@ function evaluateTeamTotals(game, team, opponent, teamRows, oppRows) {
           ? (r) => Number(r.final_goals_for) > line
           : (r) => Number(r.final_goals_for) < line;
         const attack = rateStats(teamSample, teamPredicate);
-        const threshold = MIN_RATE_BY_WINDOW.get(window);
+        const threshold = minimumRate(window);
 
         if (attack.rate >= threshold) {
           const score = singleTrendScore(attack, window) + lineUtilityBonus("team_total", line);
@@ -135,7 +144,7 @@ function evaluateTeamTotals(game, team, opponent, teamRows, oppRows) {
             score,
             eyebrow: `${team} · КОМАНДНЫЙ ТОТАЛ ${line}`,
             value: `${attack.hits}/${window}`,
-            title: `${team} ${side === "over" ? `забил ${Math.floor(line) + 1}+` : `остался ниже ${line}`} в ${attack.hits} из последних ${window} матчей`,
+            title: `${team} ${side === "over" ? `забил ${Math.floor(line) + 1}+` : `остался ниже ${line}`} ${trendHitText(attack, window)}`,
             explanation: `Rolling hit-rate по окну ${window}. Выбор окна штрафуется за маленькую выборку, поэтому 5 матчей не вытесняют более длинный устойчивый тренд без преимущества.`,
             evidence: {
               window,
@@ -199,18 +208,18 @@ function evaluateTeamTotals(game, team, opponent, teamRows, oppRows) {
 function teamTotalConfluenceTitle(team, opponent, side, line, attackHits, defenseHits, window) {
   const threshold = Math.floor(Number(line)) + 1;
   if (side === "over") {
-    return `${team} забивал ${threshold}+ гола в ${attackHits} из ${window} последних матчей; ${opponent} пропускал ${threshold}+ гола в ${defenseHits} из ${window}`;
+    return `${team} забивал ${threshold}+ гола в ${attackHits} из ${lastGamesPhrase(window)}; ${opponent} пропускал ${threshold}+ гола в ${defenseHits} из ${lastGamesPhrase(window)}`;
   }
   const maxGoals = Math.floor(Number(line));
-  return `${team} забивал не больше ${maxGoals} гола в ${attackHits} из ${window} последних матчей; ${opponent} пропускал не больше ${maxGoals} гола в ${defenseHits} из ${window}`;
+  return `${team} забивал не больше ${maxGoals} гола в ${attackHits} из ${lastGamesPhrase(window)}; ${opponent} пропускал не больше ${maxGoals} гола в ${defenseHits} из ${lastGamesPhrase(window)}`;
 }
 
 function evaluateHandicaps(game, team, rows) {
   const out = [];
-  for (const window of WINDOWS) {
+  for (const window of trendWindows(rows.length)) {
     const sample = rows.slice(0, window);
     if (sample.length < window) continue;
-    const threshold = MIN_RATE_BY_WINDOW.get(window);
+    const threshold = minimumRate(window);
 
     for (const line of HANDICAP_LINES) {
       const stat = rateStats(sample, (r) => Number(r.final_goal_diff) + line > 0);
@@ -221,7 +230,7 @@ function evaluateHandicaps(game, team, rows) {
         score: singleTrendScore(stat, window) + handicapUtilityBonus(line),
         eyebrow: `${team} · ФОРА ${signedLine(line)}`,
         value: `${stat.hits}/${window}`,
-        title: `${team} закрыл фору ${signedLine(line)} в ${stat.hits} из последних ${window} матчей`,
+        title: `${team} закрыл фору ${signedLine(line)} ${trendHitText(stat, window)}`,
         explanation: `Фора оценивается по фактической финальной разнице шайб. Для ${signedLine(line)} условие: разница ${team} + (${signedLine(line)}) > 0.`,
         evidence: {
           window,
@@ -297,12 +306,12 @@ function marketCard({ game, type, score, eyebrow, value, title, explanation, evi
     score: Math.round(Math.max(0, Math.min(100, score))),
     eyebrow,
     value,
-    title,
+    title: applyTeamGrammar(title),
     explanation,
     evidence: {
       ...evidence,
       feature_layer: "team_game_features_v2_market_evaluator",
-      selection_policy: "best_of_5_10_20_with_sample_penalty",
+      selection_policy: "dynamic_windows_up_to_200_with_current_streak",
     },
     note: `${pricedMarket.label} · WINLINE · ДЕМО-КЭФ ${pricedMarket.odds.toFixed(2)} · промокод HOH`,
     market: pricedMarket,
@@ -310,14 +319,28 @@ function marketCard({ game, type, score, eyebrow, value, title, explanation, evi
 }
 
 function rateStats(rows, predicate) {
-  const hits = rows.reduce((sum, row) => sum + (predicate(row) ? 1 : 0), 0);
+  let hits = 0;
+  let streak = 0;
+  let streakOpen = true;
+  for (const row of rows) {
+    const hit = Boolean(predicate(row));
+    if (hit) hits += 1;
+    if (streakOpen && hit) streak += 1;
+    else streakOpen = false;
+  }
   const n = rows.length;
   return {
     hits,
     n,
+    streak,
     rate: n ? hits / n : 0,
     wilson90: wilsonLower(hits, n, 1.6448536269514722),
   };
+}
+
+function trendHitText(stat, window) {
+  if (Number(stat?.streak || 0) >= 20) return `в ${stat.streak} матчах подряд`;
+  return `в ${stat.hits} из ${lastGamesPhrase(window)}`;
 }
 
 function evidenceStats(stat, rows) {
@@ -325,21 +348,26 @@ function evidenceStats(stat, rows) {
     hits: stat.hits,
     sample: stat.n,
     hit_rate: stat.rate,
+    current_streak: stat.streak,
     wilson90_lower: stat.wilson90,
     game_pks: rows.map((r) => Number(r.game_pk)),
   };
 }
 
+function sampleBonus(window) {
+  if (window <= 5) return 1;
+  if (window <= 10) return 4;
+  return Math.min(13, 7 + Math.max(0, Math.log2(window / 20)) * 3);
+}
+
 function singleTrendScore(stat, window) {
-  const sampleBonus = window === 20 ? 7 : window === 10 ? 4 : 1;
-  return 54 + stat.rate * 18 + stat.wilson90 * 10 + sampleBonus;
+  return 54 + stat.rate * 18 + stat.wilson90 * 10 + sampleBonus(window);
 }
 
 function confluenceScore(a, b, window) {
-  const sampleBonus = window === 20 ? 7 : window === 10 ? 4 : 1;
   const averageRate = (a.rate + b.rate) / 2;
   const averageLower = (a.wilson90 + b.wilson90) / 2;
-  return 53 + averageRate * 18 + averageLower * 9 + sampleBonus;
+  return 53 + averageRate * 18 + averageLower * 9 + sampleBonus(window);
 }
 
 function wilsonLower(hits, n, z) {

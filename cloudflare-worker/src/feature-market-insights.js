@@ -1,4 +1,5 @@
 import { withDemoOdds } from "./demo-winline-odds.js";
+import { applyTeamGrammar } from "./team-russian-grammar.js";
 
 const MIN_CORE_SAMPLE = 8;
 
@@ -274,7 +275,7 @@ function featureCard({ game, team, type, score, eyebrow, value, title, explanati
     score: Math.round(Math.max(0, Math.min(100, score))),
     eyebrow,
     value,
-    title,
+    title: applyTeamGrammar(title),
     explanation,
     evidence: { ...evidence, feature_layer: "team_game_features_v1" },
     note: `${pricedMarket.label} · WINLINE · ДЕМО-КЭФ ${pricedMarket.odds.toFixed(2)} · промокод HOH`,

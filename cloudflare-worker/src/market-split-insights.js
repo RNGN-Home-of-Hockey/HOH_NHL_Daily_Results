@@ -1,4 +1,5 @@
 import { withDemoOdds } from "./demo-winline-odds.js";
+import { applyTeamGrammar } from "./team-russian-grammar.js";
 
 const VENUE_WINDOWS = [5, 10, 20];
 const VENUE_MIN_RATE = new Map([[5, 0.80], [10, 0.70], [20, 0.65]]);
@@ -276,7 +277,7 @@ function splitCard({ game, category, type, score, eyebrow, value, title, explana
     score: Math.round(Math.max(0, Math.min(96, score))),
     eyebrow,
     value,
-    title,
+    title: applyTeamGrammar(title),
     explanation,
     evidence: { ...evidence, feature_layer: "team_game_features_v2_market_splits" },
     note: `${pricedMarket.label} · WINLINE · ДЕМО-КЭФ ${pricedMarket.odds.toFixed(2)} · промокод HOH`,

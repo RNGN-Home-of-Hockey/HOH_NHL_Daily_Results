@@ -1,6 +1,7 @@
 import { evaluateMarketLines } from "./market-line-evaluator.js";
 import { buildPlayerMarketInsights } from "./player-market-insights.js";
 import { BROADCAST_CARD_CSS } from "./broadcast-card-theme.js";
+import { applyTeamGrammar, applyDisplayTeamGrammar } from "./team-russian-grammar.js";
 
 const NHL_BASE = "https://api-web.nhle.com/v1";
 const ALLOWED_STATUSES = new Set(["draft","preview","shown","hidden"]);
@@ -376,7 +377,9 @@ function renderMarketText(candidate,row,teamName){
 }
 function renderFactText(candidate,row){
   const m=candidate.market&&typeof candidate.market==="object"?candidate.market:{};
-  let s=renderDisplayText(candidate.title||row.headline_ru||candidate.value||row.stat_text_ru||"");
+  const raw=applyTeamGrammar(candidate.title||row.headline_ru||candidate.value||row.stat_text_ru||"");
+  let s=renderDisplayText(raw);
+  for(const [tri,meta] of Object.entries(TEAM_META)) s=applyDisplayTeamGrammar(s,tri,meta.name);
   if(String(m.type||row.suggested_market_type||"").toLowerCase()==="handicap"&&!/ФОРУ[^А-ЯЁ]*[+-]?\d+(?:,\d+)?\s+ГОЛА/.test(s)){
     s=s.replace(/ФОРУ\s+([+-]?\d+(?:,\d+)?)/,"ФОРУ $1 ГОЛА");
   }
