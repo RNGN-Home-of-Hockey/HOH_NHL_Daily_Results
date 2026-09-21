@@ -2,6 +2,7 @@ import snapshot from "../../data/advanced_team_snapshot_2024_2026.json" with { t
 
 const WINDOWS=[10,20];
 const TEAM_TOTAL_LINES=[1.5,2.5,3.5,4.5];
+const CONTROL_HANDICAP_LINES=[-1.5,-2.5];
 const MIN_VENUE_SAMPLE=6;
 
 export async function buildAdvancedRollingVenueInsights(db,game){
@@ -49,12 +50,24 @@ export function evaluateAdvancedRollingVenueInsights(game,currentRows,historyRow
   for(const team of [up(game.away_tri),up(game.home_tri)]){
     const opponent=team===up(game.home_tri)?up(game.away_tri):up(game.home_tri);
     const signal=bestTeamTotalSignal(game,team,opponent,current,histories);
-    if(!signal)continue;
-    for(const line of TEAM_TOTAL_LINES){
-      out.push(makeCard(game,signal,{
-        type:"team_total",period:"GAME",subject:team,side:signal.side,line,
-        label:`${team} ${signal.side==="over"?"ИТБ":"ИТМ"} ${line}`,
-      },`advanced-rolling-venue:${team}:${signal.side}:${key(line)}`));
+    if(signal){
+      for(const line of TEAM_TOTAL_LINES){
+        out.push(makeCard(game,signal,{
+          type:"team_total",period:"GAME",subject:team,side:signal.side,line,
+          label:`${team} ${signal.side==="over"?"ИТБ":"ИТМ"} ${line}`,
+        },`advanced-rolling-venue:${team}:${signal.side}:${key(line)}`));
+      }
+    }
+    const control=bestControlSignal(game,team,opponent,current,histories);
+    if(control){
+      out.push(makeCard(game,control,{
+        type:"moneyline",period:"GAME",subject:team,side:team,line:null,label:`Победа ${team}`,
+      },`advanced-control-moneyline:${team}`));
+      for(const line of CONTROL_HANDICAP_LINES){
+        out.push(makeCard(game,control,{
+          type:"handicap",period:"GAME",subject:team,side:team,line,label:`${team} ${line.toFixed(1)}`,
+        },`advanced-control-handicap:${team}:${key(line)}`));
+      }
     }
   }
   return out.sort((a,b)=>Number(b.score||0)-Number(a.score||0));
@@ -66,6 +79,85 @@ function bestTeamTotalSignal(game,team,opponent,current,histories){
     mismatchSignal(game,team,opponent,current,histories,"under"),
   ].filter(Boolean);
   return candidates.sort((a,b)=>b.score-a.score)[0]||null;
+}
+
+function bestControlSignal(game,team,opponent,current,histories){
+  const configs=[
+    {
+      seasonMetric:"xgf_pct",rankField:"rank_xgf_pct_5v5",valueField:"xgf_pct_5v5",
+      venueField:"xgf_pct",label:"ДОЛЕ xG",valueLabel:"xGF%"
+    },
+    {
+      seasonMetric:"cf_pct",rankField:"rank_corsi_pct_5v5",valueField:"corsi_pct_5v5",
+      venueField:"corsi_pct",label:"CORSI",valueLabel:"CF%"
+    },
+  ];
+  return configs
+    .map(cfg=>controlMetricSignal(game,team,opponent,current,histories,cfg))
+    .filter(Boolean)
+    .sort((a,b)=>b.score-a.score)[0]||null;
+}
+
+function controlMetricSignal(game,team,opponent,current,histories,cfg){
+  const seasonTeamRank=seasonRank(team,cfg.seasonMetric,"desc");
+  const seasonOppRank=seasonRank(opponent,cfg.seasonMetric,"desc");
+  if(!seasonTeamRank||!seasonOppRank||seasonTeamRank>8||seasonOppRank<25)return null;
+
+  const team10=current.get(`${team}:10`),team20=current.get(`${team}:20`);
+  const opp10=current.get(`${opponent}:10`),opp20=current.get(`${opponent}:20`);
+  const totalTeams=Math.max(
+    Number(team20?.advanced_league_teams||0),Number(team10?.advanced_league_teams||0),
+    Number(opp20?.advanced_league_teams||0),Number(opp10?.advanced_league_teams||0),32
+  );
+  const t10=finiteRank(team10?.[cfg.rankField]),t20=finiteRank(team20?.[cfg.rankField]);
+  const o10=finiteRank(opp10?.[cfg.rankField]),o20=finiteRank(opp20?.[cfg.rankField]);
+  const top=r=>Number.isFinite(r)&&r<=8;
+  const bottom=r=>Number.isFinite(r)&&r>=totalTeams-7;
+  if(!([t10,t20].some(top)&&[o10,o20].some(bottom)))return null;
+
+  const teamRoll=preferredRollingRank("over",t20,t10,totalTeams);
+  const oppRoll=preferredDefenseRollingRank("over",o20,o10,totalTeams);
+  const teamIsHome=team===up(game.home_tri),oppIsHome=opponent===up(game.home_tri);
+  const teamVenue=venueSummary(histories.get(team)||[],teamIsHome);
+  const oppVenue=venueSummary(histories.get(opponent)||[],oppIsHome);
+  const teamVenueMetric=num(teamVenue?.[cfg.venueField]);
+  const oppVenueMetric=num(oppVenue?.[cfg.venueField]);
+  const venueConfirmed=teamVenueMetric!==null&&oppVenueMetric!==null&&teamVenueMetric>=52&&oppVenueMetric<=48;
+  const seasonGap=seasonOppRank-seasonTeamRank;
+  const rollingGap=oppRoll.rank-teamRoll.rank;
+  const score=Math.min(99,90
+    +(teamRoll.window===20?2:0)+(oppRoll.window===20?2:0)
+    +(seasonGap>=15?3:0)+(rollingGap>=15?3:0)+(venueConfirmed?4:0));
+
+  const seasonTeamValue=seasonValue(team,cfg.seasonMetric);
+  const seasonOppValue=seasonValue(opponent,cfg.seasonMetric);
+  const title=`${team} — №${seasonTeamRank} НХЛ ПО ${cfg.label} ЗА СЕЗОН И №${teamRoll.rank} ЗА ПОСЛЕДНИЕ ${teamRoll.window}${rollingSupportText(t10,teamRoll.window)}; ${opponent} — ${seasonOppRank}-Й ЗА СЕЗОН И ${oppRoll.rank}-Й ЗА ${oppRoll.window}`;
+  const venueText=teamVenueMetric!==null&&oppVenueMetric!==null
+    ?`${team} ${teamIsHome?"дома":"в гостях"}: ${fmt(teamVenueMetric,1)}%; ${opponent} ${oppIsHome?"дома":"в гостях"}: ${fmt(oppVenueMetric,1)}%.`
+    :"Home/away advanced-сплит пока недостаточен по выборке.";
+
+  return {
+    score,title,
+    explanation:`Сезон 2025/26: ${team} ${fmt(seasonTeamValue,1)}% ${cfg.valueLabel}, ${opponent} ${fmt(seasonOppValue,1)}%. ${venueText} Контроль игры подтверждён сезоном и rolling-окном; это не вероятность победы.`,
+    evidence:{
+      sample:Math.max(Number(teamRoll.window||0),Number(oppRoll.window||0)),
+      season:"20252026",team,opponent,
+      metric:cfg.seasonMetric,opponent_metric:cfg.seasonMetric,
+      team_rank:seasonTeamRank,opponent_rank:seasonOppRank,rank_gap:seasonGap,
+      rolling_team_rank:teamRoll.rank,rolling_team_window:teamRoll.window,
+      rolling_team_rank_20:t20,rolling_team_rank_10:t10,
+      rolling_opponent_rank:oppRoll.rank,rolling_opponent_window:oppRoll.window,
+      rolling_opponent_rank_20:o20,rolling_opponent_rank_10:o10,
+      rolling_team_value_20:num(team20?.[cfg.valueField]),
+      rolling_team_value_10:num(team10?.[cfg.valueField]),
+      rolling_opponent_value_20:num(opp20?.[cfg.valueField]),
+      rolling_opponent_value_10:num(opp10?.[cfg.valueField]),
+      venue_sample:Math.min(Number(teamVenue?.sample||0),Number(oppVenue?.sample||0)),
+      venue_confirmed:venueConfirmed,multi_window_confirmed:true,
+      team_venue:teamVenue,opponent_venue:oppVenue,
+      role:"control_mismatch",advanced_snapshot:true,feature_layer:"advanced_rolling_venue_v1",
+    }
+  };
 }
 
 function mismatchSignal(game,team,opponent,current,histories,side){
@@ -174,6 +266,8 @@ function venueSummary(rows,isHome){
     sf60:toi>0?60*sf/toi:null,
     sa60:toi>0?60*sa/toi:null,
     xgf_pct:(xgf+xga)>0?100*xgf/(xgf+xga):null,
+    corsi_pct:avg(valid,"corsi_for_pct_5v5"),
+    fenwick_pct:avg(valid,"fenwick_for_pct_5v5"),
   };
 }
 
@@ -239,7 +333,8 @@ function makeCard(game,signal,market,suffix){
 
 function finiteRank(v){const n=Number(v);return Number.isFinite(n)&&n>0?n:null}
 function sum(rows,key){return rows.reduce((s,r)=>s+(num(r?.[key])||0),0)}
-function num(v){const n=Number(v);return Number.isFinite(n)?n:null}
+function avg(rows,key){const values=(rows||[]).map(r=>num(r?.[key])).filter(v=>v!==null);return values.length?values.reduce((a,b)=>a+b,0)/values.length:null}
+function num(v){if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null}
 function fmt(v,d=2){const n=Number(v);return Number.isFinite(n)?n.toFixed(d).replace(".",","):"—"}
 function up(v){return String(v||"").trim().toUpperCase()}
 function key(v){return String(v).replace("-","m").replace(".","_")}
