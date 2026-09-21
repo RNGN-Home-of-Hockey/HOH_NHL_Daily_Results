@@ -230,6 +230,7 @@ jobs:
           node tests/validate_advanced_team_snapshot_insights.mjs
           node tests/validate_advanced_winline_link.mjs
           node tests/validate_broadcast_priced_merge.mjs
+          node tests/validate_period_market_insights.mjs
 
       - name: Worker dry run
         run: |

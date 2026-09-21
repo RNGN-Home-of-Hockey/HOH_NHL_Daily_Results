@@ -49,8 +49,9 @@ export async function buildFeatureMarketInsights(db, game) {
     out.push(...restInsights(game, team, rows, currentByTeam.get(team) || null));
   }
 
+  out.push(...periodTotalInsights(game, rowsByTeam.get(game.away_tri)||[], rowsByTeam.get(game.home_tri)||[]));
   out.push(...secondPeriodLeagueInsights(game, p2LeagueR.results || []));
-  return dedupe(out).sort((a, b) => b.score - a.score).slice(0, 16);
+  return dedupe(out).sort((a, b) => b.score - a.score).slice(0, 22);
 }
 
 function recentFeatureStatement(db, team, before) {
@@ -167,7 +168,7 @@ function periodResultInsights(game, team, rows) {
   const sample = rows.slice(0, 10);
   if (sample.length < MIN_CORE_SAMPLE) return [];
   const out = [];
-  for (const period of [1, 2]) {
+  for (const period of [1, 2, 3]) {
     const gfKey = `p${period}_goals_for`;
     const gaKey = `p${period}_goals_against`;
     const wins = hitRate(sample, (r) => Number(r[gfKey]) > Number(r[gaKey]));
@@ -181,6 +182,42 @@ function periodResultInsights(game, team, rows) {
       evidence: { win_rate: wins },
       market: { type: `period_${period}_result`, subject: team, side: team, label: `${period}-й период — победа ${team}` },
     }));
+  }
+  return out;
+}
+
+function periodTotalInsights(game,awayRows,homeRows){
+  const away=awayRows.slice(0,10),home=homeRows.slice(0,10);
+  if(away.length<8||home.length<8)return[];
+  const out=[];
+  for(const period of [1,2,3]){
+    const gf=`p${period}_goals_for`,ga=`p${period}_goals_against`;
+    const overPred=r=>Number(r[gf]||0)+Number(r[ga]||0)>=2;
+    const awayOver=hitRate(away,overPred),homeOver=hitRate(home,overPred);
+    const awayUnder=1-awayOver,homeUnder=1-homeOver;
+    for(const side of ["over","under"]){
+      const ar=side==="over"?awayOver:awayUnder,hr=side==="over"?homeOver:homeUnder;
+      const avg=(ar+hr)/2;
+      if(ar<0.55||hr<0.55||avg<0.65)continue;
+      const ah=Math.round(ar*away.length),hh=Math.round(hr*home.length),hits=ah+hh,sample=away.length+home.length;
+      const phrase=side==="over"?"2+ шайбы":"не больше 1 шайбы";
+      out.push(featureCard({
+        game,team:null,type:`period_${period}_total_${side}_1_5`,
+        score:82+Math.round((avg-0.65)*45),
+        eyebrow:`${period}-Й ПЕРИОД · ТОТАЛ 1.5`,
+        value:`${hits}/${sample}`,
+        title:`${phrase.toUpperCase()} В ${period}-М ПЕРИОДЕ — ${hits} ИЗ ${sample} РЕЛЕВАНТНЫХ МАТЧЕЙ`,
+        explanation:`${game.away_tri}: ${ah}/${away.length}; ${game.home_tri}: ${hh}/${home.length}. Два независимых среза под точную линию периода 1.5.`,
+        evidence:{
+          window:10,sample,
+          away:{hits:ah,sample:away.length,hit_rate:ar},
+          home:{hits:hh,sample:home.length,hit_rate:hr},
+          period,
+          hit_rate:avg,
+        },
+        market:{type:"game_total",period:`P${period}`,subject:null,side,line:1.5,label:`${period}-й период ${side==="over"?"ТБ":"ТМ"} 1.5`},
+      }));
+    }
   }
   return out;
 }
