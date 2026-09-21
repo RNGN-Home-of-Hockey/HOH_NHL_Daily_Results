@@ -206,6 +206,7 @@ jobs:
         run: |
           node tests/validate_market_line_evaluator.mjs
           node tests/validate_universal_market_evaluator.mjs
+          node tests/validate_winline_broadcast_mapping.mjs
 
       - name: Broadcast renderer
         working-directory: vercel-broadcast-renderer

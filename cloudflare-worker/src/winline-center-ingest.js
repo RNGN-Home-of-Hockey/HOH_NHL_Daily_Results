@@ -1,10 +1,22 @@
-import { getWinlineFeedMaintenanceStatus } from "./winline-feed-maintenance.js";
+import { getWinlineFeedMaintenanceStatus, runWinlineFeedMaintenance } from "./winline-feed-maintenance.js";
 const IMPORT_PATH="/api/winline/center/import";
 const STATUS_PATH="/api/winline/center/status";
+const REFRESH_PATH="/api/winline/center/refresh";
 const SNAPSHOT_INTERVAL_MS=15*60*1000;
 
 export async function handleWinlineCenterIngest(request,env,path){
   if(path===STATUS_PATH&&request.method==="GET")return status(request,env);
+  if(path===REFRESH_PATH){
+    if(request.method!=="POST")return json({ok:false,error:"method_not_allowed"},405);
+    if(!env.DB)return json({ok:false,error:"missing_d1_binding"},503);
+    if(!(await authorized(request,env)))return json({ok:false,error:"unauthorized"},401);
+    try{
+      const result=await runWinlineFeedMaintenance(env,{force:true});
+      return json(result,result?.ok===false?500:200);
+    }catch(error){
+      return json({ok:false,error:"winline_refresh_failed",detail:String(error?.message||error)},500);
+    }
+  }
   if(path!==IMPORT_PATH)return null;
   if(request.method!=="POST")return json({ok:false,error:"method_not_allowed"},405);
   if(!env.DB)return json({ok:false,error:"missing_d1_binding"},503);

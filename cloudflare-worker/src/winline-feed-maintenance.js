@@ -239,15 +239,21 @@ async function persistMapped(db,items,capturedAt){
     let gameChanged=false;
     const oldEvent=existingEvents.get(item.event_id);
     const eventRaw=JSON.stringify({source:"prematch_mainsports_eng",bid:item.bid,team1_id:item.team1_id,team2_id:item.team2_id,team1:item.team1,team2:item.team2});
-    if(!oldEvent||Number(oldEvent.game_pk)!==item.game_pk||String(oldEvent.starts_at||"")!==String(item.starts_at)||String(oldEvent.deeplink||"")!==String(item.deeplink||"")){
-      eventStmts.push(db.prepare(`
-        INSERT INTO winline_events(winline_event_id,game_pk,status,starts_at,deeplink,raw_json,updated_at)
-        VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
-        ON CONFLICT(winline_event_id) DO UPDATE SET game_pk=excluded.game_pk,status=excluded.status,starts_at=excluded.starts_at,deeplink=excluded.deeplink,raw_json=excluded.raw_json,updated_at=CURRENT_TIMESTAMP;
-      `).bind(item.event_id,item.game_pk,"prematch",item.starts_at,item.deeplink||null,eventRaw));
-    }
+    eventStmts.push(db.prepare(`
+      INSERT INTO winline_events(winline_event_id,game_pk,status,starts_at,deeplink,raw_json,updated_at)
+      VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(winline_event_id) DO UPDATE SET game_pk=excluded.game_pk,status=excluded.status,starts_at=excluded.starts_at,deeplink=excluded.deeplink,raw_json=excluded.raw_json,updated_at=CURRENT_TIMESTAMP;
+    `).bind(item.event_id,item.game_pk,"prematch",item.starts_at,item.deeplink||null,eventRaw));
 
-    // Preserve every Winline line in current-state storage. Only changed outcomes are updated.
+    // A successful feed fetch is also a freshness confirmation. First deactivate the
+    // previous event market set; every line still present below is reactivated and
+    // receives a fresh updated_at even when its price did not move.
+    marketStmts.push(db.prepare(`
+      UPDATE winline_markets SET active=0
+      WHERE winline_event_id=? AND active=1;
+    `).bind(item.event_id));
+
+    // Preserve every Winline line in current-state storage.
     for(const line of item.lines||[]){
       const base=fullMarketBase(line),defs=fullMarketOutcomes(line,item);
       if(!base||!defs.length)continue;
@@ -255,8 +261,7 @@ async function persistMapped(db,items,capturedAt){
       for(const o of defs){
         const id=item.event_id+":"+base+":"+o.idx,old=existingMarkets.get(id);
         const changed=!old||Math.abs(Number(old.odds)-o.odds)>1e-9||String(old.subject_key||"")!==String(o.key||"")||String(old.outcome_name||"")!==String(o.name||"")||Number(old.active)!==1||Number(old.is_live)!==0;
-        if(!changed)continue;
-        groupChanged=true;gameChanged=true;
+        if(changed){groupChanged=true;gameChanged=true}
         marketStmts.push(db.prepare(`
           INSERT INTO winline_markets(winline_market_id,winline_event_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json,updated_at)
           VALUES(?,?,?,?,?,?,?,?,0,1,?,CURRENT_TIMESTAMP)
@@ -282,14 +287,12 @@ async function persistMapped(db,items,capturedAt){
     for(const o of outcomeDefs){
       const id=item.event_id+":main_1x2:"+o.suffix,old=existingMarkets.get(id);
       const changed=!old||Math.abs(Number(old.odds)-o.odds)>1e-9||String(old.subject_key||"")!==String(o.key||"")||Number(old.active)!==1||Number(old.is_live)!==0;
-      if(changed){
-        canonicalChanged=true;gameChanged=true;
-        marketStmts.push(db.prepare(`
-          INSERT INTO winline_markets(winline_market_id,winline_event_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json,updated_at)
-          VALUES(?,?,?,?,?,?,?,?,0,1,NULL,CURRENT_TIMESTAMP)
-          ON CONFLICT(winline_market_id) DO UPDATE SET winline_event_id=excluded.winline_event_id,market_type=excluded.market_type,subject_type=excluded.subject_type,subject_key=excluded.subject_key,outcome_name=excluded.outcome_name,odds=excluded.odds,deeplink=excluded.deeplink,is_live=0,active=1,updated_at=CURRENT_TIMESTAMP;
-        `).bind(id,item.event_id,MARKET_TYPE,o.key?"team":"match",o.key,o.name,o.odds,item.deeplink||null));
-      }
+      if(changed){canonicalChanged=true;gameChanged=true}
+      marketStmts.push(db.prepare(`
+        INSERT INTO winline_markets(winline_market_id,winline_event_id,market_type,subject_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,0,1,NULL,CURRENT_TIMESTAMP)
+        ON CONFLICT(winline_market_id) DO UPDATE SET winline_event_id=excluded.winline_event_id,market_type=excluded.market_type,subject_type=excluded.subject_type,subject_key=excluded.subject_key,outcome_name=excluded.outcome_name,odds=excluded.odds,deeplink=excluded.deeplink,is_live=0,active=1,updated_at=CURRENT_TIMESTAMP;
+      `).bind(id,item.event_id,MARKET_TYPE,o.key?"team":"match",o.key,o.name,o.odds,item.deeplink||null));
     }
     if(canonicalChanged){
       for(const o of outcomeDefs){

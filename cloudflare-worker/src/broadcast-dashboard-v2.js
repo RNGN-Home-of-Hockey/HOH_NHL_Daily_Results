@@ -250,7 +250,7 @@ async function loadBroadcastWinlineMarkets(db,game){
   return out;
 }
 
-function canonicalBroadcastWinlineMarket(row,event,game,teams){
+export function canonicalBroadcastWinlineMarket(row,event,game,teams){
   const raw=parseJson(row.raw_json)||{};
   const freetext=String(raw.freetext||row.market_type||"").trim();
   const norm=normalizeWinlineText(freetext);
@@ -260,17 +260,22 @@ function canonicalBroadcastWinlineMarket(row,event,game,teams){
   const updatedAt=isoOrNull(row.updated_at||event.updated_at);
   const base={provider:"winline",event_id:String(event.winline_event_id||""),market_id:String(row.winline_market_id||""),selection_id:String(row.winline_market_id||""),odds:Number(row.odds),status:"open",updated_at:updatedAt,deeplink:row.deeplink||event.deeplink||null};
   if(!Number.isFinite(base.odds)||base.odds<=1||!updatedAt)return null;
+
+  const period=/^(?:1|1st)period|firstperiod|period1/.test(norm)?"P1":
+    /^(?:2|2nd)period|secondperiod|period2/.test(norm)?"P2":
+    /^(?:3|3rd)period|thirdperiod|period3/.test(norm)?"P3":
+    /regulartime|60min|60minutes/.test(norm)?"REG":"GAME";
+
   if(String(row.market_type)==="main_1x2_regular"||/3wayodds|1x2/.test(norm)){
     const subject=teamSubject(row.subject_key,outcome,game,teams);
     const side=subject||(/^(x|draw|tie|ничья|н)$/i.test(outcome)?"draw":null);
     if(!side)return null;
-    return {...base,market_type:"moneyline",period:"REG",subject,side,line:null};
+    return {...base,market_type:"moneyline",period:String(row.market_type)==="main_1x2_regular"?"REG":(period==="GAME"?"REG":period),subject,side,line:null};
   }
   if(/moneyline|matchwinner|winner/.test(norm)&&!/period/.test(norm)){
     const subject=teamSubject(row.subject_key,outcome,game,teams);if(!subject)return null;
     return {...base,market_type:"moneyline",period:"GAME",subject,side:subject,line:null};
   }
-  const period=/1stperiod|period1|firstperiod/.test(norm)?"P1":/2ndperiod|period2|secondperiod/.test(norm)?"P2":/3rdperiod|period3|thirdperiod/.test(norm)?"P3":/regulartime|60min|60minutes/.test(norm)?"REG":"GAME";
   const side=/over|more|больше|тб/i.test(lowerOutcome)?"over":/under|less|меньше|тм/i.test(lowerOutcome)?"under":null;
   if(/teamtotal|individualtotal|team1total|team2total|totalteam/.test(norm)){
     const idx=/team1|1stteam|firstteam|individualtotal1|total1/.test(norm)?1:/team2|2ndteam|secondteam|individualtotal2|total2/.test(norm)?2:0;
@@ -278,7 +283,7 @@ function canonicalBroadcastWinlineMarket(row,event,game,teams){
     if(!subject||!side||value===null)return null;
     return {...base,market_type:"team_total",period,subject,side,line:value};
   }
-  if(/handicap|spread|puckline/.test(norm)){
+  if(/handicap|spread|puckline|fora/.test(norm)){
     const subject=teamSubject(row.subject_key,outcome,game,teams);if(!subject||value===null)return null;
     let line=value;const first=subject===teams.team1,second=subject===teams.team2;if(second&&!first)line=-value;
     return {...base,market_type:"handicap",period,subject,side:subject,line};
