@@ -1,0 +1,35 @@
+name: Live game card smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-game-card-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install -r requirements.txt
+      - name: Build real game card
+        env:
+          GAME_PK: "2026010009"
+          DRY_RUN: "1"
+          DEBUG_VERBOSE: "1"
+          SPORTSRU_ON_DEMAND_ENABLED: "1"
+          TELEGRAM_INTERACTIVE_ENABLED: "0"
+        run: |
+          start=$(date +%s)
+          python nhl_single_result_bot.py
+          end=$(date +%s)
+          echo "LIVE_GAME_CARD_SECONDS=$((end-start))"
+          echo "LIVE_GAME_CARD_SMOKE_OK"
