@@ -1172,50 +1172,130 @@ def save_state(path: str, data: Dict[str, Any]) -> None:
     p.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
 
 
-def send_telegram_text(text: str) -> bool:
-    token = _env_str("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = _env_str("TELEGRAM_CHAT_ID", DEFAULT_TELEGRAM_CHAT_ID).strip()
-    thread = _env_str("TELEGRAM_THREAD_ID", "").strip()
+def _telegram_token() -> str:
+    return _env_str("TELEGRAM_BOT_TOKEN", "").strip()
 
-    if not token or not chat_id:
-        print("[ERR] Telegram token/chat_id not set")
-        return False
 
-    url = f"{TG_API}/bot{token}/sendMessage"
-    headers = {"Content-Type": "application/json"}
-    payload = {
-        "chat_id": int(chat_id) if chat_id.strip("-").isdigit() else chat_id,
-        "text": text,
-        "disable_web_page_preview": True,
-        "disable_notification": False,
-        "parse_mode": "HTML",
-    }
-    if thread:
-        try:
-            payload["message_thread_id"] = int(thread)
-        except Exception:
-            pass
+def _telegram_chat_value(value: Any) -> Any:
+    s = str(value or "").strip()
+    return int(s) if s.strip("-").isdigit() else s
 
-    if DRY_RUN:
-        print("[DRY RUN] " + textwrap.shorten(text, 200, placeholder="…"))
-        return False
 
+def telegram_api_request(method: str, payload: Optional[Dict[str, Any]] = None, timeout: int = 30) -> Dict[str, Any]:
+    token = _telegram_token()
+    if not token:
+        return {"ok": False, "error_code": 0, "description": "Telegram token not set"}
+    url = f"{TG_API}/bot{token}/{method}"
     try:
-        resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30)
+        resp = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload or {}, ensure_ascii=False),
+            timeout=timeout,
+        )
     except Exception as exc:
-        print(f"[ERR] sendMessage failed: {exc}")
-        return False
-
+        return {"ok": False, "error_code": 0, "description": str(exc)}
     try:
         data = resp.json()
     except Exception:
-        data = {"ok": None, "raw": resp.text}
+        data = {"ok": False, "error_code": resp.status_code, "description": resp.text[:500]}
+    if resp.status_code != 200 and data.get("error_code") is None:
+        data["error_code"] = resp.status_code
+    return data
 
-    dbg(f"TG HTTP={resp.status_code} JSON={data}")
-    if resp.status_code != 200 or not data.get("ok", False):
+
+def send_telegram_text(
+    text: str,
+    chat_id: Optional[Any] = None,
+    reply_markup: Optional[Dict[str, Any]] = None,
+    message_thread_id: Optional[int] = None,
+    disable_notification: bool = False,
+) -> bool:
+    token = _telegram_token()
+    default_chat = _env_str("TELEGRAM_CHAT_ID", DEFAULT_TELEGRAM_CHAT_ID).strip()
+    target_chat = chat_id if chat_id is not None else default_chat
+    if not token or target_chat in (None, ""):
+        print("[ERR] Telegram token/chat_id not set")
+        return False
+
+    payload: Dict[str, Any] = {
+        "chat_id": _telegram_chat_value(target_chat),
+        "text": text,
+        "disable_web_page_preview": True,
+        "disable_notification": bool(disable_notification),
+        "parse_mode": "HTML",
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    if message_thread_id is not None:
+        payload["message_thread_id"] = int(message_thread_id)
+    elif chat_id is None:
+        thread = _env_str("TELEGRAM_THREAD_ID", "").strip()
+        if thread:
+            try:
+                payload["message_thread_id"] = int(thread)
+            except Exception:
+                pass
+
+    if DRY_RUN:
+        print("[DRY RUN] " + textwrap.shorten(text, 240, placeholder="…"))
+        return False
+
+    data = telegram_api_request("sendMessage", payload)
+    dbg("TG sendMessage:", data)
+    if not data.get("ok", False):
         print(f"[ERR] sendMessage failed: {data.get('error_code')} {data.get('description')}")
         return False
     return True
+
+
+def edit_telegram_text(
+    chat_id: Any,
+    message_id: int,
+    text: str,
+    reply_markup: Optional[Dict[str, Any]] = None,
+) -> bool:
+    payload: Dict[str, Any] = {
+        "chat_id": _telegram_chat_value(chat_id),
+        "message_id": int(message_id),
+        "text": text,
+        "disable_web_page_preview": True,
+        "parse_mode": "HTML",
+    }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+    data = telegram_api_request("editMessageText", payload)
+    dbg("TG editMessageText:", data)
+    return bool(data.get("ok"))
+
+
+def answer_callback_query(callback_id: str, text: str = "") -> None:
+    if not callback_id:
+        return
+    payload: Dict[str, Any] = {"callback_query_id": callback_id}
+    if text:
+        payload["text"] = text[:180]
+    telegram_api_request("answerCallbackQuery", payload, timeout=15)
+
+
+def set_bot_commands_if_needed(state: Dict[str, Any]) -> None:
+    if not TELEGRAM_INTERACTIVE_ENABLED or state.get("bot_commands_version") == BOT_COMMANDS_VERSION:
+        return
+    commands = [
+        {"command": "menu", "description": "Меню результатов и расписания НХЛ"},
+        {"command": "today", "description": "Матчи сегодняшнего игрового дня"},
+        {"command": "yesterday", "description": "Матчи предыдущего игрового дня"},
+        {"command": "schedule", "description": "Расписание: /schedule 2026-09-21"},
+        {"command": "results", "description": "Результаты дня: /results 2026-09-21"},
+        {"command": "game", "description": "Матч по gamePk: /game 2026020001"},
+    ]
+    data = telegram_api_request("setMyCommands", {"commands": commands}, timeout=20)
+    if data.get("ok"):
+        state["bot_commands_version"] = BOT_COMMANDS_VERSION
+    else:
+        print(f"[WARN] setMyCommands failed: {data.get('error_code')} {data.get('description')}")
+
 
 
 def get_meta_by_gamepk_scan_schedule(gamePk: int) -> Optional[GameMeta]:
