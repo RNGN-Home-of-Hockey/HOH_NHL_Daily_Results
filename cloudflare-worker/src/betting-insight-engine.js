@@ -129,6 +129,13 @@ export function annotateAirUtility(input, game=null) {
     else if(Number.isFinite(line)&&(line<=1.5||line>=4.5)){score-=5;reasons.push(["крайняя линия",-5]);}
   }
   if(card?.evidence_quality?.context_only){score-=8;reasons.push(["контекст, не прямой сигнал",-8]);}
+  if(card?.evidence?.advanced_snapshot){
+    const rank=Number(card.evidence.rank||card.evidence.team_rank||0);
+    const gap=Number(card.evidence.rank_gap||0);
+    if(rank>0&&rank<=3){score+=6;reasons.push(["топ-3 НХЛ",6]);}
+    else if(rank>0&&rank<=6){score+=4;reasons.push(["топ-6 НХЛ",4]);}
+    if(gap>=15){score+=4;reasons.push(["сильный matchup",-0+4]);}
+  }
   if(String(card.title||"").length>110){score-=4;reasons.push(["сложная формулировка",-4]);}
 
   const airScore=Math.max(0,Math.min(100,Math.round(score)));
