@@ -44,7 +44,7 @@ function fixSubject(text,subject,team){
   const escaped=escapeRegExp(subject);
   const form=teamGrammar(team);
 
-  const firstRe=new RegExp(`(${escaped}\\s+)(пропускал)\\s+(первым)\\b`,"gi");
+  const firstRe=new RegExp(`(${escaped}\\s+)(пропускал)\\s+(первым)(?=\\s|$|[.,;:!?])`,"gi");
   text=text.replace(firstRe,(all,prefix,verb,first)=>
     prefix+caseLike(verb,WORD_FORMS["пропускал"][form])+" "+caseLike(first,FIRST_FORMS[form])
   );
@@ -52,9 +52,9 @@ function fixSubject(text,subject,team){
   for(const [word,forms] of Object.entries(WORD_FORMS)){
     const replacement=forms[form]||forms.m;
     const patterns=[
-      new RegExp(`(${escaped}\\s+)(${word})\\b`,"gi"),
-      new RegExp(`(${escaped}\\s+не\\s+)(${word})\\b`,"gi"),
-      new RegExp(`(${escaped}\\s+(?:дома|в\\s+гостях)\\s+)(${word})\\b`,"gi"),
+      new RegExp(`(${escaped}\\s+)(${word})(?=\\s|$|[.,;:!?])`,"gi"),
+      new RegExp(`(${escaped}\\s+не\\s+)(${word})(?=\\s|$|[.,;:!?])`,"gi"),
+      new RegExp(`(${escaped}\\s+(?:дома|в\\s+гостях)\\s+)(${word})(?=\\s|$|[.,;:!?])`,"gi"),
     ];
     for(const re of patterns){
       text=text.replace(re,(all,prefix,matched)=>prefix+caseLike(matched,replacement));
