@@ -137,7 +137,7 @@ export async function renderCard(input={}){
     background:"transparent",fontFamily:"SofiaHOH",fontStyle:"italic",fontWeight:700
   }},
     e("div",{style:{
-      position:"absolute",display:"flex",left:10,top:17,width:8,height:46,
+      position:"absolute",display:"flex",left:9,top:15,width:10,height:50,
       borderRadius:4,backgroundColor:p.teamColor
     }}),
     e("div",{style:{
@@ -192,4 +192,4 @@ export async function renderCard(input={}){
 }
 
 export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
-export const RENDER_VERSION="2026-09-21-layout-v10-accent-finetune";
+export const RENDER_VERSION="2026-09-21-layout-v11-accent-cover";
