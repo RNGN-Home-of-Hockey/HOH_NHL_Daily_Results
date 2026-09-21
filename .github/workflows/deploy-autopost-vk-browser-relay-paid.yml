@@ -1,0 +1,114 @@
+name: Deploy Autopost VK Browser Relay (Paid Cloudflare)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      RELAY_NAME: rngn-vk-browser-relay-paid
+      RELAY_URL: https://rngn-vk-browser-relay-paid.znamteam-903.workers.dev
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/checkout@v5
+        with:
+          repository: RNGN-Autopost/RNGN-Social-Media-Autopost
+          ref: main
+          path: _autopost
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check paid Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 2; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID'; exit 2; }
+          echo "Using Cloudflare account $CLOUDFLARE_ACCOUNT_ID"
+
+      - name: Install Browser Run relay
+        working-directory: _autopost/vk-browser-relay-cloudflare
+        run: npm install --no-audit --no-fund
+
+      - name: Syntax check
+        working-directory: _autopost/vk-browser-relay-cloudflare
+        run: npm run check
+
+      - name: Deploy relay into paid Cloudflare account
+        working-directory: _autopost/vk-browser-relay-cloudflare
+        run: npx wrangler deploy --config wrangler.jsonc --name "$RELAY_NAME"
+
+      - name: Create temporary login admin secret
+        id: admin
+        shell: bash
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          echo "secret=$secret" >> "$GITHUB_OUTPUT"
+
+      - name: Install temporary admin secret
+        working-directory: _autopost/vk-browser-relay-cloudflare
+        env:
+          ADMIN_SECRET: ${{ steps.admin.outputs.secret }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$ADMIN_SECRET" | npx wrangler secret put ADMIN_SECRET --config wrangler.jsonc --name "$RELAY_NAME"
+
+      - name: Verify paid Browser Run relay health
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            if curl --fail --silent --show-error "$RELAY_URL/health"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+
+      - name: Start fresh VK Live View login
+        env:
+          ADMIN_SECRET: ${{ steps.admin.outputs.secret }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error \
+            -X POST \
+            -H "Accept: application/json" \
+            -H "x-admin-secret: $ADMIN_SECRET" \
+            "$RELAY_URL/admin/login/start")"
+          printf '%s' "$response" > /tmp/vk-paid-login.json
+
+          node <<'NODE'
+          const fs = require('fs');
+          const data = JSON.parse(fs.readFileSync('/tmp/vk-paid-login.json','utf8'));
+          if (!data.viewerUrl || !data.saveUrl) {
+            console.error('Paid relay response:', data);
+            throw new Error('Paid Browser Run login URLs were not returned');
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            '## Paid Cloudflare VK login\n\n' +
+            'This Browser Run session is on the paid HOH Cloudflare account.\n\n' +
+            '1. [Open VK Live View](' + data.viewerUrl + ') and log into VK.\n' +
+            '2. Open the target VK Channel and verify that the composer is visible.\n' +
+            '3. [Save the VK session](' + data.saveUrl + ').\n\n' +
+            'Do this within a few minutes so the interactive browser session does not idle out.\n'
+          );
+          console.log('PAID_BROWSER_RUN_LOGIN_READY');
+          NODE
+
+          echo "VIEWER_URL=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/vk-paid-login.json','utf8')).viewerUrl")"
+          echo "SAVE_URL=$(node -p "JSON.parse(require('fs').readFileSync('/tmp/vk-paid-login.json','utf8')).saveUrl")"
+          rm -f /tmp/vk-paid-login.json
