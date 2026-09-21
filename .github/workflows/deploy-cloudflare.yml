@@ -108,26 +108,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --input-type=module <<'JS'
-          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/data-core/health';
-          let last=null;
-          for(let i=0;i<12;i++){
-            const r=await fetch(url,{headers:{accept:'application/json'},cache:'no-store'});
-            last=await r.json().catch(()=>({}));
-            if(r.ok&&Number(last?.counts?.team_current_snapshots)>=90&&Number(last?.counts?.advanced_features)>=560)break;
-            await new Promise(res=>setTimeout(res,1000));
+          COVERAGE="$(npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT 'CURRENT_ROWS=' || COUNT(*) AS coverage FROM team_current_snapshots;
+            SELECT 'CURRENT_TEAMS=' || COUNT(DISTINCT team_tri) AS coverage FROM team_current_snapshots;
+            SELECT 'ADVANCED_ROWS=' || COUNT(*) AS coverage FROM team_game_advanced_features;
+            SELECT 'ADVANCED_TEAMS=' || COUNT(DISTINCT team_tri) AS coverage FROM team_game_advanced_features;
+          ")"
+          echo "$COVERAGE"
+          value() {
+            local key="$1"
+            grep -o "${key}=[0-9][0-9]*" <<<"$COVERAGE" | head -1 | cut -d= -f2
           }
-          const current=Number(last?.counts?.team_current_snapshots||0);
-          const advanced=Number(last?.counts?.advanced_features||0);
-          if(current<90)throw new Error('team_current_snapshots coverage too low: '+current);
-          if(advanced<560)throw new Error('team_game_advanced_features coverage too low: '+advanced);
-          console.log('ADVANCED_BROADCAST_DATA_OK',JSON.stringify({
-            team_current_snapshots:current,
-            advanced_features:advanced,
-            seasons:last?.build?.seasons||null,
-            current_created_at:last?.build?.current_created_at||null
-          }));
-          JS
+          CURRENT_ROWS="$(value CURRENT_ROWS)"
+          CURRENT_TEAMS="$(value CURRENT_TEAMS)"
+          ADVANCED_ROWS="$(value ADVANCED_ROWS)"
+          ADVANCED_TEAMS="$(value ADVANCED_TEAMS)"
+          test -n "$CURRENT_ROWS" -a -n "$CURRENT_TEAMS" -a -n "$ADVANCED_ROWS" -a -n "$ADVANCED_TEAMS" || {
+            echo "Could not parse advanced coverage"; exit 1;
+          }
+          test "$CURRENT_ROWS" -ge 90 || { echo "team_current_snapshots rows too low: $CURRENT_ROWS"; exit 1; }
+          test "$CURRENT_TEAMS" -ge 30 || { echo "team_current_snapshots teams too low: $CURRENT_TEAMS"; exit 1; }
+          test "$ADVANCED_ROWS" -ge 560 || { echo "team_game_advanced_features rows too low: $ADVANCED_ROWS"; exit 1; }
+          test "$ADVANCED_TEAMS" -ge 28 || { echo "team_game_advanced_features teams too low: $ADVANCED_TEAMS"; exit 1; }
+          echo "ADVANCED_BROADCAST_DATA_OK current_rows=$CURRENT_ROWS current_teams=$CURRENT_TEAMS advanced_rows=$ADVANCED_ROWS advanced_teams=$ADVANCED_TEAMS"
 
       - name: Verify production Telegram Center
         shell: bash
