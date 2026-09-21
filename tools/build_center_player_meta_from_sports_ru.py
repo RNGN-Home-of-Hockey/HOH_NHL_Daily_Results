@@ -345,14 +345,30 @@ def main() -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    full_names = {
+    names_path = Path(args.full_names_out)
+    existing_names: dict[str, str] = {}
+    if names_path.exists():
+        try:
+            raw_existing = json.loads(names_path.read_text(encoding="utf-8") or "{}")
+            existing_names = {
+                str(pid): clean_sports_name(name)
+                for pid, name in raw_existing.items()
+                if str(pid).isdigit() and clean_sports_name(name)
+            }
+        except Exception:
+            existing_names = {}
+
+    fresh_names = {
         str(p["player_id"]): clean_sports_name(p["full_name_ru"])
         for p in sorted(players, key=lambda x: int(x["player_id"]))
         if clean_sports_name(p.get("full_name_ru") or "")
     }
-    names_path = Path(args.full_names_out)
+    # Both maps originate from Sports.ru. Keeping the previous verified value
+    # prevents a transient team-page failure from deleting Russian names used
+    # by Telegram, Broadcast, Center and other HOH surfaces.
+    full_names = {**existing_names, **fresh_names}
     names_path.parent.mkdir(parents=True, exist_ok=True)
-    names_path.write_text(json.dumps(full_names, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    names_path.write_text(json.dumps(dict(sorted(full_names.items(), key=lambda kv: int(kv[0]))), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     print(json.dumps({"out": str(path), "full_names_out": str(names_path), "teams": len(teams), "players": len(players), "unresolved": len(unresolved)}, ensure_ascii=False))
     return 0
