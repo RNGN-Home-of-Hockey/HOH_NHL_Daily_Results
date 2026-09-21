@@ -35,11 +35,15 @@ on:
         description: "Override Telegram thread for an interactive response"
         required: false
         default: ""
+      status_message_id:
+        description: "Telegram status message to edit while an interactive job runs"
+        required: false
+        default: ""
   schedule:
     - cron: "*/5 * * * *"
 
 concurrency:
-  group: nhl-single-results-${{ github.ref }}
+  group: nhl-single-results-${{ github.ref }}-${{ github.event.inputs.target_chat_id || github.event.client_payload.target_chat_id || 'autopost' }}-${{ github.event.inputs.gamepk || github.event.client_payload.gamepk || github.event.inputs.date || github.event.client_payload.date || 'poll' }}
   cancel-in-progress: false
 
 env:
@@ -75,6 +79,7 @@ jobs:
           INPUT_FULL_DAY: ${{ github.event.inputs.full_day || github.event.client_payload.full_day }}
           INPUT_TARGET_CHAT_ID: ${{ github.event.inputs.target_chat_id || github.event.client_payload.target_chat_id }}
           INPUT_TARGET_THREAD_ID: ${{ github.event.inputs.target_thread_id || github.event.client_payload.target_thread_id }}
+          INPUT_STATUS_MESSAGE_ID: ${{ github.event.inputs.status_message_id || github.event.client_payload.status_message_id }}
         run: |
           python - << 'PY'
           import os, re
@@ -86,6 +91,7 @@ jobs:
           full_day = (os.getenv("INPUT_FULL_DAY") or "").strip()
           target_chat = (os.getenv("INPUT_TARGET_CHAT_ID") or "").strip()
           target_thread = (os.getenv("INPUT_TARGET_THREAD_ID") or "").strip()
+          status_message = (os.getenv("INPUT_STATUS_MESSAGE_ID") or "").strip()
 
           q = ""
           if not gp and dt and mt:
@@ -110,6 +116,7 @@ jobs:
               fh.write(f"FULL_DAY_MENU={full_day}\n")
               fh.write(f"TARGET_CHAT_ID={target_chat}\n")
               fh.write(f"TARGET_THREAD_ID={target_thread}\n")
+              fh.write(f"STATUS_MESSAGE_ID={status_message}\n")
 
           print("GAME_PK:", gp or "(empty)")
           print("GAME_QUERY:", q or "(empty)")
@@ -118,6 +125,7 @@ jobs:
           print("FULL_DAY_MENU:", full_day or "(empty)")
           print("TARGET_CHAT_ID:", target_chat or "(default)")
           print("TARGET_THREAD_ID:", target_thread or "(default)")
+          print("STATUS_MESSAGE_ID:", status_message or "(none)")
           PY
 
       - name: Init state
@@ -142,6 +150,7 @@ jobs:
           TELEGRAM_THREAD_ID: ${{ secrets.TELEGRAM_THREAD_ID }}
           TELEGRAM_TARGET_CHAT_ID: ${{ env.TARGET_CHAT_ID }}
           TELEGRAM_TARGET_THREAD_ID: ${{ env.TARGET_THREAD_ID }}
+          TELEGRAM_STATUS_MESSAGE_ID: ${{ env.STATUS_MESSAGE_ID }}
           TELEGRAM_INTERACTIVE_ENABLED: 0
           HOH_CHANNEL_URL: http://t.me/home_of_hockey
           DEBUG_VERBOSE: 1

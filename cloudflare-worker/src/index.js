@@ -633,15 +633,26 @@ async function handleCallback(callback, env) {
       return jsonResponse({ ok: false, error: "invalid_game" }, 400);
     }
 
-    await answerCallback(env, callbackId, "Собираю карточку матча...");
-    const pendingText = day
-      ? `⏳ Собираю карточку матча за ${day}…`
-      : "⏳ Собираю карточку матча…";
-    const pending = await sendText(env, chatId, pendingText, null, threadId);
+    await answerCallback(env, callbackId, "Запрос принят");
+    const pendingText = [
+      "🟡 <b>Карточка матча</b>",
+      "",
+      "✅ Запрос принят",
+      "⏳ Запускаю сборщик…",
+    ].join("\n");
+    const pending = await sendText(env, chatId, pendingText, null, threadId, "HTML");
+    const statusMessageId = Number(pending?.response?.result?.message_id || 0) || null;
 
-    const result = await dispatchGameResult(env, chatId, gamePk, threadId);
-    if (!result.ok && pending?.ok) {
-      await sendText(env, chatId, "Не получилось запустить карточку матча. Попробуй ещё раз.", null, threadId);
+    const result = await dispatchGameResult(env, chatId, gamePk, threadId, statusMessageId);
+    if (!result.ok && statusMessageId) {
+      await editText(
+        env,
+        chatId,
+        statusMessageId,
+        "❌ <b>Карточка матча</b>\n\nНе получилось запустить сборщик. Попробуй ещё раз.",
+        null,
+        "HTML",
+      );
     }
     return jsonResponse({
       ok: result.ok,
@@ -649,7 +660,7 @@ async function handleCallback(callback, env) {
       game_pk: gamePk,
       day,
       callback_data: data,
-      pending_message_ok: Boolean(pending?.ok),
+      status_message_id: statusMessageId,
     }, result.ok ? 200 : 500);
   }
 
@@ -659,9 +670,38 @@ async function handleCallback(callback, env) {
       await answerCallback(env, callbackId, "Некорректная дата");
       return jsonResponse({ ok: false, error: "invalid_day" }, 400);
     }
-    await answerCallback(env, callbackId, "Собираю все результаты дня...");
-    const result = await dispatchFullDay(env, chatId, day, threadId);
-    return jsonResponse({ ok: result.ok, action: "full_day", day }, result.ok ? 200 : 500);
+    await answerCallback(env, callbackId, "Запрос принят");
+    const pending = await sendText(
+      env,
+      chatId,
+      [
+        `🟡 <b>Все результаты дня • ${formatRuDay(day)}</b>`,
+        "",
+        "✅ Запрос принят",
+        "⏳ Загружаю список матчей…",
+      ].join("\n"),
+      null,
+      threadId,
+      "HTML",
+    );
+    const statusMessageId = Number(pending?.response?.result?.message_id || 0) || null;
+    const result = await dispatchFullDay(env, chatId, day, threadId, statusMessageId);
+    if (!result.ok && statusMessageId) {
+      await editText(
+        env,
+        chatId,
+        statusMessageId,
+        "❌ <b>Все результаты дня</b>\n\nНе получилось запустить сборщик.",
+        null,
+        "HTML",
+      );
+    }
+    return jsonResponse({
+      ok: result.ok,
+      action: "full_day",
+      day,
+      status_message_id: statusMessageId,
+    }, result.ok ? 200 : 500);
   }
 
   if (data === "resend_last_day") {
@@ -780,13 +820,14 @@ async function sendScheduleDay(env, chatId, day, threadId = null) {
   }
 }
 
-async function dispatchGameResult(env, chatId, gamePk, threadId = null) {
+async function dispatchGameResult(env, chatId, gamePk, threadId = null, statusMessageId = null) {
   try {
     const result = await triggerRepositoryDispatch(env, eventName(env, "GITHUB_DISPATCH_EVENT_POLL", "nhl_poll"), {
       source: "telegram_menu_game",
       gamepk: String(gamePk),
       target_chat_id: String(chatId),
       target_thread_id: threadId ? String(threadId) : "",
+      status_message_id: statusMessageId ? String(statusMessageId) : "",
     });
     return { ok: true, ...result };
   } catch (error) {
@@ -795,7 +836,7 @@ async function dispatchGameResult(env, chatId, gamePk, threadId = null) {
   }
 }
 
-async function dispatchFullDay(env, chatId, day, threadId = null) {
+async function dispatchFullDay(env, chatId, day, threadId = null, statusMessageId = null) {
   try {
     const result = await triggerRepositoryDispatch(env, eventName(env, "GITHUB_DISPATCH_EVENT_POLL", "nhl_poll"), {
       source: "telegram_menu_full_day",
@@ -803,6 +844,7 @@ async function dispatchFullDay(env, chatId, day, threadId = null) {
       full_day: "true",
       target_chat_id: String(chatId),
       target_thread_id: threadId ? String(threadId) : "",
+      status_message_id: statusMessageId ? String(statusMessageId) : "",
     });
     return { ok: true, ...result };
   } catch (error) {
@@ -1050,6 +1092,21 @@ async function sendText(env, chatId, text, replyMarkup = null, threadId = null, 
   }
 
   return telegramRequest(env, "sendMessage", payload);
+}
+
+async function editText(env, chatId, messageId, text, replyMarkup = null, parseMode = null) {
+  if (!messageId) {
+    return { ok: false, error: "missing_message_id" };
+  }
+  const payload = {
+    chat_id: chatId,
+    message_id: Number(messageId),
+    text,
+    disable_web_page_preview: true,
+  };
+  if (replyMarkup) payload.reply_markup = replyMarkup;
+  if (parseMode) payload.parse_mode = parseMode;
+  return telegramRequest(env, "editMessageText", payload);
 }
 
 async function answerCallback(env, callbackId, text) {

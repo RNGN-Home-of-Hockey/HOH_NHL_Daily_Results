@@ -14,7 +14,8 @@ import textwrap
 import pathlib
 import html
 import unicodedata
-from typing import Any, Dict, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, date
 from difflib import SequenceMatcher
@@ -62,6 +63,7 @@ SPORTSRU_NAMES_PATH = _env_str("SPORTSRU_NAMES_PATH", "ru_full_names.json").stri
 SPORTSRU_ON_DEMAND_ENABLED = _env_bool("SPORTSRU_ON_DEMAND_ENABLED", True)
 SPORTSRU_HOST = "https://www.sports.ru"
 SPORTSRU_SEARCH_URL = SPORTSRU_HOST + "/search/?q="
+INTERACTIVE_STARTED_AT = time.monotonic()
 
 TEAM_RU = {
     "ANA": "Анахайм", "ARI": "Аризона", "BOS": "Бостон", "BUF": "Баффало", "CGY": "Калгари", "CAR": "Каролина",
@@ -1426,14 +1428,21 @@ def build_game_result_for_meta(
     meta: GameMeta,
     standings: Dict[str, TeamRecord],
     sportsru_names: Dict[int, str],
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> str:
     """One authoritative result renderer for autopost, menu and whole-day output."""
+    if progress_callback:
+        progress_callback("nhl_events")
     evs, official_has_shootout = fetch_scoring_official(meta.gamePk, meta.home_tri, meta.away_tri)
     # Sports.ru roster cache is the primary shared spelling source by NHL player id.
     evs = apply_sportsru_names(evs, sportsru_names)
+    if progress_callback:
+        progress_callback("sportsru_names")
     # Fresh preseason/camp players can appear in NHL play-by-play before they reach
     # the daily Sports.ru roster cache. Resolve those individual profiles now.
     evs = resolve_event_people_from_sportsru(evs, sportsru_names)
+    if progress_callback:
+        progress_callback("sportsru_match")
     # Match page remains an additional Sports.ru source when its goal summary is populated.
     sru_home, sru_away, sru_so_winner, _ = fetch_sportsru_goals(meta.home_tri, meta.away_tri)
     merged = merge_official_with_sportsru(evs, sru_home, sru_away, meta.home_tri, meta.away_tri)
@@ -1441,6 +1450,8 @@ def build_game_result_for_meta(
     # Hard publication guard: unresolved English scorer/assist names must fail
     # the run instead of leaking into Telegram.
     assert_no_english_scoring_names(merged, official_has_shootout, sru_so_winner)
+    if progress_callback:
+        progress_callback("render")
     return build_single_match_text(
         meta=meta,
         standings=standings,
@@ -1567,6 +1578,29 @@ def edit_telegram_text(
     data = telegram_api_request("editMessageText", payload)
     dbg("TG editMessageText:", data)
     return bool(data.get("ok"))
+
+
+def _interactive_status_message_id() -> int:
+    try:
+        return int(_env_str("TELEGRAM_STATUS_MESSAGE_ID", "").strip() or "0")
+    except Exception:
+        return 0
+
+
+def _interactive_status_chat_id() -> str:
+    return _env_str("TELEGRAM_TARGET_CHAT_ID", "").strip()
+
+
+def update_interactive_status(text: str) -> bool:
+    message_id = _interactive_status_message_id()
+    chat_id = _interactive_status_chat_id()
+    if not message_id or not chat_id or DRY_RUN:
+        return False
+    return edit_telegram_text(chat_id, message_id, text)
+
+
+def interactive_elapsed_s() -> int:
+    return max(0, int(round(time.monotonic() - INTERACTIVE_STARTED_AT)))
 
 
 def answer_callback_query(callback_id: str, text: str = "") -> None:
@@ -1850,6 +1884,7 @@ def build_full_day_messages(
     standings: Dict[str, TeamRecord],
     sportsru_names: Dict[int, str],
     max_chars: int = 3800,
+    progress_callback: Optional[Callable[[int, int, GameMeta, Optional[Exception]], None]] = None,
 ) -> List[str]:
     metas = games_for_pt_day(day)
     finals = [m for m in metas if _is_final_state(m.state)]
@@ -1867,18 +1902,36 @@ def build_full_day_messages(
     else:
         header += f"Завершено {len(finals)} из {total}. Результаты надёжно спрятаны 👇"
 
-    blocks: List[str] = []
-    for meta in finals:
-        try:
-            blocks.append(build_game_result_for_meta(meta, standings, sportsru_names))
-        except Exception as exc:
-            print(f"[ERR] whole-day game render failed {meta.gamePk}: {exc}")
-            hn = TEAM_RU.get(meta.home_tri, meta.home_tri)
-            an = TEAM_RU.get(meta.away_tri, meta.away_tri)
-            blocks.append(
-                f"{TEAM_EMOJI.get(meta.home_tri,'')} <b>«{html.escape(hn)}»: {meta.home_score}</b>\n"
-                f"{TEAM_EMOJI.get(meta.away_tri,'')} <b>«{html.escape(an)}»: {meta.away_score}</b>"
-            )
+    blocks_by_index: Dict[int, str] = {}
+    workers = min(4, max(1, len(finals)))
+
+    def render_one(meta: GameMeta) -> str:
+        # Each parallel renderer gets its own mutable cache copy.
+        return build_game_result_for_meta(meta, standings, dict(sportsru_names))
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(render_one, meta): (idx, meta) for idx, meta in enumerate(finals)}
+        completed = 0
+        for future in as_completed(futures):
+            idx, meta = futures[future]
+            error: Optional[Exception] = None
+            try:
+                blocks_by_index[idx] = future.result()
+            except Exception as exc:
+                error = exc
+                print(f"[ERR] whole-day game render failed {meta.gamePk}: {exc}")
+                hn = TEAM_RU.get(meta.home_tri, meta.home_tri)
+                an = TEAM_RU.get(meta.away_tri, meta.away_tri)
+                blocks_by_index[idx] = (
+                    f"{TEAM_EMOJI.get(meta.home_tri,'')} <b>«{html.escape(hn)}»: {meta.home_score}</b>\n"
+                    f"{TEAM_EMOJI.get(meta.away_tri,'')} <b>«{html.escape(an)}»: {meta.away_score}</b>\n"
+                    "⚠️ <i>Подробности этого матча не собраны — проверяю данные игроков.</i>"
+                )
+            completed += 1
+            if progress_callback:
+                progress_callback(completed, len(finals), meta, error)
+
+    blocks = [blocks_by_index[i] for i in range(len(finals))]
 
     sep = "——————————————————"
     footer = _subscription_footer()
@@ -2171,21 +2224,82 @@ def main() -> None:
     game_pk = _env_str("GAME_PK", "").strip()
     game_query = _env_str("GAME_QUERY", "").strip()
     resend_last_day = _env_bool("RESEND_LAST_DAY", False)
+    full_day_mode = _env_bool("FULL_DAY_MENU", False)
+
+    if game_pk or game_query:
+        update_interactive_status(
+            "🟡 <b>Карточка матча</b>\n\n"
+            "1/5 · ✅ Запрос получен\n"
+            "2/5 · ⏳ Ищу матч в NHL…"
+        )
+    elif full_day_mode:
+        update_interactive_status(
+            f"🟡 <b>Все результаты дня • {html.escape(TARGET_DATE or '')}</b>\n\n"
+            "✅ Запрос получен\n"
+            "⏳ Загружаю список матчей…"
+        )
 
     standings = fetch_standings_map()
     sportsru_names = load_sportsru_names()
     state = load_state(STATE_PATH)
 
-    if _env_bool("FULL_DAY_MENU", False):
+    if full_day_mode:
         day = _parse_menu_date(TARGET_DATE, _menu_today_pt())
         if day is None:
+            update_interactive_status("❌ <b>Все результаты дня</b>\n\nНекорректная дата.")
             print(f"[ERR] invalid FULL_DAY_MENU date: {TARGET_DATE}")
             return
-        messages = build_full_day_messages(day, standings, sportsru_names)
+
+        full_failures: List[Tuple[int, str]] = []
+
+        def full_progress(done: int, total: int, meta: GameMeta, error: Optional[Exception]) -> None:
+            away = TEAM_RU.get(meta.away_tri, meta.away_tri)
+            home = TEAM_RU.get(meta.home_tri, meta.home_tri)
+            if error:
+                full_failures.append((meta.gamePk, str(error)))
+            icon = "⚠️" if error else "✅"
+            remaining = max(0, total - done)
+            update_interactive_status(
+                f"🟡 <b>Все результаты дня • {_ru_day_label(day)}</b>\n\n"
+                f"{done}/{total} матчей обработано\n"
+                f"{icon} {html.escape(away)} — {html.escape(home)}\n"
+                + (f"⏳ Осталось: {remaining}" if remaining else "⏳ Формирую сообщение…")
+            )
+
+        messages = build_full_day_messages(
+            day,
+            standings,
+            sportsru_names,
+            progress_callback=full_progress,
+        )
+
+        if full_failures:
+            update_interactive_status(
+                f"❌ <b>День не отправлен полностью</b>\n\n"
+                f"Собрано: {len([1 for _ in games_for_pt_day(day) if _is_final_state(_.state)]) - len(full_failures)}\n"
+                f"С ошибкой: {len(full_failures)}\n"
+                "Неполный день не публикую."
+            )
+            raise RuntimeError(
+                "FULL_DAY_MENU incomplete: "
+                + ", ".join(str(game_pk) for game_pk, _ in full_failures)
+            )
+
         sent = 0
         for message in messages:
             if send_telegram_text(message):
                 sent += 1
+        if sent == len(messages):
+            update_interactive_status(
+                f"✅ <b>Все результаты дня готовы</b>\n\n"
+                f"Отправлено сообщений: {sent}\n"
+                f"Время сборки: {interactive_elapsed_s()} сек."
+            )
+        else:
+            update_interactive_status(
+                f"⚠️ <b>Результаты собраны, но Telegram принял не всё</b>\n\n"
+                f"Отправлено: {sent}/{len(messages)} сообщений."
+            )
         print(f"FULL_DAY_MENU OK ({sent}/{len(messages)} messages)")
         return
 
@@ -2207,10 +2321,21 @@ def main() -> None:
         gid = int(game_pk)
         meta = get_meta_by_gamepk_scan_schedule(gid)
         if not meta:
+            update_interactive_status(
+                "❌ <b>Карточка матча</b>\n\nМатч не найден в расписании NHL."
+            )
             print(f"[ERR] GAME_PK not found in schedule window: {gid}")
             return
         metas = [meta]
         manual_mode = True
+        away = TEAM_RU.get(meta.away_tri, meta.away_tri)
+        home = TEAM_RU.get(meta.home_tri, meta.home_tri)
+        update_interactive_status(
+            "🟡 <b>Карточка матча</b>\n\n"
+            "1/5 · ✅ Запрос получен\n"
+            f"2/5 · ✅ Матч найден: {html.escape(away)} — {html.escape(home)}\n"
+            "3/5 · ⏳ Загружаю события NHL…"
+        )
     elif game_query:
         meta = resolve_game_by_query(game_query)
         if not meta:
@@ -2246,13 +2371,54 @@ def main() -> None:
                 failed_posts += 1
             continue
 
-        text = build_game_result_for_meta(meta, standings, sportsru_names)
+        def game_progress(stage: str) -> None:
+            away = TEAM_RU.get(meta.away_tri, meta.away_tri)
+            home = TEAM_RU.get(meta.home_tri, meta.home_tri)
+            if stage == "nhl_events":
+                tail = "3/5 · ⏳ Загружаю события NHL…"
+            elif stage == "sportsru_names":
+                tail = "3/5 · ✅ События NHL получены\n4/5 · ⏳ Проверяю русские имена Sports.ru…"
+            elif stage == "sportsru_match":
+                tail = "4/5 · ⏳ Сверяю имена и страницу матча Sports.ru…"
+            else:
+                tail = "4/5 · ✅ Данные проверены\n5/5 · ⏳ Собираю и отправляю карточку…"
+            update_interactive_status(
+                "🟡 <b>Карточка матча</b>\n\n"
+                f"✅ {html.escape(away)} — {html.escape(home)}\n"
+                f"{tail}"
+            )
+
+        try:
+            text = build_game_result_for_meta(
+                meta,
+                standings,
+                sportsru_names,
+                progress_callback=game_progress if manual_mode else None,
+            )
+        except Exception as exc:
+            if manual_mode:
+                update_interactive_status(
+                    "❌ <b>Карточка матча не собрана</b>\n\n"
+                    "NHL-данные получены, но проверка русских имён не завершилась.\n"
+                    "Запуск остановлен, чтобы не отправлять английские фамилии."
+                )
+            raise
         dbg("Single match preview:\n" + text[:900].replace("\n", "¶") + "…")
         sent_ok = send_telegram_text(text)
         if not sent_ok:
             failed_posts += 1
+            if manual_mode:
+                update_interactive_status(
+                    "❌ <b>Карточка собрана, но Telegram не принял сообщение</b>"
+                )
             print(f"[ERR] not marking posted because Telegram send failed: {meta.gamePk}")
             continue
+
+        if manual_mode:
+            update_interactive_status(
+                "✅ <b>Карточка матча готова</b>\n\n"
+                f"Отправлено в чат.\nВремя сборки: {interactive_elapsed_s()} сек."
+            )
 
         force_repost.pop(str(meta.gamePk), None)
         if not manual_mode and not resend_last_day:
