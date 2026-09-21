@@ -470,24 +470,79 @@ async function cronRoute(request, env) {
 
 async function handleCallback(callback, env) {
   const callbackId = callback.id;
-  const data = callback.data || "";
-  const chatId = callback.message?.chat?.id;
+  const data = String(callback.data || "");
+  const message = callback.message || {};
+  const chatId = message.chat?.id;
+  const chatType = String(message.chat?.type || "");
+  const threadId = firstInt(message.message_thread_id) || null;
+  const readOnly =
+    data === "menu" ||
+    data === "latest_matches" ||
+    data === "schedule_overview" ||
+    data.startsWith("day:") ||
+    data.startsWith("game:") ||
+    data.startsWith("full:");
+  const canRead = isAllowedChat(env, chatId) || chatType === "private";
 
-  if (!isAllowedChat(env, chatId)) {
-    await answerCallback(env, callbackId, "Эта кнопка доступна только в группе HOH NHL Results.");
+  if (readOnly && !canRead) {
+    await answerCallback(env, callbackId, "Меню доступно в личном чате с ботом или в группе HOH.");
     return jsonResponse({ ok: true, skipped: "chat_not_allowed" });
+  }
+  if (!readOnly && !isAllowedChat(env, chatId)) {
+    await answerCallback(env, callbackId, "Эта служебная кнопка доступна только в группе HOH.");
+    return jsonResponse({ ok: true, skipped: "chat_not_allowed" });
+  }
+
+  if (data === "menu") {
+    await answerCallback(env, callbackId, "Меню");
+    await sendMenu(env, chatId, threadId);
+    return jsonResponse({ ok: true, action: data });
   }
 
   if (data === "latest_matches") {
     await answerCallback(env, callbackId, "Показываю последние матчи...");
-    await sendLatestMatches(env, chatId);
+    await sendLatestMatches(env, chatId, threadId);
     return jsonResponse({ ok: true, action: data });
   }
 
   if (data === "schedule_overview") {
-    await answerCallback(env, callbackId, "Показываю расписание...");
-    await sendScheduleOverview(env, chatId);
+    await answerCallback(env, callbackId, "Выбери игровой день");
+    await sendScheduleOverview(env, chatId, threadId);
     return jsonResponse({ ok: true, action: data });
+  }
+
+  if (data.startsWith("day:")) {
+    const day = normalizeDay(data.slice(4));
+    if (!day) {
+      await answerCallback(env, callbackId, "Некорректная дата");
+      return jsonResponse({ ok: false, error: "invalid_day" }, 400);
+    }
+    await answerCallback(env, callbackId, "Загружаю расписание...");
+    await sendScheduleDay(env, chatId, day, threadId);
+    return jsonResponse({ ok: true, action: "day", day });
+  }
+
+  if (data.startsWith("game:")) {
+    const parts = data.split(":");
+    const gamePk = firstInt(parts[1]);
+    if (!gamePk) {
+      await answerCallback(env, callbackId, "Матч не найден");
+      return jsonResponse({ ok: false, error: "invalid_game" }, 400);
+    }
+    await answerCallback(env, callbackId, "Собираю подробности матча...");
+    const result = await dispatchGameResult(env, chatId, gamePk, threadId);
+    return jsonResponse({ ok: result.ok, action: "game", game_pk: gamePk }, result.ok ? 200 : 500);
+  }
+
+  if (data.startsWith("full:")) {
+    const day = normalizeDay(data.slice(5));
+    if (!day) {
+      await answerCallback(env, callbackId, "Некорректная дата");
+      return jsonResponse({ ok: false, error: "invalid_day" }, 400);
+    }
+    await answerCallback(env, callbackId, "Собираю все результаты дня...");
+    const result = await dispatchFullDay(env, chatId, day, threadId);
+    return jsonResponse({ ok: result.ok, action: "full_day", day }, result.ok ? 200 : 500);
   }
 
   if (data === "resend_last_day") {
@@ -500,12 +555,12 @@ async function handleCallback(callback, env) {
   return jsonResponse({ ok: false, error: "unknown_callback" }, 400);
 }
 
-async function sendLatestMatches(env, chatId) {
+async function sendLatestMatches(env, chatId, threadId = null) {
   try {
-    await sendText(env, chatId, await latestMatchesText(env));
+    await sendText(env, chatId, await latestMatchesText(env), null, threadId);
     return { ok: true };
   } catch (error) {
-    await sendText(env, chatId, `Не получилось загрузить последние матчи: ${error.message}`);
+    await sendText(env, chatId, `Не получилось загрузить последние матчи: ${error.message}`, null, threadId);
     return { ok: false, error: error.message };
   }
 }
