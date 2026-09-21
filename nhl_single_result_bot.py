@@ -1877,8 +1877,21 @@ def main() -> None:
     sportsru_names = load_sportsru_names()
     state = load_state(STATE_PATH)
 
-    # Interactive commands are polled by the same minute-level job. They do not
-    # change or delay the no-repeat semantics of automatic result posting.
+    if _env_bool("FULL_DAY_MENU", False):
+        day = _parse_menu_date(TARGET_DATE, _menu_today_pt())
+        if day is None:
+            print(f"[ERR] invalid FULL_DAY_MENU date: {TARGET_DATE}")
+            return
+        messages = build_full_day_messages(day, standings, sportsru_names)
+        sent = 0
+        for message in messages:
+            if send_telegram_text(message):
+                sent += 1
+        print(f"FULL_DAY_MENU OK ({sent}/{len(messages)} messages)")
+        return
+
+    # Polling remains available for installations without a webhook. The
+    # production HOH result bot uses the Cloudflare webhook for its menu.
     process_telegram_updates(state, standings, sportsru_names)
     save_state(STATE_PATH, state)
 
