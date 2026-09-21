@@ -224,6 +224,75 @@ def similarity(left: str, right: str) -> float:
     return best
 
 
+def sports_person_slug(full_name_en: str) -> str:
+    raw = unicodedata.normalize("NFKD", str(full_name_en or ""))
+    raw = "".join(ch for ch in raw if not unicodedata.combining(ch))
+    raw = raw.replace("’", "").replace("'", "").replace(".", "")
+    raw = raw.encode("ascii", "ignore").decode("ascii").lower()
+    return re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
+
+
+def sports_person_name(session: requests.Session, full_name_en: str) -> tuple[str, str] | None:
+    """Resolve an NHL player through Sports.ru's canonical /person/<english-slug>/ page.
+
+    This covers preseason/camp players who already have a Sports.ru person page
+    but are not yet listed on the club roster page.
+    """
+    slug = sports_person_slug(full_name_en)
+    if not slug:
+        return None
+    url = f"{SPORTS}/hockey/person/{slug}/"
+    try:
+        r = session.get(url, timeout=20)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+    except Exception:
+        return None
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    h1 = soup.find("h1")
+    if not h1:
+        return None
+    name_ru = clean_sports_name(" ".join(h1.stripped_strings))
+    if len(name_ru.split()) < 2 or not re.search(r"[А-Яа-яЁё]", name_ru):
+        return None
+
+    # Sports.ru person pages print the Latin canonical name under the Russian H1.
+    # Guard against a slug collision/redirect before accepting the spelling.
+    body = " ".join(soup.stripped_strings)
+    en_norm = re.sub(r"[^a-z0-9]+", " ", unicodedata.normalize("NFKD", full_name_en).encode("ascii", "ignore").decode("ascii").lower()).strip()
+    body_norm = re.sub(r"[^a-z0-9]+", " ", unicodedata.normalize("NFKD", body).encode("ascii", "ignore").decode("ascii").lower())
+    if en_norm and en_norm not in body_norm:
+        return None
+    return name_ru, url
+
+
+def resolve_unmatched_person_pages(
+    session: requests.Session,
+    unresolved: list[dict[str, Any]],
+    sleep_seconds: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    matched: list[dict[str, Any]] = []
+    still: list[dict[str, Any]] = []
+    for row in unresolved:
+        hit = sports_person_name(session, str(row.get("full_name_en") or ""))
+        if hit:
+            name_ru, url = hit
+            clean = {k: v for k, v in row.items() if k != "candidate_names_ru"}
+            matched.append({
+                **clean,
+                "full_name_ru": name_ru,
+                "sports_ru_url": url,
+                "match_method": "sports_person_slug",
+                "match_score": 1.0,
+            })
+        else:
+            still.append(row)
+        time.sleep(max(0.0, sleep_seconds))
+    return matched, still
+
+
 def match_team(nhl_rows: list[dict[str, Any]], sports_rows: list[SportsPlayer]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     matched: list[dict[str, Any]] = []
     unresolved: list[dict[str, Any]] = []
@@ -306,6 +375,8 @@ def main() -> int:
             sports_rows = parse_sports_roster(r.text)
             nhl_rows = nhl_roster(session, tri)
             hit, miss = match_team(nhl_rows, sports_rows)
+            person_hit, miss = resolve_unmatched_person_pages(session, miss, min(max(args.sleep, 0.0), 0.08))
+            hit.extend(person_hit)
             players.extend(hit)
             unresolved.extend({"team": tri, **x} for x in miss)
             methods: dict[str, int] = {}
