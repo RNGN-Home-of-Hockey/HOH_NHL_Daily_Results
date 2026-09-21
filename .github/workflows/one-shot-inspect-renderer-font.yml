@@ -1,0 +1,26 @@
+name: One-shot inspect renderer font
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-inspect-renderer-font.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Inspect bundled font
+        shell: bash
+        run: |
+          set -euo pipefail
+          f='vercel-broadcast-renderer/assets/sofia-sans-condensed-italic.woff2'
+          file "$f"
+          xxd -l 32 "$f"
+          if command -v fc-scan >/dev/null 2>&1; then
+            fc-scan "$f" | sed -n '1,80p'
+          fi
