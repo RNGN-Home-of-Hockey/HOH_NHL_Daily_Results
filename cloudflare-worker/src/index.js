@@ -575,11 +575,15 @@ async function handleCallback(callback, env) {
   const threadId = firstInt(message.message_thread_id) || null;
   const readOnly =
     data === "menu" ||
+    data === "m" ||
     data === "latest_matches" ||
     data === "schedule_overview" ||
     data.startsWith("day:") ||
+    data.startsWith("d:") ||
     data.startsWith("game:") ||
-    data.startsWith("full:");
+    data.startsWith("g:") ||
+    data.startsWith("full:") ||
+    data.startsWith("f:");
   const canRead = isAllowedChat(env, chatId) || chatType === "private";
 
   if (readOnly && !canRead) {
@@ -591,10 +595,10 @@ async function handleCallback(callback, env) {
     return jsonResponse({ ok: true, skipped: "chat_not_allowed" });
   }
 
-  if (data === "menu") {
+  if (data === "menu" || data === "m") {
     await answerCallback(env, callbackId, "Меню");
     await sendMenu(env, chatId, threadId);
-    return jsonResponse({ ok: true, action: data });
+    return jsonResponse({ ok: true, action: "menu", callback_data: data });
   }
 
   if (data === "latest_matches") {
@@ -609,8 +613,8 @@ async function handleCallback(callback, env) {
     return jsonResponse({ ok: true, action: data });
   }
 
-  if (data.startsWith("day:")) {
-    const day = normalizeDay(data.slice(4));
+  if (data.startsWith("day:") || data.startsWith("d:")) {
+    const day = normalizeDay(data.startsWith("day:") ? data.slice(4) : data.slice(2));
     if (!day) {
       await answerCallback(env, callbackId, "Некорректная дата");
       return jsonResponse({ ok: false, error: "invalid_day" }, 400);
@@ -620,20 +624,37 @@ async function handleCallback(callback, env) {
     return jsonResponse({ ok: true, action: "day", day });
   }
 
-  if (data.startsWith("game:")) {
+  if (data.startsWith("game:") || data.startsWith("g:")) {
     const parts = data.split(":");
     const gamePk = firstInt(parts[1]);
+    const day = data.startsWith("g:") && parts[2] ? normalizeDay(parts[2]) : null;
     if (!gamePk) {
       await answerCallback(env, callbackId, "Матч не найден");
       return jsonResponse({ ok: false, error: "invalid_game" }, 400);
     }
-    await answerCallback(env, callbackId, "Собираю подробности матча...");
+
+    await answerCallback(env, callbackId, "Собираю карточку матча...");
+    const pendingText = day
+      ? `⏳ Собираю карточку матча за ${day}…`
+      : "⏳ Собираю карточку матча…";
+    const pending = await sendText(env, chatId, pendingText, null, threadId);
+
     const result = await dispatchGameResult(env, chatId, gamePk, threadId);
-    return jsonResponse({ ok: result.ok, action: "game", game_pk: gamePk }, result.ok ? 200 : 500);
+    if (!result.ok && pending?.ok) {
+      await sendText(env, chatId, "Не получилось запустить карточку матча. Попробуй ещё раз.", null, threadId);
+    }
+    return jsonResponse({
+      ok: result.ok,
+      action: "game",
+      game_pk: gamePk,
+      day,
+      callback_data: data,
+      pending_message_ok: Boolean(pending?.ok),
+    }, result.ok ? 200 : 500);
   }
 
-  if (data.startsWith("full:")) {
-    const day = normalizeDay(data.slice(5));
+  if (data.startsWith("full:") || data.startsWith("f:")) {
+    const day = normalizeDay(data.startsWith("full:") ? data.slice(5) : data.slice(2));
     if (!day) {
       await answerCallback(env, callbackId, "Некорректная дата");
       return jsonResponse({ ok: false, error: "invalid_day" }, 400);
