@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/deploy-autopost-vk-browser-relay-paid.yml'
+      - 'vk-browser-relay-cloudflare/**'
 
 permissions:
   contents: read
@@ -22,12 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/checkout@v5
-        with:
-          repository: RNGN-Autopost/RNGN-Social-Media-Autopost
-          ref: main
-          path: _autopost
-
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -41,15 +36,15 @@ jobs:
           echo "Using Cloudflare account $CLOUDFLARE_ACCOUNT_ID"
 
       - name: Install Browser Run relay
-        working-directory: _autopost/vk-browser-relay-cloudflare
+        working-directory: vk-browser-relay-cloudflare
         run: npm install --no-audit --no-fund
 
       - name: Syntax check
-        working-directory: _autopost/vk-browser-relay-cloudflare
+        working-directory: vk-browser-relay-cloudflare
         run: npm run check
 
       - name: Deploy relay into paid Cloudflare account
-        working-directory: _autopost/vk-browser-relay-cloudflare
+        working-directory: vk-browser-relay-cloudflare
         run: npx wrangler deploy --config wrangler.jsonc --name "$RELAY_NAME"
 
       - name: Create temporary login admin secret
@@ -62,7 +57,7 @@ jobs:
           echo "secret=$secret" >> "$GITHUB_OUTPUT"
 
       - name: Install temporary admin secret
-        working-directory: _autopost/vk-browser-relay-cloudflare
+        working-directory: vk-browser-relay-cloudflare
         env:
           ADMIN_SECRET: ${{ steps.admin.outputs.secret }}
         shell: bash
