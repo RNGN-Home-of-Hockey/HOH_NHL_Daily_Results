@@ -227,6 +227,7 @@ jobs:
           node tests/validate_broadcast_multi_match_state.mjs
           node tests/validate_broadcast_operator_actions.mjs
           node tests/validate_broadcast_queue_summary.mjs
+          node tests/validate_advanced_team_snapshot_insights.mjs
 
       - name: Worker dry run
         run: |

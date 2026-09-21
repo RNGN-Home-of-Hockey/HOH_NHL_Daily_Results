@@ -9,6 +9,7 @@ import { buildRegulationMarketInsights } from "./regulation-market-evaluator.js"
 import { applyWinlineMarkets } from "./winline-market-adapter.js";
 import { buildSnapshotMarketContextInsights } from "./snapshot-market-context.js";
 import { buildPlayerMarketInsights } from "./player-market-insights.js";
+import { buildAdvancedTeamSnapshotInsights } from "./advanced-team-snapshot-insights.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -27,6 +28,7 @@ export async function buildBettingInsights(db, game, options = {}) {
   const marketSplitInsights = await safeInsightBuild("market_splits", () => buildMarketSplitInsights(db, game));
   const snapshotContextInsights = await safeInsightBuild("snapshot_context", () => buildSnapshotMarketContextInsights(db, game));
   const playerMarketInsights = await safeInsightBuild("player_markets", () => buildPlayerMarketInsights(db, game));
+  const advancedTeamSnapshotInsights = await safeInsightBuild("advanced_team_snapshot", () => buildAdvancedTeamSnapshotInsights(game));
 
   let featureInsights = [];
   let rollingRankInsights = [];
@@ -43,6 +45,7 @@ export async function buildBettingInsights(db, game, options = {}) {
     ...marketSplitInsights,
     ...snapshotContextInsights,
     ...playerMarketInsights,
+    ...advancedTeamSnapshotInsights,
     ...featureInsights,
     ...rollingRankInsights,
     ...advancedContextInsights,
