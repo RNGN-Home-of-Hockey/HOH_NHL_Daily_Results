@@ -217,7 +217,7 @@ async function centerStatus(request, env) {
   return json({
     ok: centerTokenConfigured && webhookSecretConfigured && bot.ok && webhook.ok && webhookMatchesExpected,
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-13-v5",
+    runtime_marker: "telegram-center-2026-09-21-v6",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     webhook_secret_mode: "sha256_hex",
