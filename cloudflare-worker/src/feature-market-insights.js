@@ -186,6 +186,14 @@ function periodResultInsights(game, team, rows) {
   return out;
 }
 
+export function buildPeriodMarketInsightsForRows(game,awayRows,homeRows){
+  const out=[...periodTotalInsights(game,awayRows,homeRows)];
+  for(const [team,rows] of [[game?.away_tri,awayRows],[game?.home_tri,homeRows]]){
+    if(team)out.push(...periodResultInsights(game,team,rows||[]));
+  }
+  return dedupe(out).sort((a,b)=>b.score-a.score);
+}
+
 function periodTotalInsights(game,awayRows,homeRows){
   const away=awayRows.slice(0,10),home=homeRows.slice(0,10);
   if(away.length<8||home.length<8)return[];

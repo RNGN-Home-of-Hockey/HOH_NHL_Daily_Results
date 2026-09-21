@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { evaluateFeatureMarketInsights } from "../cloudflare-worker/src/feature-market-insights.js";
+import { buildPeriodMarketInsightsForRows } from "../cloudflare-worker/src/feature-market-insights.js";
 
 const game={game_pk:99,season_id:"20252026",away_tri:"COL",home_tri:"LAK"};
 function row(pk,team,p1,p2,p3){
@@ -12,7 +12,7 @@ function row(pk,team,p1,p2,p3){
 }
 const away=Array.from({length:10},(_,i)=>row(100+i,"COL",1,1,1));
 const home=Array.from({length:10},(_,i)=>row(200+i,"LAK",1,1,1));
-const cards=evaluateFeatureMarketInsights(game,{COL:away,LAK:home},[],{});
+const cards=buildPeriodMarketInsightsForRows(game,away,home);
 for(const p of [1,2,3]){
   const c=cards.find(x=>x.market?.type==="game_total"&&x.market?.period===`P${p}`&&x.market?.line===1.5&&x.market?.side==="over");
   assert.ok(c,`P${p} total over 1.5 must be generated`);
