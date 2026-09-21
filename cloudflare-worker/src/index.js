@@ -367,11 +367,14 @@ async function setupCommandsRoute(request, env) {
 async function setBotCommands(env) {
   return telegramRequest(env, "setMyCommands", {
     commands: [
-      { command: "menu", description: "Показать меню" },
-      { command: "latest", description: "Показать последние матчи" },
-      { command: "schedule", description: "Расписание по дням" },
-      { command: "reload", description: "Загрузить заново последний игровой день" },
-      { command: "resend", description: "Повторить отправку последнего игрового дня" },
+      { command: "menu", description: "Меню расписания и результатов НХЛ" },
+      { command: "today", description: "Матчи сегодняшнего дня по Лос-Анджелесу" },
+      { command: "yesterday", description: "Матчи предыдущего игрового дня" },
+      { command: "schedule", description: "Расписание: /schedule 2026-09-21" },
+      { command: "results", description: "Все завершённые матчи выбранного дня" },
+      { command: "game", description: "Подробности матча по gamePk" },
+      { command: "latest", description: "Последние завершённые матчи" },
+      { command: "resend", description: "Повторить последний игровой день (служебное)" },
     ],
   });
 }
@@ -402,17 +405,51 @@ async function telegramWebhook(request, env) {
 
   const message = update.message || update.channel_post || {};
   const chatId = message.chat?.id;
-  if (!isAllowedChat(env, chatId)) {
+  const chatType = String(message.chat?.type || "");
+  const text = String(message.text || "");
+  const command = commandName(text);
+  const readOnlyCommand = ["/start", "/menu", "/help", "/today", "/yesterday", "/schedule", "/results", "/game", "/latest"].includes(command);
+  const canRead = isAllowedChat(env, chatId) || chatType === "private";
+
+  if (readOnlyCommand && !canRead) {
+    return jsonResponse({ ok: true, skipped: "chat_not_allowed" });
+  }
+  if (!readOnlyCommand && !isAllowedChat(env, chatId)) {
     return jsonResponse({ ok: true, skipped: "chat_not_allowed" });
   }
 
-  const command = commandName(message.text || "");
+  const threadId = firstInt(message.message_thread_id) || null;
   if (["/start", "/menu", "/help"].includes(command)) {
-    await sendMenu(env, chatId);
+    await sendMenu(env, chatId, threadId);
+  } else if (command === "/today") {
+    await sendScheduleDay(env, chatId, currentCalendarDayPT(), threadId);
+  } else if (command === "/yesterday") {
+    await sendScheduleDay(env, chatId, addDays(currentCalendarDayPT(), -1), threadId);
   } else if (command === "/latest") {
-    await sendLatestMatches(env, chatId);
+    await sendLatestMatches(env, chatId, threadId);
   } else if (command === "/schedule") {
-    await sendScheduleOverview(env, chatId);
+    const rawDay = commandArgument(text);
+    const day = rawDay ? normalizeDay(rawDay) : currentCalendarDayPT();
+    if (!day) {
+      await sendText(env, chatId, "Формат: <code>/schedule YYYY-MM-DD</code>", null, threadId, "HTML");
+    } else {
+      await sendScheduleDay(env, chatId, day, threadId);
+    }
+  } else if (command === "/results") {
+    const rawDay = commandArgument(text);
+    const day = rawDay ? normalizeDay(rawDay) : addDays(currentCalendarDayPT(), -1);
+    if (!day) {
+      await sendText(env, chatId, "Формат: <code>/results YYYY-MM-DD</code>", null, threadId, "HTML");
+    } else {
+      await dispatchFullDay(env, chatId, day, threadId);
+    }
+  } else if (command === "/game") {
+    const gamePk = firstInt(commandArgument(text));
+    if (!gamePk) {
+      await sendText(env, chatId, "Формат: <code>/game GAME_PK</code>", null, threadId, "HTML");
+    } else {
+      await dispatchGameResult(env, chatId, gamePk, threadId);
+    }
   } else if (["/reload", "/resend"].includes(command)) {
     await resendLatestDay(env, chatId);
   }
