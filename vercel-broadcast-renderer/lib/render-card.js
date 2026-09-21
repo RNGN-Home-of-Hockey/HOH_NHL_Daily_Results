@@ -137,7 +137,7 @@ export async function renderCard(input={}){
     background:"transparent",fontFamily:"SofiaHOH",fontStyle:"italic",fontWeight:700
   }},
     e("div",{style:{
-      position:"absolute",display:"flex",left:13,top:14,width:7,height:43,
+      position:"absolute",display:"flex",left:8,top:14,width:7,height:43,
       borderRadius:4,backgroundColor:p.teamColor
     }}),
     e("div",{style:{
@@ -168,7 +168,7 @@ export async function renderCard(input={}){
       ...baseStyle,left:435,top:164,width:346,height:42,alignItems:"center",
       justifyContent:"center",whiteSpace:"nowrap",gap:14
     }},
-      e("span",{style:{fontSize:p.priced?29:21,color:"#FF641E"}},p.priced
+      e("span",{style:{fontSize:p.priced?29:21,color:"#FF641E",position:"relative",top:-3}},p.priced
         ?"+"+p.profit.toLocaleString("ru-RU")+" РУБ"
         :"ЛИНИЯ НЕ НАЙДЕНА"
       ),
@@ -192,4 +192,4 @@ export async function renderCard(input={}){
 }
 
 export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
-export const RENDER_VERSION="2026-09-21-layout-v8-spacing-team-accent";
+export const RENDER_VERSION="2026-09-21-layout-v9-accent-align-profit-up";
