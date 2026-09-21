@@ -54,11 +54,17 @@ jobs:
           set -euo pipefail
           node --input-type=module <<'JS'
           const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram/center/status';
-          const r=await fetch(url,{headers:{accept:'application/json'},cache:'no-store'});
-          const d=await r.json().catch(()=>({}));
+          let r=null,d=null;
+          for(let i=0;i<15;i++){
+            r=await fetch(url,{headers:{accept:'application/json'},cache:'no-store'});
+            d=await r.json().catch(()=>({}));
+            console.log('TELEGRAM_CENTER_STATUS_ATTEMPT',i+1,JSON.stringify(d));
+            if(r.ok&&d.runtime_marker==='telegram-center-2026-09-21-v8')break;
+            await new Promise(res=>setTimeout(res,2000));
+          }
           console.log('TELEGRAM_CENTER_STATUS',JSON.stringify(d));
-          if(!r.ok)throw new Error('Telegram Center status HTTP '+r.status);
-          if(!d.ok)throw new Error('Telegram Center unhealthy '+JSON.stringify(d));
+          if(!r?.ok)throw new Error('Telegram Center status HTTP '+String(r?.status));
+          if(!d?.ok)throw new Error('Telegram Center unhealthy '+JSON.stringify(d));
           if(d.runtime_marker!=='telegram-center-2026-09-21-v8')throw new Error('Unexpected Telegram Center runtime '+String(d.runtime_marker));
           if(!d.center_token_configured||!d.webhook_secret_configured)throw new Error('Telegram Center credentials incomplete');
           if(!d.bot?.ok||!d.bot?.username)throw new Error('Telegram Center bot unavailable');
