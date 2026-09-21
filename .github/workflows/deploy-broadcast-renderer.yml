@@ -90,9 +90,33 @@ jobs:
             echo "health: $body"
             if echo "$body" | grep -q '2026-09-21-layout-v6-user-template'; then
               echo "BROADCAST_RENDERER_PRODUCTION_OK"
-              exit 0
+              break
+            fi
+            if [ "$i" = "24" ]; then
+              echo "Production renderer did not report layout v6"
+              exit 1
             fi
             sleep 5
           done
-          echo "Production renderer did not report layout v3"
-          exit 1
+
+      - name: Verify production Cyrillic render
+        if: steps.creds.outputs.configured == '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          http="$(curl -sS --max-time 20 -o /tmp/hoh-card.png -w '%{http_code}' \
+            -X POST 'https://hoh-broadcast-renderer.vercel.app/api/render-card' \
+            -H 'Content-Type: application/json' \
+            --data '{"team":"FLA","team_name":"ФЛОРИДА","fact":"ФЛОРИДА ЗАКРЫЛА ФОРУ +1,5 В 96 ИЗ ПОСЛЕДНИХ 140 МАТЧЕЙ","market":"ФОРА +1,5 ГОЛА","odds":1.40,"stake":1000}')"
+          echo "render_http=$http"
+          test "$http" = "200"
+          test -s /tmp/hoh-card.png
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const b=fs.readFileSync('/tmp/hoh-card.png');
+          if(b.length<1000)throw new Error('rendered PNG too small: '+b.length);
+          if(b.subarray(1,4).toString('ascii')!=='PNG')throw new Error('rendered output is not PNG');
+          const width=b.readUInt32BE(16),height=b.readUInt32BE(20);
+          if(width!==820||height!==211)throw new Error('unexpected PNG size '+width+'x'+height);
+          console.log('BROADCAST_RENDER_CYRILLIC_SMOKE_OK',JSON.stringify({bytes:b.length,width,height}));
+          JS
