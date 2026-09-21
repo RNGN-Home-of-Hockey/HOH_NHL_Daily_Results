@@ -312,7 +312,7 @@ async function setupWebhook(request, env) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401);
   }
 
-  const verifySecret = webhookSecret(env);
+  const verifySecret = await telegramWebhookDeliverySecret(env);
   if (!verifySecret) {
     return jsonResponse(
       { ok: false, error: "missing_telegram_webhook_verify_secret" },
@@ -357,7 +357,7 @@ export async function ensureLegacyTelegramWebhook(env) {
   if (!env.TELEGRAM_BOT_TOKEN) {
     return { ok: false, error: "missing_TELEGRAM_BOT_TOKEN" };
   }
-  const verifySecret = webhookSecret(env);
+  const verifySecret = await telegramWebhookDeliverySecret(env);
   if (!verifySecret) {
     return { ok: false, error: "missing_telegram_webhook_verify_secret" };
   }
@@ -389,9 +389,14 @@ export async function ensureLegacyTelegramWebhook(env) {
     after.ok &&
     String(info.url || "") === expectedUrl;
 
+  const setWebhookError = setWebhook.ok
+    ? null
+    : setWebhook.response?.description || setWebhook.error || "telegram_set_webhook_failed";
   const result = {
     ok,
     repaired: needsRepair && Boolean(setWebhook.ok),
+    set_webhook_ok: Boolean(setWebhook.ok),
+    set_webhook_error: setWebhookError,
     expected_webhook_url: expectedUrl,
     actual_webhook_url: String(info.url || ""),
     pending_update_count: Number(info.pending_update_count || 0),
@@ -477,7 +482,7 @@ async function telegramWebhook(request, env) {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
   }
 
-  const expectedSecret = webhookSecret(env);
+  const expectedSecret = await telegramWebhookDeliverySecret(env);
   if (!expectedSecret) {
     return jsonResponse(
       { ok: false, error: "missing_telegram_webhook_verify_secret" },
@@ -1139,6 +1144,15 @@ function menuChatId(env) {
 
 function webhookSecret(env) {
   return String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim();
+}
+
+async function telegramWebhookDeliverySecret(env) {
+  const raw = webhookSecret(env);
+  if (!raw) {
+    return "";
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function managementSecret(env) {

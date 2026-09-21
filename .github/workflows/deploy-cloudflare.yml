@@ -99,7 +99,9 @@ jobs:
               console.log('LEGACY_TELEGRAM_WEBHOOK_OK',JSON.stringify({
                 pending:last.webhook.pending_update_count,
                 last_error:last.webhook.last_error_message,
-                repaired:last.repair?.repaired||false
+                repaired:last.repair?.repaired||false,
+                set_webhook_ok:last.repair?.set_webhook_ok,
+                set_webhook_error:last.repair?.set_webhook_error||null
               }));
               process.exit(0);
             }
