@@ -11,6 +11,9 @@ const colOver=cards.find(c=>c.market.type==="team_total"&&c.market.subject==="CO
 assert.ok(colOver,"COL team-total over context must exist");
 assert.match(colOver.title,/COL/);
 assert.match(colOver.title,/№1 НХЛ ПО БРОСКАМ/);
+assert.match(colOver.title,/TOR/,"best team-total story should combine COL attack with TOR defense");
+assert.match(colOver.title,/ДОПУЩЕННЫМ БРОСКАМ/,"shot-volume mismatch should be explicit");
+assert.equal(colOver.evidence.role,"attack_defense_mismatch");
 assert.equal(colOver.category,"advanced_market");
 assert.equal(colOver.evidence.sample,82);
 assert.equal(colOver.evidence.source,"user_supplied_advanced_team_csv");

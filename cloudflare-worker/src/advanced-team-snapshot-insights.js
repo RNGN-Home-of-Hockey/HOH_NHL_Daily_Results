@@ -50,6 +50,10 @@ function teamMarketCards(game,team,opponent){
 function bestTeamTotalSignal(team,opponent,side){
   const candidates=[];
   if(side==="over"){
+    candidates.push(attackDefenseMismatch(team,opponent,"s","sf60","s","sa60","БРОСКАМ","ДОПУЩЕННЫМ БРОСКАМ",v=>`${fmt(v,1)} броска/60`));
+    candidates.push(attackDefenseMismatch(team,opponent,"s","xgf60","s","xga60","xG","ДОПУЩЕННОМУ xG",v=>`${fmt(v,2)} xG/60`));
+    candidates.push(attackDefenseMismatch(team,opponent,"s","hdxgf60","s","hdxga60","ОПАСНОМУ xG","ДОПУЩЕННОМУ ОПАСНОМУ xG",v=>`${fmt(v,2)} HD xG/60`));
+    candidates.push(attackDefenseMismatch(team,opponent,"pp","xgf60","pk","xga60","xG В БОЛЬШИНСТВЕ","xGA В МЕНЬШИНСТВЕ",v=>`${fmt(v,2)} xG/60`));
     candidates.push(rankSignal(team,"s","sf60","desc",6,"БРОСКАМ",v=>`${fmt(v,1)} броска/60`));
     candidates.push(rankSignal(team,"s","xgf60","desc",6,"xG/60",v=>`${fmt(v,2)} xG/60`));
     candidates.push(rankSignal(team,"s","hdxgf60","desc",6,"ОПАСНОМУ xG",v=>`${fmt(v,2)} HD xG/60`));
@@ -58,6 +62,9 @@ function bestTeamTotalSignal(team,opponent,side){
     candidates.push(defenseWeaknessSignal(opponent,"xga60","ДОПУЩЕННОМУ xG","xGA/60"));
     candidates.push(defenseWeaknessSignal(opponent,"hdxga60","ДОПУЩЕННОМУ ОПАСНОМУ xG","HD xGA/60"));
   }else{
+    candidates.push(underMismatch(team,opponent,"sf60","sa60","БРОСКАМ","ДОПУЩЕННЫМ БРОСКАМ","броска/60"));
+    candidates.push(underMismatch(team,opponent,"xgf60","xga60","xG","ДОПУЩЕННОМУ xG","xG/60"));
+    candidates.push(underMismatch(team,opponent,"hdxgf60","hdxga60","ОПАСНОМУ xG","ДОПУЩЕННОМУ ОПАСНОМУ xG","HD xG/60"));
     candidates.push(bottomAttackSignal(team,"sf60","БРОСКАМ","броска/60"));
     candidates.push(bottomAttackSignal(team,"xgf60","xG/60","xG/60"));
     candidates.push(eliteDefenseSignal(opponent,"sa60","ДОПУЩЕННЫМ БРОСКАМ","броска/60"));
@@ -112,6 +119,46 @@ function paceSignal(a,b,side){
     });
   }
   return best(candidates);
+}
+
+function attackDefenseMismatch(team,opponent,attackProfile,attackMetric,defenseProfile,defenseMetric,attackLabel,defenseLabel,format){
+  const attackRank=advancedMetricRank(team,attackProfile,attackMetric,"desc");
+  const defenseRank=advancedMetricRank(opponent,defenseProfile,defenseMetric,"asc");
+  if(!attackRank||!defenseRank||attackRank>8||defenseRank<25)return null;
+  const attackValue=value(team,attackProfile,attackMetric);
+  const defenseValue=value(opponent,defenseProfile,defenseMetric);
+  const gap=defenseRank-attackRank;
+  return {
+    score:91+Math.min(7,Math.floor(gap/5))+(attackRank<=3?2:0),
+    title:`${team} — №${attackRank} НХЛ ПО ${attackLabel}; ${opponent} — ${defenseRank}-Й ПО ${defenseLabel}`,
+    explanation:`Сезон 2025/26: ${team} — ${format(attackValue)}, ${opponent} — ${format(defenseValue)}. Сильная сторона атаки совпадает со слабой стороной защиты соперника.`,
+    evidence:{
+      sample:82,season:"20252026",team,opponent,
+      metric:attackMetric,opponent_metric:defenseMetric,
+      team_rank:attackRank,opponent_rank:defenseRank,rank_gap:gap,
+      team_value:attackValue,opponent_value:defenseValue,
+      role:"attack_defense_mismatch",advanced_snapshot:true,snapshot_version:ADVANCED_TEAM_SNAPSHOT_VERSION
+    }
+  };
+}
+function underMismatch(team,opponent,attackMetric,defenseMetric,attackLabel,defenseLabel,unit){
+  const attackRank=advancedMetricRank(team,"s",attackMetric,"desc");
+  const defenseRank=advancedMetricRank(opponent,"s",defenseMetric,"asc");
+  if(!attackRank||!defenseRank||attackRank<25||defenseRank>8)return null;
+  const attackValue=value(team,"s",attackMetric),defenseValue=value(opponent,"s",defenseMetric);
+  const gap=attackRank-defenseRank;
+  return {
+    score:89+Math.min(7,Math.floor(gap/5)),
+    title:`${team} — ${attackRank}-Й НХЛ ПО ${attackLabel}; ${opponent} — №${defenseRank} ПО ${defenseLabel}`,
+    explanation:`Сезон 2025/26: ${team} — ${fmt(attackValue,2)} ${unit}, ${opponent} — ${fmt(defenseValue,2)} ${unit}. Слабая атака встречает один из лучших оборонительных профилей лиги.`,
+    evidence:{
+      sample:82,season:"20252026",team,opponent,
+      metric:attackMetric,opponent_metric:defenseMetric,
+      team_rank:attackRank,opponent_rank:defenseRank,rank_gap:gap,
+      team_value:attackValue,opponent_value:defenseValue,
+      role:"under_mismatch",advanced_snapshot:true,snapshot_version:ADVANCED_TEAM_SNAPSHOT_VERSION
+    }
+  };
 }
 
 function rankSignal(team,profile,metric,direction,maxRank,label,format){
