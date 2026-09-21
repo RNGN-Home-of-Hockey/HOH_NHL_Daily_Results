@@ -52,10 +52,14 @@ async function broadcastGamesRoute(env) {
         SELECT g.game_pk,g.season_id,g.game_type,g.scheduled_start_utc,g.game_state,
                g.home_tri,g.away_tri,g.home_score,g.away_score,g.current_period,g.period_type,g.venue_name,
                ht.name_en AS home_name,ht.name_ru AS home_name_ru,ht.logo_url AS home_logo,
-               at.name_en AS away_name,at.name_ru AS away_name_ru,at.logo_url AS away_logo
+               at.name_en AS away_name,at.name_ru AS away_name_ru,at.logo_url AS away_logo,
+               bol.operator_name,bol.operator_id,bol.expires_at AS operator_expires_at,
+               onair.card_id AS on_air_card_id
         FROM games g
         LEFT JOIN teams ht ON ht.tri_code=g.home_tri
         LEFT JOIN teams at ON at.tri_code=g.away_tri
+        LEFT JOIN broadcast_operator_leases bol ON bol.game_pk=g.game_pk AND datetime(bol.expires_at)>datetime('now')
+        LEFT JOIN broadcast_cards onair ON onair.game_pk=g.game_pk AND onair.status='shown'
         WHERE g.game_type IN (1,2,3)
           AND (
             UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT')
@@ -355,9 +359,16 @@ function jsResponse(js){return new Response(js,{status:200,headers:{"Content-Typ
 function pngResponse(base64){const raw=atob(base64);const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i+=1)bytes[i]=raw.charCodeAt(i);return new Response(bytes,{status:200,headers:{"Content-Type":"image/png","Cache-Control":"public, max-age=31536000, immutable","X-Content-Type-Options":"nosniff"}})}
 
 function browserApp(){
-const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],liveCards=[],liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};
+const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],liveCards=[],liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null;
+const operatorId=(()=>{let v=localStorage.getItem('hohBroadcastOperatorId')||'';if(!v){v='op-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));localStorage.setItem('hohBroadcastOperatorId',v)}return v})();
+let operatorName=localStorage.getItem('hohBroadcastOperatorName')||'';
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-async function operatorApi(url,opts={}){const headers={...(opts.headers||{})};if(opts.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opts,headers,cache:'no-store'});const d=await r.json().catch(()=>({}));if(r.status===401)throw new Error('Operator access закрыт — нужен ключ');if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
+async function operatorApi(url,opts={}){const headers={...(opts.headers||{})};if(opts.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opts,headers,cache:'no-store'});const d=await r.json().catch(()=>({}));if(r.status===401)throw new Error('Operator access закрыт — нужен ключ');if(!r.ok){const e=new Error(d.message||d.error||('HTTP '+r.status));e.code=d.error||'';e.lease=d.lease||null;throw e}return d}
+function identity(){if(!operatorName){operatorName=(prompt('Имя оператора (покажем коллегам)','')||'').trim().slice(0,48);if(!operatorName)operatorName='Оператор '+operatorId.slice(-4).toUpperCase();localStorage.setItem('hohBroadcastOperatorName',operatorName)}return{operator_id:operatorId,operator_name:operatorName}}
+async function acquireLease(gamePk){const who=identity();try{const d=await operatorApi('/api/broadcast/operator/leases/'+gamePk,{method:'POST',body:JSON.stringify(who)});leaseOwned=true;currentLease=d.lease||null;syncLeaseToGame(gamePk,currentLease);if(leaseTimer)clearInterval(leaseTimer);leaseTimer=setInterval(()=>heartbeatLease(gamePk),30000);return true}catch(e){leaseOwned=false;currentLease=e.lease||null;syncLeaseToGame(gamePk,currentLease);return false}}
+async function heartbeatLease(gamePk){if(!leaseOwned||Number(gamePk)!==Number(selected))return;try{const d=await operatorApi('/api/broadcast/operator/leases/'+gamePk,{method:'POST',body:JSON.stringify(identity())});currentLease=d.lease||currentLease;syncLeaseToGame(gamePk,currentLease)}catch(e){leaseOwned=false;currentLease=e.lease||null;syncLeaseToGame(gamePk,currentLease);renderCards(currentCards)}}
+async function releaseLease(gamePk){if(!gamePk)return;if(leaseTimer){clearInterval(leaseTimer);leaseTimer=null}try{await operatorApi('/api/broadcast/operator/leases/'+gamePk,{method:'DELETE',body:JSON.stringify({operator_id:operatorId})})}catch{}const g=games.find(x=>Number(x.game_pk)===Number(gamePk));if(g&&g.operator_id===operatorId){g.operator_id=null;g.operator_name=null;g.operator_expires_at=null}leaseOwned=false;currentLease=null}
+function syncLeaseToGame(gamePk,lease){const g=games.find(x=>Number(x.game_pk)===Number(gamePk));if(!g)return;if(lease){g.operator_id=lease.operator_id;g.operator_name=lease.operator_name;g.operator_expires_at=lease.expires_at}else if(g.operator_id===operatorId){g.operator_id=null;g.operator_name=null;g.operator_expires_at=null}renderGames()}
 function fmtDate(v){if(!v)return'';const d=new Date(v);return d.toLocaleString('ru-RU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).replace(',',' ·')}
 function typeLabel(t){const n=Number(t);return n===1?'Предсезонка':n===3?'Плей-офф':'Регулярка'}
 async function api(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
@@ -367,7 +378,7 @@ function renderGames(){
   const selectedGame=games.find(g=>Number(g.game_pk)===Number(selected));
   if(selectedGame)groupOpen[Number(selectedGame.game_type)]=true;
   const groups=[{type:1,label:'Предсезонка'},{type:2,label:'Регулярка'},{type:3,label:'Плей-офф'}];
-  const row=g=>`<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span></div></button>`;
+  const row=g=>`<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span>${g.on_air_card_id?'<b class="pill">ON AIR</b>':g.operator_name?esc(g.operator_name):''}</span></div></button>`;
   $('#games').innerHTML=groups.map(group=>{
     const rows=games.filter(g=>Number(g.game_type)===group.type);
     if(!rows.length)return'';
@@ -376,7 +387,7 @@ function renderGames(){
   document.querySelectorAll('.gamegroup').forEach(d=>d.addEventListener('toggle',()=>{groupOpen[Number(d.dataset.type)]=d.open}));
   document.querySelectorAll('.game').forEach(b=>b.onclick=()=>selectGame(Number(b.dataset.id)));
 }
-async function selectGame(id){selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id))]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];renderAir(s.on_air);renderGame(d);await refreshLive(id,true)}
+async function selectGame(id){const previous=selected;if(previous&&Number(previous)!==Number(id))await releaseLease(previous);selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s,owned]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id)),acquireLease(id)]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];renderAir(s.on_air);renderGame(d);if(!owned){const sub=document.querySelector('.psub');if(sub)sub.textContent='Режим просмотра · матч ведёт '+(currentLease?.operator_name||'другой оператор')}await refreshLive(id,true)}
 function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[side+'_name']||tri,logo=g[side+'_logo'];return `<div class="team ${side==='home'?'home':''}">${side==='home'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}<div class="logo">${logo?`<img src="${esc(logo)}" alt="">`:`<span class="fallback">${esc(tri)}</span>`}</div>${side==='away'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}</div>`}
 function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct==null||!Number.isFinite(Number(a.faceoff_pct))?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct==null||!Number.isFinite(Number(h.faceoff_pct))?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
@@ -495,14 +506,15 @@ function renderCards(cards){
   applyPersistedState(cards);
   currentCards=cards;
   $('#cards').innerHTML=cards.length?cards.map((c,i)=>{
-    const priced=hasRealWinlinePrice(c),shown=c.__status==='shown';
-    return `<article class="card">${cardSummaryHtml(c)}<div class="actions"><button class="act ${shown?'hide':priced?'show':'noln'} showbtn" data-i="${i}" ${!shown&&!priced?'disabled':''}>${shown?'УБРАТЬ':priced?'ДАТЬ ПЛАШКУ':'НЕТ ЛИНИИ WINLINE'}</button></div></article>`;
+    const priced=hasRealWinlinePrice(c),shown=c.__status==='shown',locked=!leaseOwned;
+    const label=locked?'МАТЧ ЗАНЯТ':shown?'УБРАТЬ':priced?'ДАТЬ ПЛАШКУ':'НЕТ ЛИНИИ WINLINE';
+    return `<article class="card">${cardSummaryHtml(c)}<div class="actions"><button class="act ${shown?'hide':priced?'show':'noln'} showbtn" data-i="${i}" ${locked||(!shown&&!priced)?'disabled':''}>${label}</button></div></article>`;
   }).join(''):'<div class="empty">Пока нет статистических карточек для этого матча</div>';
   document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b));
 }
 async function ensureDraft(c){
   if(c.__cardId&&c.__persisted)return c.__cardId;
-  const d=await operatorApi('/api/broadcast/operator/drafts/from-insight',{method:'POST',body:JSON.stringify({game_pk:Number(selected),card:c})});
+  const d=await operatorApi('/api/broadcast/operator/drafts/from-insight',{method:'POST',body:JSON.stringify({game_pk:Number(selected),card:c,...identity()})});
   c.__cardId=d.card?.card_id||d.card_id||c.__cardId;
   if(!c.__cardId)throw new Error('Не удалось создать эфирную карточку');
   c.__status=d.card?.status||'draft';
@@ -512,7 +524,7 @@ async function ensureDraft(c){
 }
 async function setBroadcastStatus(c,status){
   const id=await ensureDraft(c);
-  const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(id)+'/status',{method:'POST',body:JSON.stringify({status})});
+  const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(id)+'/status',{method:'POST',body:JSON.stringify({status,...identity()})});
   c.__status=d.card?.status||status;
   c.__renderHash=d.card?.render_hash||c.__renderHash||null;
   const s=await api('/api/broadcast/state?game='+encodeURIComponent(selected));
@@ -544,7 +556,7 @@ async function toggleShow(i,b){
 function renderPlayers(rows){$('#players').innerHTML=`<div class="prow head"><div>Игрок</div><div class="num">Г</div><div class="num">П</div><div class="num">О</div><div class="num">Бр</div></div>`+(rows.length?rows.slice(0,10).map(p=>`<div class="prow"><div><div class="pname">${esc(p.full_name_ru||p.full_name_en)}</div><div class="pmeta">${esc(p.team_tri)} · ${esc(p.position_code||'—')} · #${esc(p.sweater_number??'—')}</div></div><div class="num">${p.goals??0}</div><div class="num">${p.assists??0}</div><div class="num">${p.points??0}</div><div class="num">${p.shots??'—'}</div></div>`).join(''):'<div class="empty">Нет статистики</div>')}
 function renderEvents(rows){$('#events').innerHTML=rows.length?rows.slice(0,18).map(e=>`<div class="event"><div class="etime">P${esc(e.period_number??'—')} ${esc(e.time_in_period||'')}</div><div><div class="etype">${e.event_type==='goal'||e.event_type==='shootout-goal'?'ГОЛ':e.event_type==='penalty'?'УДАЛЕНИЕ':'КОНЕЦ ПЕРИОДА'}${e.team_tri?' · '+esc(e.team_tri):''}</div><div class="edesc">${esc(e.description||peopleText(e.people)||'')}</div></div><div class="escore">${e.away_score??''}${e.away_score!==null&&e.away_score!==undefined?':':''}${e.home_score??''}</div></div>`).join(''):'<div class="empty">Нет ключевых событий</div>'}
 function peopleText(v){return String(v||'').split(';;').map(x=>x.split('|')[0]).filter(Boolean).join(', ')}
-$('#close').onclick=()=>$('#drawer').classList.remove('open');$('#drawer').onclick=e=>{if(e.target===$('#drawer'))$('#drawer').classList.remove('open')};load();
+$('#close').onclick=()=>$('#drawer').classList.remove('open');$('#drawer').onclick=e=>{if(e.target===$('#drawer'))$('#drawer').classList.remove('open')};window.addEventListener('pagehide',()=>{if(selected)fetch('/api/broadcast/operator/leases/'+selected,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator_id:operatorId}),keepalive:true}).catch(()=>{})});load();
 
 }
 

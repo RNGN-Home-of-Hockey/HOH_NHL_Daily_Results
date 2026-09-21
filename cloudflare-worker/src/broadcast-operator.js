@@ -5,6 +5,7 @@ import { applyTeamGrammar, applyDisplayTeamGrammar } from "./team-russian-gramma
 
 const NHL_BASE = "https://api-web.nhle.com/v1";
 const ALLOWED_STATUSES = new Set(["draft","preview","shown","hidden"]);
+const OPERATOR_LEASE_SECONDS = 90;
 const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
   CGY:{name:"КАЛГАРИ",color:"#D2001C"},CAR:{name:"КАРОЛИНА",color:"#CE1126"},CHI:{name:"ЧИКАГО",color:"#CF0A2C"},
@@ -55,6 +56,16 @@ export async function handleBroadcastOperatorRequest(request, env, path) {
   const openBroadcastOperator=String(env.BROADCAST_OPERATOR_OPEN||"")==="1";
   if (!openBroadcastOperator && !(await managementAuthorized(request,env))) return json({ok:false,error:"unauthorized"},401);
 
+  const leaseMatch = /^\/api\/broadcast\/operator\/leases\/(\d+)$/.exec(path);
+  if (leaseMatch) {
+    const gamePk=positiveInt(leaseMatch[1]);
+    if(!gamePk)return json({ok:false,error:"invalid_game_pk"},400);
+    if(request.method==="GET")return getOperatorLease(env,gamePk);
+    if(request.method==="POST")return acquireOperatorLease(request,env,gamePk);
+    if(request.method==="DELETE")return releaseOperatorLease(request,env,gamePk);
+    return json({ok:false,error:"method_not_allowed"},405);
+  }
+
   if (path === "/api/broadcast/operator/drafts/from-market") {
     if (request.method !== "POST") return json({ok:false,error:"method_not_allowed"},405);
     return createMarketDraft(request,env);
@@ -86,6 +97,8 @@ async function createMarketDraft(request,env){
   const gamePk=positiveInt(body.game_pk);
   const window=normalizeWindow(body.window);
   if(!gamePk)return json({ok:false,error:"invalid_game_pk"},400);
+  const lease=await compatibleOperatorLease(env.DB,gamePk,body.operator_id);
+  if(!lease.ok)return json(lease,423);
   const box=await fetchGame(gamePk);
   const game=normalizeGame(box,gamePk);
   const ensured=await ensureGameRow(env.DB,game);
@@ -116,6 +129,8 @@ async function createPlayerDraft(request,env){
   const gamePk=positiveInt(body.game_pk);
   const candidateId=String(body.candidate_id||"").trim();
   if(!gamePk||!candidateId)return json({ok:false,error:"invalid_request"},400);
+  const lease=await compatibleOperatorLease(env.DB,gamePk,body.operator_id);
+  if(!lease.ok)return json(lease,423);
   const box=await fetchGame(gamePk);
   const game=normalizeGame(box,gamePk);
   const ensured=await ensureGameRow(env.DB,game);
@@ -144,6 +159,8 @@ async function createInsightDraft(request,env){
   const gamePk=positiveInt(body.game_pk);
   const candidate=body.card&&typeof body.card==="object"?body.card:null;
   if(!gamePk||!candidate)return json({ok:false,error:"invalid_request"},400);
+  const lease=await compatibleOperatorLease(env.DB,gamePk,body.operator_id);
+  if(!lease.ok)return json(lease,423);
   const game=await env.DB.prepare(`
     SELECT g.game_pk,g.home_tri,g.away_tri,g.scheduled_start_utc,g.game_state
     FROM games g WHERE g.game_pk=? LIMIT 1;
@@ -198,6 +215,8 @@ async function editCard(request,env,cardId){
   if(String(current.status)==="shown")return json({ok:false,error:"cannot_edit_shown_card"},409);
   let body;
   try{body=await request.json()}catch{return json({ok:false,error:"invalid_json"},400)}
+  const lease=await compatibleOperatorLease(env.DB,current.game_pk,body.operator_id);
+  if(!lease.ok)return json(lease,423);
   const headline=textField(body.headline_ru,current.headline_ru,180);
   const stat=textField(body.stat_text_ru,current.stat_text_ru,240);
   const source=textField(body.source_note_ru,current.source_note_ru||"",500);
@@ -218,6 +237,9 @@ async function setCardStatus(request,env,cardId){
   try{body=await request.json()}catch{return json({ok:false,error:"invalid_json"},400)}
   const target=String(body.status||"").trim().toLowerCase();
   if(!ALLOWED_STATUSES.has(target))return json({ok:false,error:"invalid_status"},400);
+  const lease=await compatibleOperatorLease(env.DB,current.game_pk,body.operator_id);
+  if(!lease.ok)return json(lease,423);
+  if(lease.lease&&body.operator_id)await renewOperatorLease(env.DB,current.game_pk,String(body.operator_id));
 
   let render=null;
   if(target==="shown"){
@@ -238,6 +260,80 @@ async function setCardStatus(request,env,cardId){
     await env.DB.prepare(`UPDATE broadcast_cards SET status=?,shown_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE card_id=?;`).bind(target,cardId).run();
   }
   return json({ok:true,action:"status_updated",render,card:await loadCard(env.DB,cardId)});
+}
+
+async function getOperatorLease(env,gamePk){
+  const lease=await activeOperatorLease(env.DB,gamePk);
+  return json({ok:true,game_pk:gamePk,lease});
+}
+
+async function acquireOperatorLease(request,env,gamePk){
+  let body;
+  try{body=await request.json()}catch{return json({ok:false,error:"invalid_json"},400)}
+  const operatorId=normalizeOperatorId(body.operator_id);
+  if(!operatorId)return json({ok:false,error:"invalid_operator_id"},400);
+  const operatorName=normalizeOperatorName(body.operator_name,operatorId);
+  await env.DB.prepare(`
+    INSERT INTO broadcast_operator_leases(game_pk,operator_id,operator_name,acquired_at,expires_at,updated_at)
+    VALUES(?,?,?,CURRENT_TIMESTAMP,datetime('now','+${OPERATOR_LEASE_SECONDS} seconds'),CURRENT_TIMESTAMP)
+    ON CONFLICT(game_pk) DO UPDATE SET
+      operator_id=excluded.operator_id,
+      operator_name=excluded.operator_name,
+      acquired_at=CASE WHEN broadcast_operator_leases.operator_id=excluded.operator_id THEN broadcast_operator_leases.acquired_at ELSE CURRENT_TIMESTAMP END,
+      expires_at=excluded.expires_at,
+      updated_at=CURRENT_TIMESTAMP
+    WHERE broadcast_operator_leases.operator_id=excluded.operator_id
+       OR datetime(broadcast_operator_leases.expires_at)<=datetime('now');
+  `).bind(gamePk,operatorId,operatorName).run();
+  const lease=await activeOperatorLease(env.DB,gamePk);
+  if(!lease||String(lease.operator_id)!==operatorId){
+    return json({ok:false,error:"game_locked",message:`Матч уже ведёт ${lease?.operator_name||"другой оператор"}`,game_pk:gamePk,lease},423);
+  }
+  return json({ok:true,acquired:true,game_pk:gamePk,lease});
+}
+
+async function releaseOperatorLease(request,env,gamePk){
+  let body={};
+  try{body=await request.json()}catch{}
+  const operatorId=normalizeOperatorId(body.operator_id);
+  if(!operatorId)return json({ok:false,error:"invalid_operator_id"},400);
+  await env.DB.prepare(`DELETE FROM broadcast_operator_leases WHERE game_pk=? AND operator_id=?;`).bind(gamePk,operatorId).run();
+  return json({ok:true,released:true,game_pk:gamePk,lease:await activeOperatorLease(env.DB,gamePk)});
+}
+
+async function activeOperatorLease(db,gamePk){
+  const row=await db.prepare(`
+    SELECT game_pk,operator_id,operator_name,acquired_at,expires_at,updated_at
+    FROM broadcast_operator_leases
+    WHERE game_pk=? AND datetime(expires_at)>datetime('now')
+    LIMIT 1;
+  `).bind(gamePk).first();
+  return row||null;
+}
+
+async function compatibleOperatorLease(db,gamePk,rawOperatorId){
+  const lease=await activeOperatorLease(db,gamePk);
+  if(!lease)return {ok:true,lease:null};
+  const operatorId=normalizeOperatorId(rawOperatorId);
+  if(operatorId&&String(lease.operator_id)===operatorId)return {ok:true,lease};
+  return {ok:false,error:"game_locked",message:`Матч уже ведёт ${lease.operator_name||"другой оператор"}`,game_pk:gamePk,lease};
+}
+
+async function renewOperatorLease(db,gamePk,operatorId){
+  await db.prepare(`
+    UPDATE broadcast_operator_leases
+    SET expires_at=datetime('now','+${OPERATOR_LEASE_SECONDS} seconds'),updated_at=CURRENT_TIMESTAMP
+    WHERE game_pk=? AND operator_id=?;
+  `).bind(gamePk,operatorId).run();
+}
+
+function normalizeOperatorId(value){
+  const s=String(value||"").trim();
+  return /^[a-zA-Z0-9_.:-]{8,96}$/.test(s)?s:null;
+}
+function normalizeOperatorName(value,operatorId){
+  const s=String(value||"").trim().replace(/\s+/g," ").slice(0,48);
+  return s||("Оператор "+String(operatorId||"").slice(-4).toUpperCase());
 }
 
 async function renderedCardRoute(env,cardId){
