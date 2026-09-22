@@ -96,10 +96,15 @@ export class VkRelayState extends DurableObject {
             await page.waitForTimeout(2000);
             const currentUrl = page.url();
             const authenticated = await isAuthenticated(page).catch(() => false);
-            const onVkChannel = /^https:\/\/(?:www\.)?vk\.(?:ru|com)\/im\/channels\//i.test(currentUrl);
-            const channelComposer = onVkChannel ? await composer(page).catch(() => null) : null;
+            const profileNavVisible = await page.getByText("Профиль", { exact: true }).first().isVisible().catch(() => false);
+            const messengerNavVisible = await page.getByText("Мессенджер", { exact: true }).first().isVisible().catch(() => false);
+            const communitiesNavVisible = await page.getByText("Сообщества", { exact: true }).first().isVisible().catch(() => false);
+            const strongAuthenticatedUi = [profileNavVisible, messengerNavVisible, communitiesNavVisible]
+              .filter(Boolean).length >= 2;
+            const channelComposer = await composer(page).catch(() => null);
             const composerVisible = Boolean(channelComposer && await channelComposer.isVisible().catch(() => false));
-            const looksReady = authenticated && onVkChannel && composerVisible;
+            const newPostVisible = await page.getByText("Новый пост", { exact: true }).first().isVisible().catch(() => false);
+            const looksReady = authenticated && strongAuthenticatedUi && (composerVisible || newPostVisible);
 
             if (looksReady) consecutiveAuthenticated += 1;
             else consecutiveAuthenticated = 0;
@@ -111,7 +116,9 @@ export class VkRelayState extends DurableObject {
                 status: "saved",
                 savedAt: new Date().toISOString(),
                 url: currentUrl,
-                composerVisible: true,
+                composerVisible,
+                newPostVisible,
+                strongAuthenticatedUi: true,
               });
               await this.notifyHeartbeats(true);
               // Keep the one-time viewer token and Live View URL valid for the rest
