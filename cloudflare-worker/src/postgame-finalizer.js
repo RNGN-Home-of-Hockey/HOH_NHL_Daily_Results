@@ -193,7 +193,7 @@ export function summarizeWinlineLifecycleRows(rows,startRaw){
 
 export function advancedCoverageStatus(rows){
   const list=Array.isArray(rows)?rows:[];
-  const full=list.filter(r=>Number.isFinite(Number(r?.xgf_5v5))&&Number.isFinite(Number(r?.xga_5v5)));
+  const full=list.filter(r=>finiteNullable(r?.xgf_5v5)!==null&&finiteNullable(r?.xga_5v5)!==null);
   if(full.length>=2)return "complete";
   if(list.length>0)return "partial";
   return "pending_external";
@@ -339,4 +339,5 @@ function parseUtc(value){
   return Date.parse(normalized);
 }
 function nullable(v){const x=String(v??"").trim();return x||null}
+function finiteNullable(v){if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null}
 function message(error){return String(error?.message||error||"unknown_error").slice(0,900)}
