@@ -84,7 +84,9 @@ export function evaluateBroadcastInsightOutcome(row,game,periodRows=[]){
   if(type==="moneyline"||/^period_\d+_result$/.test(type)){
     if(side==="DRAW")return home===away?"win":"loss";
     if(subjectScore===null)return "void";
-    if(subjectScore===opponentScore)return period==="GAME"?"loss":"push";
+    // Team selections in regulation/period 3-way markets lose on a draw.
+    // Full-game moneyline includes OT/SO and therefore should not tie either.
+    if(subjectScore===opponentScore)return "loss";
     return subjectScore>opponentScore?"win":"loss";
   }
   if(type==="handicap"){
