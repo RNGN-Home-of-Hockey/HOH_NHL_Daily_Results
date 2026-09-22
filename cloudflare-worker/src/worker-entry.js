@@ -16,6 +16,7 @@ import { runWinlineFeedMaintenance } from "./winline-feed-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
+import { getPostgameIngestionStatus, runPostgameFinalizer } from "./postgame-finalizer.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -87,6 +88,9 @@ export default {
     if (path === "/api/data-core/backfill/job") {
       return persistentBackfillJobRoute(request, env);
     }
+    if (path === "/api/data-core/postgame/status") {
+      return postgameStatusRoute(request, env);
+    }
 
     return worker.fetch(request, env);
   },
@@ -140,6 +144,11 @@ export default {
           await runCenterScheduleMaintenance(env);
         } catch (error) {
           console.error("scheduled Telegram Center schedule maintenance failed", error);
+        }
+        try {
+          await runPostgameFinalizer(env);
+        } catch (error) {
+          console.error("scheduled postgame finalizer failed", error);
         }
         if (envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
           try {
@@ -288,6 +297,15 @@ async function telegramNotificationTickRoute(request, env) {
     console.error("manual Telegram Center notification tick failed", error);
     return jsonResponse({ ok: false, error: "notification_tick_failed" }, 500);
   }
+}
+
+
+async function postgameStatusRoute(request,env){
+  if(request.method!=="GET")return jsonResponse({ok:false,error:"method_not_allowed"},405);
+  if(!(await isManagementAuthorized(request,env)))return jsonResponse({ok:false,error:"unauthorized"},401);
+  if(!env.DB)return jsonResponse({ok:false,error:"missing_d1_binding"},503);
+  try{return jsonResponse(await getPostgameIngestionStatus(env.DB))}
+  catch(error){console.error("postgame status failed",error);return jsonResponse({ok:false,error:"postgame_status_failed"},500)}
 }
 
 async function backfillStatusRoute(request, env) {

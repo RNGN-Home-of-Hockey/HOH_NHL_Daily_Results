@@ -92,7 +92,8 @@ jobs:
               'pregame_team_snapshots','player_rolling_snapshots','player_opponent_splits',
               'goalie_rolling_snapshots','goalie_opponent_splits','team_current_snapshots',
               'live_notification_cursors','data_core_meta','subscriptions','notification_log',
-              'sports_news','sports_news_players','sports_news_comments','sports_player_sources'
+              'sports_news','sports_news_players','sports_news_comments','sports_player_sources',
+              'postgame_ingestion_status','winline_market_lifecycle'
           }
           got = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
           missing = expected - got
@@ -232,6 +233,7 @@ jobs:
           node tests/validate_broadcast_priced_merge.mjs
           node tests/validate_period_market_insights.mjs
           node tests/validate_advanced_rolling_venue.mjs
+          node tests/validate_postgame_finalizer.mjs
           python tests/validate_team_current_snapshot_refresh.py
 
       - name: Worker dry run
