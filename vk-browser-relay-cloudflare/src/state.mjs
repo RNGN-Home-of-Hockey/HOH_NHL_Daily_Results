@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { connect, launch } from "@cloudflare/playwright";
 import { endpoints, claim, complete, fail, heartbeat } from "./api.mjs";
-import { composer, diagnostics, isAuthenticated, publishVkChannel } from "./vk.mjs";
+import { diagnostics, isAuthenticated, publishVkChannel } from "./vk.mjs";
 
 const STATE_KEY = "vkStorageState";
 const LOGIN_SESSION_KEY = "loginSessionId";
@@ -99,12 +99,32 @@ export class VkRelayState extends DurableObject {
             const profileNavVisible = await page.getByText("Профиль", { exact: true }).first().isVisible().catch(() => false);
             const messengerNavVisible = await page.getByText("Мессенджер", { exact: true }).first().isVisible().catch(() => false);
             const communitiesNavVisible = await page.getByText("Сообщества", { exact: true }).first().isVisible().catch(() => false);
-            const strongAuthenticatedUi = [profileNavVisible, messengerNavVisible, communitiesNavVisible]
-              .filter(Boolean).length >= 2;
-            const channelComposer = await composer(page).catch(() => null);
-            const composerVisible = Boolean(channelComposer && await channelComposer.isVisible().catch(() => false));
-            const newPostVisible = await page.getByText("Новый пост", { exact: true }).first().isVisible().catch(() => false);
-            const looksReady = authenticated && strongAuthenticatedUi && (composerVisible || newPostVisible);
+            const friendsNavVisible = await page.getByText("Друзья", { exact: true }).first().isVisible().catch(() => false);
+            const feedNavVisible = await page.getByText("Лента", { exact: true }).first().isVisible().catch(() => false);
+            const visibleAuthenticatedNav = [
+              profileNavVisible,
+              messengerNavVisible,
+              communitiesNavVisible,
+              friendsNavVisible,
+              feedNavVisible,
+            ].filter(Boolean).length;
+            const strongAuthenticatedUi = visibleAuthenticatedNav >= 2;
+            const looksReady = authenticated
+              && strongAuthenticatedUi
+              && /^https:\/\/(?:www\.)?vk\.(?:ru|com)\//i.test(currentUrl)
+              && !/(?:login|join|restore|auth)/i.test(currentUrl);
+
+            await this.ctx.storage.put("loginProbe", {
+              checkedAt: new Date().toISOString(),
+              url: currentUrl,
+              authenticated,
+              visibleAuthenticatedNav,
+              profileNavVisible,
+              messengerNavVisible,
+              communitiesNavVisible,
+              friendsNavVisible,
+              feedNavVisible,
+            });
 
             if (looksReady) consecutiveAuthenticated += 1;
             else consecutiveAuthenticated = 0;
@@ -116,9 +136,8 @@ export class VkRelayState extends DurableObject {
                 status: "saved",
                 savedAt: new Date().toISOString(),
                 url: currentUrl,
-                composerVisible,
-                newPostVisible,
                 strongAuthenticatedUi: true,
+                visibleAuthenticatedNav,
               });
               await this.notifyHeartbeats(true);
               // Keep the one-time viewer token and Live View URL valid for the rest
@@ -200,8 +219,9 @@ export class VkRelayState extends DurableObject {
       return json({ ok: false, error: "unauthorized" }, 401);
     }
     const status = await this.ctx.storage.get("loginStatus");
+    const probe = await this.ctx.storage.get("loginProbe");
     const configured = Boolean(await this.storageState());
-    return json({ ok: true, configured, status: status ?? { status: "unknown" } });
+    return json({ ok: true, configured, status: status ?? { status: "unknown" }, probe: probe ?? null });
   }
 
   async saveLogin(request) {
