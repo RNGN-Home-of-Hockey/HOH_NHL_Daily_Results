@@ -743,17 +743,18 @@ function renderCards(cards){
   document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b));
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>openCardDetails(Number(b.dataset.detail)));
 }
+function finiteUiNumber(v){if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null}
 function openCardDetails(i){
   const c=currentCards[i];if(!c)return;
   const score=airScore(c),meta=c?.air_meta||{},reasons=(c?.air_reasons||[]);
-  const hist=Number(meta.historical_rate),implied=Number(meta.implied_probability),sample=Number(meta.sample_size);
+  const hist=finiteUiNumber(meta.historical_rate),implied=finiteUiNumber(meta.implied_probability),sample=finiteUiNumber(meta.sample_size);
   const detailRows=[
     ['AIR SCORE',score+' / 100'],
     ['Оценка',c?.air_label||'—'],
     ['Причины',reasons.length?reasons.join(' · '):'—'],
     ['Выборка',Number.isFinite(sample)&&sample>0?sample+' игр':'—'],
-    ['Исторический проход',Number.isFinite(hist)?Math.round(hist*100)+'%':'—'],
-    ['Вероятность из кэфа',Number.isFinite(implied)?Math.round(implied*100)+'%':'—'],
+    ['Исторический проход',hist!==null?Math.round(hist*100)+'%':'—'],
+    ['Вероятность из кэфа',implied!==null?Math.round(implied*100)+'%':'—'],
     ['Статистический score',Number.isFinite(Number(meta.source_score))?String(meta.source_score):'—'],
   ];
   $('#previewcard').innerHTML=`<div class="detailfact">${esc(factText(c))}</div>${c?.broadcast_detail?`<div class="detailnote">${esc(displayText(c.broadcast_detail))}</div>`:''}<div class="detailmarket">${esc(marketDescription(c,cardTeam(c)))} · ${Number.isFinite(Number(c?.market?.odds))?Number(c.market.odds).toFixed(2):'нет линии'}</div><div class="detailrows">${detailRows.map(r=>`<div><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join('')}</div><div class="detailnote">${esc(c?.explanation||c?.note||'')}</div>`;

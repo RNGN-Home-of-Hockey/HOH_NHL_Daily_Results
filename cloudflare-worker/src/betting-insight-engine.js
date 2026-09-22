@@ -90,6 +90,7 @@ export function annotateAirUtility(input, game=null) {
   const realPrice=Number.isFinite(odds)&&odds>1&&market.odds_is_demo===false;
   const implied=realPrice?1/odds:null;
   const gap=realPrice&&Number.isFinite(hitRate)?hitRate-implied:null;
+  const analyticalNarrative=isAnalyticalNarrative(card);
   let score=Math.max(25,Math.min(92,sourceScore));
   const reasons=[];
 
@@ -119,6 +120,17 @@ export function annotateAirUtility(input, game=null) {
   else if(sample<=30&&sample>0){score+=6;reasons.push(["понятная выборка",6]);}
   else if(sample<100){score+=3;reasons.push(["солидная выборка",3]);}
   else if(sample>=100){score+=2;reasons.push(["большая выборка",2]);}
+
+  // A large sample is not itself a hit-rate. Historical cards without a
+  // measurable pass rate must not float to the top just because they have
+  // 82 games attached to them. Advanced cards use rank/mismatch evidence
+  // instead, so they are intentionally excluded from this penalty.
+  if(!analyticalNarrative&&sample>=30&&!Number.isFinite(hitRate)){
+    score-=22;reasons.push(["нет частоты прохода",-22]);
+  }
+  if(analyticalNarrative){
+    score+=4;reasons.push(["advanced matchup",4]);
+  }
 
   const type=String(market.type||"").toLowerCase();
   const line=Number(market.line);
@@ -177,11 +189,18 @@ export function annotateAirUtility(input, game=null) {
 export function formatBroadcastTitle(card, precomputed={}) {
   const evidence=card?.evidence||{};
   const market=card?.market||{};
-  const sample=Number(precomputed.sample||editorialSampleSize(card)||0);
-  const rate=Number(precomputed.hitRate);
-  const hitRate=Number.isFinite(rate)?rate:editorialHitRate(card);
+  const sample=finiteAirNumber(precomputed.sample)??editorialSampleSize(card)??0;
+  const rate=finiteAirNumber(precomputed.hitRate);
+  const hitRate=rate!==null?rate:editorialHitRate(card);
   const game=precomputed.game||null;
   const original=String(card?.title||card?.value||"").trim();
+
+  // Rank/xG/Corsi/shot-mismatch stories are analytical narratives, not
+  // frequencies. Never rewrite them into "X% of games" merely because they
+  // also carry a season sample such as 82.
+  if(isAnalyticalNarrative(card)){
+    return formatAdvancedBroadcastTitle(card,original);
+  }
   if(!sample||!Number.isFinite(hitRate))return {title:original,detail:null};
 
   const type=String(market.type||"").toLowerCase();
@@ -220,6 +239,67 @@ export function formatBroadcastTitle(card, precomputed={}) {
     detail="Точная выборка: "+sample+" игр";
   }
   return {title,detail};
+}
+
+function isAnalyticalNarrative(card){
+  const category=String(card?.category||"").toLowerCase();
+  const evidence=card?.evidence||{};
+  return category==="advanced_market"
+    || category==="advanced_rolling_venue"
+    || category==="advanced_context"
+    || evidence.advanced_snapshot===true
+    || evidence.multi_window_confirmed===true
+    || String(evidence.feature_layer||"").startsWith("advanced_");
+}
+
+function formatAdvancedBroadcastTitle(card,original){
+  const e=card?.evidence||{};
+  const team=String(e.team||card?.market?.subject||"").trim().toUpperCase();
+  const opponent=String(e.opponent||"").trim().toUpperCase();
+  const teamRank=finiteAirNumber(e.team_rank??e.rank);
+  const opponentRank=finiteAirNumber(e.opponent_rank);
+  const metric=String(e.metric||"").toLowerCase();
+  const opponentMetric=String(e.opponent_metric||"").toLowerCase();
+
+  const metricLabels={
+    xgf60:"xG/60",
+    xgf_pct:"ДОЛЕ xG",
+    cf_pct:"CORSI",
+    corsi_pct:"CORSI",
+    sf60:"БРОСКАМ",
+    hdxgf60:"ОПАСНОМУ xG",
+    sd60:"РАЗНИЦЕ БРОСКОВ",
+    xgd60:"xG-ДИФФЕРЕНЦИАЛУ",
+  };
+  const opponentLabels={
+    xga60:"xGA/60",
+    xgf_pct:"ДОЛЕ xG",
+    cf_pct:"CORSI",
+    corsi_pct:"CORSI",
+    sa60:"ДОПУЩЕННЫМ БРОСКАМ",
+    hdxga60:"ОПАСНОМУ xGA",
+    sd60:"РАЗНИЦЕ БРОСКОВ",
+    xgd60:"xG-ДИФФЕРЕНЦИАЛУ",
+  };
+
+  let title=original;
+  if(team&&opponent&&teamRank!==null&&opponentRank!==null){
+    const left=metricLabels[metric]||metric.toUpperCase()||"ADVANCED-МЕТРИКЕ";
+    const right=opponentLabels[opponentMetric]||metricLabels[opponentMetric]||left;
+    title=team+" — №"+Math.round(teamRank)+" НХЛ ПО "+left+" · "+opponent+" — №"+Math.round(opponentRank)+" ПО "+right;
+  }else if(team&&teamRank!==null&&metric){
+    title=team+" — №"+Math.round(teamRank)+" НХЛ ПО "+(metricLabels[metric]||metric.toUpperCase());
+  }
+
+  const detail=[];
+  const t20=finiteAirNumber(e.rolling_team_rank_20),o20=finiteAirNumber(e.rolling_opponent_rank_20);
+  const t10=finiteAirNumber(e.rolling_team_rank_10),o10=finiteAirNumber(e.rolling_opponent_rank_10);
+  if(team&&opponent&&t20!==null&&o20!==null)detail.push("Последние 20: "+team+" №"+Math.round(t20)+" · "+opponent+" №"+Math.round(o20));
+  if(team&&opponent&&t10!==null&&o10!==null)detail.push("Последние 10: "+team+" №"+Math.round(t10)+" · "+opponent+" №"+Math.round(o10));
+  const venueSample=finiteAirNumber(e.venue_sample);
+  if(e.venue_confirmed===true&&venueSample!==null)detail.push("Home/away подтверждает · "+Math.round(venueSample)+" матчей на команду");
+
+  return {title,detail:detail.length?detail.join(" · "):null};
 }
 
 function editorialSampleSize(card){

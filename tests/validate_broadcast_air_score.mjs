@@ -67,3 +67,46 @@ assert.equal(nestedCoverWithNulls.air_meta.historical_rate,0.738,'null evidence 
 assert.ok(nestedCoverWithNulls.broadcast_title.includes('74%'),'nested cover.hit_rate must drive handicap percentage');
 assert.ok(nestedCoverWithNulls.broadcast_title.startsWith('BUF НЕ ПРОИГРЫВАЛ В 2+ ШАЙБЫ'),'positive handicap headline should name the team');
 console.log('BROADCAST_NESTED_COVER_RATE_OK',nestedCoverWithNulls.broadcast_title);
+
+
+const advancedNoRate=annotateAirUtility({
+  score:94,
+  category:'advanced_rolling_venue',
+  title:'CAR — №2 НХЛ ПО xGF/60 ЗА СЕЗОН И №3 ЗА ПОСЛЕДНИЕ 20; FLA — 28-Й ПО xGA/60',
+  evidence:{
+    sample:82,
+    team:'CAR',
+    opponent:'FLA',
+    metric:'xgf60',
+    opponent_metric:'xga60',
+    team_rank:2,
+    opponent_rank:28,
+    rolling_team_rank_20:3,
+    rolling_opponent_rank_20:30,
+    rolling_team_rank_10:2,
+    rolling_opponent_rank_10:29,
+    venue_sample:10,
+    venue_confirmed:true,
+    multi_window_confirmed:true,
+    advanced_snapshot:true,
+    feature_layer:'advanced_rolling_venue_v1'
+  },
+  market:{type:'moneyline',subject:'CAR',side:'CAR',odds:1.79,odds_is_demo:false,odds_source:'provider_live'}
+});
+assert.equal(advancedNoRate.air_meta.historical_rate,null,'advanced rank story must not invent historical hit rate');
+assert.equal(advancedNoRate.broadcast_title,'CAR — №2 НХЛ ПО xG/60 · FLA — №28 ПО xGA/60');
+assert.ok(!advancedNoRate.broadcast_title.includes('0%'),'advanced story must never be rewritten to 0%');
+assert.match(advancedNoRate.broadcast_detail,/Последние 20: CAR №3 · FLA №30/);
+assert.match(advancedNoRate.broadcast_detail,/Home\/away подтверждает/);
+
+const missingHistoricalRate=annotateAirUtility({
+  score:92,
+  category:'history',
+  title:'CAR — сезонный профиль',
+  evidence:{sample:82},
+  market:{type:'moneyline',subject:'CAR',side:'CAR',odds:1.79,odds_is_demo:false,odds_source:'provider_live'}
+});
+assert.equal(missingHistoricalRate.air_meta.historical_rate,null);
+assert.equal(missingHistoricalRate.broadcast_title,'CAR — сезонный профиль');
+assert.ok(missingHistoricalRate.air_score<90,'large sample without hit rate must not receive elite AIR score');
+console.log('BROADCAST_ADVANCED_HEADLINE_NULL_RATE_OK',advancedNoRate.broadcast_title);
