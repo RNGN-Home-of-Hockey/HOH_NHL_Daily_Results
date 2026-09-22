@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { connect, launch } from "@cloudflare/playwright";
+import { acquire, connect, launch } from "@cloudflare/playwright";
 import { endpoints, claim, complete, fail, heartbeat } from "./api.mjs";
 import { diagnostics, isAuthenticated, publishVkChannel } from "./vk.mjs";
 
@@ -52,22 +52,13 @@ export class VkRelayState extends DurableObject {
 
     let browser;
     try {
-      const previousSessionId = await this.ctx.storage.get(LOGIN_SESSION_KEY);
-      if (previousSessionId) {
-        try {
-          const previous = await connect(this.env.BROWSER, previousSessionId);
-          await previous.close();
-        } catch {
-          // Stale Browser Run sessions are expected after idle timeout.
-        }
-        await this.ctx.storage.delete(LOGIN_SESSION_KEY);
-        await this.ctx.storage.delete(LOGIN_SAVE_TOKEN_KEY);
-        await this.ctx.storage.delete(LOGIN_LIVE_VIEW_KEY);
-      }
+      const { sessionId } = await acquire(this.env.BROWSER);
+      browser = await connect(this.env.BROWSER, sessionId);
 
-      browser = await launch(this.env.BROWSER, { keep_alive: 600000, recording: true });
-      const context = await browser.newContext();
-      const page = await context.newPage();
+      const contexts = browser.contexts();
+      const context = contexts[0] ?? await browser.newContext();
+      const pages = context.pages();
+      const page = pages[0] ?? await context.newPage();
       await page.goto("https://vk.ru/", { waitUntil: "domcontentloaded", timeout: 45_000 });
 
       const cdp = await context.newCDPSession(page);
@@ -76,107 +67,25 @@ export class VkRelayState extends DurableObject {
         expiresInMs: 600000,
       });
 
-      const sessionId = browser.sessionId();
       const saveToken = crypto.randomUUID();
       await this.ctx.storage.put(LOGIN_SESSION_KEY, sessionId);
       await this.ctx.storage.put(LOGIN_SAVE_TOKEN_KEY, saveToken);
       await this.ctx.storage.put(LOGIN_LIVE_VIEW_KEY, devtoolsFrontendUrl);
+      await this.ctx.storage.put("loginStatus", {
+        status: "waiting",
+        startedAt: new Date().toISOString(),
+        sessionId,
+      });
+      await this.ctx.storage.delete("loginProbe");
 
       const url = new URL(request.url);
       const viewerUrl = `${url.origin}/admin/login/view?token=${encodeURIComponent(saveToken)}`;
       const statusUrl = `${url.origin}/admin/login/status?token=${encodeURIComponent(saveToken)}`;
 
-      await this.ctx.storage.put("loginStatus", {
-        status: "waiting",
-        startedAt: new Date().toISOString(),
-      });
-
-      // Keep this exact browser/context alive while the human logs in. Once VK reaches
-      // an authenticated page, persist storageState from the same context.
-      this.ctx.waitUntil((async () => {
-        try {
-          const deadline = Date.now() + 9 * 60 * 1000;
-          let consecutiveAuthenticated = 0;
-          while (Date.now() < deadline) {
-            await page.waitForTimeout(2000);
-            const currentUrl = page.url();
-            const authenticated = await isAuthenticated(page).catch(() => false);
-            const profileNavVisible = await page.getByText("Профиль", { exact: true }).first().isVisible().catch(() => false);
-            const messengerNavVisible = await page.getByText("Мессенджер", { exact: true }).first().isVisible().catch(() => false);
-            const communitiesNavVisible = await page.getByText("Сообщества", { exact: true }).first().isVisible().catch(() => false);
-            const friendsNavVisible = await page.getByText("Друзья", { exact: true }).first().isVisible().catch(() => false);
-            const feedNavVisible = await page.getByText("Лента", { exact: true }).first().isVisible().catch(() => false);
-            const visibleAuthenticatedNav = [
-              profileNavVisible,
-              messengerNavVisible,
-              communitiesNavVisible,
-              friendsNavVisible,
-              feedNavVisible,
-            ].filter(Boolean).length;
-            const strongAuthenticatedUi = visibleAuthenticatedNav >= 2;
-            const looksReady = authenticated
-              && strongAuthenticatedUi
-              && /^https:\/\/(?:www\.)?vk\.(?:ru|com)\//i.test(currentUrl)
-              && !/(?:login|join|restore|auth)/i.test(currentUrl);
-
-            await this.ctx.storage.put("loginProbe", {
-              checkedAt: new Date().toISOString(),
-              url: currentUrl,
-              authenticated,
-              visibleAuthenticatedNav,
-              profileNavVisible,
-              messengerNavVisible,
-              communitiesNavVisible,
-              friendsNavVisible,
-              feedNavVisible,
-            });
-
-            if (looksReady) consecutiveAuthenticated += 1;
-            else consecutiveAuthenticated = 0;
-
-            if (consecutiveAuthenticated >= 2) {
-              await this.ctx.storage.put("loginStatus", {
-                status: "saving",
-                detectedAt: new Date().toISOString(),
-                url: currentUrl,
-                visibleAuthenticatedNav,
-              });
-              const storageState = await context.storageState();
-              await this.setStorageState(storageState);
-              await this.ctx.storage.put("loginStatus", {
-                status: "saved",
-                savedAt: new Date().toISOString(),
-                url: currentUrl,
-                strongAuthenticatedUi: true,
-                visibleAuthenticatedNav,
-              });
-              await this.notifyHeartbeats(true);
-              // Keep the one-time viewer token and Live View URL valid for the rest
-              // of this browser session so the human page does not suddenly turn 410.
-              return;
-            }
-          }
-
-          await this.ctx.storage.put("loginStatus", {
-            status: "timeout",
-            savedAt: new Date().toISOString(),
-          });
-        } catch (error) {
-          await this.ctx.storage.put("loginStatus", {
-            status: "error",
-            error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
-            savedAt: new Date().toISOString(),
-          });
-        } finally {
-          // Give the user a short window to see the successful channel page before
-          // closing Live View, then clean up ephemeral login handles.
-          await page.waitForTimeout(15000).catch(() => undefined);
-          await browser?.close().catch(() => undefined);
-          await this.ctx.storage.delete(LOGIN_SESSION_KEY);
-          await this.ctx.storage.delete(LOGIN_LIVE_VIEW_KEY);
-          await this.ctx.storage.delete(LOGIN_SAVE_TOKEN_KEY);
-        }
-      })());
+      // This browser came from connect(), so close() only disconnects the Worker
+      // connection. The Browser Run session remains alive for Live View/reconnect.
+      await browser.close();
+      browser = null;
 
       const wantsJson = request.headers.get("accept")?.includes("application/json");
       if (wantsJson) {
@@ -186,10 +95,10 @@ export class VkRelayState extends DurableObject {
       return html(`<!doctype html><html><meta charset="utf-8"><title>VK login</title>
         <style>body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;padding:0 20px}a{font-size:18px}.box{padding:20px;border:1px solid #ddd;border-radius:16px;margin:20px 0}</style>
         <h1>VK Browser Run — вход</h1>
-        <div class="box"><p>Открой Live View и войди в редакционный VK-аккаунт.</p>
+        <div class="box"><p>1. Открой Live View и войди в редакционный VK-аккаунт.</p>
         <p><a href="${viewerUrl}" target="_blank" rel="noopener">Открыть VK Live View</a></p></div>
-        <p>После успешного входа сессия сохранится автоматически. Никакую отдельную кнопку Save нажимать не нужно.</p>
-        <p><a href="${statusUrl}">Проверить статус сохранения</a></p></html>`);
+        <div class="box"><p>2. После входа открой проверку — она подключится к этой же Browser Run session и сохранит VK-сессию.</p>
+        <p><a href="${statusUrl}">Проверить и сохранить VK-сессию</a></p></div></html>`);
     } catch (error) {
       await browser?.close().catch(() => undefined);
       const message = error instanceof Error ? error.message : String(error);
@@ -220,14 +129,134 @@ export class VkRelayState extends DurableObject {
     const url = new URL(request.url);
     const token = url.searchParams.get("token") || "";
     const storedToken = await this.ctx.storage.get(LOGIN_SAVE_TOKEN_KEY);
-    // If token was removed after successful auto-save, admins can still inspect status.
-    if (!adminAuthorized(request, this.env) && storedToken && token !== storedToken) {
+    const adminOk = adminAuthorized(request, this.env);
+
+    if (!adminOk && (!token || token !== storedToken)) {
+      const existing = await this.ctx.storage.get("loginStatus");
+      if (existing?.status === "saved") {
+        return json({ ok: true, configured: true, status: existing });
+      }
       return json({ ok: false, error: "unauthorized" }, 401);
     }
-    const status = await this.ctx.storage.get("loginStatus");
-    const probe = await this.ctx.storage.get("loginProbe");
+
+    const existingStatus = await this.ctx.storage.get("loginStatus");
     const configured = Boolean(await this.storageState());
-    return json({ ok: true, configured, status: status ?? { status: "unknown" }, probe: probe ?? null });
+    if (existingStatus?.status === "saved") {
+      return json({
+        ok: true,
+        configured,
+        status: existingStatus,
+        probe: await this.ctx.storage.get("loginProbe") ?? null,
+      });
+    }
+
+    const sessionId = await this.ctx.storage.get(LOGIN_SESSION_KEY);
+    if (!sessionId) {
+      return json({
+        ok: true,
+        configured,
+        status: { status: "session_missing" },
+        probe: await this.ctx.storage.get("loginProbe") ?? null,
+      }, 409);
+    }
+
+    let browser;
+    try {
+      browser = await connect(this.env.BROWSER, sessionId);
+      const contexts = browser.contexts();
+      const context = contexts[0];
+      if (!context) throw new Error("VK Browser Run context is missing");
+      const pages = context.pages();
+      const page = pages[0] ?? await context.newPage();
+
+      const currentUrl = page.url();
+      const authenticated = await isAuthenticated(page).catch(() => false);
+      const profileNavVisible = await page.getByText("Профиль", { exact: true }).first().isVisible().catch(() => false);
+      const messengerNavVisible = await page.getByText("Мессенджер", { exact: true }).first().isVisible().catch(() => false);
+      const communitiesNavVisible = await page.getByText("Сообщества", { exact: true }).first().isVisible().catch(() => false);
+      const friendsNavVisible = await page.getByText("Друзья", { exact: true }).first().isVisible().catch(() => false);
+      const feedNavVisible = await page.getByText("Лента", { exact: true }).first().isVisible().catch(() => false);
+      const visibleAuthenticatedNav = [
+        profileNavVisible,
+        messengerNavVisible,
+        communitiesNavVisible,
+        friendsNavVisible,
+        feedNavVisible,
+      ].filter(Boolean).length;
+
+      const probe = {
+        checkedAt: new Date().toISOString(),
+        url: currentUrl,
+        authenticated,
+        visibleAuthenticatedNav,
+        profileNavVisible,
+        messengerNavVisible,
+        communitiesNavVisible,
+        friendsNavVisible,
+        feedNavVisible,
+      };
+      await this.ctx.storage.put("loginProbe", probe);
+
+      const looksReady = authenticated
+        && visibleAuthenticatedNav >= 2
+        && /^https:\/\/(?:www\.)?vk\.(?:ru|com)\//i.test(currentUrl)
+        && !/(?:login|join|restore|auth)/i.test(currentUrl);
+
+      if (!looksReady) {
+        await this.ctx.storage.put("loginStatus", {
+          status: "waiting",
+          checkedAt: new Date().toISOString(),
+          sessionId,
+        });
+        return json({
+          ok: true,
+          configured,
+          status: { status: "waiting" },
+          probe,
+        });
+      }
+
+      await this.ctx.storage.put("loginStatus", {
+        status: "saving",
+        detectedAt: new Date().toISOString(),
+        url: currentUrl,
+        visibleAuthenticatedNav,
+      });
+
+      const storageState = await context.storageState();
+      await this.setStorageState(storageState);
+
+      const saved = {
+        status: "saved",
+        savedAt: new Date().toISOString(),
+        url: currentUrl,
+        visibleAuthenticatedNav,
+      };
+      await this.ctx.storage.put("loginStatus", saved);
+      await this.notifyHeartbeats(true);
+
+      await this.ctx.storage.delete(LOGIN_LIVE_VIEW_KEY);
+      await this.ctx.storage.delete(LOGIN_SAVE_TOKEN_KEY);
+      await this.ctx.storage.delete(LOGIN_SESSION_KEY);
+
+      return json({ ok: true, configured: true, status: saved, probe });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failed = {
+        status: "error",
+        error: message.slice(0, 500),
+        savedAt: new Date().toISOString(),
+      };
+      await this.ctx.storage.put("loginStatus", failed);
+      return json({
+        ok: false,
+        configured,
+        status: failed,
+        probe: await this.ctx.storage.get("loginProbe") ?? null,
+      }, 409);
+    } finally {
+      await browser?.close().catch(() => undefined);
+    }
   }
 
   async saveLogin(request) {
