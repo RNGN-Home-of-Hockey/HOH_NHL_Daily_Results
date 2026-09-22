@@ -86,8 +86,13 @@ export class VkRelayState extends DurableObject {
       const viewerUrl = `${url.origin}/admin/login/view?token=${encodeURIComponent(saveToken)}`;
       const statusUrl = `${url.origin}/admin/login/status?token=${encodeURIComponent(saveToken)}`;
 
+      await this.ctx.storage.put("loginStatus", {
+        status: "waiting",
+        startedAt: new Date().toISOString(),
+      });
+
       // Keep this exact browser/context alive while the human logs in. Once VK reaches
-      // an authenticated feed/channel page, persist storageState from the same context.
+      // an authenticated page, persist storageState from the same context.
       this.ctx.waitUntil((async () => {
         try {
           const deadline = Date.now() + 9 * 60 * 1000;
@@ -130,7 +135,13 @@ export class VkRelayState extends DurableObject {
             else consecutiveAuthenticated = 0;
 
             if (consecutiveAuthenticated >= 2) {
-              const storageState = await context.storageState({ indexedDB: true });
+              await this.ctx.storage.put("loginStatus", {
+                status: "saving",
+                detectedAt: new Date().toISOString(),
+                url: currentUrl,
+                visibleAuthenticatedNav,
+              });
+              const storageState = await context.storageState();
               await this.setStorageState(storageState);
               await this.ctx.storage.put("loginStatus", {
                 status: "saved",
@@ -166,11 +177,6 @@ export class VkRelayState extends DurableObject {
           await this.ctx.storage.delete(LOGIN_SAVE_TOKEN_KEY);
         }
       })());
-
-      await this.ctx.storage.put("loginStatus", {
-        status: "waiting",
-        startedAt: new Date().toISOString(),
-      });
 
       const wantsJson = request.headers.get("accept")?.includes("application/json");
       if (wantsJson) {
