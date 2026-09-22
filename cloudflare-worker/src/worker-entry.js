@@ -17,6 +17,7 @@ import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.j
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
 import { getPostgameIngestionStatus, runPostgameFinalizer } from "./postgame-finalizer.js";
+import { broadcastInsightAnalyticsSummary } from "./broadcast-insight-history.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -90,6 +91,9 @@ export default {
     }
     if (path === "/api/data-core/postgame/status") {
       return postgameStatusRoute(request, env);
+    }
+    if (path === "/api/data-core/broadcast-analytics") {
+      return broadcastAnalyticsRoute(request, env);
     }
 
     return worker.fetch(request, env);
@@ -307,6 +311,19 @@ async function telegramNotificationTickRoute(request, env) {
   }
 }
 
+
+async function broadcastAnalyticsRoute(request,env){
+  if(request.method!=="GET")return jsonResponse({ok:false,error:"method_not_allowed"},405);
+  if(!(await isManagementAuthorized(request,env)))return jsonResponse({ok:false,error:"unauthorized"},401);
+  if(!env.DB)return jsonResponse({ok:false,error:"missing_d1_binding"},503);
+  try{
+    const rows=await broadcastInsightAnalyticsSummary(env.DB);
+    return jsonResponse({ok:true,meaning:"historical_settled_signal_performance_not_prediction",rows});
+  }catch(error){
+    console.error("broadcast analytics summary failed",error);
+    return jsonResponse({ok:false,error:"broadcast_analytics_failed"},500);
+  }
+}
 
 async function postgameStatusRoute(request,env){
   if(request.method!=="GET")return jsonResponse({ok:false,error:"method_not_allowed"},405);
