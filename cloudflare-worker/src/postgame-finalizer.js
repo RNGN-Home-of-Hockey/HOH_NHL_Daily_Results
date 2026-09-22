@@ -1,6 +1,7 @@
 import { importGame } from "./data-core-importer.js";
 import { refreshTeamGameFeatures } from "./team-game-features.js";
 import { refreshCurrentTeamSnapshotsRuntime } from "./current-team-snapshot-refresh.js";
+import { settleBroadcastInsightHistory } from "./broadcast-insight-history.js";
 
 const DEFAULT_LIMIT=3;
 const MAX_LIMIT=8;
@@ -24,13 +25,17 @@ export async function runPostgameFinalizer(env,{limit=DEFAULT_LIMIT}={}){
         COALESCE(p.ordinary_status,'pending')<>'complete' OR
         COALESCE(p.features_status,'pending')<>'complete' OR
         COALESCE(p.odds_status,'pending') NOT IN ('complete','no_data')
+        OR EXISTS (
+          SELECT 1 FROM broadcast_insight_history bih
+          WHERE bih.game_pk=g.game_pk AND bih.outcome_status='pending'
+        )
       )
       AND (p.next_retry_at IS NULL OR julianday(p.next_retry_at)<=julianday('now'))
     ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC
     LIMIT ?;
   `).bind(n).all();
 
-  let ordinaryCompleted=0,featuresCompleted=0,oddsCompleted=0,errors=0;
+  let ordinaryCompleted=0,featuresCompleted=0,oddsCompleted=0,insightsSettled=0,errors=0;
   let refreshSnapshots=false;
   const games=[];
 
@@ -85,6 +90,13 @@ export async function runPostgameFinalizer(env,{limit=DEFAULT_LIMIT}={}){
     }
 
     result.advanced=await updateAdvancedStatus(db,gamePk);
+    try{
+      const settled=await settleBroadcastInsightHistory(db,gamePk);
+      insightsSettled+=Number(settled?.settled||0);
+      result.insights_settled=Number(settled?.settled||0);
+    }catch(error){
+      errors++;result.insight_settlement_error=message(error);
+    }
     games.push(result);
   }
 
@@ -103,6 +115,7 @@ export async function runPostgameFinalizer(env,{limit=DEFAULT_LIMIT}={}){
     ordinary_completed:ordinaryCompleted,
     features_completed:featuresCompleted,
     odds_completed:oddsCompleted,
+    insights_settled:insightsSettled,
     advanced_promoted:promotedAdvanced,
     snapshots,
     errors,

@@ -1,7 +1,7 @@
 import worker, { ensureLegacyTelegramWebhook } from "./index.js";
 import { getBackfillStatus, runBackfillStep } from "./data-core-backfill.js";
 import { getBackfillJob, runPersistentBackfillTick } from "./data-core-backfill-job.js";
-import { handleBroadcastRequest } from "./broadcast-dashboard-v2.js";
+import { archiveUpcomingBroadcastAnalytics, handleBroadcastRequest } from "./broadcast-dashboard-v2.js";
 import { buildLiveGameSnapshot } from "./live-betting-engine.js";
 import { handleControlCenterRequest } from "./control-center.js";
 import { handleTelegramMiniAppRequest } from "./telegram-mini-app.js";
@@ -155,6 +155,14 @@ export default {
             await runWinlineFeedMaintenance(env);
           } catch (error) {
             console.error("scheduled Winline NHL feed maintenance failed", error);
+          }
+          const scheduledAt=new Date(Number(controller?.scheduledTime)||Date.now());
+          if(scheduledAt.getUTCMinutes()%15===0){
+            try {
+              await archiveUpcomingBroadcastAnalytics(env,{limit:12});
+            } catch (error) {
+              console.error("scheduled broadcast analytics archive failed", error);
+            }
           }
         }
       })());

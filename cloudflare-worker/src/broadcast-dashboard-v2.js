@@ -1,6 +1,7 @@
 import { buildBettingInsights } from "./betting-insight-engine.js";
 import { WINLINE_LOGO_PNG_BASE64 } from "./winline-logo.js";
 import { BROADCAST_CARD_CSS } from "./broadcast-card-theme.js";
+import { archiveBroadcastInsightHistory } from "./broadcast-insight-history.js";
 
 const BROADCAST_PATH = "/broadcast";
 
@@ -149,6 +150,7 @@ async function computeBroadcastQueueSummary(db,game){
   }else{
     cards=cards.map(stripDemoPrice);
   }
+  try{await archiveBroadcastInsightHistory(db,game,cards)}catch(error){console.error("broadcast insight history archive failed",error)}
   return summarizeBroadcastQueueCards(cards);
 }
 
@@ -311,6 +313,7 @@ async function broadcastGameRoute(env, gamePk) {
         bettingInsights=(statisticalInsights||[]).map(stripDemoPrice);
       }
       await persistBroadcastQueueSummary(env.DB,gamePk,summarizeBroadcastQueueCards(bettingInsights));
+      await archiveBroadcastInsightHistory(env.DB,game,bettingInsights);
     } catch (error) {
       bettingInsightsDegraded=true;
       console.error("broadcast betting insights degraded", error);
@@ -344,6 +347,35 @@ async function broadcastGameRoute(env, gamePk) {
     console.error(`broadcast game failed at ${routeStage}`, error);
     return jsonResponse({ ok:false,error:"broadcast_game_failed" },500);
   }
+}
+
+export async function archiveUpcomingBroadcastAnalytics(env,{limit=12}={}){
+  if(!env?.DB)return {ok:false,error:"missing_d1_binding"};
+  const rows=await env.DB.prepare(`
+    SELECT game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score
+    FROM games
+    WHERE game_type IN (2,3)
+      AND datetime(scheduled_start_utc)>datetime('now')
+      AND datetime(scheduled_start_utc)<=datetime('now','+30 hours')
+    ORDER BY datetime(scheduled_start_utc) ASC
+    LIMIT ?;
+  `).bind(Math.max(1,Math.min(20,Number(limit)||12))).all();
+  let games=0,cards=0;
+  for(const game of rows.results||[]){
+    try{
+      const providerMarkets=await loadBroadcastWinlineMarkets(env.DB,game);
+      if(!providerMarkets.length)continue;
+      const priced=await buildBettingInsights(env.DB,game,{
+        provider_markets:providerMarkets,
+        market_max_age_ms:broadcastWinlineMaxAgeMs(game),
+      });
+      const saved=await archiveBroadcastInsightHistory(env.DB,game,priced);
+      games++;cards+=Number(saved?.written||0);
+    }catch(error){
+      console.error("scheduled broadcast analytics archive failed",game.game_pk,error);
+    }
+  }
+  return {ok:true,games,cards};
 }
 
 const WINLINE_TEAM_NAMES={
