@@ -10,7 +10,7 @@ import { applyWinlineMarkets } from "./winline-market-adapter.js";
 import { buildSnapshotMarketContextInsights } from "./snapshot-market-context.js";
 import { buildPlayerMarketInsights } from "./player-market-insights.js";
 import { buildAdvancedTeamSnapshotInsights } from "./advanced-team-snapshot-insights.js";
-import { buildAdvancedRollingVenueInsights } from "./advanced-rolling-venue-insights.js";
+import { buildAdvancedRollingVenueInsights } from "./advanced-rolling-venue-insights.js";\nimport { buildNarrative } from "./narrative-engine.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -181,7 +181,14 @@ export function annotateAirUtility(input, game=null) {
     real_winline_price:realPrice,
   };
   const formatted=formatBroadcastTitle(card,{sample,hitRate,game});
-  card.broadcast_title=formatted.title;
+  const narrative=buildNarrative(
+    {...card,broadcast_title:formatted.title,broadcast_detail:formatted.detail},
+    {game,sample,hitRate}
+  );
+  card.broadcast_title=narrative?.tv?.title||formatted.title;
+  card.broadcast_variants=Array.isArray(narrative?.tv?.variants)?narrative.tv.variants:[card.broadcast_title];
+  if(narrative?.tv?.subtitle)card.broadcast_subtitle=narrative.tv.subtitle;
+  card.operator_narrative=narrative?.operator||null;
   if(formatted.detail)card.broadcast_detail=formatted.detail;
   return card;
 }
