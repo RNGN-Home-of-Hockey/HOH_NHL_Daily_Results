@@ -413,6 +413,29 @@ export function canonicalBroadcastWinlineMarket(row,event,game,teams){
     /^(?:3|3rd)period|thirdperiod|period3/.test(norm)?"P3":
     /regulartime|60min|60minutes/.test(norm)?"REG":"GAME";
 
+  if(/firstgoal|firsttoscore|teamtoscorefirst/.test(norm)){
+    const subject=teamSubject(row.subject_key,outcome,game,teams);
+    if(!subject)return null;
+    return {...base,market_type:"first_goal_team",period:"GAME",subject,side:subject,line:null};
+  }
+  if(/nextgoal|nexttoscore|teamtoscorenext/.test(norm)){
+    const subject=teamSubject(row.subject_key,outcome,game,teams);
+    if(!subject)return null;
+    return {...base,market_type:"next_goal_team",period,subject,side:subject,line:null};
+  }
+  if(/player|skater/.test(norm)){
+    const playerSubject=String(raw.player_id||raw.playerId||raw.person_id||raw.personId||row.subject_key||"").trim();
+    const propSide=/over|more|больше|тб/i.test(lowerOutcome)?"over":/under|less|меньше|тм/i.test(lowerOutcome)?"under":null;
+    let propType=null;
+    if(/goal/.test(norm))propType="player_goals";
+    else if(/point/.test(norm))propType="player_points";
+    else if(/shot/.test(norm))propType="player_shots";
+    else if(/assist/.test(norm))propType="player_assists";
+    else if(/block/.test(norm))propType="player_blocks";
+    else if(/hit/.test(norm))propType="player_hits";
+    if(playerSubject&&propType&&propSide&&value!==null)return {...base,market_type:propType,period,subject:playerSubject,side:propSide,line:value};
+  }
+
   if(String(row.market_type)==="main_1x2_regular"||/3wayodds|1x2/.test(norm)){
     const subject=teamSubject(row.subject_key,outcome,game,teams);
     const side=subject||(/^(x|draw|tie|ничья|н)$/i.test(outcome)?"draw":null);
