@@ -15,6 +15,7 @@ const rankAngles=buildBroadcastAngles(rankCard,profile);
 assert.ok(rankAngles.length>=3);
 assert.ok(rankAngles[0].title.includes("2"),"primary rank angle must keep a number");
 assert.ok(rankAngles.some(x=>x.family==="rank_contrast"&&/18/.test(x.title)),"opponent rank contrast must exist");
+assert.ok(!/xgf|xga|corsi|fenwick|gsax/i.test(String(rankAngles[0].subtitle||"")),"raw advanced jargon must stay out of the default TV subtitle");
 assert.ok(rankAngles.filter(x=>x.family!=="source_fact").every(x=>x.title===x.title.toUpperCase()),"generated TV titles should be uppercase");
 
 const historyCard={
