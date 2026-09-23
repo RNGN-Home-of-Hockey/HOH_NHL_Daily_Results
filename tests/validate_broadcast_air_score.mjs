@@ -94,10 +94,12 @@ const advancedNoRate=annotateAirUtility({
   market:{type:'moneyline',subject:'CAR',side:'CAR',odds:1.79,odds_is_demo:false,odds_source:'provider_live'}
 });
 assert.equal(advancedNoRate.air_meta.historical_rate,null,'advanced rank story must not invent historical hit rate');
-assert.equal(advancedNoRate.broadcast_title,'CAR — №2 НХЛ ПО xG/60 · FLA — №28 ПО xGA/60');
+assert.equal(advancedNoRate.broadcast_title,'CAR — ТОП-2 НХЛ ПО СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ');
 assert.ok(!advancedNoRate.broadcast_title.includes('0%'),'advanced story must never be rewritten to 0%');
 assert.match(advancedNoRate.broadcast_detail,/Последние 20: CAR №3 · FLA №30/);
 assert.match(advancedNoRate.broadcast_detail,/Home\/away подтверждает/);
+assert.ok(Array.isArray(advancedNoRate.operator_narrative?.details)&&advancedNoRate.operator_narrative.details.length>=4,'operator layer must retain expanded advanced context');
+assert.match(advancedNoRate.operator_narrative.details.join(' '),/FLA: 28-е место/,'operator layer must compare opponent rank');
 
 const missingHistoricalRate=annotateAirUtility({
   score:92,
