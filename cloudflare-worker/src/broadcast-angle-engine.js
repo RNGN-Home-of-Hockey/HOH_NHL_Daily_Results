@@ -12,7 +12,12 @@ export function buildBroadcastAngles(card={},profile={}){
   addScoreState(out,e,m);
   addSupport(out,e,m);
   const fallback=String(card.broadcast_title||card.title||card.value||"").trim();
-  if(fallback)put(out,"source","source_fact",ensureNumber(fallback,card,profile),marketSub(m),52,"исходный факт");
+  if(fallback){
+    const numeric=/\d/.test(fallback);
+    const advancedRank=profile?.team&&n(profile?.teamRank)!==null;
+    const sourceScore=numeric&&!advancedRank?110:numeric?80:52;
+    put(out,"source","source_fact",ensureNumber(fallback,card,profile),marketSub(m),sourceScore,"исходный факт уже сформулирован человечески");
+  }
 
   return unique(out)
     .map(x=>({...x,title:clean(x.title),score:score(x,card)}))
