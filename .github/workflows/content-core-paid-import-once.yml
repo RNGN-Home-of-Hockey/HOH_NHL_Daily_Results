@@ -48,12 +48,13 @@ jobs:
           BOOKMARK="$(echo "$INGEST" | jq -r '.result.at_bookmark')"
           test -n "$BOOKMARK" -a "$BOOKMARK" != "null"
 
+          not_running=0
           for _ in $(seq 1 600); do
-            POLL="$(curl --fail --silent --show-error "$API"               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H "Content-Type: application/json"               -d "{\"action\":\"poll\",\"current_bookmark\":\"$BOOKMARK\"}")"
-            STATUS="$(echo "$POLL" | jq -r '.result.status // empty')"
-            SUCCESS="$(echo "$POLL" | jq -r '.result.success // false')"
-            ERROR="$(echo "$POLL" | jq -r '.result.error // empty')"
-            echo "CONTENT_CORE_PAID_IMPORT_STATUS|$(echo "$POLL" | jq -c '{status:.result.status,success:.result.success,error:.result.error,messages:.result.messages}')"
+            HTTP="$(curl --silent --show-error -o /tmp/import-poll.json -w '%{http_code}' "$API"               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H "Content-Type: application/json"               -d "{\"action\":\"poll\",\"current_bookmark\":\"$BOOKMARK\"}")"
+            POLL="$(cat /tmp/import-poll.json)"
+            STATUS="$(echo "$POLL" | jq -r '.result.status // empty' 2>/dev/null || true)"
+            ERROR="$(echo "$POLL" | jq -r '.result.error // empty' 2>/dev/null || true)"
+            echo "CONTENT_CORE_PAID_IMPORT_STATUS|http=$HTTP|$(echo "$POLL" | jq -c '{status:.result.status,success:.result.success,error:.result.error,messages:.result.messages}' 2>/dev/null || echo '{}')"
             if [ "$STATUS" = "complete" ]; then
               echo "CONTENT_CORE_PAID_IMPORT|$(echo "$POLL" | jq -c '{status:.result.status,success:.result.success,bookmark:.result.at_bookmark,final_bookmark:.result.result.final_bookmark,meta:.result.result.meta,num_queries:.result.result.num_queries}')"
               exit 0
@@ -62,8 +63,22 @@ jobs:
               echo "$POLL"
               exit 1
             fi
-            # D1_RESET_DO is a transient phase while D1 swaps the imported database.
-            # Keep polling; stopping here can cancel a large import.
+            if [[ "$ERROR" == *"D1_RESET_DO"* ]]; then
+              not_running=0
+              sleep 2
+              continue
+            fi
+            if [ "$ERROR" = "Not currently importing anything." ]; then
+              not_running=$((not_running + 1))
+              if [ "$not_running" -ge 15 ]; then
+                echo "Import disappeared before completion" >&2
+                echo "$POLL"
+                exit 1
+              fi
+              sleep 2
+              continue
+            fi
+            not_running=0
             sleep 2
           done
           echo "Import polling timed out" >&2
