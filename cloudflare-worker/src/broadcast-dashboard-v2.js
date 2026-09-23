@@ -2,6 +2,7 @@ import { buildBettingInsights } from "./betting-insight-engine.js";
 import { WINLINE_LOGO_PNG_BASE64 } from "./winline-logo.js";
 import { BROADCAST_CARD_CSS } from "./broadcast-card-theme.js";
 import { archiveBroadcastInsightHistory } from "./broadcast-insight-history.js";
+import { summarizeMarketCoverage } from "./market-coverage-audit.js";
 
 const BROADCAST_PATH = "/broadcast";
 
@@ -339,6 +340,7 @@ async function broadcastGameRoute(env, gamePk) {
       queue_summary:summarizeBroadcastQueueCards(bettingInsights),
       betting_insights_degraded:bettingInsightsDegraded,
       provider_market_count:providerMarkets.length,
+      market_coverage:summarizeMarketCoverage(providerMarkets,bettingInsights),
       data_degraded_sections:dataDegradedSections,
       quick_cards:quickCards,
       persisted_cards:persistedCards,
