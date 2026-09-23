@@ -44,7 +44,7 @@ function pickGeneral(cards,game,limit){
   // First preference: give the commentator one current story about each team.
   for(const tri of [away,home]){
     if(!tri)continue;
-    const hit=sorted.find(c=>!used.has(key(c))&&teamOf(c,game)===tri&&hasUsefulNumber(c));
+    const hit=sorted.find(c=>!used.has(key(c))&&teamOf(c,game)===tri&&hasUsefulNumber(c)&&isConcreteStory(c));
     if(hit){out.push(hit);used.add(key(hit))}
   }
 
