@@ -174,9 +174,9 @@ function goalieContextCards(game, rows) {
       score:84,
       eyebrow:`ВРАТАРЬ · ${games} МАТЧЕЙ`,
       value:`${(sv*100).toFixed(1)}%`,
-      title:`${name}: ${(sv*100).toFixed(1)}% отражённых бросков на отрезке ${games} матчей`,
-      explanation:`Вратарская форма используется только как контекст к командному тоталу соперника, а не как самостоятельный прогноз.`,
-      evidence:{player_id:Number(row.player_id),games,starts,save_pct:sv,goals_against_pg:Number(row.goals_against_pg),team_tri:row.team_tri,feature_layer:"goalie_rolling_snapshots_v1"},
+      title:`ЕСЛИ ${name} В СТАРТЕ — ${(sv*100).toFixed(1)}% ОТРАЖЁННЫХ БРОСКОВ ЗА ${games} МАТЧЕЙ`,
+      explanation:`Стартовый вратарь ещё не подтверждён. Вратарская форма используется только как условный контекст к командному тоталу соперника; перед эфиром оператор должен подтвердить старт.`,
+      evidence:{player_id:Number(row.player_id),games,starts,save_pct:sv,goals_against_pg:Number(row.goals_against_pg),team_tri:row.team_tri,requires_start_confirmation:true,feature_layer:"goalie_rolling_snapshots_v1"},
       note:`${market.label} · WINLINE · ДЕМО-КЭФ ${market.odds.toFixed(2)} · промокод HOH`,
       market,
     });
