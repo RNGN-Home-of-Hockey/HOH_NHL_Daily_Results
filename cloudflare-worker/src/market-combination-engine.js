@@ -98,13 +98,16 @@ function marketDirection(m){
   return null;
 }
 function family(a,b){
-  if(a===b)return true;const r=["moneyline","handicap","period_1_result","period_2_result","period_3_result","first_goal_team","next_goal_team"],t=["game_total","team_total"];
+  if(a===b)return true;const r=["moneyline","handicap","period_1_result","period_2_result","period_3_result","first_goal_team","next_goal_team","double_chance","win_all_periods"],t=["game_total","team_total"];
   return (r.includes(a)&&r.includes(b))||(t.includes(a)&&t.includes(b));
 }
 function cross(a,t){
   if(["moneyline","handicap","period_1_result","period_2_result","period_3_result","next_goal_team"].includes(t))return ["moneyline","handicap"].includes(a.type)||/control|dominance|advanced|h2h|regulation|venue/.test(a.category+" "+a.metric);
   if(t==="team_total")return ["team_total","game_total"].includes(a.type)||/goalie|attack|xgf|shot|special|player/.test(a.category+" "+a.metric);
   if(t==="game_total")return ["game_total","team_total"].includes(a.type)||/goalie|pace|xg|shot|special/.test(a.category+" "+a.metric);
+  if(t==="team_goal_bucket")return ["team_total","team_goal_bucket"].includes(a.type)||/attack|goalie|xgf|shot/.test(a.category+" "+a.metric);
+  if(t==="highest_scoring_period")return a.type==="highest_scoring_period"||/period/.test(a.category+" "+a.metric);
+  if(t==="result_total_combo")return ["moneyline","handicap","game_total","result_total_combo"].includes(a.type);
   if(t.startsWith("player_"))return a.type===t||a.category.includes("player");return false;
 }
 function opponentUseful(a,t){return t==="team_total"?/defen|goalie|xga|sa60|opponent/.test(a.category+" "+a.metric+" "+a.evidence?.role):["moneyline","handicap","game_total"].includes(t)}
@@ -117,6 +120,11 @@ function labelFor(m){
   if(t==="game_total")return (p+(m.side==="over"?"ТБ":"ТМ")+" "+x).trim();
   if(t==="first_goal_team")return "ПЕРВЫЙ ГОЛ — "+s;
   if(t==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ — "+s;
+  if(t==="double_chance")return s+" НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ";
+  if(t==="team_goal_bucket")return s+" · "+String(m.side||"").replace("0_1","0–1").replace("3_plus","3+")+" ШАЙБЫ";
+  if(t==="highest_scoring_period")return s+" · САМЫЙ РЕЗУЛЬТАТИВНЫЙ "+String(m.side||"");
+  if(t==="win_all_periods")return s+" · ВЫИГРАЕТ ВСЕ ПЕРИОДЫ";
+  if(t==="result_total_combo")return "ПОБЕДА "+s+" + "+(m.side==="over"?"ТБ":"ТМ")+" "+x;
   return [p,t,s,m.side,x].filter(Boolean).join(" ").trim();
 }
 function key(m){return [m.market_type||"unknown",m.period||"GAME",m.subject||"all",m.side||"none",num(m.line)===null?"none":Number(m.line).toFixed(2)].join(":")}
