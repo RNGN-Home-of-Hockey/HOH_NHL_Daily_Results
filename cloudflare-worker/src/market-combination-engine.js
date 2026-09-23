@@ -105,6 +105,7 @@ function cross(a,t){
   if(["moneyline","handicap","period_1_result","period_2_result","period_3_result","next_goal_team"].includes(t))return ["moneyline","handicap"].includes(a.type)||/control|dominance|advanced|h2h|regulation|venue/.test(a.category+" "+a.metric);
   if(t==="team_total")return ["team_total","game_total"].includes(a.type)||/goalie|attack|xgf|shot|special|player/.test(a.category+" "+a.metric);
   if(t==="game_total")return ["game_total","team_total"].includes(a.type)||/goalie|pace|xg|shot|special/.test(a.category+" "+a.metric);
+  if(t==="both_teams_score")return ["game_total","team_total","both_teams_score"].includes(a.type)||/goalie|attack|defen|xgf|xga|shot|special/.test(a.category+" "+a.metric);
   if(t==="team_goal_bucket")return ["team_total","team_goal_bucket"].includes(a.type)||/attack|goalie|xgf|shot/.test(a.category+" "+a.metric);
   if(t==="highest_scoring_period")return a.type==="highest_scoring_period"||/period/.test(a.category+" "+a.metric);
   if(t==="result_total_combo")return ["moneyline","handicap","game_total","result_total_combo"].includes(a.type);
