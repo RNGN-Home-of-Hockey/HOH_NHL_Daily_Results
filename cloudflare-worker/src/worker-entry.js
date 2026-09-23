@@ -292,7 +292,7 @@ async function broadcastLiveRoute(request, env, gamePk) {
       try{
         const providerMarkets=await loadBroadcastWinlineMarkets(env.DB,snapshot.game);
         snapshot=attachLiveWinlineMarkets(snapshot,providerMarkets,{
-          market_max_age_ms:5*60*1000,
+          market_max_age_ms:90*1000,
         });
       }catch(error){
         console.error("broadcast live Winline enrichment failed",error);
