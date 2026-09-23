@@ -132,11 +132,13 @@ export async function buildBettingInsights(db, game, options = {}) {
   const portfolioForBroadcast=dedupe([...(portfolio||[]),...h2hEditorial]);
 
   const recentBroadcastHeadlines=await loadRecentBroadcastHeadlines(db);
-  const annotated=diversifyBroadcastAngles(
+  const diversified=diversifyBroadcastAngles(
     portfolioForBroadcast.map((card)=>annotateAirUtility(card,game)),
     {recent_headlines:recentBroadcastHeadlines}
   );
+  const annotated=resolveContradictoryAdvice(diversified);
   generatorDiagnostics.recent_broadcast_headline_count=recentBroadcastHeadlines.length;
+  generatorDiagnostics.suppressed_contradictory_count=Math.max(0,diversified.length-annotated.length);
   generatorDiagnostics.final_portfolio_count=annotated.length;
   generatorDiagnostics.post_prune_market_coverage=summarizeMarketCoverage(options.provider_markets||[],annotated);
   if(options.generator_diagnostics&&typeof options.generator_diagnostics==="object"){
@@ -154,84 +156,129 @@ export function annotateAirUtility(input, game=null) {
   const odds=Number(market.odds);
   const realPrice=Number.isFinite(odds)&&odds>1&&market.odds_is_demo===false;
   const implied=realPrice?1/odds:null;
-  const gap=realPrice&&Number.isFinite(hitRate)?hitRate-implied:null;
+  const credibility=sample>0?sample/(sample+12):0;
+  const adjustedRate=Number.isFinite(hitRate)?0.5+(hitRate-0.5)*credibility:null;
+  const adjustedGap=realPrice&&Number.isFinite(adjustedRate)?adjustedRate-implied:null;
+  const rawGap=realPrice&&Number.isFinite(hitRate)?hitRate-implied:null;
   const analyticalNarrative=isAnalyticalNarrative(card);
-  let score=Math.max(25,Math.min(92,sourceScore));
   const reasons=[];
 
+  // AIR SCORE is editorial usefulness + evidence/value quality, not probability.
+  // Start from a neutral base. Upstream generator scores are only a small signal,
+  // otherwise dozens of cards saturate at 100.
+  let score=38+Math.max(-4,Math.min(4,(sourceScore-50)*0.08));
+
   if(card?.evidence?.requires_start_confirmation===true){
-    score-=16;
-    reasons.push(["вратарь не подтверждён",-16]);
+    score-=14;reasons.push(["вратарь не подтверждён",-14]);
   }
 
   if(realPrice){
-    if(odds<1.30){score-=28;reasons.push(["низкий кэф",-28]);}
-    else if(odds<1.40){score-=18;reasons.push(["низкий кэф",-18]);}
-    else if(odds<1.55){score-=8;reasons.push(["кэф ниже рабочего",-8]);}
-    else if(odds<=2.20){score+=10;reasons.push(["хороший кэф",10]);}
-    else if(odds<=2.80){score+=6;reasons.push(["интересный кэф",6]);}
-    else if(odds<=4){score+=1;}
-    else {score-=4;reasons.push(["высокий риск цены",-4]);}
+    if(odds<1.30){score-=14;reasons.push(["слишком низкий кэф",-14]);}
+    else if(odds<1.45){score-=8;reasons.push(["низкий кэф",-8]);}
+    else if(odds<=2.40){score+=4;reasons.push(["рабочий кэф",4]);}
+    else if(odds<=3.50){score+=2;reasons.push(["интересная цена",2]);}
+    else if(odds>5){score-=4;reasons.push(["очень высокий кэф",-4]);}
   }else{
-    score-=20;reasons.push(["нет точной линии",-20]);
+    score-=18;reasons.push(["нет точной линии",-18]);
   }
 
-  if(Number.isFinite(gap)){
-    if(gap>=0.12){score+=16;reasons.push(["история заметно сильнее цены",16]);}
-    else if(gap>=0.06){score+=9;reasons.push(["история сильнее цены",9]);}
-    else if(gap>=0.02){score+=4;reasons.push(["есть запас к цене",4]);}
-    else if(gap>=-0.02){reasons.push(["история близка к цене",0]);}
-    else if(gap>=-0.07){score-=8;reasons.push(["история слабее цены",-8]);}
-    else {score-=15;reasons.push(["история заметно слабее цены",-15]);}
+  if(sample>0){
+    if(sample<6){score+=0;reasons.push(["очень малая выборка",-8]);}
+    else if(sample<10){score+=2;reasons.push(["малая выборка",-5]);}
+    else if(sample<20){score+=8;reasons.push(["рабочая выборка",4]);}
+    else if(sample<40){score+=13;reasons.push(["хорошая выборка",6]);}
+    else if(sample<80){score+=17;reasons.push(["сильная выборка",8]);}
+    else {score+=19;reasons.push(["большая выборка",8]);}
   }
 
-  if(sample>0&&sample<6){score-=10;reasons.push(["малая выборка",-10]);}
-  else if(sample<10&&sample>0){score-=3;reasons.push(["небольшая выборка",-3]);}
-  else if(sample<=30&&sample>0){score+=6;reasons.push(["понятная выборка",6]);}
-  else if(sample<100){score+=3;reasons.push(["солидная выборка",3]);}
-  else if(sample>=100){score+=2;reasons.push(["большая выборка",2]);}
-
-  // A large sample is not itself a hit-rate. Historical cards without a
-  // measurable pass rate must not float to the top just because they have
-  // 82 games attached to them. Advanced cards use rank/mismatch evidence
-  // instead, so they are intentionally excluded from this penalty.
-  if(!analyticalNarrative&&sample>=30&&!Number.isFinite(hitRate)){
-    score-=22;reasons.push(["нет частоты прохода",-22]);
+  if(Number.isFinite(hitRate)){
+    const trend=(hitRate-0.5)*35;
+    score+=Math.max(-14,Math.min(16,trend));
+    if(hitRate>=0.75)reasons.push(["высокая историческая частота",8]);
+    else if(hitRate>=0.65)reasons.push(["сильная историческая частота",6]);
+    else if(hitRate<=0.50)reasons.push(["сама история не даёт перевеса",-5]);
+  }else if(!analyticalNarrative){
+    score-=12;reasons.push(["нет частоты прохода",-12]);
   }
-  if(analyticalNarrative){
-    score+=4;reasons.push(["advanced matchup",4]);
+
+  // Compare the quote to a sample-shrunk historical rate. This prevents 3/6
+  // from being treated like 50% known with the same certainty as 40/80.
+  if(Number.isFinite(adjustedGap)){
+    if(adjustedGap>=0.18){score+=22;reasons.push(["сильный запас к цене",12]);}
+    else if(adjustedGap>=0.12){score+=16;reasons.push(["заметный запас к цене",9]);}
+    else if(adjustedGap>=0.08){score+=11;reasons.push(["есть запас к цене",7]);}
+    else if(adjustedGap>=0.04){score+=6;reasons.push(["небольшой запас к цене",4]);}
+    else if(adjustedGap>=0){score+=1;reasons.push(["цена почти без запаса",0]);}
+    else if(adjustedGap>=-0.05){score-=7;reasons.push(["цена не лучше истории",-7]);}
+    else {score-=14;reasons.push(["цена хуже истории",-14]);}
   }
 
   const type=String(market.type||"").toLowerCase();
   const line=Number(market.line);
-  if(type==="moneyline"){score+=5;reasons.push(["понятный рынок",5]);}
+  if(["moneyline","period_1_result","period_2_result","period_3_result"].includes(type)){
+    score+=2;reasons.push(["понятный исход",2]);
+  }
   if(type==="handicap"){
-    if(Number.isFinite(line)&&Math.abs(line)>=2.5){score-=5;reasons.push(["слишком безопасная фора",-5]);}
-    else if(Number.isFinite(line)&&Math.abs(line)===1.5){score+=2;}
+    if(Number.isFinite(line)&&Math.abs(line)>=2.5){score-=4;reasons.push(["крайняя фора",-4]);}
+    if(Number.isFinite(line)&&line===0){score+=1;}
   }
-  if(type==="game_total"){
-    if(Number.isFinite(line)&&(line===5.5||line===6.5)){score+=3;}
-    else if(Number.isFinite(line)&&(line<=4.5||line>=7.5)){score-=5;reasons.push(["крайняя линия",-5]);}
+  if(type==="game_total"&&Number.isFinite(line)&&(line<=4.5||line>=7.5)){
+    score-=3;reasons.push(["крайняя линия",-3]);
   }
-  if(type==="team_total"){
-    if(Number.isFinite(line)&&(line===2.5||line===3.5)){score+=3;}
-    else if(Number.isFinite(line)&&(line<=1.5||line>=4.5)){score-=5;reasons.push(["крайняя линия",-5]);}
+  if(type==="team_total"&&Number.isFinite(line)&&(line<=1.5||line>=4.5)){
+    score-=3;reasons.push(["крайняя линия",-3]);
   }
-  if(card?.evidence_quality?.context_only){score-=8;reasons.push(["контекст, не прямой сигнал",-8]);}
-  if(card?.evidence?.multi_window_confirmed){
-    score+=6;reasons.push(["сезон + форма совпадают",6]);
-    if(card?.evidence?.venue_confirmed){score+=4;reasons.push(["home/away подтверждает",4]);}
+  if(card?.evidence_quality?.context_only){score-=7;reasons.push(["контекст, не прямой сигнал",-7]);}
+
+  const independentSupport=Math.max(
+    Number(card?.evidence?.independent_support_count||0),
+    Math.max(0,Number(card?.evidence?.combination_support_count||0)-1),
+    Array.isArray(card?.evidence?.supporting_signals)?card.evidence.supporting_signals.length:0
+  );
+  if(card?.evidence?.multi_window_confirmed){score+=5;reasons.push(["форма и длинный отрезок совпадают",5]);}
+  if(card?.evidence?.venue_confirmed){score+=3;reasons.push(["дом/выезд подтверждает",3]);}
+  if(independentSupport>=1){
+    const bonus=Math.min(6,independentSupport*2);
+    score+=bonus;reasons.push(["есть независимое подтверждение",bonus]);
   }
-  if(card?.evidence?.advanced_snapshot){
+
+  if(analyticalNarrative){
     const rank=Number(card.evidence.rank||card.evidence.team_rank||0);
-    const gap=Number(card.evidence.rank_gap||0);
-    if(rank>0&&rank<=3){score+=6;reasons.push(["топ-3 НХЛ",6]);}
-    else if(rank>0&&rank<=6){score+=4;reasons.push(["топ-6 НХЛ",4]);}
-    if(gap>=15){score+=4;reasons.push(["сильный matchup",-0+4]);}
+    const rankGap=Number(card.evidence.rank_gap||0);
+    if(rank>0&&rank<=3){score+=8;reasons.push(["топ-3 НХЛ",8]);}
+    else if(rank>0&&rank<=6){score+=5;reasons.push(["топ-6 НХЛ",5]);}
+    if(rankGap>=15){score+=6;reasons.push(["сильный контраст команд",6]);}
+    else if(rankGap>=8){score+=3;reasons.push(["заметный контраст команд",3]);}
   }
+
   if(String(card.title||"").length>110){score-=4;reasons.push(["сложная формулировка",-4]);}
 
-  const airScore=Math.max(0,Math.min(100,Math.round(score)));
+  // Hard ceilings express uncertainty. A six-game split can still be useful at
+  // a very good price, but it cannot look as reliable as a 40-80 game signal.
+  let ceiling=96;
+  if(Number.isFinite(hitRate)){
+    if(sample<6)ceiling=62;
+    else if(sample<8)ceiling=68;
+    else if(sample<10)ceiling=72;
+    else if(sample<15)ceiling=79;
+    else if(sample<20)ceiling=84;
+    else if(sample<30)ceiling=89;
+  }else if(analyticalNarrative){
+    ceiling=90;
+  }else{
+    ceiling=74;
+  }
+
+  const exceptional=realPrice
+    && sample>=40
+    && Number.isFinite(hitRate)&&hitRate>=0.72
+    && Number.isFinite(adjustedGap)&&adjustedGap>=0.12
+    && (independentSupport>=2||card?.evidence?.multi_window_confirmed===true)
+    && card?.evidence_quality?.context_only!==true;
+  if(exceptional)ceiling=100;
+  else ceiling=Math.min(ceiling,96);
+
+  const airScore=Math.max(0,Math.min(ceiling,Math.round(score)));
   const reasonTags=[...reasons]
     .sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))
     .map(x=>x[0])
@@ -239,15 +286,20 @@ export function annotateAirUtility(input, game=null) {
     .slice(0,3);
 
   card.air_score=airScore;
-  card.air_label=airScore>=85?"СИЛЬНО ДЛЯ ЭФИРА":airScore>=70?"ХОРОШО ДЛЯ ЭФИРА":airScore>=55?"СРЕДНЕ":airScore>=40?"СЛАБО":"НЕ ДЛЯ ЭФИРА";
+  card.air_label=airScore>=97?"РЕДКАЯ НАХОДКА":airScore>=85?"СИЛЬНО ДЛЯ ЭФИРА":airScore>=70?"ХОРОШО ДЛЯ ЭФИРА":airScore>=55?"СРЕДНЕ":airScore>=40?"СЛАБО":"НЕ ДЛЯ ЭФИРА";
   card.air_reasons=reasonTags;
   card.air_meta={
     meaning:"editorial_broadcast_utility_not_probability",
     source_score:Math.round(sourceScore*10)/10,
     sample_size:sample||null,
+    sample_credibility:roundAir3(credibility),
     historical_rate:Number.isFinite(hitRate)?roundAir3(hitRate):null,
+    credibility_adjusted_rate:Number.isFinite(adjustedRate)?roundAir3(adjustedRate):null,
     implied_probability:Number.isFinite(implied)?roundAir3(implied):null,
-    historical_minus_implied:Number.isFinite(gap)?roundAir3(gap):null,
+    raw_historical_minus_implied:Number.isFinite(rawGap)?roundAir3(rawGap):null,
+    adjusted_historical_minus_implied:Number.isFinite(adjustedGap)?roundAir3(adjustedGap):null,
+    score_ceiling:ceiling,
+    exceptional_match:Boolean(exceptional),
     real_winline_price:realPrice,
   };
   const formatted=formatBroadcastTitle(card,{sample,hitRate,game});
@@ -454,6 +506,49 @@ function signedAirLine(value){
 }
 function finiteAirScore(...values){for(const value of values){const n=Number(value);if(Number.isFinite(n))return n}return 55}
 function roundAir3(value){return Math.round(Number(value)*1000)/1000}
+
+function resolveContradictoryAdvice(cards=[]){
+  const sorted=[...(cards||[])].sort((a,b)=>Number(b?.air_score||0)-Number(a?.air_score||0));
+  const accepted=[],winners=new Map();
+  for(const card of sorted){
+    const conflict=hardConflictIdentity(card);
+    if(!conflict){accepted.push(card);continue}
+    const prior=winners.get(conflict.key);
+    if(!prior){
+      winners.set(conflict.key,{direction:conflict.direction,card});
+      accepted.push(card);
+      continue;
+    }
+    if(prior.direction===conflict.direction){
+      accepted.push(card);
+      continue;
+    }
+    // Same exact two-way proposition, opposite direction: keep only the
+    // stronger editorial/value case. Do not tell the operator both sides.
+    card.suppressed_reason="opposite_market_direction";
+  }
+  return accepted;
+}
+
+function hardConflictIdentity(card){
+  const m=card?.market||{},type=String(m.type||"").toLowerCase(),period=String(m.period||"GAME").toUpperCase();
+  const subject=String(m.subject||"").toUpperCase(),side=String(m.side||"").toLowerCase();
+  const line=finiteAirNumber(m.line);
+  if(["moneyline","period_1_result","period_2_result","period_3_result","next_goal_team","first_goal_team"].includes(type)){
+    if(!subject)return null;
+    return {key:type+"|"+period,direction:subject};
+  }
+  if(type==="game_total"&&line!==null&&["over","under"].includes(side)){
+    return {key:type+"|"+period+"|"+line.toFixed(2),direction:side};
+  }
+  if(type==="team_total"&&subject&&line!==null&&["over","under"].includes(side)){
+    return {key:type+"|"+period+"|"+subject+"|"+line.toFixed(2),direction:side};
+  }
+  if(type==="handicap"&&subject&&line!==null){
+    return {key:type+"|"+period+"|"+Math.abs(line).toFixed(2),direction:subject+"|"+Math.sign(line)};
+  }
+  return null;
+}
 
 function isTeamH2HEditorialCard(card){
   const category=String(card?.category||"").toLowerCase();
