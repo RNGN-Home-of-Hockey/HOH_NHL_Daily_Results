@@ -115,3 +115,18 @@ assert.equal(missingHistoricalRate.air_meta.historical_rate,null);
 assert.equal(missingHistoricalRate.broadcast_title,'CAR — сезонный профиль');
 assert.ok(missingHistoricalRate.air_score<90,'large sample without hit rate must not receive elite AIR score');
 console.log('BROADCAST_ADVANCED_HEADLINE_NULL_RATE_OK',advancedNoRate.broadcast_title);
+
+const localizedAdvanced=annotateAirUtility({
+  score:94,
+  category:'advanced_market',
+  title:'CAR — №2 NHL ПО xGF/60',
+  evidence:{sample:82,team:'CAR',opponent:'FLA',metric:'xgf60',opponent_metric:'xga60',team_rank:2,opponent_rank:28,advanced_snapshot:true},
+  market:{type:'moneyline',subject:'CAR',side:'CAR',odds:1.79,odds_is_demo:false,odds_source:'provider_live'}
+},{
+  home_tri:'CAR',away_tri:'FLA',home_name_ru:'Каролина',away_name_ru:'Флорида'
+});
+assert.match(localizedAdvanced.broadcast_title,/КАРОЛИНА/,'TV layer must use Russian team name when game metadata provides it');
+assert.ok(!/\bCAR\b/.test(localizedAdvanced.broadcast_title),'TV headline must not expose tri-code when Russian display name is available');
+assert.ok(localizedAdvanced.broadcast_angle_variants.every(x=>!/\bCAR\b|\bFLA\b/.test(String(x.title||''))),'all operator-selectable TV variants must localize team names');
+assert.equal(localizedAdvanced.operator_narrative.raw.team_code,'CAR','operator raw layer must keep machine team code');
+assert.match(localizedAdvanced.operator_narrative.details.join(' '),/КАРОЛИНА/,'commentator prose should use Russian display name');
