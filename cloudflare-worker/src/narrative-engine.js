@@ -8,11 +8,11 @@ import { buildBroadcastAngles } from "./broadcast-angle-engine.js";
 const METRICS={
   xgd60:{tv:"РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ",raw:"xG differential / 60",unit:"xG/60",explain:"xG differential — разница между созданными и допущенными ожидаемыми голами; плюс означает, что команда создаёт больше качества, чем отдаёт сопернику."},
   xgf60:{tv:"СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ",raw:"xGF/60",unit:"xG/60",explain:"xGF/60 — качество моментов, которое команда создаёт за 60 минут; чем выше, тем сильнее атакующий профиль."},
-  xga60:{tv:"МИНИМУМУ ДОПУЩЕННЫХ ОПАСНЫХ МОМЕНТОВ",raw:"xGA/60",unit:"xG/60",explain:"xGA/60 — качество моментов соперника за 60 минут; чем ниже, тем надёжнее команда ограничивает опасные атаки."},
+  xga60:{tv:"ЗАЩИТЕ ОТ ОПАСНЫХ МОМЕНТОВ",raw:"xGA/60",unit:"xG/60",explain:"xGA/60 — качество моментов соперника за 60 минут; чем ниже, тем надёжнее команда ограничивает опасные атаки."},
   hdxgf60:{tv:"СОЗДАННЫМ САМЫМ ОПАСНЫМ МОМЕНТАМ",raw:"HD xGF/60",unit:"HD xG/60"},
-  hdxga60:{tv:"МИНИМУМУ ДОПУЩЕННЫХ САМЫХ ОПАСНЫХ МОМЕНТОВ",raw:"HD xGA/60",unit:"HD xG/60"},
+  hdxga60:{tv:"ЗАЩИТЕ ОТ САМЫХ ОПАСНЫХ МОМЕНТОВ",raw:"HD xGA/60",unit:"HD xG/60"},
   sf60:{tv:"БРОСКАМ В СТВОР",raw:"SF/60",unit:"броска/60"},
-  sa60:{tv:"МИНИМУМУ ДОПУЩЕННЫХ БРОСКОВ",raw:"SA/60",unit:"броска/60"},
+  sa60:{tv:"ЗАЩИТЕ ОТ БРОСКОВ",raw:"SA/60",unit:"броска/60"},
   sd60:{tv:"РАЗНИЦЕ БРОСКОВ",raw:"shot differential / 60",unit:"броска/60"},
   xgf_pct:{tv:"ДОЛЕ ОПАСНЫХ МОМЕНТОВ",raw:"xGF%",unit:"%",explain:"xGF% — доля ожидаемых голов команды от общего xG обеих команд; выше 50% означает преимущество по качеству моментов."},
   xgfpercent:{tv:"ДОЛЕ ОПАСНЫХ МОМЕНТОВ",raw:"xGF%",unit:"%"},
@@ -128,9 +128,13 @@ function buildVariants(p,card,fallback){
   if(p.team&&p.teamRank!==null&&p.metric){
     out.push(p.team+" — "+rankText(p.teamRank)+" НХЛ ПО "+p.meta.tv);
     if(p.teamValue!==null)out.push(p.team+" — "+rankText(p.teamRank)+" НХЛ ПО "+p.meta.tv+": "+formatValue(p.teamValue,p.meta));
-    if(p.opponent&&p.opponentRank!==null&&p.rankGap!==null&&p.rankGap>=8){
-      out.push(p.team+" — НА "+Math.round(p.rankGap)+" МЕСТ ВЫШЕ "+p.opponent+" ПО "+p.meta.tv);
-      out.push(p.team+" — "+rankText(p.teamRank)+", "+p.opponent+" — №"+Math.round(p.opponentRank)+" ПО "+p.meta.tv);
+    if(p.opponent&&p.opponentRank!==null){
+      if(p.opponentMetric===p.metric&&p.rankGap!==null&&p.rankGap>=8){
+        out.push(p.team+" — НА "+Math.round(p.rankGap)+" МЕСТ ВЫШЕ "+p.opponent+" ПО "+p.meta.tv);
+        out.push(p.team+" — "+rankText(p.teamRank)+", "+p.opponent+" — №"+Math.round(p.opponentRank)+" ПО "+p.meta.tv);
+      }else if(p.opponentMetric&&p.opponentMetric!==p.metric){
+        out.push(p.team+" — №"+Math.round(p.teamRank)+" ПО "+p.meta.tv+" · "+p.opponent+" — №"+Math.round(p.opponentRank)+" ПО "+p.opponentMeta.tv);
+      }
     }
   }
 
@@ -182,7 +186,11 @@ function buildOperator(p,card,context,selectedAngle=null,angles=[]){
     details.push(`${p.opponent}: ${Math.round(p.opponentRank)}-е место в НХЛ по ${p.opponentMeta?.raw||"сопоставимому показателю"}${p.opponentValue!==null?` — ${formatValue(p.opponentValue,p.opponentMeta||p.meta)}`:""}.`);
   }
   if(p.rankGap!==null&&p.teamRank!==null&&p.opponentRank!==null){
-    details.push(`Разница в рейтинге: ${Math.round(p.rankGap)} мест.`);
+    if(p.opponentMetric===p.metric){
+      details.push(`Разница в рейтинге: ${Math.round(p.rankGap)} мест.`);
+    }else{
+      details.push(`Матчап разных сторон: ${p.team} №${Math.round(p.teamRank)} по ${p.meta.raw}; ${p.opponent} №${Math.round(p.opponentRank)} по ${p.opponentMeta.raw}.`);
+    }
   }
   if(p.meta?.explain)details.push(`Что означает метрика: ${p.meta.explain}`);
   if(p.opponentMetric&&p.opponentMetric!==p.metric&&p.opponentMeta?.explain){
