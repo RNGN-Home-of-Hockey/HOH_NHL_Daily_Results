@@ -283,6 +283,25 @@ function qualityScore(m,r,window){
   return Math.max(55,Math.min(97,Math.round(56+r.rate*26+sampleBonus+perspectives+priceBonus-pushPenalty)));
 }
 
+function eyebrow(m,window){
+  const type=String(m.market_type||"");
+  const period=String(m.period||"GAME");
+  const prefix=period==="P1"?"1-Й ПЕРИОД":period==="P2"?"2-Й ПЕРИОД":period==="P3"?"3-Й ПЕРИОД":period==="REG"?"60 МИНУТ":"ТОЧНАЯ ЛИНИЯ";
+  const family=
+    type==="game_total"?"ТОТАЛ":
+    type==="team_total"?"КОМАНДНЫЙ ТОТАЛ":
+    type==="handicap"?"ФОРА":
+    type==="moneyline"||/^period_[123]_result$/.test(type)?"ИСХОД":
+    type==="double_chance"?"ДВОЙНОЙ ШАНС":
+    type==="both_teams_score"?"ОБЕ ЗАБЬЮТ":
+    type==="first_goal_team"?"ПЕРВЫЙ ГОЛ":
+    type==="team_goal_bucket"?"ГОЛЫ КОМАНДЫ":
+    type==="highest_scoring_period"?"РЕЗУЛЬТАТИВНЫЙ ПЕРИОД":
+    type==="win_all_periods"?"ВСЕ ПЕРИОДЫ":
+    type==="result_total_combo"?"ПОБЕДА + ТОТАЛ":"WINLINE";
+  return `${prefix} · ${family} · ${window} МАТЧЕЙ`;
+}
+
 function marketHistoryTitle(m,r,window){
   const t=String(m.market_type||""),p=String(m.period||"GAME"),s=String(m.subject||""),side=String(m.side||"").toLowerCase(),line=finite(m.line);
   const count=`${r.hits} ИЗ ${r.decisions}`;
