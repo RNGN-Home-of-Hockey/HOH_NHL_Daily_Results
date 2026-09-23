@@ -65,8 +65,7 @@ function fontSizeForMarket(text){
 
 function highlightFact(text, headlineTeamName){
   const source=normalizeDecimalText(text);
-  const escaped=String(headlineTeamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\  const escaped=String(headlineTeamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\  const escaped=String(teamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&");");
-");
+  const escaped=String(headlineTeamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
   const parts=[];
   const re=new RegExp("(" + (escaped?escaped+"|":"") + "\\d+\\s+ИЗ\\s+\\d+|\\d+\\s*\\/\\s*\\d+)","gi");
   let last=0,m;
