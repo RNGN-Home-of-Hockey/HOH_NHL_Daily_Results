@@ -52,7 +52,7 @@ function pickGeneral(cards,game,limit){
   for(const card of sorted){
     if(out.length>=limit)break;
     if(used.has(key(card)))continue;
-    if(!hasUsefulNumber(card))continue;
+    if(!hasUsefulNumber(card)||!isConcreteStory(card))continue;
     if(tooSimilar(card,out))continue;
     out.push(card);used.add(key(card));
   }
@@ -66,14 +66,14 @@ function pickH2H(cards,limit){
   // Prefer two different H2H stories: e.g. result/handicap + scoring total.
   for(const card of sorted){
     if(out.length>=limit)break;
-    if(!hasUsefulNumber(card))continue;
+    if(!hasUsefulNumber(card)||!isConcreteStory(card))continue;
     const family=marketFamily(card);
     if(usedFamilies.has(family))continue;
     out.push(card);usedFamilies.add(family);
   }
   for(const card of sorted){
     if(out.length>=limit)break;
-    if(out.includes(card)||!hasUsefulNumber(card)||tooSimilar(card,out))continue;
+    if(out.includes(card)||!hasUsefulNumber(card)||!isConcreteStory(card)||tooSimilar(card,out))continue;
     out.push(card);
   }
   return out.slice(0,limit);
@@ -91,6 +91,7 @@ function compare(a,b){
 function hasRealPrice(c){const o=Number(c?.market?.odds);return Number.isFinite(o)&&o>1&&c?.market?.odds_is_demo===false&&c?.market?.odds_source==="provider_live"}
 function score(c){const n=Number(c?.air_score??c?.portfolio_score??c?.score);return Number.isFinite(n)?n:0}
 function hasUsefulNumber(c){return /\d/.test(String(c?.broadcast_title||c?.title||c?.value||""))||Number.isFinite(Number(c?.evidence?.hits))||Number.isFinite(Number(c?.evidence?.team_rank))}
+function isConcreteStory(c){const s=String(c?.broadcast_title||c?.title||"").toUpperCase();return !/НЕЗАВИСИМ.*СИГНАЛ|ПОДТВЕРЖДАЮТ.*СИГНАЛ|РАЗНЫЕ СТАТИСТИЧЕСКИЕ СЛОИ|DATA CORE/.test(s)}
 function teamOf(c,game){
   const candidates=[c?.market?.subject,c?.evidence?.team,c?.team_tri,c?.evidence?.subject_team];
   const home=String(game.home_tri||"").toUpperCase(),away=String(game.away_tri||"").toUpperCase();
