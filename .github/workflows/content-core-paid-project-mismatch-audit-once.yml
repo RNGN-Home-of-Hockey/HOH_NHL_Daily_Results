@@ -32,3 +32,6 @@ jobs:
           echo "PROJECT_MISMATCH_TOTAL|$(jq -c '.result[0].results[0]' /tmp/totals.json)"
           query "SELECT v.id,v.project_id,COUNT(DISTINCT a.project_id) AS account_projects,GROUP_CONCAT(DISTINCT a.project_id) AS projects,COUNT(*) AS publications FROM videos v JOIN publications p ON p.video_id=v.id JOIN social_accounts a ON a.id=p.account_id GROUP BY v.id,v.project_id HAVING COUNT(DISTINCT a.project_id)>1 ORDER BY publications DESC LIMIT 50;" /tmp/mixed.json
           jq -c '.result[0].results[]' /tmp/mixed.json | while read -r row; do echo "MIXED_CANONICAL|$row"; done
+          query "SELECT COUNT(DISTINCT va.id) AS assets,COUNT(DISTINCT va.video_id) AS videos_with_assets FROM video_assets va WHERE va.video_id IN (SELECT DISTINCT v.id FROM videos v JOIN publications p ON p.video_id=v.id JOIN social_accounts a ON a.id=p.account_id WHERE a.project_id<>v.project_id);" /tmp/assets.json
+          echo "PROJECT_MISMATCH_ASSETS|$(jq -c '.result[0].results[0]' /tmp/assets.json)"
+
