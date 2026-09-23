@@ -118,10 +118,26 @@ function consolidateGroup(group) {
     if (support.length >= 4) break;
   }
 
+  const trendWindows=ordered
+    .filter(candidate=>cardCategory(candidate)===primaryCategory)
+    .map(candidate=>({
+      window:Number(candidate?.evidence?.window||0)||null,
+      sample:Number(candidate?.evidence?.sample||0)||null,
+      decisions:Number(candidate?.evidence?.decisions||0)||null,
+      hits:Number(candidate?.evidence?.hits||0)||null,
+      pushes:Number(candidate?.evidence?.pushes||0)||0,
+      hit_rate:Number.isFinite(Number(candidate?.evidence?.hit_rate))?Number(candidate.evidence.hit_rate):null,
+      score:Number(candidate?.score||0),
+    }))
+    .filter(item=>item.window&&item.decisions)
+    .filter((item,index,arr)=>arr.findIndex(x=>x.window===item.window)===index)
+    .sort((a,b)=>a.window-b.window);
+
   primary.evidence = {
     ...(primary.evidence || {}),
     supporting_signals: support,
     independent_support_count: support.length,
+    trend_windows: trendWindows,
     portfolio_policy: "one_card_per_exact_market_with_independent_support",
   };
 
