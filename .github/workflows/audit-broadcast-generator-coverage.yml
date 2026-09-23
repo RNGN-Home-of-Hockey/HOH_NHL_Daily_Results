@@ -61,6 +61,10 @@ jobs:
           structured_angles=0
           numeric_headlines=0
           final_cards=0
+          featured_cards=0
+          featured_form=0
+          featured_h2h=0
+          brief_points=0
           pre_raw=0
           pre_combos=0
           pre_matched=0
@@ -79,6 +83,10 @@ jobs:
             sa="$(echo "$JSON" | jq -r '.market_coverage.structured_angle_count // 0')"
             nh="$(echo "$JSON" | jq -r '.market_coverage.numeric_headline_count // 0')"
             fc="$(echo "$JSON" | jq -r '.market_coverage.card_count // 0')"
+            ff="$(echo "$JSON" | jq -r '[.featured_cards[]? | select(.broadcast_group=="team_form")] | length')"
+            fh="$(echo "$JSON" | jq -r '[.featured_cards[]? | select(.broadcast_group=="h2h")] | length')"
+            ftotal="$(echo "$JSON" | jq -r '.featured_cards | length // 0')"
+            bp="$(echo "$JSON" | jq -r '[.featured_cards[]?.commentator_brief.points[]?] | length')"
             gr="$(echo "$JSON" | jq -r '.generator_diagnostics.raw_candidate_count // 0')"
             gc="$(echo "$JSON" | jq -r '.generator_diagnostics.combination_candidate_count // 0')"
             gm="$(echo "$JSON" | jq -r '.generator_diagnostics.matched_candidate_count // 0')"
@@ -97,6 +105,10 @@ jobs:
             structured_angles=$((structured_angles+sa))
             numeric_headlines=$((numeric_headlines+nh))
             final_cards=$((final_cards+fc))
+            featured_cards=$((featured_cards+ftotal))
+            featured_form=$((featured_form+ff))
+            featured_h2h=$((featured_h2h+fh))
+            brief_points=$((brief_points+bp))
             games_ok=$((games_ok+1))
           done
           if [ "$total_markets" -gt 0 ]; then
@@ -127,6 +139,15 @@ jobs:
           fi
           echo "numeric_headline_pct=$numeric_pct"
           echo "avg_structured_angles_per_card=$angle_avg"
+          echo "featured_cards=$featured_cards"
+          echo "featured_team_form=$featured_form"
+          echo "featured_h2h=$featured_h2h"
+          echo "commentator_brief_points=$brief_points"
+          if [ "$games_ok" -gt 0 ]; then
+            echo "avg_featured_cards_per_game=$(awk -v c="$featured_cards" -v t="$games_ok" 'BEGIN{printf "%.2f",c/t}')"
+            echo "avg_team_form_per_game=$(awk -v c="$featured_form" -v t="$games_ok" 'BEGIN{printf "%.2f",c/t}')"
+            echo "avg_h2h_per_game=$(awk -v c="$featured_h2h" -v t="$games_ok" 'BEGIN{printf "%.2f",c/t}')"
+          fi
           echo "pre_prune_raw_candidates=$pre_raw"
           echo "pre_prune_combination_candidates=$pre_combos"
           echo "pre_prune_matched_candidates=$pre_matched"
