@@ -21,6 +21,12 @@ const insights=[
     id:"tt-car",category:"feature",score:86,
     title:"CAR scored 3+ in 8/10",evidence:{team:"CAR",sample:10,hit_rate:.8},
     market:{type:"team_total",period:"GAME",subject:"CAR",side:"over",line:2.5,label:"CAR ТБ 2.5"}
+  },
+  {
+    id:"attack-car",category:"advanced_market",score:91,
+    title:"CAR top-2 NHL in dangerous chances created",
+    evidence:{team:"CAR",opponent:"FLA",metric:"xgf60",team_rank:2,opponent_rank:25,sample:82,advanced_snapshot:true},
+    market:{type:"team_total",period:"GAME",subject:"CAR",side:"over",line:2.5,label:"CAR attack context"}
   }
 ];
 const markets=[
@@ -33,6 +39,9 @@ assert.ok(cards.length>=5,"market-first engine should create multiple candidates
 assert.ok(cards.some(c=>c.market.type==="moneyline"&&c.market.odds===1.79));
 assert.ok(cards.some(c=>c.market.type==="handicap"&&c.market.line===-1.5));
 assert.ok(cards.some(c=>c.market.type==="team_total"&&c.market.line===3.5));
+const tt35=cards.filter(c=>c.market.type==="team_total"&&c.market.line===3.5);
+assert.ok(tt35.some(c=>(c.evidence?.source_insight_ids||[]).includes("attack-car")),"line-independent attack context may support the actual 3.5 market");
+assert.equal(tt35.some(c=>(c.evidence?.source_insight_ids||[]).includes("tt-car")),false,"2.5 historical hit-rate must never be relabeled as 3.5");
 assert.ok(cards.some(c=>c.evidence?.combination_support_count===2),"independent evidence pairs should be created");
 assert.ok(cards.every(c=>c.market.odds_is_demo===false&&c.market.odds_source==="provider_live"));
 
