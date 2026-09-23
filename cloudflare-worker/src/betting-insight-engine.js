@@ -141,6 +141,11 @@ export function annotateAirUtility(input, game=null) {
   let score=Math.max(25,Math.min(92,sourceScore));
   const reasons=[];
 
+  if(card?.evidence?.requires_start_confirmation===true){
+    score-=16;
+    reasons.push(["вратарь не подтверждён",-16]);
+  }
+
   if(realPrice){
     if(odds<1.30){score-=28;reasons.push(["низкий кэф",-28]);}
     else if(odds<1.40){score-=18;reasons.push(["низкий кэф",-18]);}
