@@ -278,6 +278,7 @@ async function setCardStatus(request,env,cardId){
   } else {
     await env.DB.prepare(`UPDATE broadcast_cards SET status=?,shown_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE card_id=?;`).bind(target,cardId).run();
   }
+  const saved=await loadCard(env.DB,cardId);
   if(target==="shown"||target==="hidden"){
     await recordOperatorAction(env.DB,{
       gamePk:current.game_pk,
@@ -285,11 +286,11 @@ async function setCardStatus(request,env,cardId){
       action:target,
       operatorId:normalizeOperatorId(body.operator_id)||"legacy",
       operatorName:normalizeOperatorName(body.operator_name,body.operator_id||"legacy"),
-      headline:current.headline_ru,
-      statText:current.stat_text_ru,
+      headline:saved?.headline_ru||current.headline_ru,
+      statText:saved?.stat_text_ru||current.stat_text_ru,
     });
   }
-  return json({ok:true,action:"status_updated",render,card:await loadCard(env.DB,cardId)});
+  return json({ok:true,action:"status_updated",render,card:saved});
 }
 
 async function listOperatorActions(request,env){
@@ -347,8 +348,8 @@ async function syncCardSnapshotForShow(db,current,candidate){
   }
   const subject=String(market.subject||market.side||candidate.evidence?.team||candidate.team_tri||"").slice(0,120);
   const headline=String(candidate.broadcast_title||candidate.title||candidate.value||candidate.eyebrow||"HOH INSIGHT").slice(0,180);
-  const stat=String(market.label||candidate.value||"").slice(0,240);
-  const source=String(candidate.explanation||candidate.note||"HOH Data Core").slice(0,500);
+  const stat=String([market.label,candidate.broadcast_subtitle].filter(Boolean).join(" · ")||candidate.value||"").slice(0,240);
+  const source=String(operatorNarrativeText(candidate)||candidate.explanation||candidate.note||"HOH Data Core").slice(0,2400);
   const payload=JSON.stringify(candidate).slice(0,50000);
   await db.prepare(`
     UPDATE broadcast_cards
