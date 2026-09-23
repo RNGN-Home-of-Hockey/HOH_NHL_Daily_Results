@@ -16,8 +16,12 @@ export async function buildProviderMarketHistoryInsights(db,game,providerMarkets
     [game.home_tri]:homeR.results||[],
   };
 
+  return evaluateProviderMarketHistoryRows(game,rowsByTeam,providerMarkets);
+}
+
+export function evaluateProviderMarketHistoryRows(game,rowsByTeam,providerMarkets=[]){
   const markets=dedupeMarkets(
-    providerMarkets
+    (providerMarkets||[])
       .filter(m=>!(m?.is_live===true||Number(m?.is_live||0)===1))
       .map(normalizeWinlineMarket)
       .filter(Boolean)
@@ -26,7 +30,7 @@ export async function buildProviderMarketHistoryInsights(db,game,providerMarkets
   const out=[];
   for(const market of markets){
     for(const window of WINDOWS){
-      const result=evaluateMarket(market,game,rowsByTeam,window);
+      const result=evaluateMarket(market,game,rowsByTeam||{},window);
       if(!result)continue;
       const threshold=displayThreshold(market);
       if(result.rate<threshold||result.decisions<minimumDecisions(window))continue;
