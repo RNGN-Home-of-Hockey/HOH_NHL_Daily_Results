@@ -27,8 +27,9 @@ export function buildBroadcastAngles(card={},profile={}){
     .slice(0,24);
 }
 
-export function diversifyBroadcastAngles(cards=[]){
+export function diversifyBroadcastAngles(cards=[],options={}){
   const familyCount=new Map(),shapes=new Set();
+  const recentShapes=new Set((options.recent_headlines||[]).map(titleShape).filter(Boolean));
   return cards.map((card,index)=>{
     const vars=Array.isArray(card.broadcast_angle_variants)?card.broadcast_angle_variants:[];
     if(!vars.length)return card;
@@ -38,6 +39,7 @@ export function diversifyBroadcastAngles(cards=[]){
     for(const v of candidates){
       const f=String(v.family||"other"),shape=titleShape(v.title);
       let s=Number(v.score||0)-(familyCount.get(f)||0)*8-(shapes.has(shape)?24:0);
+      if(recentShapes.has(shape))s-=18;
       if(index<8&&(familyCount.get(f)||0)>=2)s-=12;
       if(s>bestScore){best=v;bestScore=s}
     }
@@ -159,7 +161,14 @@ function put(out,id,family,title,subtitle,score,reason){if(title)out.push({id,fa
 function unique(xs){const seen=new Set();return xs.filter(x=>{const k=String(x.title||"");if(!k||seen.has(k))return false;seen.add(k);return true})}
 function cleanSource(v){return String(v||"").replace(/\s+/g," ").replace(/\s+([,:])/g,"$1").trim()}
 function clean(v){return String(v||"").replace(/\s+/g," ").replace(/\s+([,:])/g,"$1").trim().toUpperCase()}
-function titleShape(v){return String(v||"").replace(/\d+(?:[.,]\d+)?/g,"#").replace(/\s+/g," ").trim()}
+function titleShape(v){
+  return String(v||"")
+    .toUpperCase()
+    .replace(/^[^—:]+(?=\s*[—:])/,"TEAM")
+    .replace(/\d+(?:[.,]\d+)?/g,"#")
+    .replace(/\s+/g," ")
+    .trim();
+}
 function period(v){const p=String(v||"GAME").toUpperCase();return p==="P1"?"1-Й ПЕРИОД · ":p==="P2"?"2-Й ПЕРИОД · ":p==="P3"?"3-Й ПЕРИОД · ":p==="REG"?"60 МИН · ":""}
 function signed(v){const x=n(v);if(x===null)return"";return(x>0?"+":"")+line(x)}
 function line(v){const x=n(v);if(x===null)return"";return(Number.isInteger(x)?String(x):String(Math.round(x*100)/100)).replace(".",",")}
