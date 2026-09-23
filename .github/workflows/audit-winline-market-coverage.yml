@@ -78,6 +78,16 @@ jobs:
             ORDER BY selections DESC,freetext ASC
             LIMIT 120;
           "
+          echo '=== SAMPLE FUTURE EVENT 2026020001 ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT m.winline_market_id,m.market_type,m.subject_key,m.outcome_name,m.odds,
+                   json_extract(m.raw_json,'$.freetext') freetext,
+                   json_extract(m.raw_json,'$.value') line_value
+            FROM winline_markets m
+            JOIN winline_events e ON e.winline_event_id=m.winline_event_id
+            WHERE e.game_pk=2026020001 AND m.active=1 AND m.odds IS NOT NULL
+            ORDER BY m.market_type,m.winline_market_id;
+          "
           echo '=== LIVE FREETEXT FAMILIES ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
             SELECT
