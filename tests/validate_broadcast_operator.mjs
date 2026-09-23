@@ -133,12 +133,20 @@ const visible={
   title:'CAR ЗАКРЫЛА ФОРУ +1.5 В 59 ИЗ ПОСЛЕДНИХ 80 МАТЧЕЙ',
   broadcast_title:'БЕЗ ПОРАЖЕНИЯ В 2+ ШАЙБЫ — 74% МАТЧЕЙ · 80 ИГР',
   broadcast_detail:'Точная выборка: 59 из 80',
+  broadcast_subtitle:'59 из 80 · текущая серия 4',
+  operator_narrative:{
+    headline:'CAR: ПОЛНАЯ СТАТИСТИКА ДЛЯ КОММЕНТАТОРА',
+    details:['Почему выбрана эта эфирная подача: точная частота линии.','Динамика этой же точной линии: 10 матчей 8/10 · 20 матчей 15/20.']
+  },
   market:{type:'handicap',subject:'CAR',side:'home',line:1.5,label:'CAR +1.5',odds:2.27,odds_is_demo:false,odds_source:'provider_live'}
 };
 r=await callStatus('shown',true,visible);
 assert.equal(r.status,200,'SHOW with visible snapshot should succeed');
 assert.equal(cards.get('insight-2026020001-fixture').manual_odds,2.27,'persisted odds must match visible UI price');
 assert.equal(cards.get('insight-2026020001-fixture').headline_ru,visible.broadcast_title,'persisted broadcast headline must match visible UI copy');
+assert.match(cards.get('insight-2026020001-fixture').stat_text_ru,/CAR \+1\.5 · 59 из 80 · текущая серия 4/,'SHOW must preserve market label plus TV subtitle');
+assert.match(cards.get('insight-2026020001-fixture').source_note_ru,/ПОЛНАЯ СТАТИСТИКА ДЛЯ КОММЕНТАТОРА/,'SHOW must preserve expanded operator narrative');
+assert.match(cards.get('insight-2026020001-fixture').source_note_ru,/20 матчей 15\/20/,'SHOW must not truncate the useful operator context');
 assert.equal(JSON.parse(cards.get('insight-2026020001-fixture').payload_json).market.odds,2.27,'payload odds must match visible UI price');
 assert.equal(renderCalls,2,'changed visible price must invalidate old rendered PNG');
 
