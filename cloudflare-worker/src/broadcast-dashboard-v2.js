@@ -781,7 +781,9 @@ function marketDescription(card,team){
   if(type==="game_total"){const dir=side==="under"?"ТОТАЛ МЕНЬШЕ":"ТОТАЛ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?String(line).replace(".",","):"")}
   if(type==="moneyline")return"ПОБЕДА";
   if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";
+  if(type==="period_1_result")return"1-Й ПЕРИОД · ПОБЕДА";
   if(type==="period_2_result")return"2-Й ПЕРИОД · ПОБЕДА";
+  if(type==="period_3_result")return"3-Й ПЕРИОД · ПОБЕДА";
   const fallback=displayText(m.label||"СТАВКА WINLINE").replace(team.name,"").replace(/^\\s*[·—-]+\\s*/,"").trim();
   return fallback||"СТАВКА WINLINE";
 }
@@ -945,6 +947,46 @@ async function setBroadcastStatus(c,status){
   await refreshActions();
   return d;
 }
+async function hideSelectedMatch(){
+  if(!selected)return;
+  const b=$('#overlay-off');
+  if(!leaseOwned){alert('Матч сейчас ведёт другой оператор');return}
+  const old=b?.textContent||'ВЫКЛЮЧИТЬ ПОКАЗ МАТЧА';
+  if(b){b.disabled=true;b.textContent='ВЫКЛЮЧАЮ…'}
+  try{
+    const state=await api('/api/broadcast/state?game='+encodeURIComponent(selected));
+    const cardId=String(state?.on_air?.card_id||'');
+    if(!cardId){
+      renderAir(null);
+      if(b)b.textContent='УЖЕ ВЫКЛЮЧЕНО';
+      setTimeout(()=>{if(b)b.textContent=old},1200);
+      return;
+    }
+    const d=await operatorApi('/api/broadcast/operator/cards/'+encodeURIComponent(cardId)+'/status',{
+      method:'POST',
+      body:JSON.stringify({status:'hidden',...identity()})
+    });
+    if(Array.isArray(currentData?.persisted_cards)){
+      const p=currentData.persisted_cards.find(x=>String(x.card_id)===cardId);
+      if(p)p.status='hidden';
+    }
+    for(const card of currentCards){
+      if(String(card.__cardId||candidateCardId(card))===cardId)card.__status='hidden';
+    }
+    syncGameOnAir(cardId,'hidden');
+    renderAir(null);
+    renderCards(currentCards);
+    await refreshActions();
+    if(b)b.textContent='ПОКАЗ ВЫКЛЮЧЕН';
+    setTimeout(()=>{if(b)b.textContent=old},1400);
+    return d;
+  }catch(e){
+    alert(e.message);
+    if(b)b.textContent=old;
+  }finally{
+    if(b)b.disabled=false;
+  }
+}
 async function toggleShow(i,b){
   const c=currentCards[i];if(!c)return;
   b.disabled=true;
@@ -987,7 +1029,7 @@ function renderActions(rows){
 function renderPlayers(rows){$('#players').innerHTML=`<div class="prow head"><div>Игрок</div><div class="num">Г</div><div class="num">П</div><div class="num">О</div><div class="num">Бр</div></div>`+(rows.length?rows.slice(0,10).map(p=>`<div class="prow"><div><div class="pname">${esc(p.full_name_ru||p.full_name_en)}</div><div class="pmeta">${esc(p.team_tri)} · ${esc(p.position_code||'—')} · #${esc(p.sweater_number??'—')}</div></div><div class="num">${p.goals??0}</div><div class="num">${p.assists??0}</div><div class="num">${p.points??0}</div><div class="num">${p.shots??'—'}</div></div>`).join(''):'<div class="empty">Нет статистики</div>')}
 function renderEvents(rows){$('#events').innerHTML=rows.length?rows.slice(0,18).map(e=>`<div class="event"><div class="etime">P${esc(e.period_number??'—')} ${esc(e.time_in_period||'')}</div><div><div class="etype">${e.event_type==='goal'||e.event_type==='shootout-goal'?'ГОЛ':e.event_type==='penalty'?'УДАЛЕНИЕ':'КОНЕЦ ПЕРИОДА'}${e.team_tri?' · '+esc(e.team_tri):''}</div><div class="edesc">${esc(e.description||peopleText(e.people)||'')}</div></div><div class="escore">${e.away_score??''}${e.away_score!==null&&e.away_score!==undefined?':':''}${e.home_score??''}</div></div>`).join(''):'<div class="empty">Нет ключевых событий</div>'}
 function peopleText(v){return String(v||'').split(';;').map(x=>x.split('|')[0]).filter(Boolean).join(', ')}
-$('#close').onclick=()=>$('#drawer').classList.remove('open');$('#drawer').onclick=e=>{if(e.target===$('#drawer'))$('#drawer').classList.remove('open')};$('#overlay-copy').onclick=async()=>{if(!selected)return;const b=$('#overlay-copy'),old=b.textContent;try{await navigator.clipboard.writeText(absoluteOverlayUrl(selected));b.textContent='URL СКОПИРОВАН';setTimeout(()=>{b.textContent=old},1400)}catch{prompt('Скопируй URL overlay для OBS',absoluteOverlayUrl(selected))}};window.addEventListener('pagehide',()=>{if(selected)fetch('/api/broadcast/operator/leases/'+selected,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator_id:operatorId}),keepalive:true}).catch(()=>{})});load();
+$('#close').onclick=()=>$('#drawer').classList.remove('open');$('#drawer').onclick=e=>{if(e.target===$('#drawer'))$('#drawer').classList.remove('open')};$('#overlay-off').onclick=hideSelectedMatch;$('#overlay-copy').onclick=async()=>{if(!selected)return;const b=$('#overlay-copy'),old=b.textContent;try{await navigator.clipboard.writeText(absoluteOverlayUrl(selected));b.textContent='URL СКОПИРОВАН';setTimeout(()=>{b.textContent=old},1400)}catch{prompt('Скопируй URL overlay для OBS',absoluteOverlayUrl(selected))}};window.addEventListener('pagehide',()=>{if(selected)fetch('/api/broadcast/operator/leases/'+selected,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator_id:operatorId}),keepalive:true}).catch(()=>{})});load();
 
 }
 
@@ -999,7 +1041,7 @@ const DASHBOARD_HTML=String.raw`<!doctype html>
 ${BROADCAST_CARD_CSS}
 .airmeta{display:flex;align-items:center;gap:7px;padding:8px 14px 7px;border-bottom:1px solid #29292f;font-size:10px}.airmeta>b{font-size:15px;min-width:28px}.airmeta>strong{font-size:9px;letter-spacing:.08em}.airmeta>div{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}.airmeta span{font-size:8px;color:#9a9aa2;border:1px solid #303037;border-radius:999px;padding:3px 6px}.airmeta.great>b,.airmeta.great>strong{color:var(--green)}.airmeta.good>b,.airmeta.good>strong{color:#d8ef9d}.airmeta.mid>b,.airmeta.mid>strong{color:#ffd28a}.airmeta.low>b,.airmeta.low>strong{color:#8b8b94}.signal-detail{padding:0 14px 9px;color:#7f7f88;font-size:9px;letter-spacing:.02em}
 
-:root{--bg:#080808;--side:#0b0b0c;--panel:#111113;--panel2:#17171a;--line:#2a2a2f;--text:#f8f8f6;--muted:#85858d;--orange:#ff5a1f;--lav:#c8b7ff;--lav2:#7869a7;--green:#83e6b1;--red:#ff6161}.overlaytools{display:flex;gap:7px;align-items:center;margin-top:10px;flex-wrap:wrap}.overlayopen,.overlaycopy{font-size:8px;font-weight:950;letter-spacing:.08em;border-radius:8px;padding:8px 10px;text-decoration:none}.overlayopen{background:#f1f1f0;color:#0b0b0d}.overlaycopy{border:1px solid #35353b;background:#17171a;color:#aaaab2;cursor:pointer}.overlaycopy:hover{color:#fff;border-color:#55555e}
+:root{--bg:#080808;--side:#0b0b0c;--panel:#111113;--panel2:#17171a;--line:#2a2a2f;--text:#f8f8f6;--muted:#85858d;--orange:#ff5a1f;--lav:#c8b7ff;--lav2:#7869a7;--green:#83e6b1;--red:#ff6161}.overlaytools{display:flex;gap:7px;align-items:center;margin-top:10px;flex-wrap:wrap}.overlayopen,.overlaycopy,.overlayoff{font-size:8px;font-weight:950;letter-spacing:.08em;border-radius:8px;padding:8px 10px;text-decoration:none}.overlayopen{background:#f1f1f0;color:#0b0b0d}.overlaycopy{border:1px solid #35353b;background:#17171a;color:#aaaab2;cursor:pointer}.overlaycopy:hover{color:#fff;border-color:#55555e}.overlayoff{border:1px solid #7a252a;background:#44171a;color:#ff9da2;cursor:pointer}.overlayoff:hover{background:#5a1d21;color:#fff}.overlayoff:disabled{opacity:.45;cursor:not-allowed}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}body{overflow-x:hidden}button{font:inherit}
 .app{display:grid;grid-template-columns:290px minmax(0,1fr);min-height:100vh}.side{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--line);background:var(--side);padding:20px 16px}.brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px}.brandname{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:950}.mark{width:18px;height:18px;border-radius:4px;background:var(--orange);box-shadow:10px 0 0 var(--lav)}.alpha{font-size:9px;letter-spacing:.15em;color:#777;border:1px solid #29292e;padding:5px 8px;border-radius:99px}.label{font-size:9px;font-weight:900;letter-spacing:.16em;color:#67676f;text-transform:uppercase;margin:18px 6px 8px}.nav{display:grid;gap:4px}.navitem{padding:11px 12px;border-radius:11px;color:#9a9aa1;display:flex;align-items:center;gap:10px;text-decoration:none;cursor:pointer;border:0;background:transparent;font:inherit;text-align:left}.navitem:hover{background:#141416;color:#fff}.navitem.active{background:#1a1a1d;color:#fff}.dot{width:7px;height:7px;border-radius:50%;background:#53535a}.active .dot{background:var(--orange);box-shadow:0 0 0 5px rgba(255,90,31,.1)}.soon{margin-left:auto;font-size:10px;color:#555}.sidecount{font-size:10px;color:#6f6f76;margin:0 6px 10px}.games{display:grid;gap:5px}
 .gamegroup{border:1px solid #242429;border-radius:12px;background:#0d0d0f;overflow:hidden}.gamegroup+.gamegroup{margin-top:4px}.grouphead{list-style:none;display:grid;grid-template-columns:1fr auto 16px;align-items:center;gap:8px;padding:10px 11px;color:#9b9ba4;font-size:10px;font-weight:950;letter-spacing:.11em;text-transform:uppercase;cursor:pointer;user-select:none}.grouphead::-webkit-details-marker{display:none}.grouphead:hover{background:#151517;color:#fff}.groupcount{min-width:23px;text-align:center;color:#777780;border:1px solid #2d2d33;border-radius:999px;padding:2px 6px;font-size:9px;letter-spacing:0}.groupchev{font-size:15px;line-height:1;color:#666;transform:rotate(0deg);transition:transform .15s ease}.gamegroup[open] .groupchev{transform:rotate(180deg)}.grouprows{border-top:1px solid #202024;padding:4px}.grouprows .game{width:100%}
@@ -1047,7 +1089,7 @@ ${BROADCAST_CARD_CSS}
   <div class="label">Ближайшие матчи NHL</div><div class="sidecount" id="counts">загрузка...</div><div class="games" id="games"></div>
 </aside>
 <main class="main">
-  <div class="top"><div class="heading"><h1>Broadcast Stats / Control Room</h1><p>Реальные данные NHL → HOH Data Core → эфир</p><div class="overlaytools"><a id="overlay-open" class="overlayopen" href="/broadcast/overlay" target="_blank" rel="noopener">ОТКРЫТЬ OVERLAY ЭТОГО МАТЧА ↗</a><button id="overlay-copy" class="overlaycopy" type="button">СКОПИРОВАТЬ URL ДЛЯ OBS</button></div></div><div class="air" id="air"><div class="airtag"><span class="airdot"></span><span>ON AIR</span></div><div class="airtext" id="airtext">Сейчас ничего не показано</div></div></div>
+  <div class="top"><div class="heading"><h1>Broadcast Stats / Control Room</h1><p>Реальные данные NHL → HOH Data Core → эфир</p><div class="overlaytools"><a id="overlay-open" class="overlayopen" href="/broadcast/overlay" target="_blank" rel="noopener">ОТКРЫТЬ OVERLAY ЭТОГО МАТЧА ↗</a><button id="overlay-copy" class="overlaycopy" type="button">СКОПИРОВАТЬ URL ДЛЯ OBS</button><button id="overlay-off" class="overlayoff" type="button">ВЫКЛЮЧИТЬ ПОКАЗ МАТЧА</button></div></div><div class="air" id="air"><div class="airtag"><span class="airdot"></span><span>ON AIR</span></div><div class="airtext" id="airtext">Сейчас ничего не показано</div></div></div>
   <section class="hero" id="hero"><div class="empty">Выбираю матч...</div></section>
   <section class="metrics" id="metrics"></section>
   <section class="work">
