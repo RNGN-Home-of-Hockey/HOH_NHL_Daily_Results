@@ -17,7 +17,6 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
       TARGET_DATABASE_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
-      RUNTIME_ARTIFACT_URL: "https://sdmntprnortheu.oaiusercontent.com/files/00000000-7d8c-81f4-a88e-de9ec1847744/raw?se=2026-09-23T11%3A04%3A28Z&sp=r&sv=2026-02-06&sr=b&scid=3c227f44-6610-57e9-927f-b8627f8ff8b5&skoid=a0b9f82a-c86e-4064-a822-2aa38890bb37&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-23T08%3A19%3A55Z&ske=2026-09-24T08%3A19%3A55Z&sks=b&skv=2026-02-06&sig=DzXZWyGX8vKnJ/gS5JZsi5pYgh1X3QWZDYIpm1yFDIg%3D"
       PAID_CORE_URL: https://rngn-content-core-paid-shadow.znamteam-903.workers.dev
       PAID_DASH_URL: https://rngn-content-dashboard-paid-shadow.znamteam-903.workers.dev
     steps:
@@ -26,19 +25,18 @@ jobs:
         with:
           node-version: 24
 
-      - name: Fetch Content Core runtime
+      - name: Reconstruct Content Core runtime
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/content-core-runtime /tmp/artifact
-          mkdir -p /tmp/content-core-runtime /tmp/artifact
-          curl --fail --silent --show-error --location "$RUNTIME_ARTIFACT_URL" -o /tmp/runtime.zip
-          unzip -q /tmp/runtime.zip -d /tmp/artifact
-          tar -xzf /tmp/artifact/content-core-runtime.tar.gz -C /tmp/content-core-runtime
+          rm -rf /tmp/content-core-runtime
+          mkdir -p /tmp/content-core-runtime
+          cat ops/content-core-runtime-1-of-4.b64               ops/content-core-runtime-2-of-4.b64               ops/content-core-runtime-3-of-4.b64               ops/content-core-runtime-4-of-4.b64             | base64 -d > /tmp/content-core-runtime.tar.gz
+          tar -xzf /tmp/content-core-runtime.tar.gz -C /tmp/content-core-runtime
           test -f /tmp/content-core-runtime/src/index-v3.ts
           test -f /tmp/content-core-runtime/src/matcher-worker.ts
           test -f /tmp/content-core-runtime/dashboard/src/index-v14.ts
-          echo "PAID_FINAL_RUNTIME|files=$(find /tmp/content-core-runtime -type f | wc -l)"
+          echo "PAID_FINAL_RUNTIME|bytes=$(wc -c < /tmp/content-core-runtime.tar.gz)|files=$(find /tmp/content-core-runtime -type f | wc -l)"
 
       - name: Prepare paid production configs
         working-directory: /tmp/content-core-runtime
