@@ -301,6 +301,7 @@ async function broadcastGameRoute(env, gamePk) {
     let bettingInsights=[];
     let bettingInsightsDegraded=false;
     let providerMarkets=[];
+    let generatorDiagnostics={};
     try {
       providerMarkets=await loadBroadcastWinlineMarkets(env.DB,game);
       const statisticalInsights=await buildBettingInsights(env.DB,game);
@@ -308,6 +309,7 @@ async function broadcastGameRoute(env, gamePk) {
         const pricedInsights=await buildBettingInsights(env.DB,game,{
           provider_markets:providerMarkets,
           market_max_age_ms:broadcastWinlineMaxAgeMs(game),
+          generator_diagnostics:generatorDiagnostics,
         });
         bettingInsights=mergeBroadcastInsights(statisticalInsights,pricedInsights);
       }else{
@@ -341,6 +343,7 @@ async function broadcastGameRoute(env, gamePk) {
       betting_insights_degraded:bettingInsightsDegraded,
       provider_market_count:providerMarkets.length,
       market_coverage:summarizeMarketCoverage(providerMarkets,bettingInsights),
+      generator_diagnostics:generatorDiagnostics,
       data_degraded_sections:dataDegradedSections,
       quick_cards:quickCards,
       persisted_cards:persistedCards,
