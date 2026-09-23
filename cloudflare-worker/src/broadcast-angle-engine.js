@@ -15,7 +15,8 @@ export function buildBroadcastAngles(card={},profile={}){
   if(fallback){
     const numeric=/\d/.test(fallback);
     const advancedRank=profile?.team&&n(profile?.teamRank)!==null;
-    const sourceScore=numeric&&!advancedRank?110:numeric?80:52;
+    const jargon=/\b(?:xg|xgf|xga|corsi|fenwick|gsax|pdo)\b/i.test(fallback);
+    const sourceScore=numeric&&!advancedRank&&!jargon?110:numeric?80:52;
     put(out,"source","source_fact",ensureNumber(fallback,card,profile),marketSub(m),sourceScore,"исходный факт уже сформулирован человечески");
   }
 
@@ -58,7 +59,8 @@ function addHistory(out,e,m){
 function addRanks(out,p,m){
   if(!p?.team||n(p.teamRank)===null)return;
   const rank=Math.round(p.teamRank),metric=String(p.meta?.tv||"ПОКАЗАТЕЛЮ");
-  put(out,"league_rank","league_rank",`${p.team} — ${rank<=5?`ТОП-${rank}`:`№${rank}`} НХЛ ПО ${metric}`,p.teamValue!==null&&p.teamValue!==undefined?fmtMetric(p.teamValue,p.meta):marketSub(m),104,"место в НХЛ");
+  const rankSubtitle=n(p.sample)!==null?`ВЫБОРКА ${Math.round(p.sample)} МАТЧЕЙ`:marketSub(m);
+  put(out,"league_rank","league_rank",`${p.team} — ${rank<=5?`ТОП-${rank}`:`№${rank}`} НХЛ ПО ${metric}`,rankSubtitle,104,"место в НХЛ");
   if(n(p.opponentRank)!==null&&p.opponent){
     const opp=Math.round(p.opponentRank),gap=Math.abs(opp-rank);
     const sameMetric=!p.opponentMetric||p.opponentMetric===p.metric;
