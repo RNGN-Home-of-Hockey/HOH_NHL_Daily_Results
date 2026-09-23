@@ -1,0 +1,51 @@
+name: Paid Account D1 Usage Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/paid-account-d1-usage-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  usage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Capture paid-account D1 usage
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const now=new Date();
+          const start=now.toISOString().slice(0,10)+'T00:00:00Z';
+          const query=`{viewer{accounts(filter:{accountTag:"${account}"}){
+            totals:d1AnalyticsAdaptiveGroups(limit:1,filter:{datetimeHour_geq:"${start}",datetimeHour_leq:"${now.toISOString()}"}) {
+              sum { rowsRead rowsWritten readQueries writeQueries }
+            }
+            hours:d1AnalyticsAdaptiveGroups(limit:48,filter:{datetimeHour_geq:"${start}",datetimeHour_leq:"${now.toISOString()}"},orderBy:[dimensions_datetimeHour_ASC]) {
+              sum { rowsRead rowsWritten readQueries writeQueries }
+              dimensions { datetimeHour }
+            }
+          }}}`;
+          const r=await fetch('https://api.cloudflare.com/client/v4/graphql',{
+            method:'POST',
+            headers:{Authorization:'Bearer '+process.env.CLOUDFLARE_API_TOKEN,'Content-Type':'application/json'},
+            body:JSON.stringify({query})
+          });
+          const d=await r.json();
+          if(!r.ok||d.errors?.length) throw new Error(JSON.stringify(d.errors||d));
+          const a=d.data?.viewer?.accounts?.[0];
+          if(!a) throw new Error('No account analytics returned');
+          console.log('PAID_D1_TOTALS|'+JSON.stringify({at:now.toISOString(),account,from:start,...(a.totals?.[0]?.sum||{})}));
+          console.log('PAID_D1_HOURS|'+JSON.stringify((a.hours||[]).map(x=>({hour:x.dimensions?.datetimeHour,...x.sum}))));
+          NODE
