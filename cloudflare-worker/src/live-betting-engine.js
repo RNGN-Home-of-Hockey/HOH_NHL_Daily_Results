@@ -1,5 +1,7 @@
 import { fetchNhlJson } from "./data-core-importer.js";
 import { withDemoOdds } from "./demo-winline-odds.js";
+import { applyWinlineMarkets } from "./winline-market-adapter.js";
+import { buildNarrative } from "./narrative-engine.js";
 
 const NHL_BASE = "https://api-web.nhle.com/v1";
 const SHOT_TYPES = new Set(["shot-on-goal", "goal"]);
@@ -68,6 +70,35 @@ export async function buildLiveGameSnapshot(gamePk, fetchImpl = fetch) {
   };
 }
 
+export function attachLiveWinlineMarkets(snapshot, providerMarkets, options={}) {
+  if(!snapshot?.game||!Array.isArray(snapshot.cards))return snapshot;
+  const liveMarkets=(providerMarkets||[]).filter(m=>m?.is_live===true||Number(m?.is_live||0)===1);
+  let cards=[];
+  try{
+    cards=applyWinlineMarkets(snapshot.cards,liveMarkets,{
+      now:options.now,
+      max_age_ms:options.market_max_age_ms||5*60*1000,
+    });
+  }catch(error){
+    console.error("live Winline market adapter failed",error);
+    cards=[];
+  }
+  cards=cards.map(card=>{
+    const narrative=buildNarrative(card,{game:snapshot.game});
+    return {
+      ...card,
+      broadcast_title:narrative?.tv?.title||card.title,
+      broadcast_variants:narrative?.tv?.variants||[card.title],
+      broadcast_subtitle:narrative?.tv?.subtitle||null,
+      operator_narrative:narrative?.operator||null,
+      air_score:Math.max(0,Math.min(100,Math.round(Number(card.score||0)))),
+      air_label:"LIVE",
+      air_reasons:["live pressure","реальная линия"],
+    };
+  });
+  return {...snapshot,cards,provider_market_count:liveMarkets.length,priced_live_cards:cards.length};
+}
+
 export function buildLiveCards(game, shots) {
   if (!game?.home_tri || !game?.away_tri || !Array.isArray(shots)) return [];
   const cards = [];
@@ -77,6 +108,8 @@ export function buildLiveCards(game, shots) {
   addRecentMinutesCard(cards, game, shots, 5, 6, 0.72);
   addCurrentPeriodCard(cards, game, shots);
   addUnansweredRunCard(cards, game, shots);
+  addScoreStateCards(cards, game, shots);
+  addPeriodTotalPressureCard(cards, game, shots);
 
   return dedupe(cards)
     .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
@@ -181,7 +214,8 @@ function addCurrentPeriodCard(cards, game, shots) {
       share: round3(share),
     },
     market: {
-      type: "period_next_goal_team",
+      type: "next_goal_team",
+      period: `P${period}`,
       subject: leader,
       side: leader,
       label: `${period}-й период: следующий гол — ${leader}`,
@@ -220,6 +254,78 @@ function addUnansweredRunCard(cards, game, shots) {
       label: `Следующий гол — ${lastTeam}`,
     },
   }));
+}
+
+function addScoreStateCards(cards,game,shots){
+  const home=game.home_tri,away=game.away_tri;
+  const hs=Number(game.home_score||0),as=Number(game.away_score||0);
+  const period=Number(game.period_number||0);
+  if(!period||!["LIVE","CRIT"].includes(String(game.game_state||"").toUpperCase()))return;
+  const latest=shots.at(-1);
+  const cutoff=Number.isFinite(latest?.elapsed_seconds)?latest.elapsed_seconds-10*60:null;
+  const recent=cutoff===null?shots.slice(-12):shots.filter(x=>Number.isFinite(x.elapsed_seconds)&&x.elapsed_seconds>=cutoff);
+  if(recent.length<6)return;
+  const counts=teamCounts(recent,game);
+  const [pressureTeam,pressureShots]=leaderEntry(counts);
+  const other=opponent(game,pressureTeam),otherShots=Number(counts[other]||0);
+  const share=pressureShots/Math.max(1,recent.length);
+  if(share<.64)return;
+
+  const pressureScore=pressureTeam===home?hs:as;
+  const otherScore=pressureTeam===home?as:hs;
+  const state=pressureScore>otherScore?"leading":pressureScore<otherScore?"trailing":"tied";
+  let score=86+Math.min(8,Math.round((share-.64)*25));
+  if(state==="trailing")score+=3;
+  cards.push(card({
+    game,
+    id:`live:${game.game_pk}:scorestate:${pressureTeam}:${latest?.sort_order||0}`,
+    type:"live_moneyline_pressure",
+    score:Math.min(98,score),
+    eyebrow:state==="trailing"?"ДАВЛЕНИЕ ПРИ ОТСТАВАНИИ":state==="leading"?"КОНТРОЛЬ ПРИ ЛИДЕРСТВЕ":"ДАВЛЕНИЕ ПРИ РАВНОМ СЧЁТЕ",
+    value:`${pressureShots}:${otherShots} по броскам · 10 мин`,
+    title:state==="trailing"
+      ?`${pressureTeam} УСТУПАЕТ, НО НАНЁС ${pressureShots} ИЗ ${recent.length} ПОСЛЕДНИХ БРОСКОВ`
+      :state==="leading"
+        ?`${pressureTeam} ВЕДЁТ И СОХРАНЯЕТ БРОСКОВОЕ ПРЕИМУЩЕСТВО`
+        :`${pressureTeam} ДАВИТ ПРИ РАВНОМ СЧЁТЕ — ${pressureShots} ИЗ ${recent.length} БРОСКОВ`,
+    explanation:`Score-state: ${state}. Последние ~10 минут: ${pressureTeam} ${pressureShots}, ${other} ${otherShots} по броскам в створ. Это live-контекст для текущей линии победы, а не оценка вероятности.`,
+    evidence:{minutes:10,score_state:state,team:pressureTeam,opponent:other,shots_by_team:counts,shot_share:round3(share),period,feature_layer:"nhl_live_score_state_v1"},
+    market:{type:"moneyline",period:"GAME",subject:pressureTeam,side:pressureTeam,label:`Победа ${pressureTeam}`}
+  }));
+}
+
+function addPeriodTotalPressureCard(cards,game,shots){
+  const period=Number(game.period_number||0);
+  if(!period||period>3)return;
+  const rows=shots.filter(x=>Number(x.period_number)===period);
+  if(rows.length<10)return;
+  const periodGoals=rows.filter(x=>x.event_type==="goal").length;
+  const secondsLeft=Number(game.seconds_remaining);
+  const elapsed=Number.isFinite(secondsLeft)?20*60-secondsLeft:null;
+  if(elapsed===null||elapsed<5*60)return;
+  const shotRate=rows.length/(elapsed/60);
+  if(shotRate>=1.15&&secondsLeft>=240){
+    cards.push(card({
+      game,id:`live:${game.game_pk}:p${period}:total-over:${rows.at(-1)?.sort_order||0}`,
+      type:"live_period_total_over",score:86+Math.min(8,Math.round((shotRate-1.15)*8)),
+      eyebrow:`${period}-Й ПЕРИОД · ТЕМП`,value:`${rows.length} бросков · ${periodGoals} голов`,
+      title:`В ${period}-М ПЕРИОДЕ ВЫСОКИЙ БРОСКОВЫЙ ТЕМП — ${rows.length} БРОСКОВ`,
+      explanation:`Темп: ${shotRate.toFixed(2)} броска в створ в минуту периода; осталось ${Math.round(secondsLeft/60)} мин. Используется только с доступной live-линией тотала периода.`,
+      evidence:{period,shots_in_period:rows.length,goals_in_period:periodGoals,shot_rate_per_min:round3(shotRate),seconds_remaining:secondsLeft,feature_layer:"nhl_live_period_pace_v1"},
+      market:{type:"game_total",period:`P${period}`,subject:null,side:"over",line:periodGoals+0.5,label:`${period}-й период ТБ ${periodGoals+0.5}`}
+    }));
+  }
+  if(shotRate<=.55&&secondsLeft<=480&&periodGoals<=1){
+    cards.push(card({
+      game,id:`live:${game.game_pk}:p${period}:total-under:${rows.at(-1)?.sort_order||0}`,
+      type:"live_period_total_under",score:84+Math.min(8,Math.round((.55-shotRate)*12)),
+      eyebrow:`${period}-Й ПЕРИОД · НИЗКИЙ ТЕМП`,value:`${rows.length} бросков · ${periodGoals} голов`,
+      title:`В ${period}-М ПЕРИОДЕ НИЗКИЙ БРОСКОВЫЙ ТЕМП — ${rows.length} БРОСКОВ`,
+      explanation:`Темп: ${shotRate.toFixed(2)} броска в створ в минуту периода. Используется только при точном совпадении с live-тоталом периода.`,
+      evidence:{period,shots_in_period:rows.length,goals_in_period:periodGoals,shot_rate_per_min:round3(shotRate),seconds_remaining:secondsLeft,feature_layer:"nhl_live_period_pace_v1"},
+      market:{type:"game_total",period:`P${period}`,subject:null,side:"under",line:periodGoals+1.5,label:`${period}-й период ТМ ${periodGoals+1.5}`}
+    }));
+  }
 }
 
 function card({ game, id, type, score, eyebrow, value, title, explanation, evidence, market }) {
