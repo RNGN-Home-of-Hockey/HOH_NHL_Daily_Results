@@ -16,6 +16,7 @@ import { buildMarketCombinationInsights } from "./market-combination-engine.js";
 import { buildPlayerPropMarketInsights } from "./player-prop-market-insights.js";
 import { buildSpecialTeamsMarketInsights } from "./special-teams-market-insights.js";
 import { buildExpandedMarketInsights } from "./expanded-market-insights.js";
+import { buildProviderMarketHistoryInsights } from "./provider-market-history-insights.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -37,6 +38,7 @@ export async function buildBettingInsights(db, game, options = {}) {
   const playerPropMarketInsights = await safeInsightBuild("player_prop_markets", () => buildPlayerPropMarketInsights(db, game));
   const specialTeamsInsights = await safeInsightBuild("special_teams", () => buildSpecialTeamsMarketInsights(db, game));
   const expandedMarketInsights = await safeInsightBuild("expanded_markets", () => buildExpandedMarketInsights(db, game));
+  const providerHistoryInsights = await safeInsightBuild("provider_exact_history", () => buildProviderMarketHistoryInsights(db, game, options.provider_markets));
   const advancedTeamSnapshotInsights = await safeInsightBuild("advanced_team_snapshot", () => buildAdvancedTeamSnapshotInsights(game));
   const advancedRollingVenueInsights = await safeInsightBuild("advanced_rolling_venue", () => buildAdvancedRollingVenueInsights(db, game));
 
@@ -60,6 +62,7 @@ export async function buildBettingInsights(db, game, options = {}) {
     ...playerPropMarketInsights,
     ...specialTeamsInsights,
     ...expandedMarketInsights,
+    ...providerHistoryInsights,
     ...advancedTeamSnapshotInsights,
     ...advancedRollingVenueInsights,
     ...featureInsights,
