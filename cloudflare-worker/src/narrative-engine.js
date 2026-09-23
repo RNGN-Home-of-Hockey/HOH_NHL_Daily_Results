@@ -197,6 +197,8 @@ function buildOperator(p,card,context,selectedAngle=null,angles=[]){
     }).join(" · ");
     details.push("Динамика этой же точной линии: "+text+".");
   }
+  const currentStreak=finite(e.current_streak);
+  if(currentStreak!==null&&currentStreak>=2)details.push(`Текущая серия этой же линии: ${Math.round(currentStreak)} прохода подряд.`);
   if(p.sample!==null)details.push(`База сигнала: ${Math.round(p.sample)} матчей.`);
   if(p.season)details.push(`Сезон данных: ${seasonLabel(p.season)}.`);
   if(p.persistent)details.push("Профиль подтверждается предыдущим сезоном.");
@@ -241,7 +243,7 @@ function buildOperator(p,card,context,selectedAngle=null,angles=[]){
 
   return {
     headline:p.team?`${p.team}: ПОЛНАЯ СТАТИСТИКА ДЛЯ КОММЕНТАТОРА`:"ПОЛНАЯ СТАТИСТИКА ДЛЯ КОММЕНТАТОРА",
-    details:unique(details).slice(0,12),
+    details:unique(details).slice(0,18),
     raw,
   };
 }
