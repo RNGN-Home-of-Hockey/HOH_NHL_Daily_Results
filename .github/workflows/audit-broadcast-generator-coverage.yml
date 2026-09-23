@@ -28,11 +28,18 @@ jobs:
         run: |
           set -euo pipefail
           RAW="$(npx wrangler d1 execute hoh-data-core --remote --json --command "
-            SELECT game_pk,scheduled_start_utc,away_tri,home_tri
-            FROM games
-            WHERE datetime(scheduled_start_utc)>=datetime('now','-6 hours')
-              AND datetime(scheduled_start_utc)<=datetime('now','+4 days')
-            ORDER BY datetime(scheduled_start_utc) ASC
+            SELECT e.game_pk,e.starts_at AS scheduled_start_utc,g.away_tri,g.home_tri,
+                   COUNT(m.winline_market_id) AS active_selections
+            FROM winline_events e
+            JOIN games g ON g.game_pk=e.game_pk
+            JOIN winline_markets m ON m.winline_event_id=e.winline_event_id
+            WHERE e.game_pk IS NOT NULL
+              AND m.active=1
+              AND m.odds IS NOT NULL
+              AND datetime(e.starts_at)>datetime('now')
+            GROUP BY e.game_pk,e.starts_at,g.away_tri,g.home_tri
+            HAVING active_selections>0
+            ORDER BY datetime(e.starts_at) ASC
             LIMIT 12;
           ")"
           echo "$RAW" | jq .
