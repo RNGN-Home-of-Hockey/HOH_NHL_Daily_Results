@@ -73,8 +73,8 @@ function addHistory(out,e,m){
   const hits=n(e.hits),dec=n(e.decisions??e.sample??e.games),rate=n(e.hit_rate),window=n(e.window);
   if(hits===null||dec===null||dec<=0)return;
   const label=marketLabel(m),pct=Math.round((rate!==null?rate:hits/dec)*100),push=n(e.pushes)||0;
-  put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",100,"точная частота линии");
-  put(out,"history_pct","hit_rate_pct",`${label} ПРОХОДИТ В ${pct}% МАТЧЕЙ`,`ПОСЛЕДНИЕ ${Math.round(dec)} МАТЧЕЙ`,94,"процент прохода линии");
+  const historyAngleScore=dec<8?(pct<=50?62:pct<67?72:82):pct<=50?68:pct<60?78:92;\n  put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",historyAngleScore,"точная частота линии");
+  put(out,"history_pct","hit_rate_pct",`${label} ПРОХОДИТ В ${pct}% МАТЧЕЙ`,`ПОСЛЕДНИЕ ${Math.round(dec)} МАТЧЕЙ`,dec<8?Math.min(78,historyAngleScore+2):90,"процент прохода линии");
   if(push>0)put(out,"history_push","integer_line",`${label} — ${Math.round(hits)} ПОБЕД И ${Math.round(push)} ВОЗВРАТА`,`${Math.round(dec)} РЕШЁННЫХ ИСХОДОВ`,89,"целая линия с возвратами");
   const streak=n(e.current_streak);
   if(streak>=3)put(out,"streak","streak",`${label} ПРОХОДИТ ${Math.round(streak)} МАТЧА ПОДРЯД`,"ТЕКУЩАЯ СЕРИЯ",97,"серия по той же линии");
@@ -146,6 +146,9 @@ function marketLabel(m){
   if(m?.label)return String(m.label).toUpperCase();
   const t=String(m?.type||""),s=String(m?.subject||"").toUpperCase(),side=String(m?.side||"").toLowerCase(),l=n(m?.line),p=period(m?.period);
   if(t==="moneyline")return `${p}ПОБЕДА ${s}`.trim();
+  if(t==="period_1_result")return `1-Й ПЕРИОД: ПОБЕДА ${s}`.trim();
+  if(t==="period_2_result")return `2-Й ПЕРИОД: ПОБЕДА ${s}`.trim();
+  if(t==="period_3_result")return `3-Й ПЕРИОД: ПОБЕДА ${s}`.trim();
   if(t==="handicap")return `${p}${s} ФОРА ${signed(l)}`.trim();
   if(t==="game_total")return `${p}${side==="over"?"ТБ":"ТМ"} ${line(l)}`.trim();
   if(t==="team_total")return `${p}${s} ${side==="over"?"ИТБ":"ИТМ"} ${line(l)}`.trim();
