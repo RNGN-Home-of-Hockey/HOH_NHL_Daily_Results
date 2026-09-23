@@ -94,11 +94,11 @@ function direction(card,team){
 function marketDirection(m){
   const t=String(m.market_type||""),side=String(m.side||"").toLowerCase();
   if(["game_total","team_total","player_points","player_goals","player_shots","player_assists","player_blocks","player_hits"].includes(t))return ["over","under"].includes(side)?side:null;
-  if(["moneyline","handicap","next_goal_team"].includes(t)||/^period_\d+_result$/.test(t)){const s=up(m.subject||side);return s?"team:"+s:null}
+  if(["moneyline","handicap","first_goal_team","next_goal_team"].includes(t)||/^period_\d+_result$/.test(t)){const s=up(m.subject||side);return s?"team:"+s:null}
   return null;
 }
 function family(a,b){
-  if(a===b)return true;const r=["moneyline","handicap","period_1_result","period_2_result","period_3_result","next_goal_team"],t=["game_total","team_total"];
+  if(a===b)return true;const r=["moneyline","handicap","period_1_result","period_2_result","period_3_result","first_goal_team","next_goal_team"],t=["game_total","team_total"];
   return (r.includes(a)&&r.includes(b))||(t.includes(a)&&t.includes(b));
 }
 function cross(a,t){
@@ -115,7 +115,7 @@ function labelFor(m){
   if(t==="handicap")return (p+s+" ФОРА "+x).trim();
   if(t==="team_total")return (p+s+" "+(m.side==="over"?"ИТБ":"ИТМ")+" "+x).trim();
   if(t==="game_total")return (p+(m.side==="over"?"ТБ":"ТМ")+" "+x).trim();
-  if(t==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ — "+s;
+  if(t==="first_goal_team")return "ПЕРВЫЙ ГОЛ — "+s;\n  if(t==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ — "+s;
   return [p,t,s,m.side,x].filter(Boolean).join(" ").trim();
 }
 function key(m){return [m.market_type||"unknown",m.period||"GAME",m.subject||"all",m.side||"none",num(m.line)===null?"none":Number(m.line).toFixed(2)].join(":")}
