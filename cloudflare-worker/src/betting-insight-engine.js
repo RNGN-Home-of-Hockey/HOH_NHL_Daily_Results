@@ -527,7 +527,7 @@ function signedAirLine(value){
 function finiteAirScore(...values){for(const value of values){const n=Number(value);if(Number.isFinite(n))return n}return 55}
 function roundAir3(value){return Math.round(Number(value)*1000)/1000}
 
-function resolveContradictoryAdvice(cards=[]){
+export function resolveContradictoryAdvice(cards=[]){
   const sorted=[...(cards||[])].sort((a,b)=>Number(b?.air_score||0)-Number(a?.air_score||0));
   const accepted=[],winners=new Map();
   for(const card of sorted){
