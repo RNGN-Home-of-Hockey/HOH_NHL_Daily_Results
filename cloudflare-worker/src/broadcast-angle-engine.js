@@ -58,10 +58,10 @@ function addHistory(out,e,m){
 function addRanks(out,p,m){
   if(!p?.team||n(p.teamRank)===null)return;
   const rank=Math.round(p.teamRank),metric=String(p.meta?.tv||"ПОКАЗАТЕЛЮ");
-  put(out,"league_rank","league_rank",`${p.team} — ${rank<=5?`ТОП-${rank}`:`№${rank}`} НХЛ ПО ${metric}`,p.teamValue!==null&&p.teamValue!==undefined?fmtMetric(p.teamValue,p.meta):marketSub(m),99,"место в НХЛ");
+  put(out,"league_rank","league_rank",`${p.team} — ${rank<=5?`ТОП-${rank}`:`№${rank}`} НХЛ ПО ${metric}`,p.teamValue!==null&&p.teamValue!==undefined?fmtMetric(p.teamValue,p.meta):marketSub(m),104,"место в НХЛ");
   if(n(p.opponentRank)!==null&&p.opponent){
     const opp=Math.round(p.opponentRank),gap=Math.abs(opp-rank);
-    put(out,"rank_contrast","rank_contrast",`${p.team} — №${rank}, ${p.opponent} — №${opp} ПО ${metric}`,`РАЗНИЦА ${gap} МЕСТ`,gap>=10?100:92,"контраст соперников");
+    put(out,"rank_contrast","rank_contrast",`${p.team} — №${rank}, ${p.opponent} — №${opp} ПО ${metric}`,`РАЗНИЦА ${gap} МЕСТ`,gap>=10?98:92,"контраст соперников");
     if(gap>=8)put(out,"rank_gap","rank_gap",`${p.team} НА ${gap} МЕСТ ВЫШЕ ${p.opponent} ПО ${metric}`,`№${rank} ПРОТИВ №${opp}`,97,"разница мест");
   }
 }
