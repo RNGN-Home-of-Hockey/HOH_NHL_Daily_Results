@@ -119,9 +119,18 @@ export async function buildBettingInsights(db, game, options = {}) {
       .slice(0, 24);
   }
 
+  // Keep H2H as its own editorial story even when the same exact market
+  // has a stronger provider-history primary card. The four-card broadcast UI
+  // needs two genuine head-to-head choices, not H2H hidden inside support metadata.
+  const h2hEditorial=(marketMatchedCandidates||[])
+    .filter(isTeamH2HEditorialCard)
+    .sort((a,b)=>Number(b?.score||0)-Number(a?.score||0)||Number(b?.evidence?.window||0)-Number(a?.evidence?.window||0))
+    .slice(0,4);
+  const portfolioForBroadcast=dedupe([...(portfolio||[]),...h2hEditorial]);
+
   const recentBroadcastHeadlines=await loadRecentBroadcastHeadlines(db);
   const annotated=diversifyBroadcastAngles(
-    (portfolio||[]).map((card)=>annotateAirUtility(card,game)),
+    portfolioForBroadcast.map((card)=>annotateAirUtility(card,game)),
     {recent_headlines:recentBroadcastHeadlines}
   );
   generatorDiagnostics.recent_broadcast_headline_count=recentBroadcastHeadlines.length;
@@ -442,6 +451,14 @@ function signedAirLine(value){
 }
 function finiteAirScore(...values){for(const value of values){const n=Number(value);if(Number.isFinite(n))return n}return 55}
 function roundAir3(value){return Math.round(Number(value)*1000)/1000}
+
+function isTeamH2HEditorialCard(card){
+  const category=String(card?.category||"").toLowerCase();
+  const type=String(card?.insight_type||"").toLowerCase();
+  const split=String(card?.evidence?.split||"").toLowerCase();
+  if(category==="player_h2h"||type.includes("player"))return false;
+  return split==="h2h"||category==="h2h_market"||type==="h2h_dominance"||type.startsWith("h2h_");
+}
 
 async function loadRecentBroadcastHeadlines(db){
   if(!db)return[];
