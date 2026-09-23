@@ -176,6 +176,15 @@ function buildOperator(p,card,context){
   addRolling(details,p);
   addVenue(details,p);
 
+  const trendWindows=Array.isArray(e.trend_windows)?e.trend_windows:[];
+  if(trendWindows.length){
+    const text=trendWindows.map(w=>{
+      const pct=Number.isFinite(Number(w.hit_rate))?Math.round(Number(w.hit_rate)*100)+"%":"—";
+      const push=Number(w.pushes||0)>0?` · возвратов ${Number(w.pushes)}`:"";
+      return `${Number(w.window)} матчей: ${Number(w.hits||0)}/${Number(w.decisions||0)} (${pct})${push}`;
+    }).join(" · ");
+    details.push("Динамика этой же точной линии: "+text+".");
+  }
   if(p.sample!==null)details.push(`База сигнала: ${Math.round(p.sample)} матчей.`);
   if(p.season)details.push(`Сезон данных: ${seasonLabel(p.season)}.`);
   if(p.persistent)details.push("Профиль подтверждается предыдущим сезоном.");
