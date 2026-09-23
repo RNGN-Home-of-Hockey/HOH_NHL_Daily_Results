@@ -96,7 +96,7 @@ export function attachLiveWinlineMarkets(snapshot, providerMarkets, options={}) 
       air_reasons:["live pressure","реальная линия"],
     };
   });
-  return {...snapshot,cards,provider_market_count:liveMarkets.length,priced_live_cards:cards.length};
+  const newestLiveQuote=liveMarkets.map(m=>Date.parse(String(m?.updated_at||""))).filter(Number.isFinite).sort((a,b)=>b-a)[0]||null;\n  return {...snapshot,cards,provider_market_count:liveMarkets.length,priced_live_cards:cards.length,provider_live_updated_at:newestLiveQuote?new Date(newestLiveQuote).toISOString():null};
 }
 
 export function buildLiveCards(game, shots) {
