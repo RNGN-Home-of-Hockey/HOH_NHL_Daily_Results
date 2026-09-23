@@ -6,6 +6,11 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/audit-broadcast-generator-coverage.yml'
+      - 'cloudflare-worker/src/broadcast-angle-engine.js'
+      - 'cloudflare-worker/src/narrative-engine.js'
+      - 'cloudflare-worker/src/betting-insight-engine.js'
+      - 'cloudflare-worker/src/market-coverage-audit.js'
+      - 'cloudflare-worker/src/provider-market-history-insights.js'
 
 permissions:
   contents: read
