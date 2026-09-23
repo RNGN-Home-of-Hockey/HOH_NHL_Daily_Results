@@ -598,7 +598,27 @@ function countBy(rows,keyFn){
 
 function dedupe(cards){
   const m=new Map();
-  for(const c of cards){const key=`${c.insight_type}:${c.market?.subject||c.market?.side||"all"}`; if(!m.has(key)||m.get(key).score<c.score)m.set(key,c);}
+  for(const card of cards||[]){
+    if(!card)continue;
+    const market=card.market||{};
+    const line=market.line===null||market.line===undefined||market.line===""?"none":Number.isFinite(Number(market.line))?Number(market.line).toFixed(2):String(market.line);
+    // Generated cards already carry stable IDs that encode market/line/window/source.
+    // Preserve them here; exact-market consolidation belongs to insight-portfolio,
+    // not this early candidate-pool stage.
+    const key=card.id
+      ? `id:${card.id}`
+      : [
+          card.category||card.insight_type||"unknown",
+          card.insight_type||"unknown",
+          market.type||"unknown",
+          market.period||"GAME",
+          market.subject||"all",
+          market.side||"none",
+          line,
+        ].join(":");
+    const current=m.get(key);
+    if(!current||Number(current.score||0)<Number(card.score||0))m.set(key,card);
+  }
   return [...m.values()];
 }
 
