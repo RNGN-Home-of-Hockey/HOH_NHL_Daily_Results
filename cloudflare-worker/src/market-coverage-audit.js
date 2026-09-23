@@ -56,6 +56,17 @@ export function summarizeMarketCoverage(providerMarkets=[],cards=[]){
   ).length;
   const comboCards=list.filter(c=>c?.evidence?.market_combination===true);
   const narrativeVariants=list.reduce((n,c)=>n+(Array.isArray(c?.broadcast_variants)?c.broadcast_variants.length:0),0);
+  const angleFamilies={};
+  let numericHeadlines=0,multiAngleCards=0,structuredAngles=0;
+  for(const card of list){
+    const title=String(card?.broadcast_title||card?.title||"");
+    if(/\d/.test(title))numericHeadlines++;
+    const family=String(card?.broadcast_angle_family||"").trim();
+    if(family)angleFamilies[family]=(angleFamilies[family]||0)+1;
+    const angles=Array.isArray(card?.broadcast_angle_variants)?card.broadcast_angle_variants:[];
+    structuredAngles+=angles.length;
+    if(angles.length>=2)multiAngleCards++;
+  }
 
   return {
     provider_selection_count:markets.length,
@@ -67,6 +78,12 @@ export function summarizeMarketCoverage(providerMarkets=[],cards=[]){
     priced_card_count:[...cardsByKey.values()].reduce((n,xs)=>n+xs.length,0),
     combination_card_count:comboCards.length,
     broadcast_variant_count:narrativeVariants,
+    structured_angle_count:structuredAngles,
+    multi_angle_card_count:multiAngleCards,
+    avg_structured_angles_per_card:list.length?round1(structuredAngles/list.length):0,
+    numeric_headline_count:numericHeadlines,
+    numeric_headline_pct:list.length?round1(100*numericHeadlines/list.length):null,
+    angle_family_counts:sortObject(angleFamilies),
     provider_family_counts:sortObject(familyCounts),
     covered_family_counts:sortObject(coveredFamilyCounts),
     uncovered_markets:uncovered.slice(0,80),
