@@ -44,7 +44,7 @@ function pickGeneral(cards,game,limit){
   // First preference: give the commentator one current story about each team.
   for(const tri of [away,home]){
     if(!tri)continue;
-    const hit=sorted.find(c=>!used.has(key(c))&&teamOf(c,game)===tri&&hasUsefulNumber(c)&&isConcreteStory(c));
+    const hit=sorted.find(c=>!used.has(key(c))&&teamOf(c,game)===tri&&hasUsefulNumber(c)&&isConcreteStory(c)&&isFeaturedQuality(c));
     if(hit){out.push(hit);used.add(key(hit))}
   }
 
@@ -52,7 +52,7 @@ function pickGeneral(cards,game,limit){
   for(const card of sorted){
     if(out.length>=limit)break;
     if(used.has(key(card)))continue;
-    if(!hasUsefulNumber(card)||!isConcreteStory(card))continue;
+    if(!hasUsefulNumber(card)||!isConcreteStory(card)||!isFeaturedQuality(card))continue;
     if(tooSimilar(card,out))continue;
     out.push(card);used.add(key(card));
   }
@@ -73,7 +73,7 @@ function pickH2H(cards,limit){
   }
   for(const card of sorted){
     if(out.length>=limit)break;
-    if(out.includes(card)||!hasUsefulNumber(card)||!isConcreteStory(card)||tooSimilar(card,out))continue;
+    if(out.includes(card)||!hasUsefulNumber(card)||!isConcreteStory(card)||!isFeaturedQuality(card)||tooSimilar(card,out))continue;
     out.push(card);
   }
   return out.slice(0,limit);
@@ -92,6 +92,16 @@ function hasRealPrice(c){const o=Number(c?.market?.odds);return Number.isFinite(
 function score(c){const n=Number(c?.air_score??c?.portfolio_score??c?.score);return Number.isFinite(n)?n:0}
 function hasUsefulNumber(c){return /\d/.test(String(c?.broadcast_title||c?.title||c?.value||""))||Number.isFinite(Number(c?.evidence?.hits))||Number.isFinite(Number(c?.evidence?.team_rank))}
 function isConcreteStory(c){const s=String(c?.broadcast_title||c?.title||"").toUpperCase();return !/НЕЗАВИСИМ.*СИГНАЛ|ПОДТВЕРЖДАЮТ.*СИГНАЛ|РАЗНЫЕ СТАТИСТИЧЕСКИЕ СЛОИ|DATA CORE/.test(s)}
+function isFeaturedQuality(c){
+  if(score(c)<55)return false;
+  const e=c?.evidence||{},sample=Number(e.decisions??e.sample??e.games??e.window),rate=Number(e.hit_rate),odds=Number(c?.market?.odds);
+  if(Number.isFinite(sample)&&sample<=8&&Number.isFinite(rate)&&rate<=0.5){
+    if(!Number.isFinite(odds)||odds<2.5)return false;
+    const rawGap=rate-(1/odds);
+    if(rawGap<0.10)return false;
+  }
+  return true;
+}
 function teamOf(c,game){
   const candidates=[c?.market?.subject,c?.evidence?.team,c?.team_tri,c?.evidence?.subject_team];
   const home=String(game.home_tri||"").toUpperCase(),away=String(game.away_tri||"").toUpperCase();
