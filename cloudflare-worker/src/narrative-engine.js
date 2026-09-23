@@ -29,8 +29,13 @@ const METRICS={
 export function buildNarrative(card={},context={}){
   const profile=extractProfile(card,context);
   const fallback=String(card.broadcast_title||card.title||card.value||"АНАЛИТИЧЕСКИЙ ФАКТ").trim();
-  const angles=buildBroadcastAngles(card,profile,context);
-  const legacy=buildVariants(profile,card,fallback);
+  const rawAngles=buildBroadcastAngles(card,profile,context);
+  const angles=rawAngles.map(angle=>({
+    ...angle,
+    title:localizeTeamCodes(angle.title,context.game),
+    subtitle:localizeTeamCodes(angle.subtitle,context.game),
+  }));
+  const legacy=buildVariants(profile,card,fallback).map(text=>localizeTeamCodes(text,context.game));
   const variants=unique([...angles.map(x=>x.title),...legacy]);
   const selected=angles[0]||null;
   const title=selected?.title||variants[0]||fallback;
@@ -58,17 +63,19 @@ function extractProfile(card,context){
   const nestedTeam=isObject(e.team)?e.team:null;
   const nestedOpponent=isObject(e.opponent)?e.opponent:null;
 
-  const team=upper(
+  const teamCode=upper(
     market.subject ||
     (!isObject(e.team)?e.team:null) ||
     card.team_tri ||
     ""
   );
-  let opponent=upper(!isObject(e.opponent)?e.opponent:"");
-  if(!opponent&&team){
-    if(upper(game.home_tri)===team)opponent=upper(game.away_tri);
-    else if(upper(game.away_tri)===team)opponent=upper(game.home_tri);
+  let opponentCode=upper(!isObject(e.opponent)?e.opponent:"");
+  if(!opponentCode&&teamCode){
+    if(upper(game.home_tri)===teamCode)opponentCode=upper(game.away_tri);
+    else if(upper(game.away_tri)===teamCode)opponentCode=upper(game.home_tri);
   }
+  const team=displayTeam(teamCode,game);
+  const opponent=displayTeam(opponentCode,game);
 
   const directMetric=metricKey(e.metric||card?.metric?.name||card?.analytics?.name);
   const nestedPick=pickNestedMetric(nestedTeam,nestedOpponent,card);
@@ -96,7 +103,7 @@ function extractProfile(card,context){
   );
 
   return {
-    team,opponent,metric,meta,opponentMetric,opponentMeta,
+    team,opponent,teamCode,opponentCode,metric,meta,opponentMetric,opponentMeta,
     teamRank,opponentRank,teamValue,opponentValue,
     rankGap:finite(e.rank_gap) ?? (
       teamRank!==null&&opponentRank!==null?Math.abs(opponentRank-teamRank):null
@@ -234,6 +241,8 @@ function buildOperator(p,card,context,selectedAngle=null,angles=[]){
   if(card?.explanation)details.push(String(card.explanation));
 
   const raw={
+    team_code:p.teamCode||null,
+    opponent_code:p.opponentCode||null,
     metric:p.metric||null,
     metric_name:p.meta.raw,
     opponent_metric:p.opponentMetric||null,
@@ -379,6 +388,26 @@ function seasonLabel(value){
   return s;
 }
 
+function displayTeam(code,game){
+  const tri=upper(code);
+  if(!tri)return "";
+  if(tri===upper(game?.home_tri))return upper(game?.home_name_ru||game?.home_name||tri);
+  if(tri===upper(game?.away_tri))return upper(game?.away_name_ru||game?.away_name||tri);
+  return tri;
+}
+function localizeTeamCodes(value,game){
+  if(value===null||value===undefined)return value;
+  let text=String(value);
+  const pairs=[
+    [upper(game?.home_tri),upper(game?.home_name_ru||game?.home_name)],
+    [upper(game?.away_tri),upper(game?.away_name_ru||game?.away_name)],
+  ].filter(([tri,name])=>tri&&name);
+  for(const [tri,name] of pairs){
+    text=text.replace(new RegExp("\\b"+escapeRegex(tri)+"\\b","g"),name);
+  }
+  return text;
+}
+function escapeRegex(value){return String(value||"").replace(/[.*+?^${}()|[\]\\]/g,"\\function upper(value){")}
 function upper(value){return String(value||"").trim().toUpperCase()}
 function finite(value){
   if(value===null||value===undefined||value==="")return null;
