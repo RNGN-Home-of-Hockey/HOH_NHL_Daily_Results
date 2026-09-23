@@ -180,7 +180,7 @@ async function createInsightDraft(request,env){
     card_id:safeId(`insight-${gamePk}-${idBase}`),
     game_pk:gamePk,
     headline_ru:String(candidate.broadcast_title||candidate.title||candidate.value||candidate.eyebrow||"HOH INSIGHT").slice(0,180),
-    stat_text_ru:String(candidate.broadcast_subtitle||market.label||candidate.value||"").slice(0,240),
+    stat_text_ru:String([market.label,candidate.broadcast_subtitle].filter(Boolean).join(" · ")||candidate.value||"").slice(0,240),
     source_note_ru:String(operatorNarrativeText(candidate)||candidate.explanation||candidate.note||"HOH Data Core").slice(0,2400),
     suggested_market_type:String(market.type||candidate.insight_type||"insight").slice(0,80),
     suggested_market_subject:subject,
