@@ -33,11 +33,13 @@ export async function buildBettingInsights(db, game, options = {}) {
   const advancedTeamSnapshotInsights = await safeInsightBuild("advanced_team_snapshot", () => buildAdvancedTeamSnapshotInsights(game));
   const advancedRollingVenueInsights = await safeInsightBuild("advanced_rolling_venue", () => buildAdvancedRollingVenueInsights(db, game));
 
-  let featureInsights = [];
+  // team_game_features is already materialized and compact, so keep it always on:
+  // period trends, first goal, rest, possession and exact historical market outcomes
+  // should participate in market-first combinations without enabling league-wide scans.
+  const featureInsights = await safeInsightBuild("feature_market", () => buildFeatureMarketInsights(db, game));
   let rollingRankInsights = [];
   let advancedContextInsights = [];
   if (heavyContext) {
-    featureInsights = await safeInsightBuild("feature_market", () => buildFeatureMarketInsights(db, game));
     rollingRankInsights = await safeInsightBuild("rolling_rank", () => buildRollingLeagueRankInsights(db, game));
     advancedContextInsights = await safeInsightBuild("advanced_context", () => buildAdvancedMarketContextInsights(db, game));
   }
