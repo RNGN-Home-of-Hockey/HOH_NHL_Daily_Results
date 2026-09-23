@@ -74,6 +74,8 @@ function extractProfile(card,context){
   const nestedPick=pickNestedMetric(nestedTeam,nestedOpponent,card);
   const metric=directMetric||nestedPick.metric||"";
   const meta=metricMeta(metric,card);
+  const opponentMetric=metricKey(e.opponent_metric||nestedPick.opponentMetric||metric);
+  const opponentMeta=metricMeta(opponentMetric,card);
 
   const teamRank=finite(
     e.team_rank ?? e.rank ?? nestedPick.teamRank ??
@@ -94,7 +96,7 @@ function extractProfile(card,context){
   );
 
   return {
-    team,opponent,metric,meta,
+    team,opponent,metric,meta,opponentMetric,opponentMeta,
     teamRank,opponentRank,teamValue,opponentValue,
     rankGap:finite(e.rank_gap) ?? (
       teamRank!==null&&opponentRank!==null?Math.abs(opponentRank-teamRank):null
@@ -177,7 +179,7 @@ function buildOperator(p,card,context,selectedAngle=null,angles=[]){
     details.push(`${p.team}: ${Math.round(p.teamRank)}-е место в НХЛ по ${p.meta.raw}${p.teamValue!==null?` — ${formatValue(p.teamValue,p.meta)}`:""}.`);
   }
   if(p.opponent&&p.opponentRank!==null){
-    details.push(`${p.opponent}: ${Math.round(p.opponentRank)}-е место по сопоставимому показателю${p.opponentValue!==null?` — ${formatValue(p.opponentValue,p.meta)}`:""}.`);
+    details.push(`${p.opponent}: ${Math.round(p.opponentRank)}-е место в НХЛ по ${p.opponentMeta?.raw||"сопоставимому показателю"}${p.opponentValue!==null?` — ${formatValue(p.opponentValue,p.opponentMeta||p.meta)}`:""}.`);
   }
   if(p.rankGap!==null&&p.teamRank!==null&&p.opponentRank!==null){
     details.push(`Разница в рейтинге: ${Math.round(p.rankGap)} мест.`);
@@ -220,6 +222,8 @@ function buildOperator(p,card,context,selectedAngle=null,angles=[]){
   const raw={
     metric:p.metric||null,
     metric_name:p.meta.raw,
+    opponent_metric:p.opponentMetric||null,
+    opponent_metric_name:p.opponentMeta?.raw||null,
     team_rank:p.teamRank,
     team_value:p.teamValue,
     opponent_rank:p.opponentRank,
@@ -283,6 +287,7 @@ function pickNestedMetric(team,opponent,card){
     metric:best.metric,
     teamRank:best.rank,
     teamValue:best.value,
+    opponentMetric:oppMetric,
     opponentRank:finite(opponent?.ranks?.[oppMetric]),
     opponentValue:finite(opponent?.[oppMetric]),
   };
