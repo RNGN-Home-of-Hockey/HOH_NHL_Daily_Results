@@ -49,9 +49,9 @@ const diversified=diversifyBroadcastAngles([
     {id:"1",family:"hit_rate",title:"ТБ 5,5 — 8 ИЗ 10",score:100},
     {id:"2",family:"streak",title:"ТБ 5,5 — 4 МАТЧА ПОДРЯД",score:96}
   ]},
-  {id:"b",broadcast_angle_variants:[
-    {id:"3",family:"hit_rate",title:"CAR ИТБ 2,5 — 8 ИЗ 10",score:100},
-    {id:"4",family:"league_rank",title:"CAR — ТОП-2 НХЛ ПО ОПАСНЫМ МОМЕНТАМ",score:98}
+  {id:"b",operator_narrative:{headline:"CAR",details:["Почему выбрана эта эфирная подача: точная частота линии.","Другая деталь."],raw:{selected_broadcast_angle:{id:"3"}}},broadcast_angle_variants:[
+    {id:"3",family:"hit_rate",title:"CAR ИТБ 2,5 — 8 ИЗ 10",score:100,reason:"точная частота линии"},
+    {id:"4",family:"league_rank",title:"CAR — ТОП-2 НХЛ ПО ОПАСНЫМ МОМЕНТАМ",score:98,reason:"место в НХЛ"}
   ]},
   {id:"c",broadcast_angle_variants:[
     {id:"5",family:"hit_rate",title:"CAR ФОРА +1,5 — 9 ИЗ 10",score:100},
@@ -60,4 +60,7 @@ const diversified=diversifyBroadcastAngles([
 ]);
 assert.equal(diversified.length,3);
 assert.ok(new Set(diversified.map(x=>x.broadcast_angle_family)).size>=2,"queue must diversify angle families");
+const diversifiedB=diversified.find(x=>x.id==="b");
+assert.equal(diversifiedB.operator_narrative.raw.selected_broadcast_angle.id,diversifiedB.broadcast_angle_id,"operator explanation must follow diversified TV angle");
+assert.ok(diversifiedB.operator_narrative.details[0].includes(diversifiedB.broadcast_angle_reason),"operator reason must describe the chosen TV angle");
 console.log("BROADCAST_ANGLE_ENGINE_OK");
