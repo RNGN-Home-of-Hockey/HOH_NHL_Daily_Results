@@ -1,0 +1,176 @@
+name: Content Core Paid TikTok Public Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      account_id:
+        description: Optional Content Core TikTok account id
+        required: false
+        type: string
+  schedule:
+    - cron: "37 3 * * *"
+    - cron: "37 15 * * *"
+  push:
+    branches: [main]
+    paths:
+      - ".content-core-paid-tiktok-trigger"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: content-core-paid-tiktok-public-live
+  cancel-in-progress: false
+
+jobs:
+  live-sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CONTENT_CORE_URL: https://rngn-content-core-paid-shadow.znamteam-903.workers.dev
+      CONTENT_CORE_API_KEY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      SELECT_ACCOUNT_ID: ${{ inputs.account_id || '' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install TikTok public collector
+        run: python -m pip install -q -U 'yt-dlp[default,curl-cffi]'
+
+      - name: Load accounts and freshness-gate scheduled runs
+        id: accounts
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer $CONTENT_CORE_API_KEY")
+          curl -fsS "${auth[@]}" "$CONTENT_CORE_URL/api/v1/accounts" -o /tmp/accounts.json
+          jq -e '.accounts | length > 0' /tmp/accounts.json >/dev/null
+
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ -z "$SELECT_ACCOUNT_ID" ]; then
+            fresh=$(python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          data=json.load(open('/tmp/accounts.json'))
+          now=datetime.now(timezone.utc)
+          n=0
+          for a in data.get('accounts',[]):
+              if a.get('platform')!='tiktok' or a.get('credential_ref')!='tiktok_public' or int(a.get('enabled') or 0)!=1:
+                  continue
+              handle=str(a.get('handle') or '').lstrip('@')
+              if handle in {'doubleplay_nfl_mlb','homeofhockey.rngn'}:
+                  continue
+              last=str(a.get('last_sync_at') or '').strip()
+              err=str(a.get('last_sync_error') or '').strip()
+              if not last or err:
+                  continue
+              try:
+                  dt=datetime.fromisoformat(last.replace('Z','+00:00'))
+                  if dt.tzinfo is None: dt=dt.replace(tzinfo=timezone.utc)
+                  if (now-dt.astimezone(timezone.utc)).total_seconds() <= 14*3600:
+                      n+=1
+              except Exception:
+                  pass
+          print(n)
+          PY
+          )
+            if [ "$fresh" -ge 5 ]; then
+              echo "run_sync=false" >> "$GITHUB_OUTPUT"
+              echo "PAID_TIKTOK_GATE|fresh=$fresh|run=false"
+              exit 0
+            fi
+          fi
+          echo "run_sync=true" >> "$GITHUB_OUTPUT"
+
+      - name: Sync latest public TikTok items
+        if: steps.accounts.outputs.run_sync == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer $CONTENT_CORE_API_KEY")
+          ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36'
+
+          SELECT_ACCOUNT_ID="$SELECT_ACCOUNT_ID" python - <<'PY' > /tmp/tiktok-public.tsv
+          import json, os
+          selected=os.environ.get('SELECT_ACCOUNT_ID','').strip()
+          data=json.load(open('/tmp/accounts.json'))
+          for a in data.get('accounts',[]):
+              if a.get('platform')!='tiktok' or a.get('credential_ref')!='tiktok_public' or int(a.get('enabled') or 0)!=1:
+                  continue
+              if selected and str(a.get('id') or '') != selected:
+                  continue
+              handle=str(a.get('handle') or '').strip().lstrip('@')
+              metadata={}
+              try:
+                  raw=a.get('metadata_json')
+                  metadata=json.loads(raw) if isinstance(raw,str) and raw.strip() else (raw if isinstance(raw,dict) else {})
+              except Exception:
+                  metadata={}
+              channel_id=str(metadata.get('tiktokPublicChannelId') or '').strip()
+              print('\t'.join([str(a['id']),handle,channel_id or '-']))
+          PY
+
+          test -s /tmp/tiktok-public.tsv
+          successes=0
+          failures=0
+
+          while IFS=$'\t' read -r account_id handle channel_id; do
+            echo "PAID_TIKTOK|${account_id}|@${handle}|START"
+            source="https://www.tiktok.com/@${handle}"
+            if [ -n "${channel_id}" ] && [ "${channel_id}" != "-" ]; then
+              source="tiktokuser:${channel_id}"
+            fi
+            : > /tmp/latest.jsonl
+            : > /tmp/latest.err
+            for attempt in 1 2 3; do
+              : > /tmp/latest.jsonl
+              : > /tmp/latest.err
+              yt-dlp --ignore-errors --skip-download --dump-json --impersonate chrome --user-agent "$ua"                 --socket-timeout 20 --retries 2 --playlist-end 20 "$source"                 > /tmp/latest.jsonl 2> /tmp/latest.err || true
+              count=$(grep -cve '^\s*$' /tmp/latest.jsonl || true)
+              if [ "$count" -gt 0 ]; then break; fi
+              sleep $((attempt*2))
+            done
+            count=$(grep -cve '^\s*$' /tmp/latest.jsonl || true)
+            if [ "$count" -eq 0 ]; then
+              echo "PAID_TIKTOK|${account_id}|FAIL|empty"
+              failures=$((failures+1))
+              continue
+            fi
+
+            ACCOUNT_ID="$account_id" python - <<'PY'
+          import json, os
+          items=[]
+          for line in open('/tmp/latest.jsonl',encoding='utf-8'):
+              if not line.strip(): continue
+              try: j=json.loads(line)
+              except Exception: continue
+              vid=str(j.get('id') or '').strip()
+              url=str(j.get('webpage_url') or '').strip()
+              ts=j.get('timestamp')
+              if not vid or not url or ts is None: continue
+              items.append({
+                'id':vid,'url':url,
+                'description':j.get('description') or j.get('title') or '',
+                'timestamp':ts,'duration':j.get('duration'),
+                'views':j.get('view_count'),'likes':j.get('like_count'),
+                'comments':j.get('comment_count'),'reposts':j.get('repost_count'),
+                'uploader':j.get('uploader'),'uploaderId':j.get('uploader_id'),
+                'channelId':j.get('channel_id'),
+              })
+          json.dump({'accountId':os.environ['ACCOUNT_ID'],'items':items},open('/tmp/payload.json','w',encoding='utf-8'),ensure_ascii=False)
+          PY
+
+            if response=$(curl -fsS "${auth[@]}" -H 'Content-Type: application/json'               --data-binary @/tmp/payload.json "$CONTENT_CORE_URL/api/v1/tiktok/public/ingest"); then
+              if jq -e '.ok == true' <<<"$response" >/dev/null; then
+                echo "PAID_TIKTOK|${account_id}|OK|$(jq -c '{processed,publicationsCreated,metricsCaptured}' <<<"$response")"
+                successes=$((successes+1))
+              else
+                failures=$((failures+1))
+              fi
+            else
+              failures=$((failures+1))
+            fi
+          done < /tmp/tiktok-public.tsv
+
+          echo "PAID_TIKTOK_SUMMARY|successes=$successes|failures=$failures"
+          test "$successes" -gt 0
