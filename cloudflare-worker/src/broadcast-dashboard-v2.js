@@ -608,7 +608,7 @@ function jsResponse(js){return new Response(js,{status:200,headers:{"Content-Typ
 function pngResponse(base64){const raw=atob(base64);const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i+=1)bytes[i]=raw.charCodeAt(i);return new Response(bytes,{status:200,headers:{"Content-Type":"image/png","Cache-Control":"public, max-age=31536000, immutable","X-Content-Type-Options":"nosniff"}})}
 
 function browserApp(){
-const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],liveCards=[],liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null,queueWarmRunning=false;
+const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],featuredCards=[],liveCards=[],liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null,queueWarmRunning=false;
 const operatorId=(()=>{let v=localStorage.getItem('hohBroadcastOperatorId')||'';if(!v){v='op-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));localStorage.setItem('hohBroadcastOperatorId',v)}return v})();
 let operatorName=localStorage.getItem('hohBroadcastOperatorName')||'';
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -702,11 +702,36 @@ function renderGames(){
   document.querySelectorAll('.gamegroup').forEach(d=>d.addEventListener('toggle',()=>{groupOpen[Number(d.dataset.type)]=d.open}));
   document.querySelectorAll('.game').forEach(b=>b.onclick=()=>selectGame(Number(b.dataset.id)));
 }
-async function selectGame(id){const previous=selected;if(previous&&Number(previous)!==Number(id))await releaseLease(previous);selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));syncOverlayLinks(id);renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s,owned]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id)),acquireLease(id)]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=(d.featured_cards||d.cards||[]).slice(0,4);syncQueueSummary(id,d.queue_summary);renderAir(s.on_air);renderGame(d);if(!owned){const sub=document.querySelector('.psub');if(sub)sub.textContent='Режим просмотра · матч ведёт '+(currentLease?.operator_name||'другой оператор')}await refreshLive(id,true)}
+async function selectGame(id){const previous=selected;if(previous&&Number(previous)!==Number(id))await releaseLease(previous);selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));syncOverlayLinks(id);renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];featuredCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s,owned]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id)),acquireLease(id)]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];featuredCards=(d.featured_cards||[]).slice(0,4);syncQueueSummary(id,d.queue_summary);renderAir(s.on_air);renderGame(d);if(!owned){const sub=document.querySelector('.psub');if(sub)sub.textContent='Режим просмотра · матч ведёт '+(currentLease?.operator_name||'другой оператор')}await refreshLive(id,true)}
 function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[side+'_name']||tri,logo=g[side+'_logo'];return `<div class="team ${side==='home'?'home':''}">${side==='home'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}<div class="logo">${logo?`<img src="${esc(logo)}" alt="">`:`<span class="fallback">${esc(tri)}</span>`}</div>${side==='away'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}</div>`}
 function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct==null||!Number.isFinite(Number(a.faceoff_pct))?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct==null||!Number.isFinite(Number(h.faceoff_pct))?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
-function renderCombinedCards(){const merged=(historicalCards||[]).slice(0,4);renderCards(merged);syncQueueSummaryFromCards(selected,merged);const priced=merged.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');if(sub)sub.textContent=`4 карточки на матч · 2 форма команд + 2 личные встречи · линий WINLINE: ${priced}/${merged.length}`}
+function renderCombinedCards(){
+  const featured=[],seen=new Set();
+  for(const c of featuredCards||[]){
+    const k=cardKey(c);if(seen.has(k))continue;seen.add(k);
+    featured.push({...c,__featured:true});
+    if(featured.length>=4)break;
+  }
+  const extras=[];
+  for(const c of [...(liveCards||[]),...(historicalCards||[])]){
+    const k=cardKey(c);if(seen.has(k))continue;seen.add(k);
+    extras.push({...c,__featured:false});
+  }
+  extras.sort((a,b)=>{
+    const live=Number(b?.kind==='live'||b?.timing==='live')-Number(a?.kind==='live'||a?.timing==='live');
+    if(live)return live;
+    return airScore(b)-airScore(a);
+  });
+  const visible=[...featured,...extras.slice(0,20)];
+  renderCards(visible);
+  syncQueueSummaryFromCards(selected,visible);
+  const priced=visible.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');
+  if(sub)sub.textContent=`4 рекомендуемые · ещё ${Math.max(0,visible.length-featured.length)} вариантов · линий WINLINE: ${priced}/${visible.length}`;
+}
+function cardKey(c){
+  return String(c?.id||[c?.insight_type,c?.market?.type,c?.market?.period,c?.market?.subject,c?.market?.side,c?.market?.line].join(':'));
+}
 async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds)));renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);c.textContent=parts.join(' · ')+' · LIVE FEED '+new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}if(['LIVE','CRIT'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
 const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
@@ -856,15 +881,22 @@ function cardArticleHtml(c,i,featured=false){
 }
 function renderCards(cards){
   applyPersistedState(cards);
-  currentCards=cards.slice(0,4);
-  if(!currentCards.length){$('#cards').innerHTML='<div class="empty">Пока нет статистических карточек для этого матча</div>';return}
-  const entries=currentCards.map((c,i)=>({c,i}));
-  const form=entries.filter(x=>x.c?.broadcast_group!=='h2h').slice(0,2);
-  const h2h=entries.filter(x=>x.c?.broadcast_group==='h2h').slice(0,2);
+  currentCards=cards;
+  if(!cards.length){$('#cards').innerHTML='<div class="empty">Пока нет статистических карточек для этого матча</div>';return}
+  const entries=cards.map((c,i)=>({c,i}));
+  const featured=entries.filter(x=>x.c?.__featured).slice(0,4);
+  const form=featured.filter(x=>x.c?.broadcast_group!=='h2h').slice(0,2);
+  const h2h=featured.filter(x=>x.c?.broadcast_group==='h2h').slice(0,2);
+  const featuredIds=new Set(featured.map(x=>x.i));
+  const rest=entries.filter(x=>!featuredIds.has(x.i));
   const section=(title,items,empty)=>`<section class="queueblock"><div class="queuehead"><span>${title}</span><b>${items.length}/2</b></div>${items.length?`<div class="cardgrid">${items.map(x=>cardArticleHtml(x.c,x.i,true)).join('')}</div>`:`<div class="empty">${empty}</div>`}</section>`;
+  const more=rest.length
+    ?`<details class="queueblock queue-more"><summary><span>ЕЩЁ ${rest.length} ВАРИАНТОВ</span><small>показать</small></summary><div class="cardgrid">${rest.map(x=>cardArticleHtml(x.c,x.i,false)).join('')}</div></details>`
+    :'';
   $('#cards').innerHTML=
     section('ФОРМА КОМАНД',form,'Не нашлось двух понятных карточек по текущей форме')+
-    section('ЛИЧНЫЕ ВСТРЕЧИ',h2h,'Недостаточно очных матчей для двух сильных карточек');
+    section('ЛИЧНЫЕ ВСТРЕЧИ',h2h,'Недостаточно очных матчей для двух сильных карточек')+
+    more;
   document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b));
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>openCardDetails(Number(b.dataset.detail)));
 }
