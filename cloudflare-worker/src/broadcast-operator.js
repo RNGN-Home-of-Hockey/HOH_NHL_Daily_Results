@@ -181,7 +181,7 @@ async function createInsightDraft(request,env){
     game_pk:gamePk,
     headline_ru:String(candidate.broadcast_title||candidate.title||candidate.value||candidate.eyebrow||"HOH INSIGHT").slice(0,180),
     stat_text_ru:String(market.label||candidate.value||"").slice(0,240),
-    source_note_ru:String(candidate.explanation||candidate.note||"HOH Data Core").slice(0,500),
+    source_note_ru:String(operatorNarrativeText(candidate)||candidate.explanation||candidate.note||"HOH Data Core").slice(0,500),
     suggested_market_type:String(market.type||candidate.insight_type||"insight").slice(0,80),
     suggested_market_subject:subject,
     manual_odds:Number.isFinite(odds)?odds:null,
@@ -189,6 +189,15 @@ async function createInsightDraft(request,env){
     payload_json:payload.slice(0,50000),
   };
   return persistDraft(env.DB,card,{source:"broadcast_dashboard",candidate});
+}
+
+function operatorNarrativeText(candidate){
+  const op=candidate?.operator_narrative;
+  if(!op)return "";
+  const parts=[];
+  if(op.headline)parts.push(String(op.headline));
+  if(Array.isArray(op.details))parts.push(...op.details.map(x=>String(x)));
+  return parts.filter(Boolean).join(" ");
 }
 
 async function persistDraft(db,card,meta){
