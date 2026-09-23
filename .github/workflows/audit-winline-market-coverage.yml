@@ -34,6 +34,29 @@ jobs:
             FROM winline_markets m
             WHERE m.active=1 AND m.odds IS NOT NULL;
           "
+          echo '=== EVENT MATCHING ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT
+              COUNT(*) events_total,
+              SUM(CASE WHEN game_pk IS NOT NULL THEN 1 ELSE 0 END) matched_games,
+              SUM(CASE WHEN game_pk IS NULL THEN 1 ELSE 0 END) unmatched_events,
+              MIN(starts_at) first_start,
+              MAX(starts_at) last_start,
+              MAX(updated_at) latest_event_update
+            FROM winline_events;
+          "
+          echo '=== ACTIVE EVENTS ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT e.winline_event_id,e.game_pk,e.starts_at,e.status,
+                   COUNT(CASE WHEN m.active=1 AND m.odds IS NOT NULL THEN 1 END) active_selections,
+                   MAX(m.updated_at) latest_market_update
+            FROM winline_events e
+            LEFT JOIN winline_markets m ON m.winline_event_id=e.winline_event_id
+            GROUP BY e.winline_event_id,e.game_pk,e.starts_at,e.status
+            HAVING active_selections>0
+            ORDER BY datetime(e.starts_at) ASC
+            LIMIT 60;
+          "
           echo '=== MARKET TYPES ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
             SELECT m.market_type,COUNT(*) selections,COUNT(DISTINCT m.winline_event_id) events
