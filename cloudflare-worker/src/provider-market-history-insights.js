@@ -213,19 +213,26 @@ function combinedTeamSlices(game,rowsByTeam,window,settler){
 }
 
 function aggregate(rows,settler,extra={}){
-  let hits=0,losses=0,pushes=0;
+  let hits=0,losses=0,pushes=0,current_streak=0,streakOpen=true;
   const game_pks=[];
   for(const row of rows){
     const result=settler(row);
     if(result===null||result===undefined)continue;
     game_pks.push(Number(row.game_pk));
-    if(result==="win")hits++;
-    else if(result==="push")pushes++;
-    else losses++;
+    if(result==="win"){
+      hits++;
+      if(streakOpen)current_streak++;
+    }else if(result==="push"){
+      pushes++;
+      streakOpen=false;
+    }else{
+      losses++;
+      streakOpen=false;
+    }
   }
   const decisions=hits+losses,sample=hits+losses+pushes;
   if(!sample||!decisions)return null;
-  return {hits,losses,pushes,decisions,sample,rate:hits/decisions,game_pks,...extra};
+  return {hits,losses,pushes,decisions,sample,rate:hits/decisions,current_streak,game_pks,...extra};
 }
 
 function makeCard(game,m,r,window){
@@ -250,6 +257,7 @@ function makeCard(game,m,r,window){
       losses:r.losses,
       pushes:r.pushes,
       hit_rate:r.rate,
+      current_streak:r.current_streak||0,
       away:r.away||null,
       home:r.home||null,
       exact_provider_line:true,
