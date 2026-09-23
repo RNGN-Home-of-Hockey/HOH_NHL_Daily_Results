@@ -13,6 +13,7 @@ import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js"
 import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
 import { runSportsRuNewsMaintenance } from "./telegram-center-v20-news.js";
 import { runWinlineFeedMaintenance } from "./winline-feed-maintenance.js";
+import { runWinlineLiveFeedMaintenance } from "./winline-live-feed-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
@@ -108,6 +109,13 @@ export default {
           console.error("scheduled Telegram Center polling failed", error);
         }),
       );
+      if (env.DB && envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
+        ctx.waitUntil(
+          runWinlineLiveFeedMaintenance(env).catch((error) => {
+            console.error("scheduled Winline live feed maintenance failed", error);
+          }),
+        );
+      }
       return;
     }
 
