@@ -789,9 +789,18 @@ function openCardDetails(i){
     ['Вероятность из кэфа',implied!==null?Math.round(implied*100)+'%':'—'],
     ['Статистический score',Number.isFinite(Number(meta.source_score))?String(meta.source_score):'—'],
   ];
-  $('#previewcard').innerHTML=`<div class="detailfact">${esc(factText(c))}</div>${c?.broadcast_detail?`<div class="detailnote">${esc(displayText(c.broadcast_detail))}</div>`:''}<div class="detailmarket">${esc(marketDescription(c,cardTeam(c)))} · ${Number.isFinite(Number(c?.market?.odds))?Number(c.market.odds).toFixed(2):'нет линии'}</div><div class="detailrows">${detailRows.map(r=>`<div><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join('')}</div><div class="detailnote">${esc(c?.explanation||c?.note||'')}</div>`;
-  document.querySelector('.dtitle').textContent='ДЕТАЛИ СИГНАЛА';
-  document.querySelector('.dfoot').textContent='AIR SCORE — редакционная полезность для эфира, а не вероятность исхода. Здесь сохраняем точную выборку и исходное объяснение.';
+  const op=c?.operator_narrative||{};
+  const operatorDetails=Array.isArray(op.details)?op.details.filter(Boolean):[];
+  const operatorHtml=operatorDetails.length
+    ?`<div class="detailnote"><b>${esc(op.headline||'КОММЕНТАТОРУ')}</b><br>${operatorDetails.map(x=>esc(displayText(x))).join('<br>')}</div>`
+    :'';
+  const variants=Array.isArray(c?.broadcast_variants)?c.broadcast_variants.filter(Boolean).slice(0,6):[];
+  const variantsHtml=variants.length>1
+    ?`<div class="detailnote"><b>ВАРИАНТЫ ЭФИРНОЙ ФОРМУЛИРОВКИ</b><br>${variants.map(x=>esc(displayText(x))).join('<br>')}</div>`
+    :'';
+  $('#previewcard').innerHTML=`<div class="detailfact">${esc(factText(c))}</div>${c?.broadcast_detail?`<div class="detailnote">${esc(displayText(c.broadcast_detail))}</div>`:''}<div class="detailmarket">${esc(marketDescription(c,cardTeam(c)))} · ${Number.isFinite(Number(c?.market?.odds))?Number(c.market.odds).toFixed(2):'нет линии'}</div><div class="detailrows">${detailRows.map(r=>`<div><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join('')}</div>${operatorHtml}${variantsHtml}<div class="detailnote">${esc(c?.explanation||c?.note||'')}</div>`;
+  document.querySelector('.dtitle').textContent='РАСШИРЕННАЯ АНАЛИТИКА';
+  document.querySelector('.dfoot').textContent='Короткая версия идёт в эфир. Здесь оператор видит исходную метрику, сравнение команд, форму, выборку и связь с реальной линией WINLINE.';
   $('#drawer').classList.add('open');
 }
 async function ensureDraft(c){
