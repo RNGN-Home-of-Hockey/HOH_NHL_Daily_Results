@@ -1,0 +1,46 @@
+name: Content Core Export Parity Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/content-core-export-parity-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_EXPORT_URL: "https://1ad59b064bfa3690063414a9906129e4.r2.cloudflarestorage.com/d1-sqlio-outgoing-prod/ffde1744-d9f1-4afc-afc1-77f020a8f0ce-0000209c-00000000-000050ef-a41b9b56f836ae555ff5cf479408d5e3.sql?X-Amz-Expires=3600&X-Amz-Date=20260923T104639Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=f591b8dcd0794c54409cf0613171d42b%2F20260923%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=43e5bab3babefb5ee809e37f283e247a0d944aa1c2d96ba7b1e8f753eb6735f1"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      TARGET_DATABASE_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Materialize exported snapshot locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$SOURCE_EXPORT_URL" -o /tmp/source.sql
+          rm -f /tmp/source.db
+          sqlite3 /tmp/source.db < /tmp/source.sql
+          INTEGRITY="$(sqlite3 /tmp/source.db 'PRAGMA integrity_check;')"
+          test "$INTEGRITY" = "ok"
+          sqlite3 -json /tmp/source.db "SELECT (SELECT COUNT(*) FROM projects) AS projects,(SELECT COUNT(*) FROM social_accounts) AS accounts,(SELECT COUNT(*) FROM videos) AS videos,(SELECT COUNT(*) FROM publications) AS publications,(SELECT COUNT(*) FROM metric_snapshots) AS metric_snapshots,(SELECT COUNT(*) FROM publication_latest_metrics) AS latest_metrics,(SELECT COUNT(*) FROM video_override_log) AS override_log;" > /tmp/source-counts.json
+          echo "CONTENT_CORE_SOURCE_COUNTS|$(jq -c '.[0]' /tmp/source-counts.json)"
+          echo "CONTENT_CORE_SOURCE_INTEGRITY|$INTEGRITY"
+      - name: Compare with paid D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$TARGET_DATABASE_ID/query"
+          SQL="SELECT (SELECT COUNT(*) FROM projects) AS projects,(SELECT COUNT(*) FROM social_accounts) AS accounts,(SELECT COUNT(*) FROM videos) AS videos,(SELECT COUNT(*) FROM publications) AS publications,(SELECT COUNT(*) FROM metric_snapshots) AS metric_snapshots,(SELECT COUNT(*) FROM publication_latest_metrics) AS latest_metrics,(SELECT COUNT(*) FROM video_override_log) AS override_log;"
+          RESULT="$(curl --fail --silent --show-error "$API" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" -d "$(jq -nc --arg sql "$SQL" '{sql:$sql}')")"
+          echo "$RESULT" | jq -e '.success == true' >/dev/null
+          echo "$RESULT" | jq -c '.result[0].results[0]' > /tmp/target-counts.json
+          echo "CONTENT_CORE_TARGET_COUNTS|$(cat /tmp/target-counts.json)"
+          jq -e --slurpfile target /tmp/target-counts.json '.[0] == $target[0]' /tmp/source-counts.json >/dev/null
+          echo "CONTENT_CORE_SNAPSHOT_PARITY|ok"
