@@ -112,30 +112,43 @@ function extractProfile(card,context){
   };
 }
 
+
 function buildVariants(p,card,fallback){
-  const out=[];
+  const out=[],market=card?.market||{},ev=card?.evidence||{};
   if(p.team&&p.teamRank!==null&&p.metric){
-    out.push(`${p.team} — ${rankText(p.teamRank)} НХЛ ПО ${p.meta.tv}`);
-    if(p.teamValue!==null){
-      out.push(`${p.team} — ${rankText(p.teamRank)} НХЛ ПО ${p.meta.tv}: ${formatValue(p.teamValue,p.meta)}`);
-    }
+    out.push(p.team+" — "+rankText(p.teamRank)+" НХЛ ПО "+p.meta.tv);
+    if(p.teamValue!==null)out.push(p.team+" — "+rankText(p.teamRank)+" НХЛ ПО "+p.meta.tv+": "+formatValue(p.teamValue,p.meta));
     if(p.opponent&&p.opponentRank!==null&&p.rankGap!==null&&p.rankGap>=8){
-      out.push(`${p.team} — НА ${Math.round(p.rankGap)} МЕСТ ВЫШЕ ${p.opponent} ПО ${p.meta.tv}`);
+      out.push(p.team+" — НА "+Math.round(p.rankGap)+" МЕСТ ВЫШЕ "+p.opponent+" ПО "+p.meta.tv);
+      out.push(p.team+" — "+rankText(p.teamRank)+", "+p.opponent+" — №"+Math.round(p.opponentRank)+" ПО "+p.meta.tv);
     }
   }
 
   const rollingRank=p.rollingTeamRank20??p.rollingTeamRank??p.rollingTeamRank10;
   const rollingWindow=p.rollingTeamRank20!==null?20:(p.rollingTeamWindow??(p.rollingTeamRank10!==null?10:null));
   if(p.team&&rollingRank!==null&&rollingWindow){
-    out.push(`${p.team} — ${rankText(rollingRank)} НХЛ ЗА ПОСЛЕДНИЕ ${Math.round(rollingWindow)} МАТЧЕЙ ПО ${p.meta.tv}`);
+    out.push(p.team+" — "+rankText(rollingRank)+" НХЛ ЗА ПОСЛЕДНИЕ "+Math.round(rollingWindow)+" МАТЧЕЙ ПО "+p.meta.tv);
+  }
+  if(p.team&&p.teamRank!==null&&rollingRank!==null&&rollingWindow){
+    out.push(p.team+" — "+rankText(p.teamRank)+" ЗА СЕЗОН И "+rankText(rollingRank)+" ЗА ПОСЛЕДНИЕ "+Math.round(rollingWindow)+" ПО "+p.meta.tv);
+  }
+  if(p.team&&p.teamRank!==null&&p.persistent)out.push(p.team+" — "+rankText(p.teamRank)+" НХЛ ПО "+p.meta.tv+" ДВА СЕЗОНА ПОДРЯД");
+  if(p.team&&p.venueConfirmed&&p.venueSample!==null)out.push(p.team+" ПОДТВЕРЖДАЕТ ПРЕИМУЩЕСТВО ДОМА/В ГОСТЯХ — ВЫБОРКА "+Math.round(p.venueSample)+" МАТЧЕЙ");
+
+  const support=Array.isArray(ev.supporting_signals)?ev.supporting_signals:[];
+  for(const item of support.slice(0,4)){
+    const t=String(item?.title||item?.eyebrow||"").trim();
+    if(t)out.push(t);
+    if(p.team&&t)out.push(p.team+" — СИГНАЛ ПОДТВЕРЖДАЮТ 2 НЕЗАВИСИМЫХ ПОКАЗАТЕЛЯ");
   }
 
-  if(p.team&&p.teamRank!==null&&p.persistent){
-    out.push(`${p.team} — ${rankText(p.teamRank)} НХЛ ПО ${p.meta.tv} ДВА СЕЗОНА ПОДРЯД`);
+  const odds=finite(market.odds);
+  if(market.label&&odds!==null&&out.length){
+    out.push(out[0]+" · ЛИНИЯ "+String(market.label)+" ЗА "+odds.toFixed(2));
   }
 
   if(!out.length&&fallback)out.push(fallback);
-  return unique(out).slice(0,8);
+  return unique(out).slice(0,14);
 }
 
 function buildTvSubtitle(p){
@@ -171,6 +184,17 @@ function buildOperator(p,card,context){
   if(market?.label) {
     const odds=finite(market.odds);
     details.push(`Связанная линия: ${String(market.label)}${odds!==null?` · кэф ${odds.toFixed(2)}`:""}.`);
+  }
+  const supporting=Array.isArray(e.supporting_signals)?e.supporting_signals:[];
+  if(supporting.length){
+    details.push("Независимых подтверждений: "+supporting.length+".");
+    for(const item of supporting.slice(0,4)){
+      const title=String(item?.title||item?.eyebrow||item?.category||"").trim();
+      if(title)details.push("Подтверждение: "+title+".");
+    }
+  }
+  if(e.market_combination===true){
+    details.push("Карточка собрана market-first: сначала взята реальная линия WINLINE, затем к ней подобраны совместимые статистические сигналы.");
   }
   if(card?.explanation)details.push(String(card.explanation));
 
