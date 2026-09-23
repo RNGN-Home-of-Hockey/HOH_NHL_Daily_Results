@@ -1,6 +1,7 @@
 const CONTEXT_CATEGORIES = new Set(["league_rank", "advanced_context", "goalie_context"]);
 
 const PRIMARY_PRIORITY = new Map([
+  ["market_combination", 9],
   ["advanced_rolling_venue", 8],
   ["advanced_market", 7],
   ["market_evaluator", 6],
@@ -252,11 +253,13 @@ function familyBucket(market) {
 
 function familyLimit(market) {
   const type = market?.type || "unknown";
-  if (type === "game_total") return 1;
-  if (type === "team_total") return 1;
-  if (type === "handicap") return 1;
+  const real = market?.odds_is_demo === false && String(market?.odds_source || "") === "provider_live";
+  if (type === "game_total") return real ? 3 : 1;
+  if (type === "team_total") return real ? 3 : 1;
+  if (type === "handicap") return real ? 3 : 1;
   if (type === "moneyline") return 2;
-  return 1;
+  if (String(type).startsWith("player_")) return real ? 3 : 1;
+  return real ? 2 : 1;
 }
 
 function redundantLineBucket(market) {
@@ -264,6 +267,8 @@ function redundantLineBucket(market) {
   const subject = market?.subject || "all";
   const side = market?.side || "none";
   const period = normalizePeriod(market);
+  const real = market?.odds_is_demo === false && String(market?.odds_source || "") === "provider_live";
+  if (real) return [type,period,subject,side,normalizeLine(market?.line)].join(":");
   if (type === "game_total") return `game_total:${period}:${side}`;
   if (type === "team_total") return `team_total:${period}:${subject}:${side}`;
   if (type === "handicap") return `handicap:${period}:${subject}:${side}`;
