@@ -174,7 +174,7 @@ function normalizeLineKey(value) {
 }
 
 function isLineCompatible(type, line) {
-  if (["moneyline", "period_1_result", "period_2_result", "period_3_result", "first_goal_team", "next_goal_team", "double_chance", "team_goal_bucket", "highest_scoring_period", "win_all_periods"].includes(type)) return line === null;
+  if (["moneyline", "period_1_result", "period_2_result", "period_3_result", "first_goal_team", "next_goal_team", "double_chance", "team_goal_bucket", "highest_scoring_period", "win_all_periods", "both_teams_score"].includes(type)) return line === null;
   return line !== null;
 }
 
