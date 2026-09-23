@@ -1,0 +1,130 @@
+name: Content Core Paid Import V2 Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/content-core-paid-import-v2-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      TARGET_DATABASE_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
+      SOURCE_EXPORT_URL: "https://1ad59b064bfa3690063414a9906129e4.r2.cloudflarestorage.com/d1-sqlio-outgoing-prod/ffde1744-d9f1-4afc-afc1-77f020a8f0ce-0000209c-00000000-000050ef-a41b9b56f836ae555ff5cf479408d5e3.sql?X-Amz-Expires=3600&X-Amz-Date=20260923T104639Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=f591b8dcd0794c54409cf0613171d42b%2F20260923%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=43e5bab3babefb5ee809e37f283e247a0d944aa1c2d96ba7b1e8f753eb6735f1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Download source SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$SOURCE_EXPORT_URL" -o /tmp/content-core.sql
+          test -s /tmp/content-core.sql
+          echo "CONTENT_CORE_V2_EXPORT|bytes=$(wc -c < /tmp/content-core.sql)|md5=$(md5sum /tmp/content-core.sql | awk '{print $1}')"
+      - name: Import and continuously poll
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const db=process.env.TARGET_DATABASE_ID;
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const sql=fs.readFileSync('/tmp/content-core.sql');
+          const etag=crypto.createHash('md5').update(sql).digest('hex');
+          const api=`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${db}/import`;
+          const queryApi=`https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/${db}/query`;
+          const headers={Authorization:'Bearer '+token,'Content-Type':'application/json'};
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function post(body){
+            const r=await fetch(api,{method:'POST',headers,body:JSON.stringify(body)});
+            const text=await r.text();
+            let data={}; try{data=JSON.parse(text)}catch{}
+            return {status:r.status,ok:r.ok,data,text};
+          }
+          async function hasSchema(){
+            try{
+              const r=await fetch(queryApi,{method:'POST',headers,body:JSON.stringify({sql:"SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='projects'"})});
+              const d=await r.json();
+              return Boolean(r.ok && d.success && Number(d.result?.[0]?.results?.[0]?.n||0)>0);
+            }catch{return false}
+          }
+
+          const init=await post({action:'init',etag});
+          if(!init.ok||!init.data.success) throw new Error('init '+init.text.slice(0,1000));
+          const uploadUrl=init.data.result?.upload_url;
+          const filename=init.data.result?.filename;
+          if(!uploadUrl||!filename) throw new Error('init missing upload URL/filename');
+          const upload=await fetch(uploadUrl,{method:'PUT',body:sql});
+          if(!upload.ok) throw new Error('upload HTTP '+upload.status);
+          const uploadEtag=(upload.headers.get('etag')||'').replaceAll('"','');
+          if(uploadEtag && uploadEtag!==etag) throw new Error('upload ETag mismatch');
+
+          const ingest=await post({action:'ingest',etag,filename});
+          if(!ingest.ok||!ingest.data.success) throw new Error('ingest '+ingest.text.slice(0,1000));
+          const bookmark=ingest.data.result?.at_bookmark;
+          if(!bookmark) throw new Error('ingest missing bookmark');
+          console.log('CONTENT_CORE_V2_INGEST_STARTED|'+JSON.stringify({bookmark}));
+
+          let absent=0;
+          let completed=false;
+          for(let i=0;i<600;i++){
+            try{
+              const poll=await post({action:'poll',current_bookmark:bookmark});
+              const result=poll.data?.result||{};
+              const status=result.status||null;
+              const error=String(result.error||'');
+              console.log('CONTENT_CORE_V2_POLL|'+JSON.stringify({i,http:poll.status,status,success:result.success??null,error:error||null,messages:result.messages||[]}));
+              if(status==='complete'){
+                console.log('CONTENT_CORE_V2_IMPORT_COMPLETE|'+JSON.stringify({
+                  bookmark:result.at_bookmark||bookmark,
+                  final_bookmark:result.result?.final_bookmark||null,
+                  meta:result.result?.meta||null,
+                  num_queries:result.result?.num_queries||null
+                }));
+                completed=true;
+                break;
+              }
+              if(status==='error') throw new Error('import error '+error);
+              if(error==='Not currently importing anything.'){
+                absent++;
+                if(await hasSchema()){
+                  console.log('CONTENT_CORE_V2_IMPORT_COMPLETE|'+JSON.stringify({bookmark,via:'schema-visible'}));
+                  completed=true;
+                  break;
+                }
+                if(absent>=30) throw new Error('import disappeared before schema became visible');
+              }else{
+                absent=0;
+              }
+            }catch(error){
+              console.log('CONTENT_CORE_V2_POLL_TRANSIENT|'+String(error?.message||error));
+            }
+            await sleep(2000);
+          }
+          if(!completed) throw new Error('import did not complete');
+
+          for(let i=0;i<90;i++){
+            try{
+              const sqlText="SELECT (SELECT COUNT(*) FROM projects) AS projects,(SELECT COUNT(*) FROM social_accounts) AS accounts,(SELECT COUNT(*) FROM videos) AS videos,(SELECT COUNT(*) FROM publications) AS publications,(SELECT COUNT(*) FROM metric_snapshots) AS metric_snapshots,(SELECT COUNT(*) FROM publication_latest_metrics) AS latest_metrics,(SELECT COUNT(*) FROM video_override_log) AS override_log;";
+              const r=await fetch(queryApi,{method:'POST',headers,body:JSON.stringify({sql:sqlText})});
+              const d=await r.json();
+              const row=d.result?.[0]?.results?.[0];
+              if(r.ok&&d.success&&row){
+                console.log('CONTENT_CORE_V2_COUNTS|'+JSON.stringify(row));
+                process.exit(0);
+              }
+            }catch{}
+            await sleep(2000);
+          }
+          throw new Error('target query did not become ready');
+          NODE
