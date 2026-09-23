@@ -20,7 +20,8 @@ export async function buildExpandedMarketInsights(db,game){
     out.push(...resultTotalCards(game,team,rows));
     out.push(...scoreStateCards(game,team,opponent,rows));
   }
-  return dedupe(out).sort((a,b)=>Number(b.score||0)-Number(a.score||0)).slice(0,36);
+  out.push(...bothTeamsScoreCards(game,map.get(game.away_tri)||[],map.get(game.home_tri)||[]));
+  return dedupe(out).sort((a,b)=>Number(b.score||0)-Number(a.score||0)).slice(0,40);
 }
 
 function recent(db,team,before){
@@ -35,6 +36,32 @@ function recent(db,team,before){
     ORDER BY scheduled_start_utc DESC,game_pk DESC
     LIMIT 20;
   `).bind(team,before);
+}
+
+function bothTeamsScoreCards(game,awayRows,homeRows){
+  const out=[];
+  for(const window of WINDOWS){
+    const away=awayRows.slice(0,window),home=homeRows.slice(0,window);
+    if(away.length<Math.min(8,window)||home.length<Math.min(8,window))continue;
+    const pred=r=>Number(r.final_goals_for)>=1&&Number(r.final_goals_against)>=1;
+    const ar=count(away,pred)/away.length,hr=count(home,pred)/home.length;
+    const avg=(ar+hr)/2;
+    for(const side of ["yes","no"]){
+      const a=side==="yes"?ar:1-ar,h=side==="yes"?hr:1-hr,effective=(a+h)/2;
+      if(a<.55||h<.55||effective<.62)continue;
+      const ah=Math.round(a*away.length),hh=Math.round(h*home.length),hits=ah+hh,sample=away.length+home.length;
+      out.push(card(game,{
+        id:`both-score:${side}:w${window}`,type:"both_teams_score",subject:null,side,line:null,
+        score:score(sample,effective,.60),eyebrow:"ОБЕ КОМАНДЫ ЗАБЬЮТ",value:`${hits}/${sample}`,
+        title:side==="yes"
+          ?`ОБЕ КОМАНДЫ ЗАБИВАЛИ В ${hits} ИЗ ${sample} РЕЛЕВАНТНЫХ МАТЧЕЙ`
+          :`ХОТЯ БЫ ОДНА КОМАНДА НЕ ЗАБИВАЛА В ${hits} ИЗ ${sample} РЕЛЕВАНТНЫХ МАТЧЕЙ`,
+        explanation:`${game.away_tri}: ${ah}/${away.length}; ${game.home_tri}: ${hh}/${home.length}. Два независимых командных среза для точного рынка «обе забьют».`,
+        evidence:{window,sample,hits,hit_rate:effective,away:{hits:ah,sample:away.length,hit_rate:a},home:{hits:hh,sample:home.length,hit_rate:h},role:side==="yes"?"both_teams_score_yes":"both_teams_score_no",game_pks:[...away,...home].map(x=>Number(x.game_pk))}
+      }));
+    }
+  }
+  return out;
 }
 
 function teamGoalBucketCards(game,team,rows){
@@ -169,6 +196,7 @@ function card(game,x){
     market:{type:x.type,period:"GAME",subject:x.subject,side:x.side,line:x.line,label:marketLabel(x)}};
 }
 function marketLabel(x){
+  if(x.type==="both_teams_score")return x.side==="yes"?"Обе команды забьют":"Обе команды забьют — нет";
   if(x.type==="team_goal_bucket")return `${x.subject}: ${x.side==="0_1"?"0–1":x.side==="2"?"ровно 2":"3+"} шайбы`;
   if(x.type==="highest_scoring_period")return `${x.subject}: самый результативный ${x.side}`;
   if(x.type==="win_all_periods")return `${x.subject}: выиграет все периоды`;
