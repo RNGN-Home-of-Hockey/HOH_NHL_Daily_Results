@@ -46,7 +46,14 @@ export function summarizeMarketCoverage(providerMarkets=[],cards=[]){
 
   const covered=cardsByKey.size;
   const total=providerKeys.size;
-  const multi=[...cardsByKey.values()].filter(xs=>xs.length>=2).length;
+  const multi=[...cardsByKey.values()].filter(xs=>
+    xs.length>=2 ||
+    xs.some(card=>
+      Number(card?.evidence?.independent_support_count||0)>=1 ||
+      Number(card?.evidence?.combination_support_count||0)>=2 ||
+      (Array.isArray(card?.evidence?.supporting_signals)&&card.evidence.supporting_signals.length>=1)
+    )
+  ).length;
   const comboCards=list.filter(c=>c?.evidence?.market_combination===true);
   const narrativeVariants=list.reduce((n,c)=>n+(Array.isArray(c?.broadcast_variants)?c.broadcast_variants.length:0),0);
 
