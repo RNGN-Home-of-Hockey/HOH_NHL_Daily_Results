@@ -1,8 +1,8 @@
 import worker, { ensureLegacyTelegramWebhook } from "./index.js";
 import { getBackfillStatus, runBackfillStep } from "./data-core-backfill.js";
 import { getBackfillJob, runPersistentBackfillTick } from "./data-core-backfill-job.js";
-import { archiveUpcomingBroadcastAnalytics, handleBroadcastRequest } from "./broadcast-dashboard-v2.js";
-import { buildLiveGameSnapshot } from "./live-betting-engine.js";
+import { archiveUpcomingBroadcastAnalytics, handleBroadcastRequest, loadBroadcastWinlineMarkets } from "./broadcast-dashboard-v2.js";
+import { buildLiveGameSnapshot, attachLiveWinlineMarkets } from "./live-betting-engine.js";
 import { handleControlCenterRequest } from "./control-center.js";
 import { handleTelegramMiniAppRequest } from "./telegram-mini-app.js";
 import { handleTelegramProductBotRequest, pollTelegramCenterUpdates } from "./telegram-product-bot.js";
@@ -66,7 +66,7 @@ export default {
 
     const liveMatch = /^\/api\/broadcast\/live\/(\d+)$/.exec(path);
     if (liveMatch) {
-      return broadcastLiveRoute(request, Number(liveMatch[1]));
+      return broadcastLiveRoute(request, env, Number(liveMatch[1]));
     }
 
     const broadcastResponse = await handleBroadcastRequest(request, env, path);
@@ -271,7 +271,7 @@ function redirect(location){
   }});
 }
 
-async function broadcastLiveRoute(request, gamePk) {
+async function broadcastLiveRoute(request, env, gamePk) {
   if (request.method !== "GET") {
     return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
   }
@@ -279,7 +279,19 @@ async function broadcastLiveRoute(request, gamePk) {
     return jsonResponse({ ok: false, error: "invalid_game_pk" }, 400);
   }
   try {
-    return jsonResponse(await buildLiveGameSnapshot(gamePk));
+    let snapshot=await buildLiveGameSnapshot(gamePk);
+    if(env?.DB){
+      try{
+        const providerMarkets=await loadBroadcastWinlineMarkets(env.DB,snapshot.game);
+        snapshot=attachLiveWinlineMarkets(snapshot,providerMarkets,{
+          market_max_age_ms:5*60*1000,
+        });
+      }catch(error){
+        console.error("broadcast live Winline enrichment failed",error);
+        snapshot={...snapshot,provider_market_count:0,priced_live_cards:0};
+      }
+    }
+    return jsonResponse(snapshot);
   } catch (error) {
     console.error("broadcast live snapshot failed", error);
     return jsonResponse({ ok: false, error: "nhl_live_snapshot_failed" }, 502);
