@@ -403,11 +403,11 @@ function localizeTeamCodes(value,game){
     [upper(game?.away_tri),upper(game?.away_name_ru||game?.away_name)],
   ].filter(([tri,name])=>tri&&name);
   for(const [tri,name] of pairs){
-    text=text.replace(new RegExp("\\b"+escapeRegex(tri)+"\\b","g"),name);
+    text=text.replace(new RegExp("\\b"+tri+"\\b","g"),name);
   }
   return text;
 }
-function escapeRegex(value){return String(value||"").replace(/[.*+?^${}()|[\]\\]/g,"\\function upper(value){")}
+
 function upper(value){return String(value||"").trim().toUpperCase()}
 function finite(value){
   if(value===null||value===undefined||value==="")return null;
