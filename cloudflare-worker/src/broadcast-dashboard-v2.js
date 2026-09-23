@@ -795,12 +795,18 @@ function factText(card){
   }
   return s;
 }
+function headlineTeamName(card,team){
+  const g=currentData?.game||{},tri=teamCodeFromCard(card),home=String(g.home_tri||"").toUpperCase();
+  const side=tri===home?"home":"away";
+  return displayText(g[side+"_name_ru"]||g[side+"_name"]||team.name||"");
+}
 function factHtml(card,team){
   let html=esc(factText(card));
-  const safeName=esc(team.name);
-  if(safeName)html=html.replace(safeName,'<span class="facthot">'+safeName+'</span>');
-  html=html.replace(/(\\d+\\s+ИЗ\\s+\\d+)/g,'<span class="facthot">$1</span>');
-  html=html.replace(/(\\d+\\s*\/\\s*\\d+)/g,'<span class="facthot">$1</span>');
+  const fullName=esc(headlineTeamName(card,team)),safeName=esc(team.name);
+  if(fullName&&html.includes(fullName))html=html.replace(fullName,'<span class="facthot">'+fullName+'</span>');
+  else if(safeName)html=html.replace(safeName,'<span class="facthot">'+safeName+'</span>');
+  html=html.replace(/(\d+\s+ИЗ\s+\d+)/g,'<span class="facthot">$1</span>');
+  html=html.replace(/(\d+\s*\/\s*\d+)/g,'<span class="facthot">$1</span>');
   return html;
 }
 function profitParts(odds){
@@ -859,16 +865,24 @@ function airTone(score){return score>=85?'great':score>=70?'good':score>=55?'mid
 function simpleSubtitle(c){
   const raw=String(c?.broadcast_subtitle||c?.broadcast_detail||'').trim();
   if(!raw)return'';
-  if(/НЕЗАВИСИМ.*СИГНАЛ|РАЗНЫЕ СТАТИСТИЧЕСКИЕ СЛОИ|AIR SCORE|IMPLIED|SOURCE SCORE/i.test(raw))return'';
+  if(/НЕЗАВИСИМ.*СИГНАЛ|РАЗНЫЕ СТАТИСТИЧЕСКИЕ СЛОИ|ЕЩЁ\s+\d+\s+ФАКТ|AIR SCORE|IMPLIED|SOURCE SCORE/i.test(raw))return'';
   return displayText(raw);
+}
+function supportNote(c){
+  const fromBrief=String(c?.commentator_brief?.support_note||"").trim();
+  if(fromBrief)return displayText(fromBrief);
+  const e=c?.evidence||{},support=Array.isArray(e.supporting_signals)?e.supporting_signals:[];
+  const n=Math.max(Number(e.independent_support_count||0),support.length,Math.max(0,Number(e.combination_support_count||0)-1));
+  if(!n)return"";
+  return "ЕЩЁ "+n+" "+(n===1?"ФАКТ":n>=2&&n<=4?"ФАКТА":"ФАКТОВ")+" В ОПИСАНИИ";
 }
 function cardSummaryHtml(c){
   const team=cardTeam(c),odds=Number(c?.market?.odds),priced=Number.isFinite(odds)&&odds>1,profit=profitParts(odds),score=airScore(c),tone=airTone(score);
   const group=c?.broadcast_group==='h2h'?'ЛИЧНЫЕ ВСТРЕЧИ':'ФОРМА КОМАНД';
-  const subtitle=simpleSubtitle(c);
+  const subtitle=simpleSubtitle(c),more=supportNote(c);
   return `<div class="signal">
     <div class="airmeta ${tone}"><b>${score}</b><strong>ДЛЯ ЭФИРА</strong><div><span>${esc(group)}</span></div></div>
-    <div class="signal-fact">${esc(factText(c))}</div>${subtitle?`<div class="signal-detail">${esc(subtitle)}</div>`:''}
+    <div class="signal-fact">${factHtml(c,team)}</div>${more?`<div class="signal-morefacts"><b>!</b><span>${esc(more)}</span></div>`:''}${subtitle?`<div class="signal-detail">${esc(subtitle)}</div>`:''}
     <div class="signal-main">
       <div class="signal-copy">
         <div class="signal-team">${esc(team.name)}</div>
@@ -908,18 +922,21 @@ function renderCards(cards){
 function finiteUiNumber(v){if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null}
 function openCardDetails(i){
   const c=currentCards[i];if(!c)return;
-  const brief=c?.commentator_brief||{};
+  const team=cardTeam(c),brief=c?.commentator_brief||{};
   const points=Array.isArray(brief.points)&&brief.points.length
     ?brief.points.slice(0,5)
     :[
       {label:'ГЛАВНОЕ',text:factText(c)},
-      {label:'ЛИНИЯ',text:(c?.market?.label||marketDescription(c,cardTeam(c)))+(Number.isFinite(Number(c?.market?.odds))?' · кэф '+Number(c.market.odds).toFixed(2):'')}
+      {label:'ЛИНИЯ',text:(c?.market?.label||marketDescription(c,team))+(Number.isFinite(Number(c?.market?.odds))?' · кэф '+Number(c.market.odds).toFixed(2):'')}
     ];
   const pointsHtml=points.map(p=>`<div class="briefrow"><span>${esc(p.label||'')}</span><b>${esc(displayText(p.text||''))}</b></div>`).join('');
+  const note=String(brief.support_note||supportNote(c)||''),supporting=Array.isArray(brief.supporting_facts)?brief.supporting_facts:[];
+  const supportHtml=supporting.length?`<div class="supportfacts">${supporting.map((x,j)=>`<div class="supportfactrow"><span>ФАКТ ${j+2}</span><b>${esc(displayText(x))}</b></div>`).join('')}</div>`:'';
   $('#previewcard').innerHTML=
-    `<div class="detailfact">${esc(factText(c))}</div>`+
+    `<div class="detailfact">${factHtml(c,team)}</div>`+
     `<div class="detailmarket">${esc(brief.group||c?.broadcast_group_label||'КОММЕНТАТОРУ')}</div>`+
-    `<div class="commentatorbrief">${pointsHtml}</div>`;
+    (note?`<div class="briefnotice"><b>!</b><span>${esc(displayText(note))}</span></div>`:'')+
+    `<div class="commentatorbrief">${pointsHtml}</div>`+supportHtml;
   document.querySelector('.dtitle').textContent='КОММЕНТАТОРУ';
   document.querySelector('.dfoot').textContent='Только главное: факт, цифра, контекст и текущая линия. Этого должно хватить, чтобы понять карточку за несколько секунд.';
   $('#drawer').classList.add('open');
@@ -1039,7 +1056,7 @@ const DASHBOARD_HTML=String.raw`<!doctype html>
 <title>HOH Broadcast Control</title>
 <style>
 ${BROADCAST_CARD_CSS}
-.airmeta{display:flex;align-items:center;gap:7px;padding:8px 14px 7px;border-bottom:1px solid #29292f;font-size:10px}.airmeta>b{font-size:15px;min-width:28px}.airmeta>strong{font-size:9px;letter-spacing:.08em}.airmeta>div{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}.airmeta span{font-size:8px;color:#9a9aa2;border:1px solid #303037;border-radius:999px;padding:3px 6px}.airmeta.great>b,.airmeta.great>strong{color:var(--green)}.airmeta.good>b,.airmeta.good>strong{color:#d8ef9d}.airmeta.mid>b,.airmeta.mid>strong{color:#ffd28a}.airmeta.low>b,.airmeta.low>strong{color:#8b8b94}.signal-detail{padding:0 14px 9px;color:#7f7f88;font-size:9px;letter-spacing:.02em}
+.airmeta{display:flex;align-items:center;gap:7px;padding:8px 14px 7px;border-bottom:1px solid #29292f;font-size:10px}.airmeta>b{font-size:15px;min-width:28px}.airmeta>strong{font-size:9px;letter-spacing:.08em}.airmeta>div{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}.airmeta span{font-size:8px;color:#9a9aa2;border:1px solid #303037;border-radius:999px;padding:3px 6px}.airmeta.great>b,.airmeta.great>strong{color:var(--green)}.airmeta.good>b,.airmeta.good>strong{color:#d8ef9d}.airmeta.mid>b,.airmeta.mid>strong{color:#ffd28a}.airmeta.low>b,.airmeta.low>strong{color:#8b8b94}.signal-detail{padding:0 14px 9px;color:#7f7f88;font-size:9px;letter-spacing:.02em}.signal-morefacts{display:flex;align-items:center;gap:6px;padding:0 14px 9px;color:#a4a4ab;font-size:9px;font-weight:850;letter-spacing:.03em}.signal-morefacts b,.briefnotice b{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:999px;background:var(--orange);color:#0b0b0d;font-size:11px;font-weight:950}.briefnotice{display:flex;align-items:center;gap:8px;margin:12px 0 0;color:#d6d6da;font-size:11px;font-weight:900}.supportfacts{margin-top:10px;border-top:1px solid #2b2b31}.supportfactrow{display:grid;grid-template-columns:92px 1fr;gap:16px;padding:10px 0;border-bottom:1px solid #232328}.supportfactrow span{font-size:9px;font-weight:900;letter-spacing:.12em;color:var(--orange)}.supportfactrow b{font-size:13px;line-height:1.28}
 
 :root{--bg:#080808;--side:#0b0b0c;--panel:#111113;--panel2:#17171a;--line:#2a2a2f;--text:#f8f8f6;--muted:#85858d;--orange:#ff5a1f;--lav:#c8b7ff;--lav2:#7869a7;--green:#83e6b1;--red:#ff6161}.overlaytools{display:flex;gap:7px;align-items:center;margin-top:10px;flex-wrap:wrap}.overlayopen,.overlaycopy,.overlayoff{font-size:8px;font-weight:950;letter-spacing:.08em;border-radius:8px;padding:8px 10px;text-decoration:none}.overlayopen{background:#f1f1f0;color:#0b0b0d}.overlaycopy{border:1px solid #35353b;background:#17171a;color:#aaaab2;cursor:pointer}.overlaycopy:hover{color:#fff;border-color:#55555e}.overlayoff{border:1px solid #7a252a;background:#44171a;color:#ff9da2;cursor:pointer}.overlayoff:hover{background:#5a1d21;color:#fff}.overlayoff:disabled{opacity:.45;cursor:not-allowed}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}body{overflow-x:hidden}button{font:inherit}

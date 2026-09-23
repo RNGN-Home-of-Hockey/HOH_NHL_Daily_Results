@@ -11,7 +11,9 @@ export function buildCommentatorBrief(card={},game={}){
   const line=linePoint(m);
   if(line)points.push({label:"ЛИНИЯ",text:line});
   points.push({label:"В ЭФИР",text:sayPoint(card,e,m,game)});
-  return {group,points:dedupe(points).slice(0,5)};
+  const supporting_facts=supportFacts(e,card).slice(0,4);
+  const extra_fact_count=supportCount(e);
+  return {group,points:dedupe(points).slice(0,5),support_note:extra_fact_count?moreFactsText(extra_fact_count):null,supporting_facts};
 }
 function numberPoint(card,e){
   const hits=n(e.hits),sample=n(e.decisions??e.sample??e.games),rate=n(e.hit_rate);
@@ -40,9 +42,28 @@ function contextPoint(card,e,game){
       return a.hits+"/"+a.decisions+" за "+a.window+" матчей · "+b.hits+"/"+b.decisions+" за "+b.window;
     }
   }
-  const support=Math.max(Number(e.independent_support_count||0),Array.isArray(e.supporting_signals)?e.supporting_signals.length:0);
-  if(support>0)return "есть ещё "+support+" независим"+(support===1?"ое подтверждение":"ых подтверждения");
   return null;
+}
+function supportCount(e){
+  const support=Array.isArray(e.supporting_signals)?e.supporting_signals:[];
+  return Math.max(Number(e.independent_support_count||0),support.length,Math.max(0,Number(e.combination_support_count||0)-1));
+}
+function supportFacts(e,card){
+  const main=clean(card.broadcast_title||card.title||card.value||"").toLowerCase();
+  const support=Array.isArray(e.supporting_signals)?e.supporting_signals:[];
+  const seen=new Set(),out=[];
+  for(const item of support){
+    const text=clean(item?.title||item?.eyebrow||item?.value||"");
+    const key=text.toLowerCase();
+    if(!text||key===main||seen.has(key)||/ПОДТВЕРЖД|НЕЗАВИСИМ.*СИГНАЛ|ЕСТЬ\s+\d+/i.test(text))continue;
+    seen.add(key);out.push(text);
+  }
+  return out;
+}
+function moreFactsText(count){
+  const n=Math.max(0,Math.round(Number(count)||0));
+  if(!n)return"";
+  return "ЕЩЁ "+n+" "+(n===1?"ФАКТ":n>=2&&n<=4?"ФАКТА":"ФАКТОВ")+" В ОПИСАНИИ";
 }
 function linePoint(m){
   const odds=n(m.odds),label=clean(m.label||marketLabel(m));

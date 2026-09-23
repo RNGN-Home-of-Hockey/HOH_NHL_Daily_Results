@@ -49,19 +49,34 @@ function evaluate(m,game,rows){
 }
 
 function card(game,m,rows,s){
-  const label=marketLabel(m),window=rows.length,pct=Math.round(s.rate*100);
+  const label=marketLabel(m),window=rows.length;
+  const subject=String(m.subject||"").toUpperCase();
+  const team=subject===String(game.home_tri||"").toUpperCase()||subject===String(game.away_tri||"").toUpperCase()?subject:String(game.away_tri||"").toUpperCase();
+  const opponent=team===String(game.home_tri||"").toUpperCase()?String(game.away_tri||"").toUpperCase():String(game.home_tri||"").toUpperCase();
+  const teamName=gameTeamName(game,team),opponentName=gameTeamName(game,opponent);
+  const title=String(m.market_type||"")==="moneyline"
+    ?fitTitle(teamName+" ОБЫГРЫВАЛИ "+opponentName+" В "+s.hits+" ИЗ "+s.decisions+" ПОСЛЕДНИХ МАТЧЕЙ",shortName(teamName)+": "+s.hits+" ИЗ "+s.decisions+" ПОБЕД ПРОТИВ "+shortName(opponentName))
+    :fitTitle(label+" ПРОТИВ "+opponentName+" — "+s.hits+" ИЗ "+s.decisions+" ПОСЛЕДНИХ МАТЧЕЙ",label+": "+s.hits+" ИЗ "+s.decisions+" ПРОТИВ "+shortName(opponentName));
   return {
     id:String(game.game_pk)+":h2h-current-line:"+key(m),
     insight_type:"h2h_current_line",category:"h2h_broadcast",kind:"history",timing:"pregame",
     score:Math.min(94,62+Math.round(s.rate*24)+Math.min(8,window)),
     eyebrow:"ЛИЧНЫЕ ВСТРЕЧИ · "+window,
     value:s.hits+"/"+s.decisions,
-    title:label+" — "+s.hits+" ИЗ "+s.decisions+" В ОЧНЫХ МАТЧАХ",
-    explanation:"Последние "+window+" очных матчей этих команд. Рассчитана именно текущая линия WINLINE, без подмены соседней линией.",
-    evidence:{split:"h2h",window,sample:window,hits:s.hits,decisions:s.decisions,pushes:s.pushes,hit_rate:s.rate,game_pks:rows.map(r=>Number(r.game_pk)),exact_provider_line:true,feature_layer:"h2h_current_winline_line_v1"},
+    title,
+    explanation:"Последние "+window+" очных матчей "+teamName+" и "+opponentName+". Рассчитана именно текущая линия WINLINE, без подмены соседней линией.",
+    evidence:{split:"h2h",window,sample:window,hits:s.hits,decisions:s.decisions,pushes:s.pushes,hit_rate:s.rate,team,opponent,game_pks:rows.map(r=>Number(r.game_pk)),exact_provider_line:true,feature_layer:"h2h_current_winline_line_v1"},
     market:{type:m.market_type,period:m.period,subject:m.subject,side:m.side,line:m.line,label,odds:m.odds,provider:m.provider,odds_is_demo:false,odds_source:"provider_live",event_id:m.event_id,market_id:m.market_id,selection_id:m.selection_id,updated_at:m.updated_at,deeplink:m.deeplink}
   };
 }
+function gameTeamName(game,tri){
+  const t=String(tri||"").toUpperCase();
+  if(t===String(game.home_tri||"").toUpperCase())return String(game.home_name_ru||game.home_name||t).trim().toUpperCase();
+  if(t===String(game.away_tri||"").toUpperCase())return String(game.away_name_ru||game.away_name||t).trim().toUpperCase();
+  return t;
+}
+function shortName(value){return String(value||"").trim().split(/\s+/)[0]||String(value||"").trim()}
+function fitTitle(full,compact){return String(full||"").length<=96?full:compact}
 function periodTotal(r,p){if(p==="GAME"||p==="REG")return Number(r.total_goals);const n=Number(String(p).replace("P",""));return Number(r["p"+n+"_goals_for"])+Number(r["p"+n+"_goals_against"])}
 function teamGoals(r,p,awayPerspective){if(p==="GAME"||p==="REG")return Number(awayPerspective?r.final_goals_for:r.final_goals_against);const n=Number(String(p).replace("P",""));return Number(r["p"+n+(awayPerspective?"_goals_for":"_goals_against")])}
 function periodDiff(r,p){return Number(r["p"+p+"_goals_for"])-Number(r["p"+p+"_goals_against"])}

@@ -63,9 +63,9 @@ function fontSizeForMarket(text){
   return n<=20?28:n<=28?24:21;
 }
 
-function highlightFact(text, teamName){
+function highlightFact(text, headlineTeamName){
   const source=normalizeDecimalText(text);
-  const escaped=String(teamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const escaped=String(headlineTeamName||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
   const parts=[];
   const re=new RegExp("(" + (escaped?escaped+"|":"") + "\\d+\\s+ИЗ\\s+\\d+|\\d+\\s*\\/\\s*\\d+)","gi");
   let last=0,m;
@@ -99,6 +99,7 @@ export function normalizePayload(input={}){
   const team=upper(input.team||input.team_tri);
   const meta=TEAM[team]||[upper(input.team_name)||team||"КОМАНДА","#00E6C3"];
   const teamName=upper(input.team_name)||meta[0];
+  const headlineTeamName=upper(input.headline_team_name||input.fact_team_name||teamName);
   const teamColor=String((TEAM[team]&&TEAM[team][1])||input.team_color||meta[1]||"#00E6C3");
   const fact=normalizeDecimalText(input.fact||input.headline||"");
   const market=normalizeDecimalText(input.market||input.bet||"");
@@ -109,7 +110,7 @@ export function normalizePayload(input={}){
   const logoUrl=String(input.team_logo_url||input.logo_url||(
     team?`https://assets.nhle.com/logos/nhl/svg/${team}_light.svg`:""
   ));
-  return {team,teamName,teamColor,fact,market,odds,stake,priced,profit,logoUrl};
+  return {team,teamName,headlineTeamName,teamColor,fact,market,odds,stake,priced,profit,logoUrl};
 }
 
 export async function renderCard(input={}){
@@ -120,7 +121,7 @@ export async function renderCard(input={}){
     asDataUri(p.logoUrl)
   ]);
 
-  const factParts=highlightFact(p.fact,p.teamName);
+  const factParts=highlightFact(p.fact,p.headlineTeamName);
   const baseStyle={
     position:"absolute",
     display:"flex",
@@ -143,7 +144,7 @@ export async function renderCard(input={}){
     e("div",{style:{
       ...baseStyle,left:44,top:15,width:732,height:52,alignItems:"center",
       whiteSpace:"nowrap",fontSize:fontSizeForFact(p.fact),letterSpacing:"0px"
-    }},...factParts.map((part,i)=>e("span",{key:i,style:{color:part.hot&&upper(part.text)===p.teamName?"#FF641E":"#FFFFFF"}},String(part.text).replace(/ /g,"\u00A0")))),
+    }},...factParts.map((part,i)=>e("span",{key:i,style:{color:part.hot&&upper(part.text)===p.headlineTeamName?"#FF641E":"#FFFFFF"}},String(part.text).replace(/ /g,"\u00A0")))),
     e("div",{style:{
       ...baseStyle,left:17,top:79,width:116,height:91,
       alignItems:"center",justifyContent:"center"
@@ -192,4 +193,4 @@ export async function renderCard(input={}){
 }
 
 export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
-export const RENDER_VERSION="2026-09-21-layout-v11-accent-cover";
+export const RENDER_VERSION="2026-09-23-layout-v12-full-team-accent";
