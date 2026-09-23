@@ -234,6 +234,7 @@ jobs:
           node tests/validate_broadcast_angle_engine.mjs
           node tests/validate_broadcast_four_cards.mjs
           node tests/validate_h2h_current_line_broadcast.mjs
+          node tests/validate_winline_live_feed.mjs
           node tests/validate_live_market_enrichment.mjs
           node tests/validate_advanced_team_snapshot_insights.mjs
           node tests/validate_advanced_winline_link.mjs
