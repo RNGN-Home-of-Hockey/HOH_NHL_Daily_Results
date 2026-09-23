@@ -119,7 +119,12 @@ export async function buildBettingInsights(db, game, options = {}) {
       .slice(0, 24);
   }
 
-  const annotated=diversifyBroadcastAngles((portfolio||[]).map((card)=>annotateAirUtility(card,game)));
+  const recentBroadcastHeadlines=await loadRecentBroadcastHeadlines(db);
+  const annotated=diversifyBroadcastAngles(
+    (portfolio||[]).map((card)=>annotateAirUtility(card,game)),
+    {recent_headlines:recentBroadcastHeadlines}
+  );
+  generatorDiagnostics.recent_broadcast_headline_count=recentBroadcastHeadlines.length;
   generatorDiagnostics.final_portfolio_count=annotated.length;
   generatorDiagnostics.post_prune_market_coverage=summarizeMarketCoverage(options.provider_markets||[],annotated);
   if(options.generator_diagnostics&&typeof options.generator_diagnostics==="object"){
@@ -437,6 +442,26 @@ function signedAirLine(value){
 }
 function finiteAirScore(...values){for(const value of values){const n=Number(value);if(Number.isFinite(n))return n}return 55}
 function roundAir3(value){return Math.round(Number(value)*1000)/1000}
+
+async function loadRecentBroadcastHeadlines(db){
+  if(!db)return[];
+  try{
+    const result=await db.prepare(`
+      SELECT headline_ru
+      FROM broadcast_operator_actions
+      WHERE action='shown'
+        AND headline_ru IS NOT NULL
+        AND TRIM(headline_ru)<>''
+        AND datetime(created_at)>=datetime('now','-14 days')
+      ORDER BY id DESC
+      LIMIT 120;
+    `).all();
+    return (result?.results||[]).map(x=>String(x.headline_ru||"").trim()).filter(Boolean);
+  }catch(error){
+    console.error("recent broadcast headline history unavailable",error);
+    return[];
+  }
+}
 
 async function safeInsightBuild(label, factory) {
   try {
