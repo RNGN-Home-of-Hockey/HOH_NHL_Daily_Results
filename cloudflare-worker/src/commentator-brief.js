@@ -47,7 +47,8 @@ function contextPoint(card,e,game){
 function linePoint(m){
   const odds=n(m.odds),label=clean(m.label||marketLabel(m));
   if(!label)return null;
-  return odds!==null?label+" · кэф "+odds.toFixed(2):label;
+  if(odds===null)return label;
+  return label+" · кэф "+odds.toFixed(2)+" · порог цены "+Math.round(100/odds)+"%";
 }
 function sayPoint(card,e,m,game){
   const title=clean(card.broadcast_title||card.title||card.value||"");
@@ -57,6 +58,9 @@ function sayPoint(card,e,m,game){
 function marketLabel(m){
   const t=String(m.type||""),team=String(m.subject||""),side=String(m.side||""),line=n(m.line);
   if(t==="moneyline")return "Победа "+team;
+  if(t==="period_1_result")return "1-й период: победа "+team;
+  if(t==="period_2_result")return "2-й период: победа "+team;
+  if(t==="period_3_result")return "3-й период: победа "+team;
   if(t==="game_total")return (side==="under"?"ТМ":"ТБ")+" "+fmt(line);
   if(t==="team_total")return team+" "+(side==="under"?"ИТМ":"ИТБ")+" "+fmt(line);
   if(t==="handicap")return team+" фора "+signed(line);
