@@ -16,7 +16,8 @@ export function buildBroadcastAngles(card={},profile={}){
     const numeric=/\d/.test(fallback);
     const advancedRank=profile?.team&&n(profile?.teamRank)!==null;
     const jargon=/\b(?:xg|xgf|xga|corsi|fenwick|gsax|pdo)\b/i.test(fallback);
-    const sourceScore=numeric&&!advancedRank&&!jargon?110:numeric?80:52;
+    const awkward=/РЕШЁНН|ПОДТВЕРЖДАЮТ.*СИГНАЛ|НЕЗАВИСИМ.*СИГНАЛ|\d+\/\d+.*ЗА.*\d+\/\d+.*ЗА/i.test(fallback);
+    const sourceScore=numeric&&!advancedRank&&!jargon&&!awkward?90:numeric?72:52;
     put(out,"source","source_fact",ensureNumber(fallback,card,profile),marketSub(m),sourceScore,"исходный факт уже сформулирован человечески");
   }
 
@@ -70,8 +71,8 @@ function addHistory(out,e,m){
   const hits=n(e.hits),dec=n(e.decisions??e.sample??e.games),rate=n(e.hit_rate),window=n(e.window);
   if(hits===null||dec===null||dec<=0)return;
   const label=marketLabel(m),pct=Math.round((rate!==null?rate:hits/dec)*100),push=n(e.pushes)||0;
-  put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)}`,window?`ПОСЛЕДНИЕ ${Math.round(window)} МАТЧЕЙ`:"",96,"точная частота линии");
-  put(out,"history_pct","hit_rate_pct",`${label} — ${pct}% ПРОХОДА`,`ВЫБОРКА ${Math.round(dec)}`,91,"процент прохода линии");
+  put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",100,"точная частота линии");
+  put(out,"history_pct","hit_rate_pct",`${label} ПРОХОДИТ В ${pct}% МАТЧЕЙ`,`ПОСЛЕДНИЕ ${Math.round(dec)} МАТЧЕЙ`,94,"процент прохода линии");
   if(push>0)put(out,"history_push","integer_line",`${label} — ${Math.round(hits)} ПОБЕД И ${Math.round(push)} ВОЗВРАТА`,`${Math.round(dec)} РЕШЁННЫХ ИСХОДОВ`,89,"целая линия с возвратами");
   const streak=n(e.current_streak);
   if(streak>=3)put(out,"streak","streak",`${label} ПРОХОДИТ ${Math.round(streak)} МАТЧА ПОДРЯД`,"ТЕКУЩАЯ СЕРИЯ",97,"серия по той же линии");
@@ -98,7 +99,7 @@ function addWindows(out,e,m){
     .filter(w=>w.window&&w.hits!==null&&w.dec).sort((a,b)=>a.window-b.window);
   if(ws.length<2)return;
   const label=marketLabel(m),a=ws[0],b=ws[1];
-  put(out,"window_compare","multi_window",`${label}: ${a.hits}/${a.dec} ЗА ${a.window} И ${b.hits}/${b.dec} ЗА ${b.window}`,"ОДНА И ТА ЖЕ ЛИНИЯ",98,"подтверждение на двух окнах");
+  put(out,"window_compare","multi_window",`${label}: ${a.hits} ИЗ ${a.dec} ЗА ${a.window} МАТЧЕЙ · ${b.hits} ИЗ ${b.dec} ЗА ${b.window}`,"СРАВНЕНИЕ ДВУХ ОТРЕЗКОВ",72,"подтверждение на двух окнах");
   const stable=ws.filter(w=>w.rate!==null&&w.rate>=.60);
   if(stable.length>=2){const floor=Math.min(...stable.map(w=>Math.round(w.rate*100)));put(out,"window_stable","stability",`${label} — НЕ НИЖЕ ${floor}% НА ${stable[0].window} И ${stable[1].window} МАТЧАХ`,"УСТОЙЧИВОСТЬ СИГНАЛА",96,"стабильность линии");}
 }
@@ -127,7 +128,7 @@ function addScoreState(out,e,m){
 }
 function addSupport(out,e,m){
   const support=Array.isArray(e.supporting_signals)?e.supporting_signals:[],ind=Math.max(Number(e.independent_support_count||0),support.length,Number(e.combination_support_count||0)-1);
-  if(ind>=1)put(out,"support","multi_signal_support",`${marketLabel(m)} ПОДТВЕРЖДАЮТ ${ind+1} НЕЗАВИСИМЫХ СИГНАЛА`,"РАЗНЫЕ СТАТИСТИЧЕСКИЕ СЛОИ",88+Math.min(8,ind*2),"несколько независимых подтверждений");
+  if(ind>=1)put(out,"support","multi_signal_support",`${marketLabel(m)} — ЕСТЬ ${ind+1} ПОДТВЕРЖДЕНИЯ`,"ДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ",60,"несколько независимых подтверждений");
 }
 function ensureNumber(title,card,p){
   if(/\d/.test(title))return title;
