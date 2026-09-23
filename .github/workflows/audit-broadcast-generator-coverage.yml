@@ -53,17 +53,32 @@ jobs:
           multi_markets=0
           priced_cards=0
           variants=0
+          pre_raw=0
+          pre_combos=0
+          pre_matched=0
+          pre_covered=0
+          pre_markets=0
           games_ok=0
           for pk in "${GAMES[@]}"; do
             echo "=== GAME $pk ==="
             JSON="$(curl -fsSL --retry 3 --retry-delay 2 "$HOH_WORKER/api/broadcast/games/$pk")"
-            echo "$JSON" | jq '{game:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,state:.game.game_state},provider_market_count,market_coverage}'
+            echo "$JSON" | jq '{game:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,state:.game.game_state},provider_market_count,market_coverage,generator_diagnostics}'
             p="$(echo "$JSON" | jq -r '.market_coverage.provider_exact_market_count // 0')"
             c="$(echo "$JSON" | jq -r '.market_coverage.covered_exact_market_count // 0')"
             m="$(echo "$JSON" | jq -r '.market_coverage.multi_signal_market_count // 0')"
             pc="$(echo "$JSON" | jq -r '.market_coverage.priced_card_count // 0')"
             v="$(echo "$JSON" | jq -r '.market_coverage.broadcast_variant_count // 0')"
+            gr="$(echo "$JSON" | jq -r '.generator_diagnostics.raw_candidate_count // 0')"
+            gc="$(echo "$JSON" | jq -r '.generator_diagnostics.combination_candidate_count // 0')"
+            gm="$(echo "$JSON" | jq -r '.generator_diagnostics.matched_candidate_count // 0')"
+            gp="$(echo "$JSON" | jq -r '.generator_diagnostics.pre_prune_market_coverage.provider_exact_market_count // 0')"
+            gpc="$(echo "$JSON" | jq -r '.generator_diagnostics.pre_prune_market_coverage.covered_exact_market_count // 0')"
             total_markets=$((total_markets+p))
+            pre_raw=$((pre_raw+gr))
+            pre_combos=$((pre_combos+gc))
+            pre_matched=$((pre_matched+gm))
+            pre_markets=$((pre_markets+gp))
+            pre_covered=$((pre_covered+gpc))
             covered_markets=$((covered_markets+c))
             multi_markets=$((multi_markets+m))
             priced_cards=$((priced_cards+pc))
@@ -86,3 +101,14 @@ jobs:
           echo "multi_signal_pct=$multi"
           echo "priced_cards=$priced_cards"
           echo "broadcast_variants=$variants"
+          echo "pre_prune_raw_candidates=$pre_raw"
+          echo "pre_prune_combination_candidates=$pre_combos"
+          echo "pre_prune_matched_candidates=$pre_matched"
+          echo "pre_prune_provider_markets=$pre_markets"
+          echo "pre_prune_covered_markets=$pre_covered"
+          if [ "$pre_markets" -gt 0 ]; then
+            pre_cov="$(awk -v c="$pre_covered" -v t="$pre_markets" 'BEGIN{printf "%.1f",100*c/t}')"
+          else
+            pre_cov="0.0"
+          fi
+          echo "pre_prune_coverage_pct=$pre_cov"
