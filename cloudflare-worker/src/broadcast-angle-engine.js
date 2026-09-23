@@ -73,7 +73,8 @@ function addHistory(out,e,m){
   const hits=n(e.hits),dec=n(e.decisions??e.sample??e.games),rate=n(e.hit_rate),window=n(e.window);
   if(hits===null||dec===null||dec<=0)return;
   const label=marketLabel(m),pct=Math.round((rate!==null?rate:hits/dec)*100),push=n(e.pushes)||0;
-  const historyAngleScore=dec<8?(pct<=50?62:pct<67?72:82):pct<=50?68:pct<60?78:92;\n  put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",historyAngleScore,"точная частота линии");
+  const historyAngleScore=dec<8?(pct<=50?62:pct<67?72:82):pct<=50?68:pct<60?78:92;
+  put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",historyAngleScore,"точная частота линии");
   put(out,"history_pct","hit_rate_pct",`${label} ПРОХОДИТ В ${pct}% МАТЧЕЙ`,`ПОСЛЕДНИЕ ${Math.round(dec)} МАТЧЕЙ`,dec<8?Math.min(78,historyAngleScore+2):90,"процент прохода линии");
   if(push>0)put(out,"history_push","integer_line",`${label} — ${Math.round(hits)} ПОБЕД И ${Math.round(push)} ВОЗВРАТА`,`${Math.round(dec)} РЕШЁННЫХ ИСХОДОВ`,89,"целая линия с возвратами");
   const streak=n(e.current_streak);
