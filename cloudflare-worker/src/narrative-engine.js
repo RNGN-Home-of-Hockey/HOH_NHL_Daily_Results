@@ -6,23 +6,23 @@ import { buildBroadcastAngles } from "./broadcast-angle-engine.js";
 // 3) Variants — alternative editorial angles that can be ranked later.
 
 const METRICS={
-  xgd60:{tv:"РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ",raw:"xG differential / 60",unit:"xG/60"},
-  xgf60:{tv:"СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ",raw:"xGF/60",unit:"xG/60"},
-  xga60:{tv:"МИНИМУМУ ДОПУЩЕННЫХ ОПАСНЫХ МОМЕНТОВ",raw:"xGA/60",unit:"xG/60"},
+  xgd60:{tv:"РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ",raw:"xG differential / 60",unit:"xG/60",explain:"xG differential — разница между созданными и допущенными ожидаемыми голами; плюс означает, что команда создаёт больше качества, чем отдаёт сопернику."},
+  xgf60:{tv:"СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ",raw:"xGF/60",unit:"xG/60",explain:"xGF/60 — качество моментов, которое команда создаёт за 60 минут; чем выше, тем сильнее атакующий профиль."},
+  xga60:{tv:"МИНИМУМУ ДОПУЩЕННЫХ ОПАСНЫХ МОМЕНТОВ",raw:"xGA/60",unit:"xG/60",explain:"xGA/60 — качество моментов соперника за 60 минут; чем ниже, тем надёжнее команда ограничивает опасные атаки."},
   hdxgf60:{tv:"СОЗДАННЫМ САМЫМ ОПАСНЫМ МОМЕНТАМ",raw:"HD xGF/60",unit:"HD xG/60"},
   hdxga60:{tv:"МИНИМУМУ ДОПУЩЕННЫХ САМЫХ ОПАСНЫХ МОМЕНТОВ",raw:"HD xGA/60",unit:"HD xG/60"},
   sf60:{tv:"БРОСКАМ В СТВОР",raw:"SF/60",unit:"броска/60"},
   sa60:{tv:"МИНИМУМУ ДОПУЩЕННЫХ БРОСКОВ",raw:"SA/60",unit:"броска/60"},
   sd60:{tv:"РАЗНИЦЕ БРОСКОВ",raw:"shot differential / 60",unit:"броска/60"},
-  xgf_pct:{tv:"ДОЛЕ ОПАСНЫХ МОМЕНТОВ",raw:"xGF%",unit:"%"},
+  xgf_pct:{tv:"ДОЛЕ ОПАСНЫХ МОМЕНТОВ",raw:"xGF%",unit:"%",explain:"xGF% — доля ожидаемых голов команды от общего xG обеих команд; выше 50% означает преимущество по качеству моментов."},
   xgfpercent:{tv:"ДОЛЕ ОПАСНЫХ МОМЕНТОВ",raw:"xGF%",unit:"%"},
-  cf_pct:{tv:"КОНТРОЛЮ БРОСКОВ",raw:"Corsi For %",unit:"%"},
-  corsi_pct:{tv:"КОНТРОЛЮ БРОСКОВ",raw:"Corsi For %",unit:"%"},
-  fenwick_pct:{tv:"КОНТРОЛЮ НЕЗАБЛОКИРОВАННЫХ БРОСКОВ",raw:"Fenwick For %",unit:"%"},
+  cf_pct:{tv:"КОНТРОЛЮ БРОСКОВ",raw:"Corsi For %",unit:"%",explain:"Corsi For % — доля всех бросковых попыток команды; показывает, у кого чаще шайба и атака."},
+  corsi_pct:{tv:"КОНТРОЛЮ БРОСКОВ",raw:"Corsi For %",unit:"%",explain:"Corsi For % — доля всех бросковых попыток команды; показывает, у кого чаще шайба и атака."},
+  fenwick_pct:{tv:"КОНТРОЛЮ НЕЗАБЛОКИРОВАННЫХ БРОСКОВ",raw:"Fenwick For %",unit:"%",explain:"Fenwick For % — доля незаблокированных бросковых попыток; ближе к реальному объёму атак, чем все попытки."},
   shot_share:{tv:"ДОЛЕ БРОСКОВ",raw:"shot share",unit:"%"},
   shotpace60:{tv:"ТЕМПУ БРОСКОВ",raw:"shot pace / 60",unit:"броска/60"},
   xgpace60:{tv:"ТЕМПУ ОПАСНЫХ МОМЕНТОВ",raw:"xG pace / 60",unit:"xG/60"},
-  gsax:{tv:"ИГРЕ ВРАТАРЯ ВЫШЕ ОЖИДАНИЙ",raw:"GSAx",unit:"гола"},
+  gsax:{tv:"ИГРЕ ВРАТАРЯ ВЫШЕ ОЖИДАНИЙ",raw:"GSAx",unit:"гола",explain:"GSAx — сколько голов вратарь предотвратил относительно качества бросков; положительное значение означает игру выше ожиданий."},
   goals_saved_above_expected:{tv:"ИГРЕ ВРАТАРЯ ВЫШЕ ОЖИДАНИЙ",raw:"GSAx",unit:"гола"},
 };
 
@@ -183,6 +183,10 @@ function buildOperator(p,card,context,selectedAngle=null,angles=[]){
   }
   if(p.rankGap!==null&&p.teamRank!==null&&p.opponentRank!==null){
     details.push(`Разница в рейтинге: ${Math.round(p.rankGap)} мест.`);
+  }
+  if(p.meta?.explain)details.push(`Что означает метрика: ${p.meta.explain}`);
+  if(p.opponentMetric&&p.opponentMetric!==p.metric&&p.opponentMeta?.explain){
+    details.push(`Метрика соперника: ${p.opponentMeta.explain}`);
   }
 
   addRolling(details,p);
