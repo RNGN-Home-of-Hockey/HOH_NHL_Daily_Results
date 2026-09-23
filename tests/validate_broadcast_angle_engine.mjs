@@ -64,4 +64,12 @@ assert.ok(new Set(diversified.map(x=>x.broadcast_angle_family)).size>=2,"queue m
 const diversifiedB=diversified.find(x=>x.id==="b");
 assert.equal(diversifiedB.operator_narrative.raw.selected_broadcast_angle.id,diversifiedB.broadcast_angle_id,"operator explanation must follow diversified TV angle");
 assert.ok(diversifiedB.operator_narrative.details[0].includes(diversifiedB.broadcast_angle_reason),"operator reason must describe the chosen TV angle");
+
+const jargonSafe=diversifyBroadcastAngles([
+  {id:"advanced",broadcast_angle_variants:[
+    {id:"raw",family:"source_fact",title:"CAR — №2 NHL ПО xGF/60",score:999,reason:"raw"},
+    {id:"human",family:"league_rank",title:"CAR — ТОП-2 НХЛ ПО СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ",score:80,reason:"место в НХЛ"}
+  ]}
+]);
+assert.equal(jargonSafe[0].broadcast_angle_id,"human","raw xG/Corsi/Fenwick jargon must never beat an available human TV angle");
 console.log("BROADCAST_ANGLE_ENGINE_OK");
