@@ -826,12 +826,19 @@ function applyPersistedState(cards){
 }
 function airScore(c){const n=Number(c?.air_score??c?.portfolio_score??c?.score);return Number.isFinite(n)?Math.max(0,Math.min(100,Math.round(n))):0}
 function airTone(score){return score>=85?'great':score>=70?'good':score>=55?'mid':'low'}
+function simpleSubtitle(c){
+  const raw=String(c?.broadcast_subtitle||c?.broadcast_detail||'').trim();
+  if(!raw)return'';
+  if(/НЕЗАВИСИМ.*СИГНАЛ|РАЗНЫЕ СТАТИСТИЧЕСКИЕ СЛОИ|AIR SCORE|IMPLIED|SOURCE SCORE/i.test(raw))return'';
+  return displayText(raw);
+}
 function cardSummaryHtml(c){
   const team=cardTeam(c),odds=Number(c?.market?.odds),priced=Number.isFinite(odds)&&odds>1,profit=profitParts(odds),score=airScore(c),tone=airTone(score);
-  const reasons=(c?.air_reasons||[]).slice(0,3).map(x=>`<span>${esc(x)}</span>`).join('');
+  const group=c?.broadcast_group==='h2h'?'ЛИЧНЫЕ ВСТРЕЧИ':'ФОРМА КОМАНД';
+  const subtitle=simpleSubtitle(c);
   return `<div class="signal">
-    <div class="airmeta ${tone}"><b>${score}</b><strong>${esc(c?.air_label||'AIR SCORE')}</strong><div>${reasons}</div></div>
-    <div class="signal-fact">${esc(factText(c))}</div>${c?.broadcast_subtitle?`<div class="signal-detail">${esc(displayText(c.broadcast_subtitle))}</div>`:c?.broadcast_detail?`<div class="signal-detail">${esc(displayText(c.broadcast_detail))}</div>`:''}
+    <div class="airmeta ${tone}"><b>${score}</b><strong>ДЛЯ ЭФИРА</strong><div><span>${esc(group)}</span></div></div>
+    <div class="signal-fact">${esc(factText(c))}</div>${subtitle?`<div class="signal-detail">${esc(subtitle)}</div>`:''}
     <div class="signal-main">
       <div class="signal-copy">
         <div class="signal-team">${esc(team.name)}</div>
@@ -849,75 +856,36 @@ function cardArticleHtml(c,i,featured=false){
 }
 function renderCards(cards){
   applyPersistedState(cards);
-  currentCards=cards;
-  if(!cards.length){$('#cards').innerHTML='<div class="empty">Пока нет статистических карточек для этого матча</div>';return}
-  const entries=cards.map((c,i)=>({c,i}));
-  const top=entries.filter(x=>hasRealWinlinePrice(x.c)&&airScore(x.c)>=55).slice(0,3);
-  const topIds=new Set(top.map(x=>x.i));
-  const rest=entries.filter(x=>!topIds.has(x.i));
-  const topHtml=top.length
-    ? `<section class="queueblock"><div class="queuehead"><span>ТОП ДЛЯ ЭФИРА</span><b>${top.length}</b></div><div class="cardgrid">${top.map(x=>cardArticleHtml(x.c,x.i,true)).join('')}</div></section>`
-    : '<section class="queueblock"><div class="queuehead muted"><span>СИЛЬНЫХ ЛИНИЙ СЕЙЧАС НЕТ</span></div></section>';
-  const restHtml=rest.length
-    ? `<details class="queueblock queue-more" ${top.length?'':'open'}><summary><span>ЕЩЁ ${rest.length} ВАРИАНТОВ</span><small>показать</small></summary><div class="cardgrid">${rest.map(x=>cardArticleHtml(x.c,x.i,false)).join('')}</div></details>`
-    : '';
-  $('#cards').innerHTML=topHtml+restHtml;
+  currentCards=cards.slice(0,4);
+  if(!currentCards.length){$('#cards').innerHTML='<div class="empty">Пока нет статистических карточек для этого матча</div>';return}
+  const entries=currentCards.map((c,i)=>({c,i}));
+  const form=entries.filter(x=>x.c?.broadcast_group!=='h2h').slice(0,2);
+  const h2h=entries.filter(x=>x.c?.broadcast_group==='h2h').slice(0,2);
+  const section=(title,items,empty)=>`<section class="queueblock"><div class="queuehead"><span>${title}</span><b>${items.length}/2</b></div>${items.length?`<div class="cardgrid">${items.map(x=>cardArticleHtml(x.c,x.i,true)).join('')}</div>`:`<div class="empty">${empty}</div>`}</section>`;
+  $('#cards').innerHTML=
+    section('ФОРМА КОМАНД',form,'Не нашлось двух понятных карточек по текущей форме')+
+    section('ЛИЧНЫЕ ВСТРЕЧИ',h2h,'Недостаточно очных матчей для двух сильных карточек');
   document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b));
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>openCardDetails(Number(b.dataset.detail)));
 }
 function finiteUiNumber(v){if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null}
 function openCardDetails(i){
   const c=currentCards[i];if(!c)return;
-  const score=airScore(c),meta=c?.air_meta||{},reasons=(c?.air_reasons||[]);
-  const hist=finiteUiNumber(meta.historical_rate),implied=finiteUiNumber(meta.implied_probability),sample=finiteUiNumber(meta.sample_size);
-  const detailRows=[
-    ['AIR SCORE',score+' / 100'],
-    ['Оценка',c?.air_label||'—'],
-    ['Причины',reasons.length?reasons.join(' · '):'—'],
-    ['Выборка',Number.isFinite(sample)&&sample>0?sample+' игр':'—'],
-    ['Исторический проход',hist!==null?Math.round(hist*100)+'%':'—'],
-    ['Вероятность из кэфа',implied!==null?Math.round(implied*100)+'%':'—'],
-    ['Статистический score',Number.isFinite(Number(meta.source_score))?String(meta.source_score):'—'],
-    ['Эфирный угол',c?.broadcast_angle_family?displayText(c.broadcast_angle_family):'—'],
-    ['Почему выбран',c?.broadcast_angle_reason?displayText(c.broadcast_angle_reason):'—'],
-  ];
-  const op=c?.operator_narrative||{};
-  const operatorDetails=Array.isArray(op.details)?op.details.filter(Boolean):[];
-  const operatorHtml=operatorDetails.length
-    ?`<div class="detailnote"><b>${esc(op.headline||'КОММЕНТАТОРУ')}</b><br>${operatorDetails.map(x=>esc(displayText(x))).join('<br>')}</div>`
-    :'';
-  const structured=Array.isArray(c?.broadcast_angle_variants)?c.broadcast_angle_variants.filter(x=>x?.title).slice(0,8):[];
-  const variants=structured.length?structured:(Array.isArray(c?.broadcast_variants)?c.broadcast_variants.filter(Boolean).slice(0,8).map((title,index)=>({id:'legacy_'+index,title,family:'вариант',reason:''})):[]);
-  const variantsHtml=variants.length>1
-    ?`<div class="detailnote"><b>ВАРИАНТЫ ЭФИРНОЙ ФОРМУЛИРОВКИ</b><br>${variants.map((x,index)=>`<button class="act variantpick" data-variant="${index}" style="margin:6px 6px 0 0;text-align:left">${esc(displayText(x.title))}</button>${x.reason?`<small style="display:block;margin:2px 0 7px">${esc(displayText(x.reason))}</small>`:''}`).join('')}</div>`
-    :'';
-  $('#previewcard').innerHTML=`<div class="detailfact">${esc(factText(c))}</div>${c?.broadcast_detail?`<div class="detailnote">${esc(displayText(c.broadcast_detail))}</div>`:''}<div class="detailmarket">${esc(marketDescription(c,cardTeam(c)))} · ${Number.isFinite(Number(c?.market?.odds))?Number(c.market.odds).toFixed(2):'нет линии'}</div><div class="detailrows">${detailRows.map(r=>`<div><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join('')}</div>${operatorHtml}${variantsHtml}<div class="detailnote">${esc(c?.explanation||c?.note||'')}</div>`;
-  document.querySelector('.dtitle').textContent='РАСШИРЕННАЯ АНАЛИТИКА';
-  document.querySelector('.dfoot').textContent='Короткая версия идёт в эфир. Здесь оператор видит исходную метрику, сравнение команд, форму, выборку и связь с реальной линией WINLINE.';
+  const brief=c?.commentator_brief||{};
+  const points=Array.isArray(brief.points)&&brief.points.length
+    ?brief.points.slice(0,5)
+    :[
+      {label:'ГЛАВНОЕ',text:factText(c)},
+      {label:'ЛИНИЯ',text:(c?.market?.label||marketDescription(c,cardTeam(c)))+(Number.isFinite(Number(c?.market?.odds))?' · кэф '+Number(c.market.odds).toFixed(2):'')}
+    ];
+  const pointsHtml=points.map(p=>`<div class="briefrow"><span>${esc(p.label||'')}</span><b>${esc(displayText(p.text||''))}</b></div>`).join('');
+  $('#previewcard').innerHTML=
+    `<div class="detailfact">${esc(factText(c))}</div>`+
+    `<div class="detailmarket">${esc(brief.group||c?.broadcast_group_label||'КОММЕНТАТОРУ')}</div>`+
+    `<div class="commentatorbrief">${pointsHtml}</div>`;
+  document.querySelector('.dtitle').textContent='КОММЕНТАТОРУ';
+  document.querySelector('.dfoot').textContent='Только главное: факт, цифра, контекст и текущая линия. Этого должно хватить, чтобы понять карточку за несколько секунд.';
   $('#drawer').classList.add('open');
-  document.querySelectorAll('.variantpick').forEach(btn=>btn.onclick=()=>{
-    const picked=variants[Number(btn.dataset.variant)];
-    if(!picked?.title)return;
-    c.broadcast_title=picked.title;
-    if(picked.subtitle)c.broadcast_subtitle=picked.subtitle;
-    c.broadcast_angle_id=picked.id||null;
-    c.broadcast_angle_family=picked.family||null;
-    c.broadcast_angle_reason=picked.reason||null;
-    if(c.operator_narrative&&typeof c.operator_narrative==='object'){
-      const prefix='Почему выбрана эта эфирная подача:';
-      const details=Array.isArray(c.operator_narrative.details)
-        ?c.operator_narrative.details.filter(x=>!String(x||'').startsWith(prefix))
-        :[];
-      if(picked.reason)details.unshift(prefix+' '+picked.reason+'.');
-      c.operator_narrative={
-        ...c.operator_narrative,
-        details,
-        raw:{...(c.operator_narrative.raw||{}),selected_broadcast_angle:picked}
-      };
-    }
-    renderCards(currentCards);
-    openCardDetails(i);
-  });
 }
 async function ensureDraft(c){
   if(c.__cardId&&c.__persisted)return c.__cardId;
