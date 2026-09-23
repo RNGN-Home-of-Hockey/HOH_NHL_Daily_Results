@@ -32,7 +32,7 @@ jobs:
             totals:d1AnalyticsAdaptiveGroups(limit:1,filter:{datetimeHour_geq:"${start}",datetimeHour_leq:"${now.toISOString()}"}) {
               sum { rowsRead rowsWritten readQueries writeQueries }
             }
-            hours:d1AnalyticsAdaptiveGroups(limit:48,filter:{datetimeHour_geq:"${start}",datetimeHour_leq:"${now.toISOString()}"},orderBy:[dimensions_datetimeHour_ASC]) {
+            hours:d1AnalyticsAdaptiveGroups(limit:48,filter:{datetimeHour_geq:"${start}",datetimeHour_leq:"${now.toISOString()}"}) {
               sum { rowsRead rowsWritten readQueries writeQueries }
               dimensions { datetimeHour }
             }
