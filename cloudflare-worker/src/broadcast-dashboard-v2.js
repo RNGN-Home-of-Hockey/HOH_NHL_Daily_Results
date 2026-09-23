@@ -340,7 +340,10 @@ async function broadcastGameRoute(env, gamePk) {
       team_stats:teamStats,
       top_players:playerStats,
       events,
-      cards:bettingInsights,
+      cards:(bettingInsights||[]).map(card=>({
+        ...card,
+        commentator_brief:buildCommentatorBrief(card,game),
+      })),
       featured_cards:selectBroadcastFour(bettingInsights,game).map(card=>({
         ...card,
         commentator_brief:buildCommentatorBrief(card,game),
