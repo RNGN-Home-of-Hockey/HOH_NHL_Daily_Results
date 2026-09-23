@@ -100,6 +100,9 @@ assert.match(advancedNoRate.broadcast_detail,/Последние 20: CAR №3 ·
 assert.match(advancedNoRate.broadcast_detail,/Home\/away подтверждает/);
 assert.ok(Array.isArray(advancedNoRate.operator_narrative?.details)&&advancedNoRate.operator_narrative.details.length>=4,'operator layer must retain expanded advanced context');
 assert.match(advancedNoRate.operator_narrative.details.join(' '),/FLA: 28-е место/,'operator layer must compare opponent rank');
+assert.equal(advancedNoRate.operator_narrative.raw.metric_name,'xGF/60','operator layer must retain raw team metric');
+assert.equal(advancedNoRate.operator_narrative.raw.opponent_metric_name,'xGA/60','operator layer must retain raw opponent metric');
+assert.match(advancedNoRate.operator_narrative.details.join(' '),/Что означает метрика:/,'operator layer must explain advanced jargon');
 
 const missingHistoricalRate=annotateAirUtility({
   score:92,
