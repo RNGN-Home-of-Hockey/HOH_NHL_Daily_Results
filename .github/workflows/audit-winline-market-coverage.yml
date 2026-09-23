@@ -1,0 +1,68 @@
+name: Audit Winline Market Coverage
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-winline-market-coverage.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - name: Current Winline inventory
+        run: |
+          set -euo pipefail
+          echo '=== ACTIVE INVENTORY ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT
+              COUNT(*) active_selections,
+              COUNT(DISTINCT m.winline_event_id) events,
+              COUNT(DISTINCT m.market_type) market_type_keys
+            FROM winline_markets m
+            WHERE m.active=1 AND m.odds IS NOT NULL;
+          "
+          echo '=== MARKET TYPES ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT m.market_type,COUNT(*) selections,COUNT(DISTINCT m.winline_event_id) events
+            FROM winline_markets m
+            WHERE m.active=1 AND m.odds IS NOT NULL
+            GROUP BY m.market_type
+            ORDER BY selections DESC,market_type ASC
+            LIMIT 120;
+          "
+          echo '=== FREETEXT FAMILIES ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT
+              COALESCE(json_extract(m.raw_json,'$.freetext'),'') freetext,
+              COUNT(*) selections,
+              COUNT(DISTINCT m.winline_event_id) events
+            FROM winline_markets m
+            WHERE m.active=1 AND m.odds IS NOT NULL
+            GROUP BY freetext
+            ORDER BY selections DESC,freetext ASC
+            LIMIT 120;
+          "
+          echo '=== LIVE FREETEXT FAMILIES ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT
+              COALESCE(json_extract(m.raw_json,'$.freetext'),'') freetext,
+              COUNT(*) selections
+            FROM winline_markets m
+            WHERE m.active=1 AND m.odds IS NOT NULL AND m.is_live=1
+            GROUP BY freetext
+            ORDER BY selections DESC,freetext ASC
+            LIMIT 80;
+          "
