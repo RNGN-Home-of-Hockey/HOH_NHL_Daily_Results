@@ -69,6 +69,7 @@ export function summarizeMarketCoverage(providerMarkets=[],cards=[]){
   }
 
   return {
+    card_count:list.length,
     provider_selection_count:markets.length,
     provider_exact_market_count:total,
     covered_exact_market_count:covered,
