@@ -387,7 +387,7 @@ const WINLINE_TEAM_NAMES={
   vegasgoldenknights:"VGK",washingtoncapitals:"WSH",winnipegjets:"WPG"
 };
 
-async function loadBroadcastWinlineMarkets(db,game){
+export async function loadBroadcastWinlineMarkets(db,game){
   const event=await db.prepare("SELECT winline_event_id,deeplink,raw_json,updated_at FROM winline_events WHERE game_pk=? ORDER BY updated_at DESC LIMIT 1;").bind(game.game_pk).first().catch(()=>null);
   if(!event)return [];
   const result=await db.prepare("SELECT winline_market_id,market_type,subject_key,outcome_name,odds,deeplink,is_live,active,raw_json,updated_at FROM winline_markets WHERE winline_event_id=? AND active=1 AND odds IS NOT NULL ORDER BY updated_at DESC,winline_market_id ASC LIMIT 240;").bind(event.winline_event_id).all().catch(()=>({results:[]}));
@@ -405,7 +405,7 @@ export function canonicalBroadcastWinlineMarket(row,event,game,teams){
   const lowerOutcome=outcome.toLowerCase();
   const value=finiteMarketLine(raw.value,marketLineFromType(row.market_type));
   const updatedAt=isoOrNull(row.updated_at||event.updated_at);
-  const base={provider:"winline",event_id:String(event.winline_event_id||""),market_id:String(row.winline_market_id||""),selection_id:String(row.winline_market_id||""),odds:Number(row.odds),status:"open",updated_at:updatedAt,deeplink:row.deeplink||event.deeplink||null};
+  const base={provider:"winline",event_id:String(event.winline_event_id||""),market_id:String(row.winline_market_id||""),selection_id:String(row.winline_market_id||""),odds:Number(row.odds),status:"open",is_live:Boolean(Number(row.is_live||0)),updated_at:updatedAt,deeplink:row.deeplink||event.deeplink||null};
   if(!Number.isFinite(base.odds)||base.odds<=1||!updatedAt)return null;
 
   const period=/^(?:1|1st)period|firstperiod|period1/.test(norm)?"P1":
