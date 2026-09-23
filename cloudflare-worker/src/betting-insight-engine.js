@@ -17,6 +17,7 @@ import { buildPlayerPropMarketInsights } from "./player-prop-market-insights.js"
 import { buildSpecialTeamsMarketInsights } from "./special-teams-market-insights.js";
 import { buildExpandedMarketInsights } from "./expanded-market-insights.js";
 import { buildProviderMarketHistoryInsights } from "./provider-market-history-insights.js";
+import { summarizeMarketCoverage } from "./market-coverage-audit.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -97,6 +98,14 @@ export async function buildBettingInsights(db, game, options = {}) {
     console.error("winline market adapter failed", error);
   }
 
+  const generatorDiagnostics={
+    base_candidate_count:basePortfolio.length,
+    combination_candidate_count:combinationInsights.length,
+    raw_candidate_count:rawPortfolio.length,
+    matched_candidate_count:(marketMatchedCandidates||[]).length,
+    pre_prune_market_coverage:summarizeMarketCoverage(options.provider_markets||[],marketMatchedCandidates||[]),
+  };
+
   let portfolio;
   try {
     const requestedLimit=Number(options.portfolio_limit||24);
@@ -109,7 +118,13 @@ export async function buildBettingInsights(db, game, options = {}) {
       .slice(0, 24);
   }
 
-  return (portfolio||[]).map((card)=>annotateAirUtility(card,game));
+  const annotated=(portfolio||[]).map((card)=>annotateAirUtility(card,game));
+  generatorDiagnostics.final_portfolio_count=annotated.length;
+  generatorDiagnostics.post_prune_market_coverage=summarizeMarketCoverage(options.provider_markets||[],annotated);
+  if(options.generator_diagnostics&&typeof options.generator_diagnostics==="object"){
+    Object.assign(options.generator_diagnostics,generatorDiagnostics);
+  }
+  return annotated;
 }
 
 export function annotateAirUtility(input, game=null) {
