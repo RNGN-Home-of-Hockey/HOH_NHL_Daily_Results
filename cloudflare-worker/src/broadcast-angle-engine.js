@@ -41,11 +41,24 @@ export function diversifyBroadcastAngles(cards=[]){
     }
     const f=String(best.family||"other");
     familyCount.set(f,(familyCount.get(f)||0)+1);shapes.add(titleShape(best.title));
+    const op=syncOperatorAngle(card.operator_narrative,best);
     return {...card,broadcast_title:best.title,broadcast_subtitle:best.subtitle||card.broadcast_subtitle||null,
-      broadcast_angle_id:best.id,broadcast_angle_family:f,broadcast_angle_reason:best.reason||null};
+      broadcast_angle_id:best.id,broadcast_angle_family:f,broadcast_angle_reason:best.reason||null,
+      operator_narrative:op};
   });
 }
 
+function syncOperatorAngle(operator,best){
+  if(!operator||typeof operator!=="object")return operator||null;
+  const prefix="Почему выбрана эта эфирная подача:";
+  const details=Array.isArray(operator.details)?operator.details.filter(x=>!String(x||"").startsWith(prefix)):[];
+  if(best?.reason)details.unshift(`${prefix} ${best.reason}.`);
+  return {
+    ...operator,
+    details,
+    raw:{...(operator.raw||{}),selected_broadcast_angle:best||null},
+  };
+}
 function addHistory(out,e,m){
   const hits=n(e.hits),dec=n(e.decisions??e.sample??e.games),rate=n(e.hit_rate),window=n(e.window);
   if(hits===null||dec===null||dec<=0)return;
