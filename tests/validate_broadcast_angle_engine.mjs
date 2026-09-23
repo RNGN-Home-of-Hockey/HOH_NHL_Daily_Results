@@ -36,6 +36,23 @@ assert.ok(historyAngles.some(x=>x.family==="streak"&&/4 МАТЧА ПОДРЯД/
 assert.ok(historyAngles.some(x=>x.family==="multi_window"&&/8 ИЗ 10/.test(x.title)&&/15 ИЗ 20/.test(x.title)));
 assert.ok(historyAngles.every(x=>/\d/.test(x.title)),"numeric evidence must stay numeric on TV");
 
+const h2hCard={
+  title:"ПОБЕДА MIN — 6 ИЗ 10 В ОЧНЫХ МАТЧАХ",
+  evidence:{
+    split:"h2h",team:"MIN",opponent:"DAL",hits:6,decisions:10,hit_rate:.6,window:10,
+    independent_support_count:2,
+    supporting_signals:[
+      {title:"МИННЕСОТА ЗАБИВАЛА 3+ ШАЙБЫ В 7 ИЗ 10"},
+      {title:"ДАЛЛАС ПРОПУСКАЛ 3+ ШАЙБЫ В 6 ИЗ 10"}
+    ]
+  },
+  market:{type:"moneyline",period:"REG",subject:"MIN",side:"MIN",label:"REG · ПОБЕДА MIN",odds:4.10,odds_is_demo:false}
+};
+const h2hAngles=buildBroadcastAngles(h2hCard,{team:"МИННЕСОТА УАЙЛД",opponent:"ДАЛЛАС СТАРС"});
+assert.ok(h2hAngles.some(x=>x.family==="h2h_matchup"&&/МИННЕСОТА УАЙЛД ОБЫГРЫВАЛИ ДАЛЛАС СТАРС В 6 ИЗ 10/.test(x.title)),"H2H headline must name both teams");
+assert.ok(!h2hAngles.some(x=>/ЕСТЬ\s+\d+\s+ПОДТВЕРЖДЕНИ/i.test(x.title)),"generic confirmation-count headline must not be generated");
+assert.ok(h2hAngles.some(x=>x.family==="supporting_fact"&&/МИННЕСОТА ЗАБИВАЛА/.test(x.title)),"first concrete support fact should be available instead of a confirmation count");
+assert.ok(h2hAngles.some(x=>/ЕЩЁ 2 ФАКТА В ОПИСАНИИ/.test(String(x.subtitle||""))),"support fact must carry the commentator hint");
 const specialCard={
   title:"special teams",
   evidence:{team:"CAR",opponent:"FLA",pp_pct:.27,opponent_pk_pct:.74,sample:10},

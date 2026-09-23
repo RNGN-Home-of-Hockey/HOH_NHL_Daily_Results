@@ -53,6 +53,7 @@ globalThis.fetch=async (url,options={})=>{
     const payload=JSON.parse(options.body);
     assert.equal(payload.team,'CAR');
     assert.equal(payload.team_name,'КАРОЛИНА');
+    assert.equal(payload.headline_team_name,'КАРОЛИНА ХАРРИКЕЙНЗ');
     assert.equal(payload.market,'ФОРА +1,5 ГОЛА');
     if(renderCalls===1){
       assert.equal(payload.odds,1.30);
@@ -208,7 +209,7 @@ function statement(sql){
         async first(){
           if (/FROM broadcast_cards bc/.test(sql) && /WHERE bc\.card_id=\?/.test(sql)) {
             const c=clone(cards.get(String(args[0]))||null);
-            return c?{...c,home_tri:'CAR',away_tri:'FLA',home_name_ru:'Каролина',home_name:'Carolina Hurricanes',home_logo:'',away_name_ru:'Флорида',away_name:'Florida Panthers',away_logo:''}:null;
+            return c?{...c,home_tri:'CAR',away_tri:'FLA',home_name_ru:'Каролина Харрикейнз',home_name:'Carolina Hurricanes',home_logo:'',away_name_ru:'Флорида Пантерз',away_name:'Florida Panthers',away_logo:''}:null;
           }
           if (/SELECT card_id,render_hash,render_png_base64/.test(sql)) return clone(cards.get(String(args[0]))||null);
           if (/FROM broadcast_cards WHERE card_id=\?/.test(sql)) return clone(cards.get(String(args[0]))||null);

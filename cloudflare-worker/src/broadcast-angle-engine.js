@@ -3,7 +3,7 @@
 
 export function buildBroadcastAngles(card={},profile={}){
   const e=card.evidence||{},m=card.market||{},out=[];
-  addHistory(out,e,m);
+  addHistory(out,e,m,profile);
   addRanks(out,profile,m);
   addWindows(out,e,m);
   addPlayer(out,e,m);
@@ -16,7 +16,7 @@ export function buildBroadcastAngles(card={},profile={}){
     const numeric=/\d/.test(fallback);
     const advancedRank=profile?.team&&n(profile?.teamRank)!==null;
     const jargon=/\b(?:xg|xgf|xga|corsi|fenwick|gsax|pdo)\b/i.test(fallback);
-    const awkward=/РЕШЁНН|ПОДТВЕРЖДАЮТ.*СИГНАЛ|НЕЗАВИСИМ.*СИГНАЛ|\d+\/\d+.*ЗА.*\d+\/\d+.*ЗА/i.test(fallback);
+    const awkward=/РЕШЁНН|ПОДТВЕРЖДАЮТ.*СИГНАЛ|НЕЗАВИСИМ.*СИГНАЛ|ЕСТЬ\s+\d+\s+ПОДТВЕРЖД|\d+\/\d+.*ЗА.*\d+\/\d+.*ЗА/i.test(fallback);
     const clearLargeSample=/%.*(?:ИГР|МАТЧ)/i.test(fallback)&&!jargon&&!awkward;
     const naturalSource=/ВЫИГР|ПОБЕЖД|ЗАБИВ|ПРОШ[ЕЁ]Л|ЗАКРЫЛ|НЕ ПРОИГРЫВАЛ|ДОМА|В ГОСТЯХ/i.test(fallback)&&!jargon&&!awkward;
     const sourceScore=(clearLargeSample||naturalSource)?118:numeric&&!advancedRank&&!jargon&&!awkward?90:numeric?72:52;
@@ -69,16 +69,30 @@ function syncOperatorAngle(operator,best){
     raw:{...(operator.raw||{}),selected_broadcast_angle:best||null},
   };
 }
-function addHistory(out,e,m){
+function addHistory(out,e,m,p={}){
   const hits=n(e.hits),dec=n(e.decisions??e.sample??e.games),rate=n(e.hit_rate),window=n(e.window);
   if(hits===null||dec===null||dec<=0)return;
   const label=marketLabel(m),pct=Math.round((rate!==null?rate:hits/dec)*100),push=n(e.pushes)||0;
+  const h2h=String(e.split||"").toLowerCase()==="h2h";
+  const team=String(p?.team||e.team||m.subject||"").trim().toUpperCase();
+  const opponent=String(p?.opponent||e.opponent||"").trim().toUpperCase();
+  if(h2h&&team&&opponent){
+    if(String(m.type||"").toLowerCase()==="moneyline"){
+      const full=`${team} ОБЫГРЫВАЛИ ${opponent} В ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`;
+      const compact=`${shortTeamName(team)}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОБЕД ПРОТИВ ${shortTeamName(opponent)}`;
+      put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ`,108,"очный результат с явным соперником");
+    }else{
+      const full=`${label} ПРОТИВ ${opponent} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`;
+      const compact=`${label}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${shortTeamName(opponent)}`;
+      put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ`,104,"очная статистика с явным соперником");
+    }
+  }
   const historyAngleScore=dec<8?(pct<=50?62:pct<67?72:82):pct<=50?68:pct<60?78:92;
-  put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",historyAngleScore,"точная частота линии");
-  put(out,"history_pct","hit_rate_pct",`${label} ПРОХОДИТ В ${pct}% МАТЧЕЙ`,`ПОСЛЕДНИЕ ${Math.round(dec)} МАТЧЕЙ`,dec<8?Math.min(78,historyAngleScore+2):90,"процент прохода линии");
-  if(push>0)put(out,"history_push","integer_line",`${label} — ${Math.round(hits)} ПОБЕД И ${Math.round(push)} ВОЗВРАТА`,`${Math.round(dec)} РЕШЁННЫХ ИСХОДОВ`,89,"целая линия с возвратами");
+  put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",h2h?historyAngleScore-12:historyAngleScore,"точная частота линии");
+  put(out,"history_pct","hit_rate_pct",`${label} ПРОХОДИТ В ${pct}% МАТЧЕЙ`,`ПОСЛЕДНИЕ ${Math.round(dec)} МАТЧЕЙ`,h2h?70:(dec<8?Math.min(78,historyAngleScore+2):90),"процент прохода линии");
+  if(push>0)put(out,"history_push","integer_line",`${label} — ${Math.round(hits)} ПОБЕД И ${Math.round(push)} ВОЗВРАТА`,`${Math.round(dec)} РЕШЁННЫХ ИСХОДОВ`,h2h?72:89,"целая линия с возвратами");
   const streak=n(e.current_streak);
-  if(streak>=3)put(out,"streak","streak",`${label} ПРОХОДИТ ${Math.round(streak)} МАТЧА ПОДРЯД`,"ТЕКУЩАЯ СЕРИЯ",97,"серия по той же линии");
+  if(streak>=3)put(out,"streak","streak",`${label} ПРОХОДИТ ${Math.round(streak)} МАТЧА ПОДРЯД`,"ТЕКУЩАЯ СЕРИЯ",h2h?76:97,"серия по той же линии");
 }
 function addRanks(out,p,m){
   if(!p?.team||n(p.teamRank)===null)return;
@@ -131,8 +145,18 @@ function addScoreState(out,e,m){
 }
 function addSupport(out,e,m){
   const support=Array.isArray(e.supporting_signals)?e.supporting_signals:[],ind=Math.max(Number(e.independent_support_count||0),support.length,Number(e.combination_support_count||0)-1);
-  if(ind>=1)put(out,"support","multi_signal_support",`${marketLabel(m)} — ЕСТЬ ${ind+1} ПОДТВЕРЖДЕНИЯ`,"ДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ",60,"несколько независимых подтверждений");
+  if(ind<1)return;
+  const first=support.map(item=>String(item?.title||item?.eyebrow||item?.value||"").trim())
+    .find(title=>title&&!/ПОДТВЕРЖД|НЕЗАВИСИМ.*СИГНАЛ|ЕСТЬ\s+\d+/i.test(title));
+  if(first)put(out,"support_fact","supporting_fact",first,moreFactsText(ind),88,"первый конкретный дополнительный факт");
 }
+function moreFactsText(count){
+  const n=Math.max(0,Math.round(Number(count)||0));
+  if(!n)return"";
+  return `ЕЩЁ ${n} ${n===1?"ФАКТ":n>=2&&n<=4?"ФАКТА":"ФАКТОВ"} В ОПИСАНИИ`;
+}
+function shortTeamName(value){return String(value||"").trim().split(/\s+/)[0]||String(value||"").trim()}
+function fitH2HTitle(full,compact){return String(full||"").length<=96?full:compact}
 function ensureNumber(title,card,p){
   if(/\d/.test(title))return title;
   const e=card.evidence||{},m=card.market||{};

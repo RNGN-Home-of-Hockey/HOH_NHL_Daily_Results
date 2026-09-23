@@ -477,7 +477,7 @@ async function ensureRenderedCard(env,cardId){
   const payload=rendererPayloadFromRow(row);
   if(!Number.isFinite(Number(payload.odds))||Number(payload.odds)<=1)throw new Error("winline_price_required");
   const body=JSON.stringify(payload);
-  const hash=await sha256Hex("renderer-v14-broadcast-headline-2026-09-21:"+body);
+  const hash=await sha256Hex("renderer-v15-full-team-accent-2026-09-23:"+body);
   if(String(row.render_hash||"")===hash&&row.render_png_base64){
     return {cached:true,hash,bytes:Number(row.render_bytes||0),rendered_at:row.rendered_at||null};
   }
@@ -529,6 +529,7 @@ function rendererPayloadFromRow(row){
   return {
     team:tri,
     team_name:meta.name,
+    headline_team_name:renderHeadlineTeamName(row,tri,meta.name),
     team_color:meta.color,
     team_logo_url:logo||undefined,
     fact:renderFactText(candidate,row),
@@ -553,6 +554,12 @@ function renderTeamCode(row,candidate){
     if((tri===away||tri===home)&&hay.toUpperCase().includes(meta.name))return tri;
   }
   return away||home||"";
+}
+function renderHeadlineTeamName(row,tri,fallback){
+  const t=String(tri||"").toUpperCase();
+  if(t===String(row.home_tri||"").toUpperCase())return String(row.home_name_ru||row.home_name||fallback||t).trim().toUpperCase();
+  if(t===String(row.away_tri||"").toUpperCase())return String(row.away_name_ru||row.away_name||fallback||t).trim().toUpperCase();
+  return String(fallback||t).trim().toUpperCase();
 }
 function renderDisplayText(value){
   let s=String(value??"");

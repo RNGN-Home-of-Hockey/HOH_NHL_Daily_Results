@@ -1,15 +1,19 @@
 import sharp from "sharp";
-import { renderCard } from "../lib/render-card.js";
+import { normalizePayload, renderCard } from "../lib/render-card.js";
 
 const sample={
   team:"CAR",
-  fact:"КАРОЛИНА ЗАКРЫЛА ФОРУ +1,5 В 83 МАТЧАХ ПОДРЯД",
+  team_name:"КАРОЛИНА",
+  headline_team_name:"КАРОЛИНА ХАРРИКЕЙНЗ",
+  fact:"КАРОЛИНА ХАРРИКЕЙНЗ ОБЫГРЫВАЛИ ФЛОРИДА ПАНТЕРЗ В 8 ИЗ 10 ПОСЛЕДНИХ МАТЧЕЙ",
   market:"ФОРА +1,5 ГОЛА",
   odds:1.30,
   stake:1000,
   team_logo_url:""
 };
 
+const normalized=normalizePayload(sample);
+if(normalized.headlineTeamName!=="КАРОЛИНА ХАРРИКЕЙНЗ")throw new Error("Full headline team name was not preserved for accent");
 const png=await renderCard(sample);
 const meta=await sharp(png).metadata();
 if(meta.width!==820||meta.height!==211||meta.format!=="png"){
