@@ -1,0 +1,83 @@
+name: Content Core Paid Project Boundary Migrate Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/content-core-paid-project-boundary-migrate-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      TARGET_DATABASE_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Reconstruct latest Content Core runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/content-core-runtime
+          mkdir -p /tmp/content-core-runtime
+          cat ops/content-core-runtime-1-of-4.b64 \
+              ops/content-core-runtime-2-of-4.b64 \
+              ops/content-core-runtime-3-of-4.b64 \
+              ops/content-core-runtime-4-of-4.b64 \
+            | base64 -d > /tmp/content-core-runtime.tar.gz
+          tar -xzf /tmp/content-core-runtime.tar.gz -C /tmp/content-core-runtime
+          test -f /tmp/content-core-runtime/migrations/0026_restore_project_canonical_boundaries.sql
+
+      - name: Prepare paid D1 config
+        working-directory: /tmp/content-core-runtime
+        shell: bash
+        run: |
+          cat > wrangler.migrate-paid.jsonc <<EOF
+          {
+            "name": "rngn-content-core-paid-migrate",
+            "compatibility_date": "2026-08-11",
+            "d1_databases": [{
+              "binding": "DB",
+              "database_name": "rngn-content-core-v2",
+              "database_id": "$TARGET_DATABASE_ID",
+              "migrations_dir": "migrations"
+            }]
+          }
+          EOF
+
+      - name: Apply pending paid D1 migrations
+        working-directory: /tmp/content-core-runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.118.0 d1 migrations apply rngn-content-core-v2 --remote --config wrangler.migrate-paid.jsonc
+
+      - name: Verify project boundaries and VM Clips top
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$TARGET_DATABASE_ID/query"
+          q(){
+            local sql="$1" out="$2"
+            curl --fail --silent --show-error "$API"               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H "Content-Type: application/json"               -d "$(jq -nc --arg sql "$sql" '{sql:$sql}')" > "$out"
+            jq -e '.success == true' "$out" >/dev/null
+          }
+
+          q "SELECT COUNT(*) AS mismatched_publications,COUNT(DISTINCT p.video_id) AS affected_videos FROM publications p JOIN social_accounts a ON a.id=p.account_id JOIN videos v ON v.id=p.video_id WHERE a.project_id<>v.project_id;" /tmp/mismatch.json
+          echo "PROJECT_BOUNDARY_MISMATCH|$(jq -c '.result[0].results[0]' /tmp/mismatch.json)"
+
+          q "SELECT p.external_post_id,v.project_id,pr.name AS project,v.title,COALESCE(m.views,0) AS views FROM publications p JOIN videos v ON v.id=p.video_id JOIN projects pr ON pr.id=v.project_id LEFT JOIN publication_latest_metrics m ON m.publication_id=p.id WHERE p.account_id='account-youtube-vm-clips' ORDER BY COALESCE(m.views,0) DESC LIMIT 20;" /tmp/top.json
+          jq -c '.result[0].results[]' /tmp/top.json | while read -r row; do echo "VM_CLIPS_TOP_AFTER|$row"; done
+
+          jq -e '[.result[0].results[] | select(.project_id=="project-vzyal-myach-clips")] | length == 20' /tmp/top.json >/dev/null
+          jq -e '.result[0].results[0].views >= 20000000' /tmp/top.json >/dev/null
+          echo "PROJECT_BOUNDARY_VERIFY|ok"
