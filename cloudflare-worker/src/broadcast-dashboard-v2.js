@@ -450,6 +450,9 @@ export function canonicalBroadcastWinlineMarket(row,event,game,teams){
     if(o==="1x"||o==="x1"){subject=teams.team1||null;dcSide="team_or_draw";}
     else if(o==="x2"||o==="2x"){subject=teams.team2||null;dcSide="team_or_draw";}
     else if(o==="12"||o==="21"){dcSide="no_draw";}
+    else if(o==="homeordraw"||o==="draworhome"){subject=game.home_tri;dcSide="team_or_draw";}
+    else if(o==="draworaway"||o==="awayordraw"){subject=game.away_tri;dcSide="team_or_draw";}
+    else if(o==="homeoraway"||o==="awayorhome"){dcSide="no_draw";}
     if(!dcSide)return null;
     return {...base,market_type:"double_chance",period:period==="GAME"?"REG":period,subject,side:dcSide,line:null};
   }
