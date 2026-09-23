@@ -66,7 +66,7 @@ function pickH2H(cards,limit){
   // Prefer two different H2H stories: e.g. result/handicap + scoring total.
   for(const card of sorted){
     if(out.length>=limit)break;
-    if(!hasUsefulNumber(card)||!isConcreteStory(card))continue;
+    if(!hasUsefulNumber(card)||!isConcreteStory(card)||!isFeaturedQuality(card))continue;
     const family=marketFamily(card);
     if(usedFamilies.has(family))continue;
     out.push(card);usedFamilies.add(family);
