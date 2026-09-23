@@ -194,15 +194,19 @@ function combinedTeamSlices(game,rowsByTeam,window,settler){
   const a=aggregate(away,settler,{perspectives:1});
   const h=aggregate(home,settler,{perspectives:1});
   if(!a||!h)return null;
+
+  // A recent head-to-head can occur in both team slices. Count that game once
+  // in the combined hit-rate, while retaining each team's separate perspective
+  // for the operator explanation.
+  const uniqueRows=new Map();
+  for(const row of [...away,...home]){
+    const key=Number(row?.game_pk);
+    if(Number.isFinite(key)&&!uniqueRows.has(key))uniqueRows.set(key,row);
+  }
+  const combined=aggregate([...uniqueRows.values()],settler,{perspectives:2});
+  if(!combined)return null;
   return {
-    hits:a.hits+h.hits,
-    losses:a.losses+h.losses,
-    pushes:a.pushes+h.pushes,
-    decisions:a.decisions+h.decisions,
-    sample:a.sample+h.sample,
-    rate:(a.decisions+h.decisions)?(a.hits+h.hits)/(a.decisions+h.decisions):0,
-    game_pks:[...a.game_pks,...h.game_pks],
-    perspectives:2,
+    ...combined,
     away:{hits:a.hits,decisions:a.decisions,pushes:a.pushes,rate:a.rate,sample:a.sample},
     home:{hits:h.hits,decisions:h.decisions,pushes:h.pushes,rate:h.rate,sample:h.sample},
   };
