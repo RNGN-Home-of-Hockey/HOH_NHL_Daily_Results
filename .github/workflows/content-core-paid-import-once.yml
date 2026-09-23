@@ -53,14 +53,17 @@ jobs:
             STATUS="$(echo "$POLL" | jq -r '.result.status // empty')"
             SUCCESS="$(echo "$POLL" | jq -r '.result.success // false')"
             ERROR="$(echo "$POLL" | jq -r '.result.error // empty')"
-            if [ "$STATUS" = "complete" ] || [ "$SUCCESS" = "true" ]; then
+            echo "CONTENT_CORE_PAID_IMPORT_STATUS|$(echo "$POLL" | jq -c '{status:.result.status,success:.result.success,error:.result.error,messages:.result.messages}')"
+            if [ "$STATUS" = "complete" ]; then
               echo "CONTENT_CORE_PAID_IMPORT|$(echo "$POLL" | jq -c '{status:.result.status,success:.result.success,bookmark:.result.at_bookmark,final_bookmark:.result.result.final_bookmark,meta:.result.result.meta,num_queries:.result.result.num_queries}')"
               exit 0
             fi
-            if [ "$STATUS" = "error" ] || { [ -n "$ERROR" ] && [ "$ERROR" != "Not currently importing anything." ]; }; then
+            if [ "$STATUS" = "error" ]; then
               echo "$POLL"
               exit 1
             fi
+            # D1_RESET_DO is a transient phase while D1 swaps the imported database.
+            # Keep polling; stopping here can cancel a large import.
             sleep 2
           done
           echo "Import polling timed out" >&2
