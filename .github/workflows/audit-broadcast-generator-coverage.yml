@@ -1,0 +1,81 @@
+name: Audit Broadcast Generator Coverage
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-broadcast-generator-coverage.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      HOH_WORKER: https://hoh-nhl-daily-results.znamteam-903.workers.dev
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - name: Query next games and generator coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAW="$(npx wrangler d1 execute hoh-data-core --remote --json --command "
+            SELECT game_pk,scheduled_start_utc,away_tri,home_tri
+            FROM games
+            WHERE datetime(scheduled_start_utc)>=datetime('now','-6 hours')
+              AND datetime(scheduled_start_utc)<=datetime('now','+4 days')
+            ORDER BY datetime(scheduled_start_utc) ASC
+            LIMIT 12;
+          ")"
+          echo "$RAW" | jq .
+          mapfile -t GAMES < <(echo "$RAW" | jq -r '.[0].results[]?.game_pk')
+          if [ "${#GAMES[@]}" -eq 0 ]; then
+            echo "No near-term games found"
+            exit 0
+          fi
+          total_markets=0
+          covered_markets=0
+          multi_markets=0
+          priced_cards=0
+          variants=0
+          games_ok=0
+          for pk in "${GAMES[@]}"; do
+            echo "=== GAME $pk ==="
+            JSON="$(curl -fsSL --retry 3 --retry-delay 2 "$HOH_WORKER/api/broadcast/games/$pk")"
+            echo "$JSON" | jq '{game:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,state:.game.game_state},provider_market_count,market_coverage}'
+            p="$(echo "$JSON" | jq -r '.market_coverage.provider_exact_market_count // 0')"
+            c="$(echo "$JSON" | jq -r '.market_coverage.covered_exact_market_count // 0')"
+            m="$(echo "$JSON" | jq -r '.market_coverage.multi_signal_market_count // 0')"
+            pc="$(echo "$JSON" | jq -r '.market_coverage.priced_card_count // 0')"
+            v="$(echo "$JSON" | jq -r '.market_coverage.broadcast_variant_count // 0')"
+            total_markets=$((total_markets+p))
+            covered_markets=$((covered_markets+c))
+            multi_markets=$((multi_markets+m))
+            priced_cards=$((priced_cards+pc))
+            variants=$((variants+v))
+            games_ok=$((games_ok+1))
+          done
+          if [ "$total_markets" -gt 0 ]; then
+            coverage="$(awk -v c="$covered_markets" -v t="$total_markets" 'BEGIN{printf "%.1f",100*c/t}')"
+            multi="$(awk -v c="$multi_markets" -v t="$total_markets" 'BEGIN{printf "%.1f",100*c/t}')"
+          else
+            coverage="0.0"
+            multi="0.0"
+          fi
+          echo "=== AGGREGATE ==="
+          echo "games=$games_ok"
+          echo "exact_markets=$total_markets"
+          echo "covered_markets=$covered_markets"
+          echo "coverage_pct=$coverage"
+          echo "multi_signal_markets=$multi_markets"
+          echo "multi_signal_pct=$multi"
+          echo "priced_cards=$priced_cards"
+          echo "broadcast_variants=$variants"
