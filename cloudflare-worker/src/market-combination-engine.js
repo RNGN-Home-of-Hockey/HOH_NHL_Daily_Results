@@ -30,6 +30,7 @@ function atom(card,game){
     type:String(m.type||""),period:period(m.period),subject:up(m.subject||""),side:String(m.side||"").toLowerCase(),line:num(m.line),
     direction:direction(card,team),sample:maxnum([e.sample_size,e.sample,e.window,e.games,e.attack?.sample,e.cover?.sample,e.away?.sample,e.home?.sample]),
     hit:firstnum([e.hit_rate,e.historical_rate,e.rate,e.combined_rate,card.hit_rate,card.combined_rate]),
+    lineBound:isLineBoundCard(card,e,category),
     metric:String(e.metric||e.opponent_metric||e.feature_layer||category).toLowerCase(),
     score:Number(card.portfolio_score??card.score??50),title:String(card.title||card.value||card.eyebrow||""),
     value:String(card.value||""),explanation:String(card.explanation||card.note||""),evidence:e,source:card
@@ -47,7 +48,13 @@ function compat(a,m){
   if(["advanced_rolling_venue","advanced_market"].includes(a.category))s+=7;
   if(a.category==="goalie_context"&&["team_total","game_total"].includes(t))s+=8;
   if(a.category==="player_market"&&t.startsWith("player_"))s+=12;
-  const ml=num(m.line);if(a.line!==null&&ml!==null){const d=Math.abs(a.line-ml);if(d<.001)s+=18;else if(d<=1)s+=5}
+  const ml=num(m.line);
+  if(a.line!==null&&ml!==null){
+    const d=Math.abs(a.line-ml);
+    if(d<.001)s+=18;
+    else if(a.lineBound)return -100;
+    else if(d<=1)s+=3;
+  }
   return s;
 }
 
@@ -74,6 +81,17 @@ function pair(game,m,ar,br,i){
       supporting_signals:[{category:support.category,insight_type:support.source?.insight_type||null,score:support.score,title:support.title,value:support.value,evidence:clone(support.evidence)}]},
     market:asMarket(m)
   };
+}
+
+function isLineBoundCard(card,e,category){
+  const type=String(card?.market?.type||"");
+  if(num(card?.market?.line)===null)return false;
+  const contextual=new Set(["advanced_market","advanced_rolling_venue","advanced_context","league_rank","goalie_context","special_teams","matchup"]);
+  if(contextual.has(category)&&firstnum([e?.hit_rate,e?.historical_rate,e?.rate,e?.combined_rate])===null)return false;
+  if(String(e?.role||"").includes("context"))return false;
+  if(["game_total","team_total","handicap","result_total_combo"].includes(type))return true;
+  if(type.startsWith("player_"))return true;
+  return firstnum([e?.hit_rate,e?.historical_rate,e?.rate,e?.combined_rate])!==null;
 }
 
 function independent(a,b){
