@@ -20,7 +20,7 @@ export function buildBroadcastAngles(card={},profile={}){
   }
 
   return unique(out)
-    .map(x=>({...x,title:clean(x.title),score:score(x,card)}))
+    .map(x=>({...x,title:x.family==="source_fact"?cleanSource(x.title):clean(x.title),score:score(x,card)}))
     .filter(x=>x.title&&x.title.length<=118)
     .sort((a,b)=>b.score-a.score||a.title.length-b.title.length)
     .slice(0,24);
@@ -131,6 +131,7 @@ function fmtMetric(v,meta){const x=n(v);if(x===null)return"";const s=fmt(x);retu
 function score(x,card){let s=Number(x.score||50);if(/\d/.test(x.title))s+=6;else s-=14;if(x.title.length<=72)s+=5;else if(x.title.length>96)s-=7;if(card?.market?.odds_is_demo===false)s+=2;if(x.family==="source_fact")s-=8;return s}
 function put(out,id,family,title,subtitle,score,reason){if(title)out.push({id,family,title,subtitle:subtitle||null,score,reason})}
 function unique(xs){const seen=new Set();return xs.filter(x=>{const k=String(x.title||"");if(!k||seen.has(k))return false;seen.add(k);return true})}
+function cleanSource(v){return String(v||"").replace(/\s+/g," ").replace(/\s+([,:])/g,"$1").trim()}
 function clean(v){return String(v||"").replace(/\s+/g," ").replace(/\s+([,:])/g,"$1").trim().toUpperCase()}
 function titleShape(v){return String(v||"").replace(/\d+(?:[.,]\d+)?/g,"#").replace(/\s+/g," ").trim()}
 function period(v){const p=String(v||"GAME").toUpperCase();return p==="P1"?"1-Й ПЕРИОД · ":p==="P2"?"2-Й ПЕРИОД · ":p==="P3"?"3-Й ПЕРИОД · ":p==="REG"?"60 МИН · ":""}
