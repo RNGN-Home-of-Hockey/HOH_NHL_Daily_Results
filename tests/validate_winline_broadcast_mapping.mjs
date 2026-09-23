@@ -45,9 +45,28 @@ const p1Result=canonicalBroadcastWinlineMarket({
   raw_json:JSON.stringify({freetext:"1 Period 3-way odds",name1:"1",odd1:"2.75",name2:"X",odd2:"2.75",name3:"2",odd3:"2.85"}),
   updated_at:now
 },event,game,teams);
-assert.equal(p1Result.market_type,"moneyline");
+assert.equal(p1Result.market_type,"period_1_result");
 assert.equal(p1Result.period,"P1");
 
+
+const bothScore=canonicalBroadcastWinlineMarket({
+  winline_market_id:"16255255:bothteamstoscore:yes",
+  market_type:"bothteamstoscore",
+  subject_key:"",
+  outcome_name:"Yes",
+  odds:1.41,
+  raw_json:JSON.stringify({freetext:"Both Teams to score",name1:"Yes",odd1:"1.41",name2:"No",odd2:"2.75"}),
+  updated_at:now
+},event,game,teams);
+assert.equal(bothScore.market_type,"both_teams_score");
+assert.equal(bothScore.period,"GAME");
+assert.equal(bothScore.subject,null);
+assert.equal(bothScore.side,"yes");
+
+const p1Insight=[{id:"p1",market:{type:"period_1_result",period:"P1",subject:"TOR",side:"TOR",line:null,label:"1-й период — TOR"}}];
+const p1Priced=applyWinlineMarkets(p1Insight,[p1Result],{now,max_age_ms:7*60*60*1000});
+assert.equal(p1Priced.length,1);
+assert.equal(p1Priced[0].market.odds,2.75);
 
 const doubleChance=canonicalBroadcastWinlineMarket({
   winline_market_id:"16255255:doublechance:1x",
