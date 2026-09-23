@@ -344,6 +344,35 @@ export function formatBroadcastTitle(card, precomputed={}) {
   const label=String(market.label||"").trim().toUpperCase().replace(/\./g,",");
   let title;
 
+  // Period/result and small-sample cards must still be spoken Russian.
+  // Never leak internal keys such as PERIOD_1_RESULT into the plaque.
+  const periodMatch=/^period_([123])_result$/.exec(type);
+  if(periodMatch&&Number.isFinite(hits)){
+    const periodNo=Number(periodMatch[1]);
+    const subject=String(market.subject||evidence.team||"КОМАНДА").trim().toUpperCase();
+    const h2h=String(evidence.split||"").toLowerCase()==="h2h";
+    title=periodNo+"-Й ПЕРИОД: "+subject+" ПОБЕЖДАЛ В "+hits+" ИЗ "+sample+(h2h?" ОЧНЫХ":"")+" МАТЧЕЙ";
+    const odds=Number(market.odds);
+    const detail=Number.isFinite(odds)&&odds>1
+      ?"Кэф "+odds.toFixed(2).replace(".",",")+" · порог цены "+Math.round(100/odds)+"%"
+      :null;
+    return {title,detail};
+  }
+  if(type==="moneyline"&&sample<=30&&Number.isFinite(hits)){
+    const subject=String(market.subject||evidence.team||"КОМАНДА").trim().toUpperCase();
+    const h2h=String(evidence.split||"").toLowerCase()==="h2h";
+    return {title:subject+" ПОБЕЖДАЛ В "+hits+" ИЗ "+sample+(h2h?" ОЧНЫХ":"")+" МАТЧЕЙ",detail:null};
+  }
+  if((type==="game_total"||type==="team_total")&&sample<=30&&Number.isFinite(hits)){
+    const h2h=String(evidence.split||"").toLowerCase()==="h2h";
+    return {title:(label||"ТОТАЛ")+" ПРОШЁЛ В "+hits+" ИЗ "+sample+(h2h?" ОЧНЫХ":"")+" МАТЧЕЙ",detail:null};
+  }
+  if(type==="handicap"&&Number.isFinite(line)&&line===0&&sample<=30&&Number.isFinite(hits)){
+    const subject=String(market.subject||evidence.team||"КОМАНДА").trim().toUpperCase();
+    const h2h=String(evidence.split||"").toLowerCase()==="h2h";
+    return {title:subject+" С ФОРОЙ 0 — "+hits+" ИЗ "+sample+(h2h?" ОЧНЫХ":"")+" МАТЧЕЙ",detail:null};
+  }
+
   // A positive hockey handicap is much easier to understand as "didn't lose by N+",
   // while a negative handicap is simply "won by N+". Keep the betting market below
   // the headline, but make the fact itself normal spoken Russian.
