@@ -1,0 +1,88 @@
+name: Content Core Paid Shadow Deploy Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/content-core-paid-shadow-deploy-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      TARGET_DATABASE_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
+      RUNTIME_ARTIFACT_URL: "https://sdmntprnortheu.oaiusercontent.com/files/00000000-7d8c-81f4-a88e-de9ec1847744/raw?se=2026-09-23T11%3A04%3A28Z&sp=r&sv=2026-02-06&sr=b&scid=3c227f44-6610-57e9-927f-b8627f8ff8b5&skoid=a0b9f82a-c86e-4064-a822-2aa38890bb37&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-23T08%3A19%3A55Z&ske=2026-09-24T08%3A19%3A55Z&sks=b&skv=2026-02-06&sig=DzXZWyGX8vKnJ/gS5JZsi5pYgh1X3QWZDYIpm1yFDIg%3D"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Fetch Content Core runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/content-core-runtime
+          curl --fail --silent --show-error --location "$RUNTIME_ARTIFACT_URL" -o /tmp/runtime.zip
+          unzip -q /tmp/runtime.zip -d /tmp/artifact
+          tar -xzf /tmp/artifact/content-core-runtime.tar.gz -C /tmp/content-core-runtime
+          test -f /tmp/content-core-runtime/src/index-v3.ts
+          test -f /tmp/content-core-runtime/dashboard/src/index-v14.ts
+          echo "CONTENT_CORE_SHADOW_RUNTIME|files=$(find /tmp/content-core-runtime -type f | wc -l)"
+      - name: Prepare shadow configs
+        working-directory: /tmp/content-core-runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const db=process.env.TARGET_DATABASE_ID;
+
+          const core=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          core.name='rngn-content-core-paid-shadow';
+          core.d1_databases[0].database_name='rngn-content-core-v2';
+          core.d1_databases[0].database_id=db;
+          core.triggers={crons:[]};
+          fs.writeFileSync('wrangler.shadow.jsonc',JSON.stringify(core,null,2));
+
+          const dash=JSON.parse(fs.readFileSync('dashboard/wrangler.jsonc','utf8'));
+          dash.name='rngn-content-dashboard-paid-shadow';
+          dash.vars.CORE_ORIGIN='https://rngn-content-core-paid-shadow.znamteam-903.workers.dev';
+          dash.d1_databases[0].database_name='rngn-content-core-v2';
+          dash.d1_databases[0].database_id=db;
+          fs.writeFileSync('dashboard/wrangler.shadow.jsonc',JSON.stringify(dash,null,2));
+          NODE
+          echo "CONTENT_CORE_SHADOW_CONFIGS_READY"
+      - name: Install dependencies
+        working-directory: /tmp/content-core-runtime
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Deploy shadow Core
+        working-directory: /tmp/content-core-runtime
+        run: npx wrangler deploy --config wrangler.shadow.jsonc
+      - name: Deploy shadow Dashboard
+        working-directory: /tmp/content-core-runtime
+        run: npx wrangler deploy --config dashboard/wrangler.shadow.jsonc
+      - name: Smoke shadow
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE='https://rngn-content-core-paid-shadow.znamteam-903.workers.dev'
+          DASH='https://rngn-content-dashboard-paid-shadow.znamteam-903.workers.dev'
+          for _ in $(seq 1 20); do
+            if curl --fail --silent --show-error "$CORE/health" -o /tmp/core-health.json; then break; fi
+            sleep 2
+          done
+          cat /tmp/core-health.json
+          jq -e '.ok == true' /tmp/core-health.json >/dev/null
+
+          curl --fail --silent --show-error "$DASH/" -o /tmp/dashboard.html
+          grep -q 'RNGN CONTENT CORE' /tmp/dashboard.html
+
+          curl --fail --silent --show-error "$DASH/api/project-ranking?period=30d" -o /tmp/ranking.json
+          jq -e '.ok == true and (.projects | length > 0)' /tmp/ranking.json >/dev/null
+          echo "CONTENT_CORE_PAID_SHADOW_SMOKE|$(jq -c '{projects:(.projects|length),publications:.totals.publications,totalViews:.totals.totalViews}' /tmp/ranking.json)"
