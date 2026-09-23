@@ -11,6 +11,7 @@ import { buildSnapshotMarketContextInsights } from "./snapshot-market-context.js
 import { buildPlayerMarketInsights } from "./player-market-insights.js";
 import { buildAdvancedTeamSnapshotInsights } from "./advanced-team-snapshot-insights.js";
 import { buildAdvancedRollingVenueInsights } from "./advanced-rolling-venue-insights.js";\nimport { buildNarrative } from "./narrative-engine.js";
+import { buildMarketCombinationInsights } from "./market-combination-engine.js";
 
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
@@ -41,7 +42,7 @@ export async function buildBettingInsights(db, game, options = {}) {
     advancedContextInsights = await safeInsightBuild("advanced_context", () => buildAdvancedMarketContextInsights(db, game));
   }
 
-  const rawPortfolio = dedupe([
+  const basePortfolio = dedupe([
     ...universalMarketInsights,
     ...regulationMarketInsights,
     ...marketSplitInsights,
@@ -53,6 +54,20 @@ export async function buildBettingInsights(db, game, options = {}) {
     ...rollingRankInsights,
     ...advancedContextInsights,
   ]);
+
+  // Market-first expansion: every real Winline selection can reuse compatible
+  // independent Data Core signals. This creates a large candidate pool before
+  // exact-price matching and editorial pruning.
+  let combinationInsights=[];
+  try {
+    combinationInsights=buildMarketCombinationInsights(basePortfolio,options.provider_markets,game,{
+      now:options.now,
+      market_max_age_ms:options.market_max_age_ms,
+    });
+  } catch (error) {
+    console.error("market combination engine failed",error);
+  }
+  const rawPortfolio=dedupe([...basePortfolio,...combinationInsights]);
 
   // Match exact Winline selections before portfolio pruning.
   // Otherwise a generic 2.5/1.5 candidate can win a family bucket and remove
@@ -69,12 +84,14 @@ export async function buildBettingInsights(db, game, options = {}) {
 
   let portfolio;
   try {
-    portfolio = selectInsightPortfolio(marketMatchedCandidates, 12);
+    const requestedLimit=Number(options.portfolio_limit||24);
+    const portfolioLimit=Math.max(12,Math.min(40,Number.isFinite(requestedLimit)?requestedLimit:24));
+    portfolio = selectInsightPortfolio(marketMatchedCandidates, portfolioLimit);
   } catch (error) {
     console.error("betting insight portfolio failed", error);
     portfolio = [...(marketMatchedCandidates||[])]
       .sort((a, b) => Number(b?.score || 0) - Number(a?.score || 0))
-      .slice(0, 12);
+      .slice(0, 24);
   }
 
   return (portfolio||[]).map((card)=>annotateAirUtility(card,game));
