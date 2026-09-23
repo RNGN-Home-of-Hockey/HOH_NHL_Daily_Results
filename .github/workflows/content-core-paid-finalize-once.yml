@@ -1,0 +1,129 @@
+name: Content Core Paid Finalize Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/content-core-paid-finalize-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      TARGET_DATABASE_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
+      RUNTIME_ARTIFACT_URL: "https://sdmntprnortheu.oaiusercontent.com/files/00000000-7d8c-81f4-a88e-de9ec1847744/raw?se=2026-09-23T11%3A04%3A28Z&sp=r&sv=2026-02-06&sr=b&scid=3c227f44-6610-57e9-927f-b8627f8ff8b5&skoid=a0b9f82a-c86e-4064-a822-2aa38890bb37&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-23T08%3A19%3A55Z&ske=2026-09-24T08%3A19%3A55Z&sks=b&skv=2026-02-06&sig=DzXZWyGX8vKnJ/gS5JZsi5pYgh1X3QWZDYIpm1yFDIg%3D"
+      PAID_CORE_URL: https://rngn-content-core-paid-shadow.znamteam-903.workers.dev
+      PAID_DASH_URL: https://rngn-content-dashboard-paid-shadow.znamteam-903.workers.dev
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Fetch Content Core runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/content-core-runtime /tmp/artifact
+          mkdir -p /tmp/content-core-runtime /tmp/artifact
+          curl --fail --silent --show-error --location "$RUNTIME_ARTIFACT_URL" -o /tmp/runtime.zip
+          unzip -q /tmp/runtime.zip -d /tmp/artifact
+          tar -xzf /tmp/artifact/content-core-runtime.tar.gz -C /tmp/content-core-runtime
+          test -f /tmp/content-core-runtime/src/index-v3.ts
+          test -f /tmp/content-core-runtime/src/matcher-worker.ts
+          test -f /tmp/content-core-runtime/dashboard/src/index-v14.ts
+          echo "PAID_FINAL_RUNTIME|files=$(find /tmp/content-core-runtime -type f | wc -l)"
+
+      - name: Prepare paid production configs
+        working-directory: /tmp/content-core-runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const db=process.env.TARGET_DATABASE_ID;
+
+          const core=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          core.name='rngn-content-core-paid-shadow';
+          core.d1_databases[0].database_name='rngn-content-core-v2';
+          core.d1_databases[0].database_id=db;
+          // Keep the production Core cron schedule from source config.
+          fs.writeFileSync('wrangler.paid.jsonc',JSON.stringify(core,null,2));
+
+          const matcher=JSON.parse(fs.readFileSync('wrangler.matcher.jsonc','utf8'));
+          matcher.name='rngn-content-matcher-paid';
+          matcher.d1_databases[0].database_name='rngn-content-core-v2';
+          matcher.d1_databases[0].database_id=db;
+          // Keep both production Matcher schedules (:07 incremental, every 20m full-corpus).
+          fs.writeFileSync('wrangler.matcher.paid.jsonc',JSON.stringify(matcher,null,2));
+
+          const dash=JSON.parse(fs.readFileSync('dashboard/wrangler.jsonc','utf8'));
+          dash.name='rngn-content-dashboard-paid-shadow';
+          dash.vars.CORE_ORIGIN=process.env.PAID_CORE_URL;
+          dash.d1_databases[0].database_name='rngn-content-core-v2';
+          dash.d1_databases[0].database_id=db;
+          fs.writeFileSync('dashboard/wrangler.paid.jsonc',JSON.stringify(dash,null,2));
+          NODE
+
+      - name: Install and validate runtime
+        working-directory: /tmp/content-core-runtime
+        run: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run typecheck
+          npm test
+
+      - name: Deploy paid Core with production crons
+        working-directory: /tmp/content-core-runtime
+        run: npx wrangler deploy --config wrangler.paid.jsonc
+
+      - name: Set paid Core internal API key
+        working-directory: /tmp/content-core-runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reuse the paid-account API token only as a server-to-server bearer secret.
+          # It remains in GitHub/Worker secret stores and is never printed.
+          printf '%s' "$CLOUDFLARE_API_TOKEN" | npx wrangler secret put API_KEY --config wrangler.paid.jsonc
+
+      - name: Deploy paid Matcher with production crons
+        working-directory: /tmp/content-core-runtime
+        run: npx wrangler deploy --config wrangler.matcher.paid.jsonc
+
+      - name: Deploy paid Dashboard
+        working-directory: /tmp/content-core-runtime
+        run: npx wrangler deploy --config dashboard/wrangler.paid.jsonc
+
+      - name: Smoke paid production targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error "$PAID_CORE_URL/health" -o /tmp/core-health.json; then break; fi
+            sleep 2
+          done
+          jq -e '.ok == true' /tmp/core-health.json
+
+          curl --fail --silent --show-error "$PAID_DASH_URL/api/project-ranking?period=30d" -o /tmp/ranking.json
+          jq -e '.ok == true and (.projects|length)>0' /tmp/ranking.json >/dev/null
+
+          HTTP="$(curl --silent --show-error -o /tmp/accounts.json -w '%{http_code}'             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "$PAID_CORE_URL/api/v1/accounts")"
+          test "$HTTP" = "200"
+          jq -e '.accounts | length > 0' /tmp/accounts.json >/dev/null
+          echo "PAID_FINAL_SMOKE|$(jq -c '{accounts:(.accounts|length)}' /tmp/accounts.json)|$(jq -c '{projects:(.projects|length),publications:.totals.publications,totalViews:.totals.totalViews}' /tmp/ranking.json)"
+
+      - name: Verify paid cron triggers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for worker in rngn-content-core-paid-shadow rngn-content-matcher-paid; do
+            URL="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$worker/schedules"
+            curl --fail --silent --show-error "$URL" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" > "/tmp/$worker-schedules.json"
+            jq -e '.success == true' "/tmp/$worker-schedules.json" >/dev/null
+            echo "PAID_FINAL_SCHEDULES|$worker|$(jq -c '[.result[].cron]' "/tmp/$worker-schedules.json")"
+          done
