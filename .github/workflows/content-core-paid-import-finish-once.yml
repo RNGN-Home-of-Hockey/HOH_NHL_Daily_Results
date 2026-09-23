@@ -1,0 +1,61 @@
+name: Content Core Paid Import Finish Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/content-core-paid-import-finish-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  finish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      TARGET_DATABASE_ID: eeaf01ce-1a33-4d45-8cbe-fd7ae95ae507
+      IMPORT_BOOKMARK: 00000001-00000000-000050ef-dd181434d3b6bc4e2ffdbadbea25760d
+    steps:
+      - uses: actions/checkout@v6
+      - name: Wait for D1 import completion
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$TARGET_DATABASE_ID/import"
+          for _ in $(seq 1 600); do
+            POLL="$(curl --fail --silent --show-error "$API"               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H "Content-Type: application/json"               -d "{\"action\":\"poll\",\"current_bookmark\":\"$IMPORT_BOOKMARK\"}")"
+            STATUS="$(echo "$POLL" | jq -r '.result.status // empty')"
+            ERROR="$(echo "$POLL" | jq -r '.result.error // empty')"
+            echo "CONTENT_CORE_PAID_IMPORT_STATUS|$(echo "$POLL" | jq -c '{status:.result.status,success:.result.success,messages:.result.messages,error:.result.error}')"
+            if [ "$STATUS" = "complete" ]; then
+              echo "CONTENT_CORE_PAID_IMPORT_COMPLETE|$(echo "$POLL" | jq -c '{status:.result.status,success:.result.success,bookmark:.result.at_bookmark,final_bookmark:.result.result.final_bookmark,meta:.result.result.meta,num_queries:.result.result.num_queries}')"
+              exit 0
+            fi
+            if [ "$STATUS" = "error" ]; then
+              echo "$POLL"
+              exit 1
+            fi
+            if [ "$ERROR" = "Not currently importing anything." ]; then
+              break
+            fi
+            sleep 2
+          done
+      - name: Verify target counts and integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$TARGET_DATABASE_ID/query"
+          SQL="SELECT (SELECT COUNT(*) FROM projects) AS projects,(SELECT COUNT(*) FROM social_accounts) AS accounts,(SELECT COUNT(*) FROM videos) AS videos,(SELECT COUNT(*) FROM publications) AS publications,(SELECT COUNT(*) FROM metric_snapshots) AS metric_snapshots,(SELECT COUNT(*) FROM publication_latest_metrics) AS latest_metrics,(SELECT COUNT(*) FROM video_override_log) AS override_log;"
+          for _ in $(seq 1 60); do
+            HTTP="$(curl --silent --show-error -o /tmp/query.json -w '%{http_code}' "$API"               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H "Content-Type: application/json"               -d "$(jq -nc --arg sql "$SQL" '{sql:$sql}')")"
+            if [ "$HTTP" = "200" ] && jq -e '.success == true' /tmp/query.json >/dev/null 2>&1; then
+              echo "CONTENT_CORE_PAID_COUNTS|$(jq -c '.result[0].results[0]' /tmp/query.json)"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/query.json
+          exit 1
