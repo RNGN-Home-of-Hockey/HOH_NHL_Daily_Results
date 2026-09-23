@@ -48,6 +48,59 @@ const p1Result=canonicalBroadcastWinlineMarket({
 assert.equal(p1Result.market_type,"moneyline");
 assert.equal(p1Result.period,"P1");
 
+
+const doubleChance=canonicalBroadcastWinlineMarket({
+  winline_market_id:"16255255:doublechance:1x",
+  market_type:"doublechance",
+  subject_key:"",
+  outcome_name:"1X",
+  odds:1.44,
+  raw_json:JSON.stringify({freetext:"Double Chance"}),
+  updated_at:now
+},event,game,teams);
+assert.equal(doubleChance.market_type,"double_chance");
+assert.equal(doubleChance.subject,"TOR");
+assert.equal(doubleChance.side,"team_or_draw");
+
+const highestPeriod=canonicalBroadcastWinlineMarket({
+  winline_market_id:"16255255:highestperiod:2",
+  market_type:"highestperiod",
+  subject_key:"TOR",
+  outcome_name:"2 Period",
+  odds:3.10,
+  raw_json:JSON.stringify({freetext:"Highest Scoring Period"}),
+  updated_at:now
+},event,game,teams);
+assert.equal(highestPeriod.market_type,"highest_scoring_period");
+assert.equal(highestPeriod.side,"P2");
+
+const teamBucket=canonicalBroadcastWinlineMarket({
+  winline_market_id:"16255255:teamgoals:3plus",
+  market_type:"teamgoals",
+  subject_key:"TOR",
+  outcome_name:"3+",
+  odds:1.95,
+  raw_json:JSON.stringify({freetext:"Exact Team Goals"}),
+  updated_at:now
+},event,game,teams);
+assert.equal(teamBucket.market_type,"team_goal_bucket");
+assert.equal(teamBucket.subject,"TOR");
+assert.equal(teamBucket.side,"3_plus");
+
+const combo=canonicalBroadcastWinlineMarket({
+  winline_market_id:"16255255:resulttotal:1o55",
+  market_type:"resulttotal:5.5",
+  subject_key:"TOR",
+  outcome_name:"1 Over",
+  odds:2.75,
+  raw_json:JSON.stringify({freetext:"Result and Total",value:"5.5"}),
+  updated_at:now
+},event,game,teams);
+assert.equal(combo.market_type,"result_total_combo");
+assert.equal(combo.subject,"TOR");
+assert.equal(combo.side,"over");
+assert.equal(combo.line,5.5);
+
 const insight=[{id:"x",market:{type:"handicap",subject:"MTL",side:"MTL",line:1.5,label:"MTL +1.5"}}];
 const fresh=applyWinlineMarkets(insight,[mtlPlus],{now,max_age_ms:7*60*60*1000});
 assert.equal(fresh.length,1);
