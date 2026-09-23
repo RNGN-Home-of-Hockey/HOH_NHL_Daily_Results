@@ -485,8 +485,18 @@ export function canonicalBroadcastWinlineMarket(row,event,game,teams){
     const subject=teamSubject(row.subject_key,outcome,game,teams);
     const side=subject||(/^(x|draw|tie|ничья|н)$/i.test(outcome)?"draw":null);
     if(!side)return null;
-    return {...base,market_type:"moneyline",period:String(row.market_type)==="main_1x2_regular"?"REG":(period==="GAME"?"REG":period),subject,side,line:null};
+    const resolvedPeriod=String(row.market_type)==="main_1x2_regular"?"REG":(period==="GAME"?"REG":period);
+    const periodType=resolvedPeriod==="P1"?"period_1_result":resolvedPeriod==="P2"?"period_2_result":resolvedPeriod==="P3"?"period_3_result":"moneyline";
+    return {...base,market_type:periodType,period:resolvedPeriod,subject,side,line:null};
   }
+  if(/bothteamstoscore|bothteamscore|bothscore/.test(norm)){
+    const o=normalizeWinlineText(outcome);
+    const yes=/^(yes|y|да|1)$/.test(o);
+    const no=/^(no|n|нет|2)$/.test(o);
+    if(!yes&&!no)return null;
+    return {...base,market_type:"both_teams_score",period,subject:null,side:yes?"yes":"no",line:null};
+  }
+
   if(/moneyline|matchwinner|winner/.test(norm)&&!/period/.test(norm)){
     const subject=teamSubject(row.subject_key,outcome,game,teams);if(!subject)return null;
     return {...base,market_type:"moneyline",period:"GAME",subject,side:subject,line:null};
