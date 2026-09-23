@@ -73,6 +73,17 @@ def main() -> None:
         assert bot.resolve_sportsru_name_from_team_roster("Ethan Cardwell", roster_names) == "Итан Кардуэлл"
         assert bot.resolve_sportsru_name_from_team_roster("Eric Pohlkamp", roster_names) == "Эрик Полкамп"
         assert bot.resolve_sportsru_name_from_team_roster("Jimmy Huntington", roster_names) == "Джимми Хантингтон"
+
+        # Lower absolute transliteration similarity is acceptable only when the
+        # roster winner is very clearly separated from every other candidate.
+        pittsburgh_roster = [
+            "Эйвери Хэйс",
+            "Топиас Лейнонен",
+            "Сергей Мурашов",
+        ]
+        assert bot.resolve_sportsru_name_from_team_roster("Avery Hayes", pittsburgh_roster) == "Эйвери Хэйс"
+        assert bot.resolve_sportsru_name_from_team_roster("Thomas Bordeleau", pittsburgh_roster) == ""
+
         assert len(roster_calls) == 1, roster_calls
         bot.http_get_text = original_fake
 
