@@ -1,0 +1,40 @@
+name: Content Core Paid Shadow Smoke Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/content-core-paid-shadow-smoke-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Probe shadow endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE='https://rngn-content-core-paid-shadow.znamteam-903.workers.dev'
+          DASH='https://rngn-content-dashboard-paid-shadow.znamteam-903.workers.dev'
+          probe() {
+            local name="$1" url="$2"
+            local file="/tmp/$name.out"
+            local code
+            code="$(curl --silent --show-error --location -o "$file" -w '%{http_code}' "$url" || true)"
+            echo "SHADOW_HTTP|$name|$code|$(head -c 500 "$file" | tr '\n' ' ' || true)"
+          }
+          probe core_health "$CORE/health"
+          probe core_root "$CORE/"
+          probe dashboard_root "$DASH/"
+          probe dashboard_ranking "$DASH/api/project-ranking?period=30d"
+          probe dashboard_accounts "$DASH/api/accounts"
+
+          CODE="$(curl --silent --show-error -o /tmp/rank.json -w '%{http_code}' "$DASH/api/project-ranking?period=30d")"
+          test "$CODE" = "200"
+          jq -e '.ok == true and (.projects | length > 0)' /tmp/rank.json >/dev/null
+          echo "CONTENT_CORE_PAID_SHADOW_SMOKE|$(jq -c '{projects:(.projects|length),publications:.totals.publications,totalViews:.totals.totalViews}' /tmp/rank.json)"
