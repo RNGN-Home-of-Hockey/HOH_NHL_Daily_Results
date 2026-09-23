@@ -78,7 +78,7 @@ jobs:
             v="$(echo "$JSON" | jq -r '.market_coverage.broadcast_variant_count // 0')"
             sa="$(echo "$JSON" | jq -r '.market_coverage.structured_angle_count // 0')"
             nh="$(echo "$JSON" | jq -r '.market_coverage.numeric_headline_count // 0')"
-            fc="$(echo "$JSON" | jq -r '.generator_diagnostics.final_portfolio_count // 0')"
+            fc="$(echo "$JSON" | jq -r '.market_coverage.card_count // 0')"
             gr="$(echo "$JSON" | jq -r '.generator_diagnostics.raw_candidate_count // 0')"
             gc="$(echo "$JSON" | jq -r '.generator_diagnostics.combination_candidate_count // 0')"
             gm="$(echo "$JSON" | jq -r '.generator_diagnostics.matched_candidate_count // 0')"
