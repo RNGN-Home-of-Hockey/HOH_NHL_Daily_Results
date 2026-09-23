@@ -229,6 +229,7 @@ jobs:
           node tests/validate_broadcast_operator_actions.mjs
           node tests/validate_broadcast_queue_summary.mjs
           node tests/validate_market_combination_engine.mjs
+          node tests/validate_live_market_enrichment.mjs
           node tests/validate_advanced_team_snapshot_insights.mjs
           node tests/validate_advanced_winline_link.mjs
           node tests/validate_broadcast_priced_merge.mjs
