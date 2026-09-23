@@ -358,15 +358,6 @@ export function formatBroadcastTitle(card, precomputed={}) {
       :null;
     return {title,detail};
   }
-  if(type==="moneyline"&&sample<=30&&Number.isFinite(hits)){
-    const subject=String(market.subject||evidence.team||"КОМАНДА").trim().toUpperCase();
-    const h2h=String(evidence.split||"").toLowerCase()==="h2h";
-    return {title:subject+" ПОБЕЖДАЛ В "+hits+" ИЗ "+sample+(h2h?" ОЧНЫХ":"")+" МАТЧЕЙ",detail:null};
-  }
-  if((type==="game_total"||type==="team_total")&&sample<=30&&Number.isFinite(hits)){
-    const h2h=String(evidence.split||"").toLowerCase()==="h2h";
-    return {title:(label||"ТОТАЛ")+" ПРОШЁЛ В "+hits+" ИЗ "+sample+(h2h?" ОЧНЫХ":"")+" МАТЧЕЙ",detail:null};
-  }
   if(type==="handicap"&&Number.isFinite(line)&&line===0&&sample<=30&&Number.isFinite(hits)){
     const subject=String(market.subject||evidence.team||"КОМАНДА").trim().toUpperCase();
     const h2h=String(evidence.split||"").toLowerCase()==="h2h";
