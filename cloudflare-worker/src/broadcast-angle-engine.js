@@ -18,7 +18,8 @@ export function buildBroadcastAngles(card={},profile={}){
     const jargon=/\b(?:xg|xgf|xga|corsi|fenwick|gsax|pdo)\b/i.test(fallback);
     const awkward=/РЕШЁНН|ПОДТВЕРЖДАЮТ.*СИГНАЛ|НЕЗАВИСИМ.*СИГНАЛ|\d+\/\d+.*ЗА.*\d+\/\d+.*ЗА/i.test(fallback);
     const clearLargeSample=/%.*(?:ИГР|МАТЧ)/i.test(fallback)&&!jargon&&!awkward;
-    const sourceScore=clearLargeSample?118:numeric&&!advancedRank&&!jargon&&!awkward?90:numeric?72:52;
+    const naturalSource=/ВЫИГР|ЗАБИВ|ПРОШ[ЕЁ]Л|ЗАКРЫЛ|НЕ ПРОИГРЫВАЛ|ДОМА|В ГОСТЯХ/i.test(fallback)&&!jargon&&!awkward;
+    const sourceScore=(clearLargeSample||naturalSource)?118:numeric&&!advancedRank&&!jargon&&!awkward?90:numeric?72:52;
     put(out,"source","source_fact",ensureNumber(fallback,card,profile),marketSub(m),sourceScore,"исходный факт уже сформулирован человечески");
   }
 
