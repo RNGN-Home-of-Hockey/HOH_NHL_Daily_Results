@@ -13,7 +13,7 @@ export async function buildH2HBroadcastInsights(db,game,providerMarkets=[]){
   `).bind(game.away_tri,game.home_tri,game.scheduled_start_utc).all();
   const rows=result?.results||[];
   if(rows.length<3)return[];
-  const markets=dedupe((providerMarkets||[]).map(normalizeWinlineMarket).filter(Boolean).filter(m=>!m.is_live));
+  const markets=dedupe((providerMarkets||[]).filter(m=>!(m?.is_live===true||Number(m?.is_live||0)===1)).map(normalizeWinlineMarket).filter(Boolean));
   const out=[];
   for(const m of markets){
     const stat=evaluate(m,game,rows);
