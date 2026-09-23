@@ -81,6 +81,43 @@ assert.equal(doubleChance.market_type,"double_chance");
 assert.equal(doubleChance.subject,"TOR");
 assert.equal(doubleChance.side,"team_or_draw");
 
+const homeOrDraw=canonicalBroadcastWinlineMarket({
+  winline_market_id:"16255255:doublechance:home-draw",
+  market_type:"doublechance",
+  subject_key:"",
+  outcome_name:"Home or Draw",
+  odds:1.45,
+  raw_json:JSON.stringify({freetext:"Double Chance"}),
+  updated_at:now
+},event,game,teams);
+assert.equal(homeOrDraw.market_type,"double_chance");
+assert.equal(homeOrDraw.subject,"TOR");
+assert.equal(homeOrDraw.side,"team_or_draw");
+
+const drawOrAway=canonicalBroadcastWinlineMarket({
+  winline_market_id:"16255255:doublechance:draw-away",
+  market_type:"doublechance",
+  subject_key:"",
+  outcome_name:"Draw or Away",
+  odds:1.72,
+  raw_json:JSON.stringify({freetext:"Double Chance"}),
+  updated_at:now
+},event,game,teams);
+assert.equal(drawOrAway.subject,"MTL");
+assert.equal(drawOrAway.side,"team_or_draw");
+
+const homeOrAway=canonicalBroadcastWinlineMarket({
+  winline_market_id:"16255255:doublechance:home-away",
+  market_type:"doublechance",
+  subject_key:"",
+  outcome_name:"Home or Away",
+  odds:1.25,
+  raw_json:JSON.stringify({freetext:"Double Chance"}),
+  updated_at:now
+},event,game,teams);
+assert.equal(homeOrAway.subject,null);
+assert.equal(homeOrAway.side,"no_draw");
+
 const highestPeriod=canonicalBroadcastWinlineMarket({
   winline_market_id:"16255255:highestperiod:2",
   market_type:"highestperiod",
