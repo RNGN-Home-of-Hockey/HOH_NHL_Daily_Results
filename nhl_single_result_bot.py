@@ -451,10 +451,20 @@ def resolve_sportsru_name_from_team_roster(full_name_en: str, roster_names: List
         return ""
     best_score, best_name = scored[0]
     second_score = scored[1][0] if len(scored) > 1 else 0.0
-    if best_score >= 0.70 and best_score - second_score >= 0.045:
-        dbg(f"Sports.ru roster match {full_name_en} -> {best_name} ({best_score:.3f}, margin {best_score-second_score:.3f})")
+    margin = best_score - second_score
+
+    # Russian transliteration can score lower than expected even when the roster
+    # candidate is clearly unique (Avery Hayes -> Эйвери Хэйс is a real example).
+    # Keep the strict path, but also accept a lower absolute score only when the
+    # winner is separated from the rest of the roster by a large margin.
+    confident = (
+        (best_score >= 0.70 and margin >= 0.045)
+        or (best_score >= 0.62 and margin >= 0.12)
+    )
+    if confident:
+        dbg(f"Sports.ru roster match {full_name_en} -> {best_name} ({best_score:.3f}, margin {margin:.3f})")
         return best_name
-    dbg(f"Sports.ru roster no confident match {full_name_en}: best={best_name} score={best_score:.3f} margin={best_score-second_score:.3f}")
+    dbg(f"Sports.ru roster no confident match {full_name_en}: best={best_name} score={best_score:.3f} margin={margin:.3f}")
     return ""
 
 
@@ -2402,7 +2412,14 @@ def main() -> None:
                     "NHL-данные получены, но проверка русских имён не завершилась.\n"
                     "Запуск остановлен, чтобы не отправлять английские фамилии."
                 )
-            raise
+                raise
+
+            # One unresolved fresh player must not block every other completed
+            # game in the five-minute autopost cycle. Keep the publication guard
+            # for this game, record the failure, and continue with the rest.
+            failed_posts += 1
+            print(f"[ERR] skipping autopost game {meta.gamePk}: {exc}")
+            continue
         dbg("Single match preview:\n" + text[:900].replace("\n", "¶") + "…")
         sent_ok = send_telegram_text(text)
         if not sent_ok:
