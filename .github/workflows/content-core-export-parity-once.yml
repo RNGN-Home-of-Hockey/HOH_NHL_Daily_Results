@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      SOURCE_EXPORT_URL: "https://1ad59b064bfa3690063414a9906129e4.r2.cloudflarestorage.com/d1-sqlio-outgoing-prod/ffde1744-d9f1-4afc-afc1-77f020a8f0ce-0000209c-00000000-000050ef-a41b9b56f836ae555ff5cf479408d5e3.sql?X-Amz-Expires=3600&X-Amz-Date=20260923T104639Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=f591b8dcd0794c54409cf0613171d42b%2F20260923%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=43e5bab3babefb5ee809e37f283e247a0d944aa1c2d96ba7b1e8f753eb6735f1"
+      SOURCE_EXPORT_URL: "https://1ad59b064bfa3690063414a9906129e4.r2.cloudflarestorage.com/d1-sqlio-outgoing-prod/ffde1744-d9f1-4afc-afc1-77f020a8f0ce-000020a5-00000004-000050ef-3985bcf25d28e3a382b5177552b5fc83.sql?X-Amz-Expires=3600&X-Amz-Date=20260923T121805Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=f591b8dcd0794c54409cf0613171d42b%2F20260923%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=befa56a10e58e157ff355ae3581a5504488a42c982e53ca27543bd397bde6af4"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
       TARGET_DATABASE_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
