@@ -58,6 +58,9 @@ jobs:
           multi_markets=0
           priced_cards=0
           variants=0
+          structured_angles=0
+          numeric_headlines=0
+          final_cards=0
           pre_raw=0
           pre_combos=0
           pre_matched=0
@@ -73,6 +76,9 @@ jobs:
             m="$(echo "$JSON" | jq -r '.market_coverage.multi_signal_market_count // 0')"
             pc="$(echo "$JSON" | jq -r '.market_coverage.priced_card_count // 0')"
             v="$(echo "$JSON" | jq -r '.market_coverage.broadcast_variant_count // 0')"
+            sa="$(echo "$JSON" | jq -r '.market_coverage.structured_angle_count // 0')"
+            nh="$(echo "$JSON" | jq -r '.market_coverage.numeric_headline_count // 0')"
+            fc="$(echo "$JSON" | jq -r '.generator_diagnostics.final_portfolio_count // 0')"
             gr="$(echo "$JSON" | jq -r '.generator_diagnostics.raw_candidate_count // 0')"
             gc="$(echo "$JSON" | jq -r '.generator_diagnostics.combination_candidate_count // 0')"
             gm="$(echo "$JSON" | jq -r '.generator_diagnostics.matched_candidate_count // 0')"
@@ -88,6 +94,9 @@ jobs:
             multi_markets=$((multi_markets+m))
             priced_cards=$((priced_cards+pc))
             variants=$((variants+v))
+            structured_angles=$((structured_angles+sa))
+            numeric_headlines=$((numeric_headlines+nh))
+            final_cards=$((final_cards+fc))
             games_ok=$((games_ok+1))
           done
           if [ "$total_markets" -gt 0 ]; then
@@ -106,6 +115,18 @@ jobs:
           echo "multi_signal_pct=$multi"
           echo "priced_cards=$priced_cards"
           echo "broadcast_variants=$variants"
+          echo "structured_angles=$structured_angles"
+          echo "final_cards=$final_cards"
+          echo "numeric_headlines=$numeric_headlines"
+          if [ "$final_cards" -gt 0 ]; then
+            numeric_pct="$(awk -v c="$numeric_headlines" -v t="$final_cards" 'BEGIN{printf "%.1f",100*c/t}')"
+            angle_avg="$(awk -v c="$structured_angles" -v t="$final_cards" 'BEGIN{printf "%.1f",c/t}')"
+          else
+            numeric_pct="0.0"
+            angle_avg="0.0"
+          fi
+          echo "numeric_headline_pct=$numeric_pct"
+          echo "avg_structured_angles_per_card=$angle_avg"
           echo "pre_prune_raw_candidates=$pre_raw"
           echo "pre_prune_combination_candidates=$pre_combos"
           echo "pre_prune_matched_candidates=$pre_matched"
