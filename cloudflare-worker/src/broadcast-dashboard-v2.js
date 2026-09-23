@@ -825,7 +825,7 @@ function cardSummaryHtml(c){
   const reasons=(c?.air_reasons||[]).slice(0,3).map(x=>`<span>${esc(x)}</span>`).join('');
   return `<div class="signal">
     <div class="airmeta ${tone}"><b>${score}</b><strong>${esc(c?.air_label||'AIR SCORE')}</strong><div>${reasons}</div></div>
-    <div class="signal-fact">${esc(factText(c))}</div>${c?.broadcast_detail?`<div class="signal-detail">${esc(displayText(c.broadcast_detail))}</div>`:''}
+    <div class="signal-fact">${esc(factText(c))}</div>${c?.broadcast_subtitle?`<div class="signal-detail">${esc(displayText(c.broadcast_subtitle))}</div>`:c?.broadcast_detail?`<div class="signal-detail">${esc(displayText(c.broadcast_detail))}</div>`:''}
     <div class="signal-main">
       <div class="signal-copy">
         <div class="signal-team">${esc(team.name)}</div>
@@ -872,20 +872,34 @@ function openCardDetails(i){
     ['Исторический проход',hist!==null?Math.round(hist*100)+'%':'—'],
     ['Вероятность из кэфа',implied!==null?Math.round(implied*100)+'%':'—'],
     ['Статистический score',Number.isFinite(Number(meta.source_score))?String(meta.source_score):'—'],
+    ['Эфирный угол',c?.broadcast_angle_family?displayText(c.broadcast_angle_family):'—'],
+    ['Почему выбран',c?.broadcast_angle_reason?displayText(c.broadcast_angle_reason):'—'],
   ];
   const op=c?.operator_narrative||{};
   const operatorDetails=Array.isArray(op.details)?op.details.filter(Boolean):[];
   const operatorHtml=operatorDetails.length
     ?`<div class="detailnote"><b>${esc(op.headline||'КОММЕНТАТОРУ')}</b><br>${operatorDetails.map(x=>esc(displayText(x))).join('<br>')}</div>`
     :'';
-  const variants=Array.isArray(c?.broadcast_variants)?c.broadcast_variants.filter(Boolean).slice(0,6):[];
+  const structured=Array.isArray(c?.broadcast_angle_variants)?c.broadcast_angle_variants.filter(x=>x?.title).slice(0,8):[];
+  const variants=structured.length?structured:(Array.isArray(c?.broadcast_variants)?c.broadcast_variants.filter(Boolean).slice(0,8).map((title,index)=>({id:'legacy_'+index,title,family:'вариант',reason:''})):[]);
   const variantsHtml=variants.length>1
-    ?`<div class="detailnote"><b>ВАРИАНТЫ ЭФИРНОЙ ФОРМУЛИРОВКИ</b><br>${variants.map(x=>esc(displayText(x))).join('<br>')}</div>`
+    ?`<div class="detailnote"><b>ВАРИАНТЫ ЭФИРНОЙ ФОРМУЛИРОВКИ</b><br>${variants.map((x,index)=>`<button class="act variantpick" data-variant="${index}" style="margin:6px 6px 0 0;text-align:left">${esc(displayText(x.title))}</button>${x.reason?`<small style="display:block;margin:2px 0 7px">${esc(displayText(x.reason))}</small>`:''}`).join('')}</div>`
     :'';
   $('#previewcard').innerHTML=`<div class="detailfact">${esc(factText(c))}</div>${c?.broadcast_detail?`<div class="detailnote">${esc(displayText(c.broadcast_detail))}</div>`:''}<div class="detailmarket">${esc(marketDescription(c,cardTeam(c)))} · ${Number.isFinite(Number(c?.market?.odds))?Number(c.market.odds).toFixed(2):'нет линии'}</div><div class="detailrows">${detailRows.map(r=>`<div><span>${esc(r[0])}</span><b>${esc(r[1])}</b></div>`).join('')}</div>${operatorHtml}${variantsHtml}<div class="detailnote">${esc(c?.explanation||c?.note||'')}</div>`;
   document.querySelector('.dtitle').textContent='РАСШИРЕННАЯ АНАЛИТИКА';
   document.querySelector('.dfoot').textContent='Короткая версия идёт в эфир. Здесь оператор видит исходную метрику, сравнение команд, форму, выборку и связь с реальной линией WINLINE.';
   $('#drawer').classList.add('open');
+  document.querySelectorAll('.variantpick').forEach(btn=>btn.onclick=()=>{
+    const picked=variants[Number(btn.dataset.variant)];
+    if(!picked?.title)return;
+    c.broadcast_title=picked.title;
+    if(picked.subtitle)c.broadcast_subtitle=picked.subtitle;
+    c.broadcast_angle_id=picked.id||null;
+    c.broadcast_angle_family=picked.family||null;
+    c.broadcast_angle_reason=picked.reason||null;
+    renderCards(currentCards);
+    openCardDetails(i);
+  });
 }
 async function ensureDraft(c){
   if(c.__cardId&&c.__persisted)return c.__cardId;
