@@ -1,3 +1,4 @@
+import { buildBroadcastAngles } from "./broadcast-angle-engine.js";
 // Narrative Engine v2
 // Converts raw analytical evidence into:
 // 1) TV copy — short, numerical and understandable for a viewer.
@@ -28,15 +29,22 @@ const METRICS={
 export function buildNarrative(card={},context={}){
   const profile=extractProfile(card,context);
   const fallback=String(card.broadcast_title||card.title||card.value||"АНАЛИТИЧЕСКИЙ ФАКТ").trim();
-  const variants=buildVariants(profile,card,fallback);
-  const title=variants[0]||fallback;
-  const operator=buildOperator(profile,card,context);
+  const angles=buildBroadcastAngles(card,profile,context);
+  const legacy=buildVariants(profile,card,fallback);
+  const variants=unique([...angles.map(x=>x.title),...legacy]);
+  const selected=angles[0]||null;
+  const title=selected?.title||variants[0]||fallback;
+  const operator=buildOperator(profile,card,context,selected,angles);
 
   return {
     tv:{
       title,
-      subtitle:buildTvSubtitle(profile),
+      subtitle:selected?.subtitle||buildTvSubtitle(profile),
       variants,
+      angle_id:selected?.id||null,
+      angle_family:selected?.family||null,
+      angle_reason:selected?.reason||null,
+      angle_variants:angles,
       generated:Boolean(variants.length),
     },
     operator,
@@ -158,10 +166,12 @@ function buildTvSubtitle(p){
   return parts.length?parts.join(" · "):null;
 }
 
-function buildOperator(p,card,context){
+function buildOperator(p,card,context,selectedAngle=null,angles=[]){
   const e=card?.evidence||{};
   const market=card?.market||{};
   const details=[];
+  if(selectedAngle?.reason)details.push(`Почему выбрана эта эфирная подача: ${selectedAngle.reason}.`);
+  if(Array.isArray(angles)&&angles.length>1)details.push(`Альтернативных эфирных углов для этого же факта: ${angles.length-1}.`);
 
   if(p.team&&p.teamRank!==null){
     details.push(`${p.team}: ${Math.round(p.teamRank)}-е место в НХЛ по ${p.meta.raw}${p.teamValue!==null?` — ${formatValue(p.teamValue,p.meta)}`:""}.`);
@@ -220,6 +230,8 @@ function buildOperator(p,card,context){
     rolling_opponent_rank_10:p.rollingOpponentRank10,
     venue_sample:p.venueSample,
     market,
+    selected_broadcast_angle:selectedAngle,
+    broadcast_angle_count:Array.isArray(angles)?angles.length:0,
     evidence:e,
   };
 
