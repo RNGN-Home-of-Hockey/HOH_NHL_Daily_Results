@@ -72,4 +72,12 @@ const jargonSafe=diversifyBroadcastAngles([
   ]}
 ]);
 assert.equal(jargonSafe[0].broadcast_angle_id,"human","raw xG/Corsi/Fenwick jargon must never beat an available human TV angle");
+
+const historyDiverse=diversifyBroadcastAngles([
+  {id:"fresh",broadcast_angle_variants:[
+    {id:"count",family:"hit_rate",title:"ТБ 5,5 — 8 ИЗ 10",score:100,reason:"точная частота линии"},
+    {id:"run",family:"streak",title:"ТБ 5,5 ПРОХОДИТ 4 МАТЧА ПОДРЯД",score:96,reason:"серия"}
+  ]}
+],{recent_headlines:["ТБ 6,5 — 7 ИЗ 10"]});
+assert.equal(historyDiverse[0].broadcast_angle_id,"run","recently shown headline shape should yield to a different semantic angle");
 console.log("BROADCAST_ANGLE_ENGINE_OK");
