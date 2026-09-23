@@ -436,6 +436,49 @@ export function canonicalBroadcastWinlineMarket(row,event,game,teams){
     if(playerSubject&&propType&&propSide&&value!==null)return {...base,market_type:propType,period,subject:playerSubject,side:propSide,line:value};
   }
 
+  // Expanded market families. These parsers are deliberately conservative:
+  // if the outcome cannot be mapped unambiguously, keep the market out rather
+  // than attach a statistical story to the wrong Winline selection.
+  if(/doublechance|doubleoutcome/.test(norm)){
+    const o=normalizeWinlineText(outcome);
+    let subject=null,dcSide=null;
+    if(o==="1x"||o==="x1"){subject=teams.team1||null;dcSide="team_or_draw";}
+    else if(o==="x2"||o==="2x"){subject=teams.team2||null;dcSide="team_or_draw";}
+    else if(o==="12"||o==="21"){dcSide="no_draw";}
+    if(!dcSide)return null;
+    return {...base,market_type:"double_chance",period:period==="GAME"?"REG":period,subject,side:dcSide,line:null};
+  }
+  if(/highestscoringperiod|mostscoringperiod|mostgoalsperiod|highestperiod/.test(norm)){
+    const o=normalizeWinlineText(outcome);
+    const pm=/([123])/.exec(o);
+    if(!pm)return null;
+    const subject=teamSubject(row.subject_key,"",game,teams);
+    return {...base,market_type:"highest_scoring_period",period:"GAME",subject,side:"P"+pm[1],line:null};
+  }
+  if(/winalleveryperiod|winallperiods|allperiodswinner/.test(norm)){
+    const subject=teamSubject(row.subject_key,outcome,game,teams);
+    if(!subject)return null;
+    return {...base,market_type:"win_all_periods",period:"GAME",subject,side:subject,line:null};
+  }
+  if(/exactteamgoals|teamgoalsnumber|numberofteamgoals|teamgoalrange/.test(norm)){
+    const idx=/team1|1stteam|firstteam/.test(norm)?1:/team2|2ndteam|secondteam/.test(norm)?2:0;
+    const subject=String(row.subject_key||"").toUpperCase()||(idx===1?teams.team1:idx===2?teams.team2:null);
+    const o=normalizeWinlineText(outcome);
+    let bucket=null;
+    if(/^(01|0to1|0or1|under2)$/.test(o))bucket="0_1";
+    else if(/^(2|exact2|2goals)$/.test(o))bucket="2";
+    else if(/^(3plus|3ormore|over25|3goalsormore)$/.test(o))bucket="3_plus";
+    if(!subject||!bucket)return null;
+    return {...base,market_type:"team_goal_bucket",period,subject,side:bucket,line:null};
+  }
+  if(/resultandtotal|resulttotal|winnerandtotal|winandtotal/.test(norm)){
+    const subject=teamSubject(row.subject_key,outcome,game,teams);
+    const comboSide=/over|more|больше|тб/i.test(lowerOutcome)?"over":/under|less|меньше|тм/i.test(lowerOutcome)?"under":null;
+    if(!subject||!comboSide||value===null)return null;
+    return {...base,market_type:"result_total_combo",period,subject,side:comboSide,line:value};
+  }
+  if(/oddeven|evenodd|chetn|nechetn/.test(norm))return null;
+
   if(String(row.market_type)==="main_1x2_regular"||/3wayodds|1x2/.test(norm)){
     const subject=teamSubject(row.subject_key,outcome,game,teams);
     const side=subject||(/^(x|draw|tie|ничья|н)$/i.test(outcome)?"draw":null);
