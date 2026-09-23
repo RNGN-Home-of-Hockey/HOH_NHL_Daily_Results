@@ -897,6 +897,18 @@ function openCardDetails(i){
     c.broadcast_angle_id=picked.id||null;
     c.broadcast_angle_family=picked.family||null;
     c.broadcast_angle_reason=picked.reason||null;
+    if(c.operator_narrative&&typeof c.operator_narrative==='object'){
+      const prefix='Почему выбрана эта эфирная подача:';
+      const details=Array.isArray(c.operator_narrative.details)
+        ?c.operator_narrative.details.filter(x=>!String(x||'').startsWith(prefix))
+        :[];
+      if(picked.reason)details.unshift(prefix+' '+picked.reason+'.');
+      c.operator_narrative={
+        ...c.operator_narrative,
+        details,
+        raw:{...(c.operator_narrative.raw||{}),selected_broadcast_angle:picked}
+      };
+    }
     renderCards(currentCards);
     openCardDetails(i);
   });
