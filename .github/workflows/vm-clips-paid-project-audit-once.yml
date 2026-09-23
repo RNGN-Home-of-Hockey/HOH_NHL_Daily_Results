@@ -1,0 +1,35 @@
+name: VM Clips Paid Project Audit Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/vm-clips-paid-project-audit-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      DB_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Inspect VM Clips all-time leaders in paid D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$DB_ID/query"
+          SQL="SELECT p.external_post_id,p.account_id,v.id AS video_id,v.project_id,pr.name AS canonical_project,v.title,v.publication_count,COALESCE(m.views,0) AS views,p.published_at FROM publications p JOIN videos v ON v.id=p.video_id JOIN projects pr ON pr.id=v.project_id LEFT JOIN publication_latest_metrics m ON m.publication_id=p.id WHERE p.account_id='account-youtube-vm-clips' ORDER BY COALESCE(m.views,0) DESC LIMIT 30;"
+          curl --fail --silent --show-error "$API"             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             -H "Content-Type: application/json"             -d "$(jq -nc --arg sql "$SQL" '{sql:$sql}')" > /tmp/result.json
+          jq -e '.success == true' /tmp/result.json >/dev/null
+          jq -c '.result[0].results[]' /tmp/result.json | while read -r row; do echo "VM_CLIPS_PAID_ROW|$row"; done
+
+          SQL2="SELECT v.project_id,pr.name,COUNT(*) AS publications,SUM(CASE WHEN COALESCE(m.views,0)>=1000000 THEN 1 ELSE 0 END) AS million_plus,MAX(COALESCE(m.views,0)) AS max_views FROM publications p JOIN videos v ON v.id=p.video_id JOIN projects pr ON pr.id=v.project_id LEFT JOIN publication_latest_metrics m ON m.publication_id=p.id WHERE p.account_id='account-youtube-vm-clips' GROUP BY v.project_id,pr.name ORDER BY max_views DESC;"
+          curl --fail --silent --show-error "$API"             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             -H "Content-Type: application/json"             -d "$(jq -nc --arg sql "$SQL2" '{sql:$sql}')" > /tmp/projects.json
+          jq -e '.success == true' /tmp/projects.json >/dev/null
+          jq -c '.result[0].results[]' /tmp/projects.json | while read -r row; do echo "VM_CLIPS_PROJECT_SPLIT|$row"; done
