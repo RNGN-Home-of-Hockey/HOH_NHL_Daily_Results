@@ -12,6 +12,7 @@ import { buildPlayerMarketInsights } from "./player-market-insights.js";
 import { buildAdvancedTeamSnapshotInsights } from "./advanced-team-snapshot-insights.js";
 import { buildAdvancedRollingVenueInsights } from "./advanced-rolling-venue-insights.js";
 import { buildNarrative } from "./narrative-engine.js";
+import { diversifyBroadcastAngles } from "./broadcast-angle-engine.js";
 import { buildMarketCombinationInsights } from "./market-combination-engine.js";
 import { buildPlayerPropMarketInsights } from "./player-prop-market-insights.js";
 import { buildSpecialTeamsMarketInsights } from "./special-teams-market-insights.js";
@@ -118,7 +119,7 @@ export async function buildBettingInsights(db, game, options = {}) {
       .slice(0, 24);
   }
 
-  const annotated=(portfolio||[]).map((card)=>annotateAirUtility(card,game));
+  const annotated=diversifyBroadcastAngles((portfolio||[]).map((card)=>annotateAirUtility(card,game)));
   generatorDiagnostics.final_portfolio_count=annotated.length;
   generatorDiagnostics.post_prune_market_coverage=summarizeMarketCoverage(options.provider_markets||[],annotated);
   if(options.generator_diagnostics&&typeof options.generator_diagnostics==="object"){
@@ -239,6 +240,10 @@ export function annotateAirUtility(input, game=null) {
   );
   card.broadcast_title=narrative?.tv?.title||formatted.title;
   card.broadcast_variants=Array.isArray(narrative?.tv?.variants)?narrative.tv.variants:[card.broadcast_title];
+  card.broadcast_angle_variants=Array.isArray(narrative?.tv?.angle_variants)?narrative.tv.angle_variants:[];
+  card.broadcast_angle_id=narrative?.tv?.angle_id||null;
+  card.broadcast_angle_family=narrative?.tv?.angle_family||null;
+  card.broadcast_angle_reason=narrative?.tv?.angle_reason||null;
   if(narrative?.tv?.subtitle)card.broadcast_subtitle=narrative.tv.subtitle;
   card.operator_narrative=narrative?.operator||null;
   if(formatted.detail)card.broadcast_detail=formatted.detail;
