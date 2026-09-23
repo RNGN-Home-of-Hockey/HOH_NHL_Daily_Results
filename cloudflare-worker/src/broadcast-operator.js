@@ -180,8 +180,8 @@ async function createInsightDraft(request,env){
     card_id:safeId(`insight-${gamePk}-${idBase}`),
     game_pk:gamePk,
     headline_ru:String(candidate.broadcast_title||candidate.title||candidate.value||candidate.eyebrow||"HOH INSIGHT").slice(0,180),
-    stat_text_ru:String(market.label||candidate.value||"").slice(0,240),
-    source_note_ru:String(operatorNarrativeText(candidate)||candidate.explanation||candidate.note||"HOH Data Core").slice(0,500),
+    stat_text_ru:String(candidate.broadcast_subtitle||market.label||candidate.value||"").slice(0,240),
+    source_note_ru:String(operatorNarrativeText(candidate)||candidate.explanation||candidate.note||"HOH Data Core").slice(0,2400),
     suggested_market_type:String(market.type||candidate.insight_type||"insight").slice(0,80),
     suggested_market_subject:subject,
     manual_odds:Number.isFinite(odds)?odds:null,
@@ -233,7 +233,7 @@ async function editCard(request,env,cardId){
   if(!lease.ok)return json(lease,423);
   const headline=textField(body.headline_ru,current.headline_ru,180);
   const stat=textField(body.stat_text_ru,current.stat_text_ru,240);
-  const source=textField(body.source_note_ru,current.source_note_ru||"",500);
+  const source=textField(body.source_note_ru,current.source_note_ru||"",2400);
   const odds=body.manual_odds===null||body.manual_odds===""?null:Number(body.manual_odds);
   if(odds!==null&&(!Number.isFinite(odds)||odds<1.01||odds>100))return json({ok:false,error:"invalid_manual_odds"},400);
   await env.DB.prepare(`
