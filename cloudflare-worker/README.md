@@ -9,7 +9,7 @@ It handles:
 - `POST|GET /api/menu`
 - `POST /api/telegram`
 - `GET /api/cron`
-- Cloudflare Cron Trigger every 15 minutes, disabled by default with `CLOUDFLARE_CRON_ENABLED=0`
+- Cloudflare Cron Trigger `*/5 * * * *` for the legacy NHL result poller, controlled by `CLOUDFLARE_CRON_ENABLED`
 
 The heavy NHL result formatter still runs in GitHub Actions. The Worker triggers it through GitHub `repository_dispatch`.
 
@@ -47,6 +47,4 @@ Invoke-WebRequest -Method Post -Uri "$worker/api/menu?secret=hook-123&chat=-1003
 
 ## Optional: Move Polling To Cloudflare Cron
 
-After confirming the Worker is deployed and `GITHUB_DISPATCH_TOKEN` works, set `CLOUDFLARE_CRON_ENABLED=1` in Cloudflare. Then Cloudflare Cron can trigger GitHub Actions every 15 minutes.
-
-Keep the GitHub Actions schedule enabled until Cloudflare Cron is confirmed, so the bot does not miss games during migration.
+After confirming the Worker is deployed and `GITHUB_DISPATCH_TOKEN` works, set `CLOUDFLARE_CRON_ENABLED=1` in Cloudflare. Cloudflare Cron is now the production scheduler and dispatches `nhl_poll` to GitHub Actions every five minutes. The duplicate GitHub Actions `schedule:` trigger is intentionally removed; keep `repository_dispatch` and `workflow_dispatch` enabled for Cloudflare and manual runs.
