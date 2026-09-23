@@ -39,9 +39,6 @@ on:
         description: "Telegram status message to edit while an interactive job runs"
         required: false
         default: ""
-  schedule:
-    - cron: "*/5 * * * *"
-
 concurrency:
   group: nhl-single-results-${{ github.ref }}-${{ github.event.inputs.target_chat_id || github.event.client_payload.target_chat_id || 'autopost' }}-${{ github.event.inputs.gamepk || github.event.client_payload.gamepk || github.event.inputs.date || github.event.client_payload.date || 'poll' }}
   cancel-in-progress: false
