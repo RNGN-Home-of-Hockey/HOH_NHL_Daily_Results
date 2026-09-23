@@ -32,8 +32,10 @@ export function diversifyBroadcastAngles(cards=[]){
   return cards.map((card,index)=>{
     const vars=Array.isArray(card.broadcast_angle_variants)?card.broadcast_angle_variants:[];
     if(!vars.length)return card;
-    let best=vars[0],bestScore=-1e9;
-    for(const v of vars){
+    const human=vars.filter(v=>!hasRawTvJargon(v?.title));
+    const candidates=human.length?human:vars;
+    let best=candidates[0],bestScore=-1e9;
+    for(const v of candidates){
       const f=String(v.family||"other"),shape=titleShape(v.title);
       let s=Number(v.score||0)-(familyCount.get(f)||0)*8-(shapes.has(shape)?24:0);
       if(index<8&&(familyCount.get(f)||0)>=2)s-=12;
@@ -48,6 +50,9 @@ export function diversifyBroadcastAngles(cards=[]){
   });
 }
 
+function hasRawTvJargon(v){
+  return /\b(?:xg|xgf|xga|xgd|corsi|fenwick|gsax|pdo)(?:\b|\/)/i.test(String(v||""));
+}
 function syncOperatorAngle(operator,best){
   if(!operator||typeof operator!=="object")return operator||null;
   const prefix="Почему выбрана эта эфирная подача:";
