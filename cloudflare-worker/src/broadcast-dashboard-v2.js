@@ -467,7 +467,7 @@ export function canonicalBroadcastWinlineMarket(row,event,game,teams){
     let bucket=null;
     if(/^(01|0to1|0or1|under2)$/.test(o))bucket="0_1";
     else if(/^(2|exact2|2goals)$/.test(o))bucket="2";
-    else if(/^(3plus|3ormore|over25|3goalsormore)$/.test(o))bucket="3_plus";
+    else if(/3\s*\+|3\s*(?:or|and)\s*more|3\s*(?:или|и)\s*больше/i.test(outcome)||/^(3plus|3ormore|over25|3goalsormore)$/.test(o))bucket="3_plus";
     if(!subject||!bucket)return null;
     return {...base,market_type:"team_goal_bucket",period,subject,side:bucket,line:null};
   }
