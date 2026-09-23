@@ -33,7 +33,7 @@ const historyCard={
 const historyAngles=buildBroadcastAngles(historyCard,{});
 assert.ok(historyAngles.some(x=>x.family==="hit_rate"&&/8 ИЗ 10/.test(x.title)));
 assert.ok(historyAngles.some(x=>x.family==="streak"&&/4 МАТЧА ПОДРЯД/.test(x.title)));
-assert.ok(historyAngles.some(x=>x.family==="multi_window"&&/8\/10/.test(x.title)&&/15\/20/.test(x.title)));
+assert.ok(historyAngles.some(x=>x.family==="multi_window"&&/8 ИЗ 10/.test(x.title)&&/15 ИЗ 20/.test(x.title)));
 assert.ok(historyAngles.every(x=>/\d/.test(x.title)),"numeric evidence must stay numeric on TV");
 
 const specialCard={
