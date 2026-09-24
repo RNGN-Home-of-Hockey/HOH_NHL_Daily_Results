@@ -44,9 +44,9 @@ jobs:
           async function text(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status);return t}
           async function json(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+t.slice(0,300));return JSON.parse(t)}
 
-          const shell=await text('/telegram-app-v24?build=24.0.0');
+          const shell=await text('/telegram-app-v24?build=24.0.1');
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('canonical shell marker missing');
-          for(const x of ['/telegram-app/v21.js?build=24.0.0','/telegram-app/v22.js?build=24.0.0','/telegram-app/v23-player.js?build=24.0.0'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
+          for(const x of ['/telegram-app/v21.js?build=24.0.1','/telegram-app/v22.js?build=24.0.1','/telegram-app/v23-player.js?build=24.0.1'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
           for(const x of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js'])if(shell.includes(x))throw new Error('legacy player script present in canonical shell '+x);
           const bundled=false;
           if(bundled){
@@ -102,7 +102,7 @@ jobs:
           const unauth=await raw('/api/telegram-center-v22/me');
           if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
           const centerStatus=await json('/api/telegram/center/status');
-          if(!String(centerStatus.mini_app_url||'').includes('/telegram-app-v24?build=24.0.0'))throw new Error('Center mini app URL is not canonical V24 '+centerStatus.mini_app_url);
+          if(!String(centerStatus.mini_app_url||'').includes('/telegram-app-v24?build=24.0.1'))throw new Error('Center mini app URL is not canonical V24 '+centerStatus.mini_app_url);
 
           const status=await json('/api/telegram-center-v19/status');
           if(status.backfill?.done===false)throw new Error('VK full backfill incomplete');
