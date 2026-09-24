@@ -89,7 +89,32 @@ async function loadGameRow(db, gamePk, currentTeamTri, official){
     WHERE g.game_pk=? LIMIT 1;
   `).bind(gamePk).first();
   if(!g)return null;
+  if(!g.source_key){
+    const b=await findBroadcastByPairTime(db,g);
+    if(b)Object.assign(g,{source_key:b.source_key,vk_title:b.title,vk_url:b.web_url,vk_app_url:b.app_url,vk_thumbnail:b.thumbnail_url,vk_status:b.status});
+  }
   return {...g,team_tri:String(official?.teamAbbrev||currentTeamTri||"").toUpperCase(),goals:official?.goals,assists:official?.assists,points:official?.points,shots:official?.shots,toi_seconds:null};
+}
+async function findBroadcastByPairTime(db,game){
+  const start=String(game?.scheduled_start_utc||""),home=String(game?.home_tri||"").toUpperCase(),away=String(game?.away_tri||"").toUpperCase();
+  if(!start||!home||!away)return null;
+  return db.prepare(`
+    SELECT source_key,title,web_url,app_url,thumbnail_url,status,duration_seconds
+    FROM vk_broadcasts
+    WHERE ((parsed_home_tri=? AND parsed_away_tri=?) OR (parsed_home_tri=? AND parsed_away_tri=?))
+      AND COALESCE(scheduled_at,published_at) IS NOT NULL
+      AND ABS(julianday(COALESCE(scheduled_at,published_at))-julianday(?))<=2.0
+      AND (duration_seconds IS NULL OR duration_seconds>=1800)
+      AND LOWER(COALESCE(title,'')) NOT LIKE '%хайлайт%'
+      AND LOWER(COALESCE(title,'')) NOT LIKE '%highlight%'
+      AND LOWER(COALESCE(title,'')) NOT LIKE '%обзор матча%'
+      AND LOWER(COALESCE(title,'')) NOT LIKE '%лучшие моменты%'
+      AND LOWER(COALESCE(title,'')) NOT LIKE '%best moment%'
+    ORDER BY ABS(julianday(COALESCE(scheduled_at,published_at))-julianday(?)) ASC,
+             COALESCE(duration_seconds,0) DESC,
+             updated_at DESC
+    LIMIT 1;
+  `).bind(home,away,away,home,start,start).first().catch(()=>null);
 }
 function currentSeason(){const d=new Date(),y=d.getUTCFullYear(),m=d.getUTCMonth()+1,s=m>=7?y:y-1;return String(s)+String(s+1)}
 function num(v){const n=Number(v);return Number.isFinite(n)?n:0}
