@@ -3,10 +3,10 @@ const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v3";
 const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
 const CENTER_POLL_OFFSET_KEY = "telegram_center_poll_offset_v1";
 const CENTER_POLL_STATUS_KEY = "telegram_center_poll_status_v1";
-const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v11";
-const CENTER_MINI_APP_BUILD = "24.1.1";
+const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v12";
+const CENTER_MINI_APP_BUILD = "24.2.0";
 const CENTER_CANONICAL_MINI_APP_PATH = "/telegram-app-v24";
-const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.1.1";
+const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.2.0";
 
 function centerDeliveryMode(env) {
   return String(env.TELEGRAM_CENTER_DELIVERY_MODE || "webhook").trim().toLowerCase() === "polling"
@@ -180,19 +180,19 @@ export async function handleTelegramProductBotRequest(request, env, path) {
 
 async function centerStatus(request, env) {
   const deliveryMode = centerDeliveryMode(env);
-  const deliverySetup = deliveryMode === "polling"
+  let deliverySetup = deliveryMode === "polling"
     ? await ensureTelegramCenterPolling(env)
     : await ensureTelegramCenterWebhook(env);
   const centerTokenConfigured = Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim());
   const webhookSecretConfigured = Boolean(String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim());
+  const expectedMiniApp = miniAppUrl(request, env);
 
   let bot = { ok: false, error: "missing_telegram_center_token" };
   let webhook = { ok: false, error: "missing_telegram_center_token" };
-
   let commands = { ok: false, error: "missing_telegram_center_token" };
   let menuButton = { ok: false, error: "missing_telegram_center_token" };
 
-  if (centerTokenConfigured) {
+  async function readTelegramState() {
     const [getMe, getWebhookInfo, getCommands, getMenuButton] = await Promise.all([
       telegramRequest(env, "getMe", {}),
       telegramRequest(env, "getWebhookInfo", {}),
@@ -200,24 +200,23 @@ async function centerStatus(request, env) {
       telegramRequest(env, "getChatMenuButton", {}),
     ]);
 
-    if (getMe.ok) {
-      bot = {
-        ok: true,
-        id: getMe.response?.result?.id ?? null,
-        username: getMe.response?.result?.username || null,
-        first_name: getMe.response?.result?.first_name || null,
-      };
-    } else {
-      bot = {
-        ok: false,
-        status_code: getMe.status_code || null,
-        error: getMe.response?.description || getMe.error || "telegram_get_me_failed",
-      };
-    }
+    bot = getMe.ok
+      ? {
+          ok: true,
+          id: getMe.response?.result?.id ?? null,
+          username: getMe.response?.result?.username || null,
+          first_name: getMe.response?.result?.first_name || null,
+        }
+      : {
+          ok: false,
+          status_code: getMe.status_code || null,
+          error: getMe.response?.description || getMe.error || "telegram_get_me_failed",
+        };
 
     commands = getCommands.ok
       ? { ok: true, items: getCommands.response?.result || [] }
       : { ok: false, status_code: getCommands.status_code || null, error: getCommands.response?.description || getCommands.error || "telegram_get_commands_failed" };
+
     menuButton = getMenuButton.ok
       ? { ok: true, value: getMenuButton.response?.result || null }
       : { ok: false, status_code: getMenuButton.status_code || null, error: getMenuButton.response?.description || getMenuButton.error || "telegram_get_menu_button_failed" };
@@ -245,6 +244,22 @@ async function centerStatus(request, env) {
     }
   }
 
+  if (centerTokenConfigured) {
+    await readTelegramState();
+    let menuUrl = String(menuButton?.value?.web_app?.url || "");
+    if (menuUrl !== expectedMiniApp) {
+      deliverySetup = deliveryMode === "polling"
+        ? await ensureTelegramCenterPolling(env, { force: true })
+        : await ensureTelegramCenterWebhook(env, { force: true });
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      await readTelegramState();
+      menuUrl = String(menuButton?.value?.web_app?.url || "");
+    }
+  }
+
+  const menuButtonMatchesBuild = menuButton.ok
+    && menuButton?.value?.type === "web_app"
+    && String(menuButton?.value?.web_app?.url || "") === expectedMiniApp;
   const expectedWebhook = String(env.TELEGRAM_CENTER_WEBHOOK_URL || "").trim() || DEFAULT_CENTER_WEBHOOK_URL;
   const webhookMatchesExpected = webhook.ok && webhook.url === expectedWebhook;
   const pollingReady = webhook.ok && !webhook.url;
@@ -252,22 +267,22 @@ async function centerStatus(request, env) {
   const polling = await readCenterPollingStatus(env);
 
   return json({
-    ok: centerTokenConfigured && bot.ok && webhook.ok
+    ok: centerTokenConfigured && bot.ok && webhook.ok && menuButtonMatchesBuild
       && (deliveryMode === "polling" ? pollingReady && deliverySetup.ok : webhookSecretConfigured && webhookMatchesExpected && deliverySetup.ok),
     service: "hoh-nhl-center",
-    runtime_marker: "telegram-center-2026-09-21-v12",
+    runtime_marker: "telegram-center-2026-09-24-v24.2",
     center_token_configured: centerTokenConfigured,
     webhook_secret_configured: webhookSecretConfigured,
     webhook_secret_mode: "sha256_hex",
     delivery_mode: deliveryMode,
-    mini_app_url: miniAppUrl(request, env),
+    mini_app_url: expectedMiniApp,
     expected_webhook_url: expectedWebhook,
     repair_webhook_url: `${new URL(request.url).origin}/api/telegram/center/repair-webhook`,
     bot,
     webhook,
     commands,
     menu_button: menuButton,
-    webhook_matches_expected: webhookMatchesExpected,
+    menu_button_matches_build: menuButtonMatchesBuild,
     delivery_setup: deliverySetup,
     polling,
     last_event: lastEvent,
@@ -392,6 +407,8 @@ export async function ensureTelegramCenterPolling(env, { force = false } = {}) {
   const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim();
   if (!token) return { ok: false, mode: "polling", error: "missing_telegram_center_token" };
 
+  const miniApp = versionedMiniAppUrl(String(env.TELEGRAM_MINI_APP_URL || "").trim() || CENTER_DEFAULT_MINI_APP_URL);
+
   if (!force && env.DB && (await ensureDiagnosticTable(env))) {
     try {
       const row = await env.DB.prepare(
@@ -399,7 +416,13 @@ export async function ensureTelegramCenterPolling(env, { force = false } = {}) {
       ).bind(CENTER_POLL_SETUP_KEY).first();
       const saved = row?.meta_value ? JSON.parse(String(row.meta_value)) : null;
       const setupAt = Date.parse(String(saved?.setup_at || ""));
-      if (saved?.ok && Number.isFinite(setupAt) && Date.now() - setupAt < CENTER_WEBHOOK_REFRESH_MS) {
+      if (
+        saved?.ok
+        && saved?.mini_app_url === miniApp
+        && saved?.menu_button_url === miniApp
+        && Number.isFinite(setupAt)
+        && Date.now() - setupAt < CENTER_WEBHOOK_REFRESH_MS
+      ) {
         return { ...saved, skipped: "recently_configured" };
       }
     } catch (error) {
@@ -409,7 +432,13 @@ export async function ensureTelegramCenterPolling(env, { force = false } = {}) {
     }
   }
 
-  const miniApp = versionedMiniAppUrl(String(env.TELEGRAM_MINI_APP_URL || "").trim() || CENTER_DEFAULT_MINI_APP_URL);
+  const menuPayload = {
+    menu_button: {
+      type: "web_app",
+      text: "HOH NHL Center",
+      web_app: { url: miniApp },
+    },
+  };
   const [deleteWebhook, commandsResult, menuButtonResult] = await Promise.all([
     telegramRequest(env, "deleteWebhook", { drop_pending_updates: false }),
     telegramRequest(env, "setMyCommands", {
@@ -419,36 +448,54 @@ export async function ensureTelegramCenterPolling(env, { force = false } = {}) {
         { command: "help", description: "Помощь по HOH NHL Center" },
       ],
     }),
-    telegramRequest(env, "setChatMenuButton", {
-      menu_button: {
-        type: "web_app",
-        text: "HOH NHL Center",
-        web_app: { url: miniApp },
-      },
-    }),
+    telegramRequest(env, "setChatMenuButton", menuPayload),
   ]);
 
   const webhookInfo = await telegramRequest(env, "getWebhookInfo", {});
   const webhookUrl = webhookInfo.ok ? String(webhookInfo.response?.result?.url || "") : "";
-  const ok = deleteWebhook.ok && commandsResult.ok && menuButtonResult.ok && webhookInfo.ok && !webhookUrl;
+
+  let menuCheck = null;
+  let menuButtonUrl = "";
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (attempt > 0) {
+      await telegramRequest(env, "setChatMenuButton", menuPayload);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250 + attempt * 150));
+    menuCheck = await telegramRequest(env, "getChatMenuButton", {});
+    menuButtonUrl = menuCheck.ok ? String(menuCheck.response?.result?.web_app?.url || "") : "";
+    if (menuButtonUrl === miniApp) break;
+  }
+
+  const menuButtonUrlOk = Boolean(menuCheck?.ok) && menuButtonUrl === miniApp;
+  const ok = deleteWebhook.ok
+    && commandsResult.ok
+    && menuButtonResult.ok
+    && webhookInfo.ok
+    && !webhookUrl
+    && menuButtonUrlOk;
   const payload = {
     ok,
     mode: "polling",
     setup_at: new Date().toISOString(),
+    mini_app_url: miniApp,
+    menu_button_url: menuButtonUrl || null,
+    menu_button_url_ok: menuButtonUrlOk,
     webhook_disabled: !webhookUrl,
     commands_ok: Boolean(commandsResult.ok),
     menu_button_ok: Boolean(menuButtonResult.ok),
     error: ok
       ? null
-      : deleteWebhook.response?.description
-        || deleteWebhook.error
-        || commandsResult.response?.description
-        || commandsResult.error
-        || menuButtonResult.response?.description
-        || menuButtonResult.error
-        || webhookInfo.response?.description
-        || webhookInfo.error
-        || "telegram_polling_setup_failed",
+      : !menuButtonUrlOk
+        ? "telegram_menu_button_build_mismatch"
+        : deleteWebhook.response?.description
+          || deleteWebhook.error
+          || commandsResult.response?.description
+          || commandsResult.error
+          || menuButtonResult.response?.description
+          || menuButtonResult.error
+          || webhookInfo.response?.description
+          || webhookInfo.error
+          || "telegram_polling_setup_failed",
   };
 
   if (env.DB && (await ensureDiagnosticTable(env))) {
