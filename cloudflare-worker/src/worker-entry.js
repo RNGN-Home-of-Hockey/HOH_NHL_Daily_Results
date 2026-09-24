@@ -215,16 +215,30 @@ async function winlineClickRoute(request, env) {
   const url=new URL(request.url);
   const gamePk=Number(url.searchParams.get("game_pk")||0);
   const eventId=String(url.searchParams.get("event_id")||"").trim();
+  const marketId=String(url.searchParams.get("market_id")||"").trim();
   let row=null;
   try{
-    if(Number.isSafeInteger(gamePk)&&gamePk>0){
+    if(marketId){
+      row=await env.DB.prepare(`
+        SELECT g.game_pk,g.game_state,g.scheduled_start_utc,we.winline_event_id,
+               COALESCE(NULLIF(m.deeplink,''),we.deeplink) deeplink,we.starts_at,
+               m.winline_market_id,m.odds,m.active
+        FROM winline_markets m
+        JOIN winline_events we ON we.winline_event_id=m.winline_event_id
+        LEFT JOIN games g ON g.game_pk=we.game_pk
+        WHERE m.winline_market_id=? AND (?<=0 OR g.game_pk=?)
+          AND m.active=1 AND m.odds IS NOT NULL
+        LIMIT 1;
+      `).bind(marketId,Number.isSafeInteger(gamePk)?gamePk:0,Number.isSafeInteger(gamePk)?gamePk:0).first();
+    }
+    if(!row&&Number.isSafeInteger(gamePk)&&gamePk>0){
       row=await env.DB.prepare(`
         SELECT g.game_pk,g.game_state,g.scheduled_start_utc,we.winline_event_id,we.deeplink,we.starts_at
         FROM games g
         LEFT JOIN winline_events we ON we.game_pk=g.game_pk
         WHERE g.game_pk=? LIMIT 1;
       `).bind(gamePk).first();
-    }else if(/^\d+$/.test(eventId)){
+    }else if(!row&&/^\d+$/.test(eventId)){
       row=await env.DB.prepare(`
         SELECT g.game_pk,g.game_state,g.scheduled_start_utc,we.winline_event_id,we.deeplink,we.starts_at
         FROM winline_events we
