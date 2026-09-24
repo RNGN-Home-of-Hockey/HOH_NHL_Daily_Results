@@ -72,12 +72,18 @@ async function playerRecommendation(env,id){
     if(!p?.current_team_tri)return json({ok:true,recommendation:null,reason:"player_team_unknown"});
     const team=up(p.current_team_tri),now=new Date().toISOString();
     const game=await env.DB.prepare(`
-      SELECT game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,period_type,venue_name
-      FROM games
-      WHERE scheduled_start_utc>? AND (home_tri=? OR away_tri=?)
-      ORDER BY scheduled_start_utc ASC,game_pk ASC LIMIT 1;
+      SELECT g.game_pk,g.season_id,g.game_type,g.scheduled_start_utc,g.game_state,g.home_tri,g.away_tri,g.home_score,g.away_score,g.period_type,g.venue_name
+      FROM games g
+      JOIN winline_events we ON we.game_pk=g.game_pk
+      WHERE g.scheduled_start_utc>? AND (g.home_tri=? OR g.away_tri=?)
+        AND EXISTS (
+          SELECT 1 FROM winline_markets wm
+          WHERE wm.winline_event_id=we.winline_event_id
+            AND wm.active=1 AND wm.odds IS NOT NULL AND wm.odds>1
+        )
+      ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC LIMIT 1;
     `).bind(now,team,team).first();
-    if(!game)return json({ok:true,recommendation:null,reason:"no_upcoming_game"});
+    if(!game)return json({ok:true,recommendation:null,reason:"no_upcoming_winline_game"});
     const gameForInsights={...game,game_pk:Number(game.game_pk),home_tri:up(game.home_tri),away_tri:up(game.away_tri)};
     const providerMarkets=await loadBroadcastWinlineMarkets(env.DB,gameForInsights).catch(()=>[]);
     const cards=await buildBettingInsights(env.DB,gameForInsights,{
