@@ -3,10 +3,10 @@ const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v3";
 const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
 const CENTER_POLL_OFFSET_KEY = "telegram_center_poll_offset_v1";
 const CENTER_POLL_STATUS_KEY = "telegram_center_poll_status_v1";
-const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v9";
-const CENTER_MINI_APP_BUILD = "24.0.7";
+const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v10";
+const CENTER_MINI_APP_BUILD = "24.1.0";
 const CENTER_CANONICAL_MINI_APP_PATH = "/telegram-app-v24";
-const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.0.7";
+const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.1.0";
 
 function centerDeliveryMode(env) {
   return String(env.TELEGRAM_CENTER_DELIVERY_MODE || "webhook").trim().toLowerCase() === "polling"

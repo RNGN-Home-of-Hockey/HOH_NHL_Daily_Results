@@ -21,7 +21,7 @@ V15.seasonLabel=s=>{s=String(s||'');return s.length===8?s.slice(0,4)+'/'+s.slice
 V15.fmtMoney=v=>{v=Number(v);return Number.isFinite(v)&&v>0?'$'+(v/1e6).toFixed(v%1e6?1:0).replace('.0','')+' млн':'—'};
 V15.rankHeat=(rank,total=32)=>{rank=Number(rank);total=Number(total)||32;return rank>0?Math.max(5,Math.min(100,Math.round((total-rank+1)*100/total))):0};
 V15.rankLabel=r=>r?'#'+r+' в НХЛ':'—';
-V15.theme=()=>localStorage.getItem('hoh-center-theme')||'dark';
+V15.theme=()=>localStorage.getItem('hoh-center-theme')||'light';
 V15.setTheme=v=>{localStorage.setItem('hoh-center-theme',v);applyTheme()};
 const COUNTRY={RUS:['#e8edf4','#7894c2','#d87983'],CAN:['#dc7480','#f3f3f3','#dc7480'],USA:['#c8788b','#f3f3f3','#7186ae'],SWE:['#72a0c4','#e5ca68','#72a0c4'],FIN:['#ededed','#7189ae','#ededed'],CZE:['#ededed','#d77b82','#7486aa'],SVK:['#ededed','#7189ae','#db7883'],CHE:['#d97882','#ededed','#d97882'],DEU:['#a5a5a5','#cd7e82','#d8bd6a'],LVA:['#ad7079','#ededed','#ad7079'],NOR:['#cc7581','#ededed','#6e80a4'],DNK:['#ce7581','#ededed','#ce7581'],AUT:['#d97883','#ededed','#d97883'],FRA:['#718ab5','#ededed','#d87983'],GBR:['#7181a4','#ededed','#ca7782']};
 V15.countryStyle=function(code){const c=COUNTRY[String(code||'').toUpperCase()]||['#d8d9df','#aaa','#d8d9df'];return'background:linear-gradient(180deg,'+c[0]+' 0%,'+c[1]+' 50%,'+c[2]+' 100%);-webkit-background-clip:text;background-clip:text;color:transparent'};

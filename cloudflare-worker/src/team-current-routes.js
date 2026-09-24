@@ -40,6 +40,7 @@ import { handleTelegramCenterV21SpoilersUi } from "./telegram-center-v21-spoiler
 import { handleTelegramCenterV22Profiles } from "./telegram-center-v22-profiles.js";
 import { handleTelegramCenterV22Ui } from "./telegram-center-v22-ui.js";
 import { handleTelegramCenterV23PlayerUi } from "./telegram-center-v23-player-ui.js";
+import { handleTelegramCenterV24VisualUi } from "./telegram-center-v24-visual-ui.js";
 import { handleWinlineCenterIngest } from "./winline-center-ingest.js";
 import { handleWinlineFeedProbe } from "./winline-feed-probe.js";
 import { handleDataCoreHealthV2 } from "./data-core-health-v2.js";
@@ -117,6 +118,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (centerV22UiResponse) return centerV22UiResponse;
   const centerV23PlayerUiResponse = handleTelegramCenterV23PlayerUi(request, path);
   if (centerV23PlayerUiResponse) return centerV23PlayerUiResponse;
+  const centerV24VisualUiResponse = handleTelegramCenterV24VisualUi(request, path);
+  if (centerV24VisualUiResponse) return centerV24VisualUiResponse;
   const centerV18PlayerLastGameResponse = await handleTelegramCenterV18PlayerLastGame(request.clone(), env, path);
   if (centerV18PlayerLastGameResponse) return centerV18PlayerLastGameResponse;
   const centerV18VkDataResponse = await handleTelegramCenterV18VkData(request.clone(), env, path);
@@ -132,25 +135,26 @@ export async function handleTeamCurrentRequest(request, env, path) {
     if (!cleanBaseResponse) return new Response("mini_app_shell_unavailable", { status: 503 });
     let body = await cleanBaseResponse.text();
     body = body.replace('data-tab="mine">Мои</button>', 'data-tab="follows">Мои</button>');
-    if (!body.includes('/telegram-app/v8-brand.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v8-brand.css?build=24.0.7"></head>');
-    if (!body.includes('/telegram-app/v9.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v9.css?build=24.0.7"></head>');
-    body = body.replace('</body>', '<script>window.HOH_CANONICAL_PLAYER_UI="V24";window.HOH_MINI_APP_BUILD="24.0.7";</script></body>');
+    if (!body.includes('/telegram-app/v8-brand.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v8-brand.css?build=24.1.0"></head>');
+    if (!body.includes('/telegram-app/v9.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v9.css?build=24.1.0"></head>');
+    body = body.replace('</body>', '<script>window.HOH_CANONICAL_PLAYER_UI="V24";window.HOH_MINI_APP_BUILD="24.1.0";</script></body>');
     for (const src of [
-      "/telegram-app/v9.js?build=24.0.7",
-      "/telegram-app/v15-core.js?build=24.0.7",
-      "/telegram-app/v15-team.js?build=24.0.7",
-      "/telegram-app/v19.js?build=24.0.7",
-      "/telegram-app/v20.js?build=24.0.7",
-      "/telegram-app/v21.js?build=24.0.7",
-      "/telegram-app/v22.js?build=24.0.7",
-      "/telegram-app/v23-player.js?build=24.0.7"
+      "/telegram-app/v9.js?build=24.1.0",
+      "/telegram-app/v15-core.js?build=24.1.0",
+      "/telegram-app/v15-team.js?build=24.1.0",
+      "/telegram-app/v19.js?build=24.1.0",
+      "/telegram-app/v20.js?build=24.1.0",
+      "/telegram-app/v21.js?build=24.1.0",
+      "/telegram-app/v22.js?build=24.1.0",
+      "/telegram-app/v23-player.js?build=24.1.0",
+      "/telegram-app/v24-visual.js?build=24.1.0"
     ]) body = body.replace('</body>', '<script src="'+src+'"></script></body>');
     return new Response(body, {status:200,headers:{
       "Content-Type":"text/html; charset=utf-8",
       "Cache-Control":"no-store, no-cache, must-revalidate, max-age=0",
       "Pragma":"no-cache",
       "Expires":"0",
-      "X-HOH-Mini-App-Build":"24.0.7",
+      "X-HOH-Mini-App-Build":"24.1.0",
       "X-HOH-Player-UI":"V24-canonical",
       "X-Content-Type-Options":"nosniff"
     }});

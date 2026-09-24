@@ -1,6 +1,6 @@
 name: Verify V22 Center
-# V24.0.7 post-deploy final check
-# V24.0.7 player-list, stats, Winline and light-theme verification
+# V24.1.0 visual refresh verification
+
 
 
 on:
@@ -11,6 +11,8 @@ on:
       - '.github/workflows/verify-v22-center.yml'
       - 'cloudflare-worker/src/telegram-center-v22-ui.js'
       - 'cloudflare-worker/src/telegram-center-v23-player-ui.js'
+      - 'cloudflare-worker/src/telegram-center-v24-visual-ui.js'
+      - 'cloudflare-worker/public/telegram-app/goalie-bg.webp'
       - 'cloudflare-worker/src/telegram-product-bot.js'
       - 'cloudflare-worker/src/telegram-center-v22-profiles.js'
       - 'cloudflare-worker/src/telegram-center-v21-spoilers-ui.js'
@@ -47,11 +49,11 @@ jobs:
           async function text(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status);return t}
           async function json(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+t.slice(0,300));return JSON.parse(t)}
 
-          const shell=await text('/telegram-app-v24?build=24.0.7');
-          const oldUrlShell=await text('/telegram-app?build=24.0.7');
+          const shell=await text('/telegram-app-v24?build=24.1.0');
+          const oldUrlShell=await text('/telegram-app?build=24.1.0');
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('canonical shell marker missing');
           if(!oldUrlShell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('/telegram-app is not canonical V24');
-          for(const x of ['/telegram-app/v21.js?build=24.0.7','/telegram-app/v22.js?build=24.0.7','/telegram-app/v23-player.js?build=24.0.7'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
+          for(const x of ['/telegram-app/v21.js?build=24.1.0','/telegram-app/v22.js?build=24.1.0','/telegram-app/v23-player.js?build=24.1.0','/telegram-app/v24-visual.js?build=24.1.0'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
           for(const x of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js']){
             if(shell.includes(x))throw new Error('legacy player script present in canonical shell '+x);
             if(oldUrlShell.includes(x))throw new Error('legacy player script present at old URL '+x);
@@ -64,6 +66,13 @@ jobs:
 
           const v22=await text('/telegram-app/v22.js');
           for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers','data-v15-player',"top='4px'"])if(!v22.includes(x))throw new Error('V22 missing '+x);
+          const visual=await text('/telegram-app/v24-visual.js');
+          for(const x of ['goalie-bg.webp','--hoh-glass-light','backdrop-filter','v23Audio','right:74px','z-index:6','font-size:11px'])if(!visual.includes(x))throw new Error('V24 visual layer missing '+x);
+          const bg=await raw('/telegram-app/goalie-bg.webp?build=24.1.0');
+          if(!bg.r.ok)throw new Error('goalie background HTTP '+bg.r.status);
+          if(!String(bg.r.headers.get('content-type')||'').includes('image/webp'))throw new Error('goalie background content-type '+bg.r.headers.get('content-type'));
+          const v15core=await text('/telegram-app/v15-core.js');
+          if(!v15core.includes("localStorage.getItem('hoh-center-theme')||'light'"))throw new Error('light theme is not default');
           const v23=await text('/telegram-app/v23-player.js');
           for(const x of ['lockCanonicalPlayer','capturePlayerClick','blockedLegacyOpenPlayer','HOH_CANONICAL_PLAYER_UI','COUNTRY_GRADIENT','rankVisual','v23RankLeagueTop','v23RecOdds','data-v23-rec-market','Все показатели','goals_per_60','shot_attempts_per_60','v23LastCover','grid-template-columns:repeat(4,minmax(0,1fr))','Вся статистика игрока','v23Country','Контракт 2026/27','renderFullStats','power_play_points'])if(!v23.includes(x))throw new Error('V23 player UI missing '+x);
           if(v23.includes('По умолчанию открывается последний сезон'))throw new Error('player profile still contains explanatory season note');
@@ -86,7 +95,6 @@ jobs:
           const seasonStats=await json('/api/telegram-center-v12/players/8479318/season/20252026');
           const ss=seasonStats.stats||{};
           for(const k of ['games_played','goals','assists','points','shots','power_play_points','shooting_pct','avg_toi_seconds','goals_per_60','assists_per_60','points_per_60','shots_per_60'])if(!(k in ss))throw new Error('V12 season stats missing '+k);
-          const v15core=await text('/telegram-app/v15-core.js');
           for(const x of ['mediaRefreshInstalled','visibilitychange','120000'])if(!v15core.includes(x))throw new Error('V15 core media refresh missing '+x);
           for(const x of ['overflow-x:hidden','v15MineMeta','v15MineCountry','v15MineSalary','.v15Light .gameCard'])if(!v15core.includes(x))throw new Error('V15 core layout/light/mine missing '+x);
           const v9=await text('/telegram-app/v9.js');
@@ -134,7 +142,7 @@ jobs:
           const unauth=await raw('/api/telegram-center-v22/me');
           if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
           const centerStatus=await json('/api/telegram/center/status');
-          if(!String(centerStatus.mini_app_url||'').includes('/telegram-app-v24?build=24.0.7'))throw new Error('Center mini app URL is not canonical V24 '+centerStatus.mini_app_url);
+          if(!String(centerStatus.mini_app_url||'').includes('/telegram-app-v24?build=24.1.0'))throw new Error('Center mini app URL is not canonical V24 '+centerStatus.mini_app_url);
 
           const status=await json('/api/telegram-center-v19/status');
           if(status.backfill?.done===false)throw new Error('VK full backfill incomplete');
