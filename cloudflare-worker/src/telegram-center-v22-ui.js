@@ -117,6 +117,11 @@ window.addEventListener('hoh-spoilers-change',async e=>{const enabled=Boolean(e.
 const obs=new MutationObserver(()=>{requestAnimationFrame(()=>{placeEye();mountMine();normalizePlayers();version()})});
 obs.observe(document.documentElement,{childList:true,subtree:true});
 document.addEventListener('click',e=>{
+  const player=e.target.closest?.('[data-v15-player],[data-player],[data-v2-player]');
+  if(player&&!player.closest('.v19PlayerProfile')&&typeof H.openPlayer==='function'){
+    const id=Number(player.dataset.v15Player||player.dataset.player||player.dataset.v2Player||0);
+    if(id){e.preventDefault();e.stopImmediatePropagation();H.openPlayer(id);return}
+  }
   const legacyGame=e.target.closest?.('.gameCard[data-game],.nextCard[data-game]');
   if(legacyGame&&typeof H.openGameV19==='function'){
     e.preventDefault();e.stopImmediatePropagation();

@@ -63,7 +63,10 @@ async function standings(env){
     for(const [divKey,div] of Object.entries(conf.divisions)){
       const rows=div.teams.map(tri=>{
         const t=teams[tri]||{tri_code:tri,name_en:tri,name_ru:null,logo_url:null},r=liveMap.get(tri)||null,gp=n(r?.gamesPlayed)||0;
-        return {tri,name:t.name_ru||t.name_en||tri,logo:t.logo_url||teamLogo(tri),gp,w:n(r?.wins)||0,l:n(r?.losses)||0,otl:n(r?.otLosses)||0,pts:n(r?.points)||0,division_rank:gp>0?(n(r?.divisionSequence)||null):null};
+        const divisionRank=gp>0?(n(r?.divisionSequence)||null):null,conferenceRank=gp>0?(n(r?.conferenceSequence)||null):null,wildcardRank=gp>0?(n(r?.wildcardSequence)||null):null,clinch=String(r?.clinchIndicator||"").trim();
+        const inPlayoff=gp>0&&Boolean(clinch||(divisionRank&&divisionRank<=3)||(divisionRank&&divisionRank>3&&wildcardRank&&wildcardRank<=2)||(!wildcardRank&&conferenceRank&&conferenceRank<=8));
+        const inRace=gp>0&&!inPlayoff&&Boolean((divisionRank&&divisionRank>3&&wildcardRank&&wildcardRank<=4)||(!wildcardRank&&conferenceRank&&conferenceRank<=10));
+        return {tri,name:t.name_ru||t.name_en||tri,logo:t.logo_url||teamLogo(tri),gp,w:n(r?.wins)||0,l:n(r?.losses)||0,otl:n(r?.otLosses)||0,pts:n(r?.points)||0,division_rank:divisionRank,conference_rank:conferenceRank,wildcard_rank:wildcardRank,clinch_indicator:clinch||null,playoff_status:inPlayoff?"playoff":inRace?"race":null};
       }).sort((a,b)=>b.pts-a.pts||b.w-a.w||(a.name||"").localeCompare(b.name||"","ru"));
       divisions.push({key:divKey,title:div.title,rows});
     }
@@ -134,7 +137,7 @@ async function playerSuggestions(env,playerId){
   return json({ok:true,team_tri:tri,related,groups});
 }
 
-function normalizeGame(g,names){const id=Number(g?.id||g?.gameId||g?.gamePk),home=upper(g?.homeTeam?.abbrev),away=upper(g?.awayTeam?.abbrev),start=g?.startTimeUTC||g?.startTimeUtc;if(!Number.isSafeInteger(id)||id<=0||!home||!away||!start)return null;const type=Number(g?.gameType)||null;return {game_pk:id,game_type:type,start_utc:start,state:upper(g?.gameState||g?.gameStatus||"FUT"),home:{tri:home,name:names[home]||home,logo:teamLogo(home),score:n(g?.homeTeam?.score)},away:{tri:away,name:names[away]||away,logo:teamLogo(away),score:n(g?.awayTeam?.score)},stage_label:gameStage(type),stage_color:gameStageColor(type)}}
+function normalizeGame(g,names){const id=Number(g?.id||g?.gameId||g?.gamePk),home=upper(g?.homeTeam?.abbrev),away=upper(g?.awayTeam?.abbrev),start=g?.startTimeUTC||g?.startTimeUtc;if(!Number.isSafeInteger(id)||id<=0||!home||!away||!start)return null;const type=Number(g?.gameType)||null;return {game_pk:id,game_type:type,start_utc:start,state:upper(g?.gameState||g?.gameStatus||"FUT"),period_type:upper(g?.periodDescriptor?.periodType||"")||null,home:{tri:home,name:names[home]||home,logo:teamLogo(home),score:n(g?.homeTeam?.score)},away:{tri:away,name:names[away]||away,logo:teamLogo(away),score:n(g?.awayTeam?.score)},stage_label:gameStage(type),stage_color:gameStageColor(type)}}
 function gameStage(type){if(Number(type)===1)return"Предсезонный матч";if(Number(type)===2)return"Регулярный сезон";if(Number(type)===3)return"Плей-офф";return"Матч НХЛ"}
 function gameStageColor(type){if(Number(type)===1)return"#ffb45f";if(Number(type)===2)return"#63a8ff";if(Number(type)===3)return"#b98cff";return"#8f8f98"}
 async function teamNameMap(db){const r=await db.prepare(`SELECT tri_code,name_en,name_ru FROM teams;`).all();return Object.fromEntries((r.results||[]).map(x=>[x.tri_code,x.name_ru||x.name_en||x.tri_code]))}

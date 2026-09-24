@@ -59,7 +59,7 @@ async function homeNews(request,env){
 
 async function queryHomeNews(db,limit){
   return db.prepare(`
-    SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
+    SELECT n.news_id,n.title,n.body_text,n.source_badge,n.published_at,n.created_at,
            COUNT(c.comment_id) comment_count
     FROM sports_news n
     LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
@@ -86,7 +86,7 @@ async function playerNews(request,env,playerId){
 
 async function queryPlayerNews(db,playerId,limit){
   return db.prepare(`
-    SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
+    SELECT n.news_id,n.title,n.body_text,n.source_badge,n.published_at,n.created_at,
            COUNT(c.comment_id) comment_count
     FROM sports_player_news_exact p
     JOIN sports_news n ON n.news_id=p.news_id
@@ -102,7 +102,7 @@ async function newsDetail(env,newsId){
   if(!Number.isSafeInteger(newsId)||newsId<=0)return json({ok:false,error:"invalid_news_id"},400);
   let row;
   try{row=await env.DB.prepare(`
-    SELECT n.news_id,n.title,n.body_text,n.published_at,n.created_at,
+    SELECT n.news_id,n.title,n.body_text,n.source_badge,n.published_at,n.created_at,
            COUNT(c.comment_id) comment_count
     FROM sports_news n
     LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
@@ -328,14 +328,15 @@ async function upsertNews(db,item){
   const sourceKey=item.source_key||item.source_url;
   if(!sourceKey||!item.source_url||!item.title)return 0;
   await db.prepare(`
-    INSERT INTO sports_news(source,source_key,source_url,title,body_text,published_at,topic,updated_at)
-    VALUES('sports_ru',?,?,?,?,?,'nhl',CURRENT_TIMESTAMP)
+    INSERT INTO sports_news(source,source_key,source_url,title,body_text,published_at,source_badge,topic,updated_at)
+    VALUES('sports_ru',?,?,?,?,?,?,'nhl',CURRENT_TIMESTAMP)
     ON CONFLICT(source,source_key) DO UPDATE SET
       title=excluded.title,
       body_text=COALESCE(NULLIF(excluded.body_text,''),sports_news.body_text),
       published_at=COALESCE(excluded.published_at,sports_news.published_at),
+      source_badge=COALESCE(NULLIF(excluded.source_badge,''),sports_news.source_badge),
       updated_at=CURRENT_TIMESTAMP;
-  `).bind(sourceKey,item.source_url,item.title,item.body_text||null,item.published_at||null).run();
+  `).bind(sourceKey,item.source_url,item.title,item.body_text||null,item.published_at||null,item.source_badge||null).run();
   const row=await db.prepare("SELECT news_id FROM sports_news WHERE source='sports_ru' AND source_key=? LIMIT 1").bind(sourceKey).first();
   return Number(row?.news_id||0);
 }
@@ -380,7 +381,8 @@ function extractHtmlNews(html,base){
     const attrs=(m[1]||"")+" "+(m[4]||"");
     const nearby=String(html||"").slice(Math.max(0,m.index-900),m.index+Math.min(m[0].length,300));
     const dt=/datetime=(["'])([^"']+)\1/i.exec(attrs)?.[2]||[...nearby.matchAll(/datetime=(["'])([^"']+)\1/gi)].at(-1)?.[2]||null;
-    out.push({source_key:canonicalUrl(href),source_url:canonicalUrl(href),title,body_text:null,published_at:validDate(dt)});
+    const markerContext=attrs+' '+String(html||'').slice(Math.max(0,m.index-260),Math.min(String(html||'').length,m.index+m[0].length+180));
+    out.push({source_key:canonicalUrl(href),source_url:canonicalUrl(href),title,body_text:null,published_at:validDate(dt),source_badge:sourceBadge(markerContext)});
   }
   return out;
 }
@@ -399,7 +401,7 @@ function mergeFeedMetadata(pageItems,rssItems){
   const map=new Map((rssItems||[]).map(x=>[canonicalUrl(x.source_url),x]));
   return (pageItems||[]).map(x=>{
     const r=map.get(canonicalUrl(x.source_url));
-    return r?{...x,body_text:r.body_text||x.body_text,published_at:r.published_at||x.published_at,source_key:r.source_key||x.source_key}:x;
+    return r?{...x,body_text:r.body_text||x.body_text,published_at:r.published_at||x.published_at,source_key:r.source_key||x.source_key,source_badge:x.source_badge||r.source_badge||null}:x;
   });
 }
 
@@ -408,7 +410,7 @@ export function extractSportsRss(xml){
   for(const block of String(xml||"").match(/<item\b[\s\S]*?<\/item>/gi)||[]){
     const title=tag(block,"title"),link=tag(block,"link"),guid=tag(block,"guid"),desc=tag(block,"description")||tag(block,"content:encoded"),pub=tag(block,"pubDate");
     if(!title||!link)continue;
-    out.push({source_key:cleanText(guid)||canonicalUrl(link),source_url:canonicalUrl(link),title:cleanText(title),body_text:cleanText(desc).slice(0,5000)||null,published_at:validDate(pub)});
+    out.push({source_key:cleanText(guid)||canonicalUrl(link),source_url:canonicalUrl(link),title:cleanText(title),body_text:cleanText(desc).slice(0,5000)||null,published_at:validDate(pub),source_badge:sourceBadge(title)});
   }
   return out;
 }
@@ -416,6 +418,15 @@ export function extractSportsRss(xml){
 function tag(block,name){
   const m=new RegExp("<"+name+"(?:\\s[^>]*)?>([\\s\\S]*?)<\\/"+name+">","i").exec(block);
   return m?decodeEntities(String(m[1]).replace(/^<!\[CDATA\[/,"").replace(/\]\]>$/,"")):"";
+}
+function sourceBadge(raw){
+  const s=String(raw||''),t=cleanText(s);
+  if(/🔥|\bогонь\b|(?:^|[\s_-])(?:is-)?hot(?:[\s_-]|$)|hot-news|label[_-]?hot/iu.test(s+' '+t))return '🔥 ОГОНЬ';
+  if(/⚡|\bмолни[яи]\b|\bсрочно\b|\bbreaking\b/iu.test(s+' '+t))return '⚡ СРОЧНО';
+  if(/❗|\bважно\b|\bimportant\b/iu.test(s+' '+t))return '❗ ВАЖНО';
+  if(/⭐|\bэксклюзив\b|\bexclusive\b/iu.test(s+' '+t))return '⭐ ЭКСКЛЮЗИВ';
+  if(/💥|\bбомба\b/iu.test(s+' '+t))return '💥 БОМБА';
+  return null;
 }
 function hasNextNewsPage(html,next){return new RegExp("(Следующие\\s+100\\s+новостей|/news/page"+next+"/)","i").test(cleanText(html))||new RegExp("/news/page"+next+"/","i").test(String(html||""))}
 function isPolitical(text){return POLITICAL_RE.test(String(text||""))}
