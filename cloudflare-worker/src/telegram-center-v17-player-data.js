@@ -85,16 +85,17 @@ async function playerRecommendation(env,id){
       const m=up(x?.market?.subject||""),e=up(x?.evidence?.team_tri||x?.evidence?.team||"");
       return m===team||e===team;
     };
-    const relevant=cards.filter(x=>isPlayerCard(x)||isOwnTeamCard(x));
-    const pool=(relevant.length?relevant:cards).slice().sort((a,b)=>Number(b?.air_score??b?.score??0)-Number(a?.air_score??a?.score??0));
+    const isPriced=x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds))&&Number(x.market.odds)>1&&String(x?.market?.market_id||x?.market?.selection_id||"").trim();
+    const priced=cards.filter(isPriced),relevantPriced=priced.filter(x=>isPlayerCard(x)||isOwnTeamCard(x));
+    const pool=(relevantPriced.length?relevantPriced:priced).slice().sort((a,b)=>Number(b?.air_score??b?.score??0)-Number(a?.air_score??a?.score??0));
     const best=pool[0];
-    if(!best)return json({ok:true,recommendation:null,reason:"no_insights_for_upcoming_game",game:{game_pk:Number(game.game_pk),scheduled_start_utc:game.scheduled_start_utc,home_tri:game.home_tri,away_tri:game.away_tri}});
-    const market=best.market||{},score=Math.max(0,Math.min(100,Math.round(Number(best.air_score??best.score??0))));
+    if(!best)return json({ok:true,recommendation:null,reason:"no_real_winline_market_for_model_signal",game:{game_pk:Number(game.game_pk),scheduled_start_utc:game.scheduled_start_utc,home_tri:game.home_tri,away_tri:game.away_tri}});
+    const market=best.market||{},score=Math.max(0,Math.min(100,Math.round(Number(best.air_score??best.score??0)))),marketId=String(market.market_id||market.selection_id||"").trim();
     return json({ok:true,recommendation:{
       scope:isPlayerCard(best)?"player":"team",score,
       title:String(best.broadcast_title||best.title||best.value||"").trim(),
       subtitle:String(best.broadcast_subtitle||best.explanation||"").trim(),
-      market:{type:market.type||null,label:market.label||null,subject:market.subject||null,side:market.side||null,line:market.line??null,odds:market.odds_is_demo===false?numOrNull(market.odds):null,deeplink:market.odds_is_demo===false?(market.deeplink||null):null,live:market.odds_is_demo===false},
+      market:{market_id:marketId,event_id:market.event_id||null,type:market.type||null,label:market.label||null,outcome_name:market.outcome_name||market.label||null,subject:market.subject||null,side:market.side||null,line:market.line??null,odds:numOrNull(market.odds),deeplink:market.deeplink||null,live:true},
       game:{game_pk:Number(game.game_pk),scheduled_start_utc:game.scheduled_start_utc,home_tri:game.home_tri,away_tri:game.away_tri}
     }});
   }catch(error){
