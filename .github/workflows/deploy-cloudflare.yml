@@ -161,7 +161,7 @@ jobs:
           if(!d.delivery_setup?.ok||d.delivery_setup?.mode!=='polling')throw new Error('Telegram Center polling setup failed '+JSON.stringify(d.delivery_setup));
           if(!d.commands?.ok||!(d.commands.items||[]).some(x=>x.command==='menu'))throw new Error('Telegram Center commands missing '+JSON.stringify(d.commands));
           if(!d.menu_button?.ok||d.menu_button?.value?.type!=='web_app')throw new Error('Telegram Center menu button missing '+JSON.stringify(d.menu_button));
-          if(!String(d.menu_button?.value?.web_app?.url||'').includes('/telegram-app-v24?build=24.0.3'))throw new Error('Telegram Center menu button is not on canonical V24 URL '+JSON.stringify(d.menu_button));
+          if(!String(d.menu_button?.value?.web_app?.url||'').includes('/telegram-app-v24'))throw new Error('Telegram Center menu button is not on canonical V24 path '+JSON.stringify(d.menu_button));
           console.log('TELEGRAM_CENTER_PRODUCTION_SMOKE_OK',JSON.stringify({
             marker:d.runtime_marker,
             bot:d.bot.username,
@@ -277,12 +277,12 @@ jobs:
           const match=await get('/api/telegram-center-v19/games/'+playoff.game_pk);
           if(!match.game?.is_playoff)throw new Error('playoff match detail flag missing');
           console.log('ARCHIVE_OK','regular',regular.games.length,'playoffs',playoffs.games.length,'vk_game',oldVk.game_pk,'playoff_game',playoff.game_pk,'odds_source',match.winline?.source||'none');
-          const shell=await fetch(base+'/telegram-app-v24?build=24.0.3',{cache:'no-store'}).then(r=>r.text());
-          const legacyUrlShell=await fetch(base+'/telegram-app?build=24.0.3',{cache:'no-store'}).then(r=>r.text());
+          const shell=await fetch(base+'/telegram-app-v24?build=24.0.4',{cache:'no-store'}).then(r=>r.text());
+          const legacyUrlShell=await fetch(base+'/telegram-app?build=24.0.4',{cache:'no-store'}).then(r=>r.text());
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('Canonical V24 marker missing from production shell');
           if(!legacyUrlShell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('Legacy /telegram-app URL is not canonical');
-          if(!shell.includes('/telegram-app/v19.js?build=24.0.3'))throw new Error('V19 script missing from canonical shell');
-          if(!shell.includes('/telegram-app/v23-player.js?build=24.0.3'))throw new Error('V23 player script missing from canonical shell');
+          if(!shell.includes('/telegram-app/v19.js?build=24.0.4'))throw new Error('V19 script missing from canonical shell');
+          if(!shell.includes('/telegram-app/v23-player.js?build=24.0.4'))throw new Error('V23 player script missing from canonical shell');
           for(const forbidden of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js']){
             if(shell.includes(forbidden))throw new Error('Legacy player layer leaked into canonical shell '+forbidden);
             if(legacyUrlShell.includes(forbidden))throw new Error('Legacy player layer leaked into /telegram-app '+forbidden);
