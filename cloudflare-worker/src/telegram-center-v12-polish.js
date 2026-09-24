@@ -100,6 +100,8 @@ async function playerSeasonDetail(playerId,season,env){
       if(attempts!==null&&Number(extra?.shot_attempt_games||0)>0){
         stats.shot_attempts=attempts;
         stats.shot_attempts_per_game=perGame(attempts,stats.games_played||Number(extra.shot_attempt_games));
+        stats.shot_attempts_per_60=per60(attempts,stats.total_toi_seconds);
+        stats.shot_attempt_on_net_pct=ratioPct(stats.shots,attempts);
       }
     }
     const historicalTeam=teamFromGameLog(rows)||upper(landing?.currentTeamAbbrev||dbPlayer?.current_team_tri||"");
@@ -121,6 +123,8 @@ function pctValue(v){const n=firstNumber(v);if(n===null)return null;return n<=1?
 function averageClock(rows,...keys){let sum=0,count=0;for(const row of rows||[]){for(const key of keys){const s=clockSeconds(row?.[key]);if(s!==null){sum+=s;count++;break}}}return count?Math.round(sum/count):null}
 function totalClock(rows,...keys){let sum=0,seen=false;for(const row of rows||[]){for(const key of keys){const s=clockSeconds(row?.[key]);if(s!==null){sum+=s;seen=true;break}}}return seen?sum:null}
 function perGame(value,games){const n=Number(value);return games>0&&Number.isFinite(n)?Math.round(n/games*100)/100:null}
+function per60(value,seconds){const n=Number(value),s=Number(seconds);return s>0&&Number.isFinite(n)?Math.round(n*3600/s*100)/100:null}
+function ratioPct(part,total){const p=Number(part),t=Number(total);return t>0&&Number.isFinite(p)?Math.round(p/t*1000)/10:null}
 function hitPct(rows,test){const list=Array.isArray(rows)?rows:[];if(!list.length)return null;return Math.round(list.filter(test).length/list.length*1000)/10}
 function aggregatePlayer(rows,total,position){
   rows=Array.isArray(rows)?rows:[];total=total||{};const goalie=upper(position)==="G";
@@ -135,13 +139,14 @@ function aggregatePlayer(rows,total,position){
   }
   const games=firstNumber(total.gamesPlayed,rows.length)||0,goals=firstNumber(total.goals,sumPresent(rows,"goals"))??0,assists=firstNumber(total.assists,sumPresent(rows,"assists"))??0,points=firstNumber(total.points,sumPresent(rows,"points"))??0,shots=firstNumber(total.shots,sumPresent(rows,"shots"))??0;
   const totalToi=firstNumber(clockSeconds(total.toi),totalClock(rows,"toi","timeOnIce"));
+  const hits=firstNumber(total.hits,sumPresent(rows,"hits")),blocked=firstNumber(total.blockedShots,sumPresent(rows,"blockedShots","blocked_shots")),pim=firstNumber(total.pim,sumPresent(rows,"pim")),ppPoints=firstNumber(total.powerPlayPoints,sumPresent(rows,"powerPlayPoints"));
   return {
     games_played:games,goals,assists,points,shots,
     shooting_pct:pctValue(firstNumber(total.shootingPctg,total.shootingPct,shots?goals/shots:null)),
     plus_minus:firstNumber(total.plusMinus,sumPresent(rows,"plusMinus")),
-    pim:firstNumber(total.pim,sumPresent(rows,"pim")),
+    pim,
     power_play_goals:firstNumber(total.powerPlayGoals,sumPresent(rows,"powerPlayGoals")),
-    power_play_points:firstNumber(total.powerPlayPoints,sumPresent(rows,"powerPlayPoints")),
+    power_play_points:ppPoints,
     shorthanded_goals:firstNumber(total.shorthandedGoals,sumPresent(rows,"shorthandedGoals")),
     shorthanded_points:firstNumber(total.shorthandedPoints,sumPresent(rows,"shorthandedPoints")),
     game_winning_goals:firstNumber(total.gameWinningGoals,sumPresent(rows,"gameWinningGoals")),
@@ -150,18 +155,25 @@ function aggregatePlayer(rows,total,position){
     avg_toi_seconds:firstNumber(clockSeconds(total.avgToi),averageClock(rows,"toi","timeOnIce")),
     total_toi_seconds:totalToi,
     shifts_per_game:firstNumber(total.shiftsPerGame),
-    hits:firstNumber(total.hits,sumPresent(rows,"hits")),
-    blocked_shots:firstNumber(total.blockedShots,sumPresent(rows,"blockedShots","blocked_shots")),
+    hits,
+    blocked_shots:blocked,
     takeaways:firstNumber(total.takeaways,sumPresent(rows,"takeaways")),
     giveaways:firstNumber(total.giveaways,sumPresent(rows,"giveaways")),
     goals_per_game:perGame(goals,games),
     assists_per_game:perGame(assists,games),
     points_per_game:perGame(points,games),
     shots_per_game:perGame(shots,games),
-    hits_per_game:perGame(firstNumber(total.hits,sumPresent(rows,"hits")),games),
-    blocked_shots_per_game:perGame(firstNumber(total.blockedShots,sumPresent(rows,"blockedShots","blocked_shots")),games),
-    pim_per_game:perGame(firstNumber(total.pim,sumPresent(rows,"pim")),games),
-    power_play_points_per_game:perGame(firstNumber(total.powerPlayPoints,sumPresent(rows,"powerPlayPoints")),games),
+    hits_per_game:perGame(hits,games),
+    blocked_shots_per_game:perGame(blocked,games),
+    pim_per_game:perGame(pim,games),
+    power_play_points_per_game:perGame(ppPoints,games),
+    goals_per_60:per60(goals,totalToi),
+    assists_per_60:per60(assists,totalToi),
+    points_per_60:per60(points,totalToi),
+    shots_per_60:per60(shots,totalToi),
+    hits_per_60:per60(hits,totalToi),
+    blocked_shots_per_60:per60(blocked,totalToi),
+    pp_points_share_pct:ratioPct(ppPoints,points),
     goal_game_pct:hitPct(rows,x=>Number(x?.goals||0)>=1),
     point_game_pct:hitPct(rows,x=>Number(x?.points||0)>=1),
     multi_point_game_pct:hitPct(rows,x=>Number(x?.points||0)>=2),
