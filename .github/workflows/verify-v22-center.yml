@@ -1,6 +1,6 @@
 name: Verify V22 Center
-# V24.0.6 post-deploy final check
-# V24.0.6 player-list, stats, Winline and light-theme verification
+# V24.0.7 post-deploy final check
+# V24.0.7 player-list, stats, Winline and light-theme verification
 
 
 on:
@@ -47,11 +47,11 @@ jobs:
           async function text(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status);return t}
           async function json(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+t.slice(0,300));return JSON.parse(t)}
 
-          const shell=await text('/telegram-app-v24?build=24.0.6');
-          const oldUrlShell=await text('/telegram-app?build=24.0.6');
+          const shell=await text('/telegram-app-v24?build=24.0.7');
+          const oldUrlShell=await text('/telegram-app?build=24.0.7');
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('canonical shell marker missing');
           if(!oldUrlShell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('/telegram-app is not canonical V24');
-          for(const x of ['/telegram-app/v21.js?build=24.0.6','/telegram-app/v22.js?build=24.0.6','/telegram-app/v23-player.js?build=24.0.6'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
+          for(const x of ['/telegram-app/v21.js?build=24.0.7','/telegram-app/v22.js?build=24.0.7','/telegram-app/v23-player.js?build=24.0.7'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
           for(const x of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js']){
             if(shell.includes(x))throw new Error('legacy player script present in canonical shell '+x);
             if(oldUrlShell.includes(x))throw new Error('legacy player script present at old URL '+x);
@@ -91,6 +91,8 @@ jobs:
           for(const x of ['overflow-x:hidden','v15MineMeta','v15MineCountry','v15MineSalary','.v15Light .gameCard'])if(!v15core.includes(x))throw new Error('V15 core layout/light/mine missing '+x);
           const v9=await text('/telegram-app/v9.js');
           if(!v9.includes("badge=b.querySelector('.orangeText')"))throw new Error('V9 player localizer does not preserve country badge');
+          for(const x of ['homeMediaAllowed','purgeMediaOffHome','document.getElementById(\'view\')!==view'])if(!v9.includes(x))throw new Error('V9 home-only media guard missing '+x);
+          for(const x of ['homeMediaAllowed','purgeMediaOffHome','V15.view()!==root'])if(!v15core.includes(x))throw new Error('V15 home-only media guard missing '+x);
           if(v9.includes('<span class="orangeText" style="font-size:10px">RU</span>'))throw new Error('V9 still hardcodes RU for all players');
           const v15team=await text('/telegram-app/v15-team.js');
           for(const x of ['cupText','v15SeriesSpoiler','Финал Кубка Стэнли','v15OddsMatch','nextOdds'])if(!v15team.includes(x))throw new Error('team UI upgrade missing '+x);
@@ -132,7 +134,7 @@ jobs:
           const unauth=await raw('/api/telegram-center-v22/me');
           if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
           const centerStatus=await json('/api/telegram/center/status');
-          if(!String(centerStatus.mini_app_url||'').includes('/telegram-app-v24?build=24.0.6'))throw new Error('Center mini app URL is not canonical V24 '+centerStatus.mini_app_url);
+          if(!String(centerStatus.mini_app_url||'').includes('/telegram-app-v24?build=24.0.7'))throw new Error('Center mini app URL is not canonical V24 '+centerStatus.mini_app_url);
 
           const status=await json('/api/telegram-center-v19/status');
           if(status.backfill?.done===false)throw new Error('VK full backfill incomplete');
