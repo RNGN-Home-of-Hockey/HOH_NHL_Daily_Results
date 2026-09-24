@@ -26,8 +26,7 @@ function renderComments(items){const box=document.getElementById('v20Comments');
 async function sendComment(id){const ta=document.getElementById('v20CommentText'),btn=document.getElementById('v20CommentSend'),body=String(ta?.value||'').trim();if(!body)return;if(window.HOHEnsureCommentIdentity&&!(await window.HOHEnsureCommentIdentity()))return;if(btn)btn.disabled=true;try{await H.api(API+'/news/'+id+'/comments',{method:'POST',body:JSON.stringify({body})});if(ta)ta.value='';const d=await H.api(API+'/news/'+id+'/comments');renderComments(d.comments||[])}catch(e){alert(e.message||e)}finally{if(btn)btn.disabled=false}}
 async function backFromNews(){const ctx=S.returnCtx||{};if(ctx.playerId){H.state.profile=false;await H.openPlayer(ctx.playerId);return}H.state.profile=false;const tabs=document.getElementById('tabs');if(tabs)tabs.style.display='grid';const t=document.querySelector('.tab[data-tab="games"]');if(t)t.click();setTimeout(mountHomeNews,160)}
 css();document.querySelectorAll('.v15Version').forEach(x=>x.textContent='V20');
-const oldPlayer=H.openPlayer;
-if(typeof oldPlayer==='function')H.openPlayer=async function(id){await oldPlayer(id)};
+// Player rendering is owned exclusively by V23.
 const oldRun=H.runCore;
 H.runCore=function(){const r=typeof oldRun==='function'?oldRun.apply(this,arguments):undefined;setTimeout(mountHomeNews,120);return r};
 document.addEventListener('click',e=>{const tab=e.target.closest?.('.tab');if(tab?.dataset.tab==='games')setTimeout(mountHomeNews,180)},true);
