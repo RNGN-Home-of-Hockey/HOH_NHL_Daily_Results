@@ -122,10 +122,43 @@ def main() -> int:
         "shorts_top10": shorts,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    # Do not create a commit/deploy just because view counters or refreshed_at changed.
+    # The mini-app only needs a deploy when the actual media identity changes.
+    try:
+        previous = json.loads(out.read_text(encoding="utf-8"))
+    except Exception:
+        previous = None
+
+    def media_identity(row: dict | None) -> tuple:
+        row = row or {}
+        return (
+            str(row.get("id") or ""),
+            str(row.get("url") or ""),
+            str(row.get("title") or ""),
+            str(row.get("thumb") or ""),
+        )
+
+    same_media = bool(previous) and (
+        media_identity(previous.get("news")) == media_identity(payload.get("news"))
+        and [media_identity(x) for x in (previous.get("shorts_top10") or [])]
+        == [media_identity(x) for x in payload["shorts_top10"]]
+    )
+    if same_media:
+        print(json.dumps({
+            "out": str(out),
+            "changed": False,
+            "shorts": len(payload["shorts_top10"]),
+            "news": payload["news"]["id"],
+            "news_title": payload["news"].get("title"),
+        }, ensure_ascii=False))
+        return 0
+
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({
         "out": str(out),
+        "changed": True,
         "shorts": len(payload["shorts_top10"]),
         "short_ids": [x["id"] for x in payload["shorts_top10"]],
         "news": payload["news"]["id"],
