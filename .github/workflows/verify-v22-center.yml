@@ -56,7 +56,16 @@ jobs:
           const v19=await text('/telegram-app/v19.js');
           for(const x of ['v19LastGameRich','v19OddsMatch','v19TeamVk','TEAM_RU','mountPlayerTeamOdds','v19MetaSecond','Контракт 2026/27','finishType','v19ThumbTeams','Вся статистика игрока','ПЛЕЙ-ОФФ'])if(!v19.includes(x))throw new Error('V19 upgrade missing '+x);
           const v12=await text('/telegram-app/v12.js');
-          for(const x of ['youtube_live','parseLatestNews','aggregatePlayer','save_pct','power_play_points'])if(!v12.includes(x))throw new Error('V12 upgrade missing '+x);
+          for(const x of ['installSeasons','injectMedia','decoratePhotoAndHeader'])if(!v12.includes(x))throw new Error('V12 frontend missing '+x);
+          const media=await json('/api/telegram-center-v12/media?v='+Date.now());
+          const freshNews=(media.items||[]).find(x=>x.kind==='news');
+          if(!freshNews)throw new Error('V12 media missing NEWS');
+          if(!/youtube\.com\/watch\?v=/.test(String(freshNews.url||'')))throw new Error('NEWS url is not YouTube watch URL');
+          if(!/i\.ytimg\.com\/vi\//.test(String(freshNews.thumb||'')))throw new Error('NEWS thumbnail is not YouTube thumbnail');
+          if(!['youtube_live','repository_cache'].includes(String(media.source||'')))throw new Error('Unexpected media source '+media.source);
+          const seasonStats=await json('/api/telegram-center-v12/players/8479318/season/20252026');
+          const ss=seasonStats.stats||{};
+          for(const k of ['games_played','goals','assists','points','shots','power_play_points','shooting_pct','avg_toi_seconds'])if(!(k in ss))throw new Error('V12 season stats missing '+k);
           const v15core=await text('/telegram-app/v15-core.js');
           for(const x of ['mediaRefreshInstalled','visibilitychange','120000'])if(!v15core.includes(x))throw new Error('V15 core media refresh missing '+x);
           const v15team=await text('/telegram-app/v15-team.js');
