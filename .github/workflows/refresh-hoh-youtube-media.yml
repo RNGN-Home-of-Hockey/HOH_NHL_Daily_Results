@@ -7,7 +7,7 @@ on:
       - 'tools/build_hoh_youtube_media.py'
       - '.github/workflows/refresh-hoh-youtube-media.yml'
   schedule:
-    - cron: '17 6 * * *'
+    - cron: '*/10 * * * *'
 
 permissions:
   contents: write
@@ -33,9 +33,11 @@ jobs:
           shorts=p.get('shorts_top10') or []
           news=p.get('news') or {}
           assert len(shorts) >= 2, len(shorts)
-          assert news.get('id') == 'mjDYO1uaw7E', news
+          assert len(str(news.get('id') or '')) == 11, news
+          assert str(news.get('url','')).startswith('https://www.youtube.com/watch?v='), news
+          assert str(news.get('thumb','')).startswith('https://i.ytimg.com/vi/'), news
           assert all(str(x.get('url','')).startswith('https://www.youtube.com/shorts/') for x in shorts)
-          print({'shorts':len(shorts),'news':news.get('id')})
+          print({'shorts':len(shorts),'news':news.get('id'),'title':news.get('title')})
           PY
       - name: Commit refreshed media cache
         run: |

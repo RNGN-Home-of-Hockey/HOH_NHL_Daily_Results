@@ -3,9 +3,10 @@ const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v3";
 const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
 const CENTER_POLL_OFFSET_KEY = "telegram_center_poll_offset_v1";
 const CENTER_POLL_STATUS_KEY = "telegram_center_poll_status_v1";
-const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v2";
-const CENTER_MINI_APP_BUILD = "23.0.1";
-const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app?build=23.0.1";
+const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v3";
+const CENTER_MINI_APP_BUILD = "24.0.0";
+const CENTER_CANONICAL_MINI_APP_PATH = "/telegram-app-v24";
+const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.0.0";
 
 function centerDeliveryMode(env) {
   return String(env.TELEGRAM_CENTER_DELIVERY_MODE || "webhook").trim().toLowerCase() === "polling"
@@ -709,6 +710,9 @@ async function setupMiniAppButton(request, env) {
 function versionedMiniAppUrl(value) {
   try {
     const url = new URL(String(value || CENTER_DEFAULT_MINI_APP_URL));
+    url.pathname = CENTER_CANONICAL_MINI_APP_PATH;
+    url.search = "";
+    url.hash = "";
     url.searchParams.set("build", CENTER_MINI_APP_BUILD);
     return url.toString();
   } catch {
