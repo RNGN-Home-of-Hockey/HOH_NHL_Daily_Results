@@ -277,12 +277,12 @@ jobs:
           const match=await get('/api/telegram-center-v19/games/'+playoff.game_pk);
           if(!match.game?.is_playoff)throw new Error('playoff match detail flag missing');
           console.log('ARCHIVE_OK','regular',regular.games.length,'playoffs',playoffs.games.length,'vk_game',oldVk.game_pk,'playoff_game',playoff.game_pk,'odds_source',match.winline?.source||'none');
-          const shell=await fetch(base+'/telegram-app-v24?build=24.0.5',{cache:'no-store'}).then(r=>r.text());
-          const legacyUrlShell=await fetch(base+'/telegram-app?build=24.0.5',{cache:'no-store'}).then(r=>r.text());
+          const shell=await fetch(base+'/telegram-app-v24?build=24.0.6',{cache:'no-store'}).then(r=>r.text());
+          const legacyUrlShell=await fetch(base+'/telegram-app?build=24.0.6',{cache:'no-store'}).then(r=>r.text());
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('Canonical V24 marker missing from production shell');
           if(!legacyUrlShell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('Legacy /telegram-app URL is not canonical');
-          if(!shell.includes('/telegram-app/v19.js?build=24.0.5'))throw new Error('V19 script missing from canonical shell');
-          if(!shell.includes('/telegram-app/v23-player.js?build=24.0.5'))throw new Error('V23 player script missing from canonical shell');
+          if(!shell.includes('/telegram-app/v19.js?build=24.0.6'))throw new Error('V19 script missing from canonical shell');
+          if(!shell.includes('/telegram-app/v23-player.js?build=24.0.6'))throw new Error('V23 player script missing from canonical shell');
           for(const forbidden of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js']){
             if(shell.includes(forbidden))throw new Error('Legacy player layer leaked into canonical shell '+forbidden);
             if(legacyUrlShell.includes(forbidden))throw new Error('Legacy player layer leaked into /telegram-app '+forbidden);
