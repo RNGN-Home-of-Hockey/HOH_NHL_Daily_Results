@@ -4,6 +4,7 @@ import pronunciationCache from "../../state/center_player_pronunciations_elitepr
 import pronunciationText from "../../state/center_player_pronunciation_text_nhl.json" with { type: "json" };
 import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
 import { buildBettingInsights } from "./betting-insight-engine.js";
+import { loadBroadcastWinlineMarkets } from "./broadcast-dashboard-v2.js";
 
 const API="/api/telegram-center-v17";
 const NHL="https://api-web.nhle.com/v1";
@@ -77,9 +78,13 @@ async function playerRecommendation(env,id){
       ORDER BY scheduled_start_utc ASC,game_pk ASC LIMIT 1;
     `).bind(now,team,team).first();
     if(!game)return json({ok:true,recommendation:null,reason:"no_upcoming_game"});
-    const cards=await buildBettingInsights(env.DB,{
-      ...game,game_pk:Number(game.game_pk),home_tri:up(game.home_tri),away_tri:up(game.away_tri)
-    },{portfolio_limit:32}).catch(()=>[]);
+    const gameForInsights={...game,game_pk:Number(game.game_pk),home_tri:up(game.home_tri),away_tri:up(game.away_tri)};
+    const providerMarkets=await loadBroadcastWinlineMarkets(env.DB,gameForInsights).catch(()=>[]);
+    const cards=await buildBettingInsights(env.DB,gameForInsights,{
+      portfolio_limit:32,
+      provider_markets:providerMarkets,
+      market_max_age_ms:7*60*60*1000
+    }).catch(()=>[]);
     const isPlayerCard=x=>Number(x?.market?.player_id||x?.evidence?.player_id||0)===id||String(x?.market?.subject||"")===String(id);
     const isOwnTeamCard=x=>{
       const m=up(x?.market?.subject||""),e=up(x?.evidence?.team_tri||x?.evidence?.team||"");
