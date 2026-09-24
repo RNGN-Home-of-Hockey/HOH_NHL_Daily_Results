@@ -1,5 +1,5 @@
 name: Verify V22 Center
-# V24.0.4 production rerun after player-profile deployment
+# V24.0.4 final verification after deploy
 # V24.0.4 production rerun after canonical deployment
 
 on:
