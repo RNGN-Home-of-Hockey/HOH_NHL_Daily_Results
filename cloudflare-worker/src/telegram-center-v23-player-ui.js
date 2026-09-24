@@ -58,5 +58,31 @@ function renderFullStats(ctx,active){const root=H.view();if(!root)return;const g
 async function switchSeason(ctx,season){const holder=document.querySelector('.v23TopMetrics');if(holder)holder.innerHTML='<div class="v15Loading" style="grid-column:1/-1">Загрузка статистики…</div>';ctx.pack=await loadPack(ctx.p.player_id,season);renderMain(ctx)}
 async function toggleFollow(ctx){const sub=ctx.v2?.subscription;try{if(sub?.subscription_id)await api(H.V2+'/subscriptions/'+sub.subscription_id,{method:'DELETE'});else await api(H.V2+'/subscriptions',{method:'POST',body:JSON.stringify({type:'player',key:String(ctx.p.player_id)})});ctx.v2=await api(H.V2+'/players/'+ctx.p.player_id).catch(()=>ctx.v2);renderMain(ctx)}catch(e){alert(e.message||e)}}
 async function openPlayer(id){id=Number(id);if(!id||STATE.busy)return;STATE.busy=true;H.state.profile=true;H.state.returnTab=H.currentTab()||'players';const tabs=document.getElementById('tabs');if(tabs)tabs.style.display='none';const root=H.view();if(!root){STATE.busy=false;return}root.innerHTML='<div class="v15Loading">Загрузка полного профиля игрока…</div>';try{const meta=await loadMeta(id),seasons=normalizeSeasons(meta.seasons),pack=await chooseInitialPack(id,seasons),ctx={...meta,seasons,pack};renderMain(ctx)}catch(e){root.innerHTML=H.backRow('Игрок')+'<div class="v15Empty">Ошибка загрузки профиля: '+esc(e.message||e)+'</div>';const back=document.getElementById('v15Back');if(back)back.onclick=H.goBack}finally{STATE.busy=false}}
-css();H.openPlayer=openPlayer;STATE.openPlayer=openPlayer;STATE.renderMain=renderMain;STATE.renderFullStats=renderFullStats;document.querySelectorAll('.v15Version,.v19Version').forEach(x=>x.remove());
+function capturePlayerClick(e){
+  const el=e.target.closest?.('[data-v15-player],[data-player],[data-v2-player]');
+  if(!el||el.closest('.v23PlayerProfile'))return;
+  const id=Number(el.dataset.v15Player||el.dataset.player||el.dataset.v2Player||0);
+  if(!id)return;
+  e.preventDefault();e.stopImmediatePropagation();openPlayer(id);
+}
+function lockCanonicalPlayer(){
+  try{
+    Object.defineProperty(H,'openPlayer',{configurable:true,enumerable:true,get(){return openPlayer},set(fn){STATE.blockedLegacyOpenPlayer=fn}});
+  }catch{H.openPlayer=openPlayer}
+}
+function repairLegacyPlayer(){
+  const legacy=document.querySelector('.v17Profile,.v19PlayerProfile:not(.v23PlayerProfile)');
+  const id=Number(STATE.currentPlayerId||0);
+  if(!legacy||!id||STATE.busy)return;
+  legacy.remove();
+  setTimeout(()=>openPlayer(id),0);
+}
+const originalOpenPlayer=openPlayer;
+const wrappedOpenPlayer=async function(id){STATE.currentPlayerId=Number(id)||null;return originalOpenPlayer(id)};
+openPlayer=wrappedOpenPlayer;
+window.HOH_CANONICAL_PLAYER_UI='V23';
+css();STATE.openPlayer=openPlayer;STATE.renderMain=renderMain;STATE.renderFullStats=renderFullStats;lockCanonicalPlayer();
+window.addEventListener('click',capturePlayerClick,true);
+new MutationObserver(()=>{lockCanonicalPlayer();repairLegacyPlayer()}).observe(document.documentElement,{childList:true,subtree:true});
+document.querySelectorAll('.v15Version,.v19Version').forEach(x=>x.remove());
 })();`;
