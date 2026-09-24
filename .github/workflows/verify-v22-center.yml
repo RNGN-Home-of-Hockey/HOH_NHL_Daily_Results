@@ -104,7 +104,10 @@ jobs:
             const m=leoRec.recommendation.market||{};
             if(!(Number(m.odds)>1)||!m.live||!m.market_id)throw new Error('player recommendation is not a real Winline market '+JSON.stringify(leoRec));
           }
-          const dahlin=await json('/api/telegram-center-v17/players/8478403');
+          const dahlinSearch=await json('/api/telegram-center-v17/players?q='+encodeURIComponent('Rasmus Dahlin')+'&limit=20');
+          const dahlinHit=(dahlinSearch.players||[]).find(x=>String(x.full_name_en||'').toLowerCase()==='rasmus dahlin');
+          if(!dahlinHit)throw new Error('Rasmus Dahlin search missing');
+          const dahlin=await json('/api/telegram-center-v17/players/'+dahlinHit.player_id);
           if(String(dahlin.player?.primary_country_code||'').toUpperCase()!=='SWE')throw new Error('Dahlin country metadata is not SWE '+JSON.stringify(dahlin.player));
           const matthews=await json('/api/telegram-center-v17/players/8479318');
           for(const k of ['primary_country_code','birth_date','height_cm','weight_kg','team_logo','salary_aav'])if(!matthews.player?.[k])throw new Error('Matthews profile missing '+k);
