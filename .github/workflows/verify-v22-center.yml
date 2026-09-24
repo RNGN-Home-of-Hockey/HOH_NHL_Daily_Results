@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/verify-v22-center.yml'
       - 'cloudflare-worker/src/telegram-center-v22-ui.js'
+      - 'cloudflare-worker/src/telegram-center-v23-player-ui.js'
+      - 'cloudflare-worker/src/telegram-product-bot.js'
       - 'cloudflare-worker/src/telegram-center-v22-profiles.js'
       - 'cloudflare-worker/src/telegram-center-v21-spoilers-ui.js'
       - 'cloudflare-worker/src/telegram-center-roster-maintenance.js'
@@ -44,7 +46,7 @@ jobs:
 
           const shell=await text('/telegram-app');
           const bundled=shell.includes('/telegram-app/runtime-v23.js');
-          if(!bundled)for(const x of ['/telegram-app/v21.js','/telegram-app/v22.js'])if(!shell.includes(x))throw new Error('shell missing '+x);
+          if(!bundled)for(const x of ['/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js'])if(!shell.includes(x))throw new Error('shell missing '+x);
           if(bundled){
             const runtime=await text('/telegram-app/runtime-v23.js');
             for(const x of ['HOHV15','HOHSetNoSpoilers','HOHEnsureCommentIdentity','openGameV19','СВЕЖЕЕ В НХЛ'])if(!runtime.includes(x))throw new Error('runtime bundle missing '+x);
@@ -52,6 +54,10 @@ jobs:
 
           const v22=await text('/telegram-app/v22.js');
           for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers','data-v15-player',"top='4px'"])if(!v22.includes(x))throw new Error('V22 missing '+x);
+          const v23=await text('/telegram-app/v23-player.js');
+          for(const x of ['H.openPlayer=openPlayer','Вся статистика игрока','v23Country','Контракт 2026/27','grid-template-columns:repeat(4','renderFullStats','power_play_points'])if(!v23.includes(x))throw new Error('V23 player UI missing '+x);
+          const v21=await text('/telegram-app/v21.js');
+          if(v21.includes("textContent='V21'"))throw new Error('V21 still stamps old version into UI');
 
           const v19=await text('/telegram-app/v19.js');
           for(const x of ['v19LastGameRich','v19OddsMatch','v19TeamVk','TEAM_RU','mountPlayerTeamOdds','v19MetaSecond','Контракт 2026/27','finishType','v19ThumbTeams','Вся статистика игрока','ПЛЕЙ-ОФФ'])if(!v19.includes(x))throw new Error('V19 upgrade missing '+x);
@@ -70,7 +76,6 @@ jobs:
           for(const x of ['mediaRefreshInstalled','visibilitychange','120000'])if(!v15core.includes(x))throw new Error('V15 core media refresh missing '+x);
           const v15team=await text('/telegram-app/v15-team.js');
           for(const x of ['cupText','v15SeriesSpoiler','Финал Кубка Стэнли','v15OddsMatch','nextOdds'])if(!v15team.includes(x))throw new Error('team UI upgrade missing '+x);
-          const v21=await text('/telegram-app/v21.js');
           for(const x of ['v15SeriesSpoiler','HOHSetNoSpoilers','hoh-spoilers-change'])if(!v21.includes(x))throw new Error('spoiler contract missing '+x);
 
           const matthews=await json('/api/telegram-center-v17/players/8479318');
@@ -94,6 +99,8 @@ jobs:
 
           const unauth=await raw('/api/telegram-center-v22/me');
           if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
+          const centerStatus=await json('/api/telegram/center/status');
+          if(!String(centerStatus.mini_app_url||'').includes('build=23.0.1'))throw new Error('Center mini app URL is not cache-busted '+centerStatus.mini_app_url);
 
           const status=await json('/api/telegram-center-v19/status');
           if(status.backfill?.done===false)throw new Error('VK full backfill incomplete');

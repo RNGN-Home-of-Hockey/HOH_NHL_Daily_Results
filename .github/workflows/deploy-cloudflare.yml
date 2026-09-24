@@ -160,6 +160,7 @@ jobs:
           if(!d.delivery_setup?.ok||d.delivery_setup?.mode!=='polling')throw new Error('Telegram Center polling setup failed '+JSON.stringify(d.delivery_setup));
           if(!d.commands?.ok||!(d.commands.items||[]).some(x=>x.command==='menu'))throw new Error('Telegram Center commands missing '+JSON.stringify(d.commands));
           if(!d.menu_button?.ok||d.menu_button?.value?.type!=='web_app')throw new Error('Telegram Center menu button missing '+JSON.stringify(d.menu_button));
+          if(!String(d.menu_button?.value?.web_app?.url||'').includes('build=23.0.1'))throw new Error('Telegram Center menu button is not cache-busted '+JSON.stringify(d.menu_button));
           console.log('TELEGRAM_CENTER_PRODUCTION_SMOKE_OK',JSON.stringify({
             marker:d.runtime_marker,
             bot:d.bot.username,
@@ -277,6 +278,7 @@ jobs:
           console.log('ARCHIVE_OK','regular',regular.games.length,'playoffs',playoffs.games.length,'vk_game',oldVk.game_pk,'playoff_game',playoff.game_pk,'odds_source',match.winline?.source||'none');
           const shell=await fetch(base+'/telegram-app',{cache:'no-store'}).then(r=>r.text());
           if(!shell.includes('/telegram-app/v19.js'))throw new Error('V19 script missing from production shell');
+          if(!shell.includes('/telegram-app/v23-player.js'))throw new Error('V23 player script missing from production shell');
           const ui=await fetch(base+'/telegram-app/v19.js',{cache:'no-store'}).then(r=>r.text());
           for(const needle of ["b.dataset.tab='broadcasts'","v19Audio","aspect-ratio:16/9","v19Country","v19Playoff"]){
             if(!ui.includes(needle))throw new Error('V19 UI contract missing '+needle);

@@ -3,8 +3,9 @@ const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v3";
 const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
 const CENTER_POLL_OFFSET_KEY = "telegram_center_poll_offset_v1";
 const CENTER_POLL_STATUS_KEY = "telegram_center_poll_status_v1";
-const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v1";
-const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app";
+const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v2";
+const CENTER_MINI_APP_BUILD = "23.0.1";
+const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app?build=23.0.1";
 
 function centerDeliveryMode(env) {
   return String(env.TELEGRAM_CENTER_DELIVERY_MODE || "webhook").trim().toLowerCase() === "polling"
@@ -325,8 +326,7 @@ export async function ensureTelegramCenterWebhook(env, { force = false } = {}) {
     return { ok: false, error, expected_webhook_url: expectedWebhook };
   }
 
-  const miniApp = String(env.TELEGRAM_MINI_APP_URL || "").trim()
-    || "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app";
+  const miniApp = versionedMiniAppUrl(String(env.TELEGRAM_MINI_APP_URL || "").trim() || CENTER_DEFAULT_MINI_APP_URL);
   const [commandsResult, menuButtonResult, webhookInfo] = await Promise.all([
     telegramRequest(env, "setMyCommands", {
       commands: [
@@ -408,7 +408,7 @@ export async function ensureTelegramCenterPolling(env, { force = false } = {}) {
     }
   }
 
-  const miniApp = String(env.TELEGRAM_MINI_APP_URL || "").trim() || CENTER_DEFAULT_MINI_APP_URL;
+  const miniApp = versionedMiniAppUrl(String(env.TELEGRAM_MINI_APP_URL || "").trim() || CENTER_DEFAULT_MINI_APP_URL);
   const [deleteWebhook, commandsResult, menuButtonResult] = await Promise.all([
     telegramRequest(env, "deleteWebhook", { drop_pending_updates: false }),
     telegramRequest(env, "setMyCommands", {
@@ -581,7 +581,7 @@ async function processPolledCenterUpdate(env, update) {
   if (!chatId) return { retry: false, handled: false };
 
   const centerText = "🏒 HOH NHL Center\n\nТвой персональный центр NHL:\n\n• игроки\n• команды\n• матчи\n• уведомления\n• статистика";
-  const miniApp = String(env.TELEGRAM_MINI_APP_URL || "").trim() || CENTER_DEFAULT_MINI_APP_URL;
+  const miniApp = versionedMiniAppUrl(String(env.TELEGRAM_MINI_APP_URL || "").trim() || CENTER_DEFAULT_MINI_APP_URL);
   const primary = await telegramRequest(env, "sendMessage", {
     chat_id: chatId,
     text: centerText,
@@ -706,17 +706,23 @@ async function setupMiniAppButton(request, env) {
   );
 }
 
+function versionedMiniAppUrl(value) {
+  try {
+    const url = new URL(String(value || CENTER_DEFAULT_MINI_APP_URL));
+    url.searchParams.set("build", CENTER_MINI_APP_BUILD);
+    return url.toString();
+  } catch {
+    return CENTER_DEFAULT_MINI_APP_URL;
+  }
+}
+
 function miniAppUrl(request, env) {
   const configured = String(env.TELEGRAM_MINI_APP_URL || "").trim();
-  if (configured) {
-    return configured;
-  }
+  if (configured) return versionedMiniAppUrl(configured);
   const publicBase = String(env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
-  if (publicBase) {
-    return `${publicBase}/telegram-app`;
-  }
+  if (publicBase) return versionedMiniAppUrl(`${publicBase}/telegram-app`);
   const url = new URL(request.url);
-  return `${url.protocol}//${url.host}/telegram-app`;
+  return versionedMiniAppUrl(`${url.protocol}//${url.host}/telegram-app`);
 }
 
 async function telegramRequest(env, method, payload) {

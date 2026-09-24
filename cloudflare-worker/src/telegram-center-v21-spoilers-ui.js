@@ -48,7 +48,6 @@ function install(){
   style();
   let b=document.getElementById('v21SpoilerToggle');
   if(!b){b=document.createElement('button');b.type='button';b.id='v21SpoilerToggle';b.className='v21SpoilerToggle';b.onclick=e=>{e.preventDefault();e.stopPropagation();toggle()};document.body.appendChild(b)}
-  document.querySelectorAll('.v15Version,.v19Version').forEach(x=>{if(x.textContent!=='V21')x.textContent='V21'});
   apply(false);
 }
 function hydrate(){
@@ -60,6 +59,6 @@ function hydrate(){
   }catch{}
 }
 install();hydrate();
-const obs=new MutationObserver(()=>{if(!document.getElementById('v21SpoilerToggle'))install();document.querySelectorAll('.v15Version,.v19Version').forEach(x=>{if(x.textContent!=='V21')x.textContent='V21'})});
+const obs=new MutationObserver(()=>{if(!document.getElementById('v21SpoilerToggle'))install()});
 obs.observe(document.documentElement,{childList:true,subtree:true});
 })();`;
