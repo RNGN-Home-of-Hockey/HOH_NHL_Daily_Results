@@ -1,6 +1,6 @@
 name: Verify V22 Center
-# V24.0.4 final verification after deploy
-# V24.0.4 production rerun after canonical deployment
+# V24.0.5 player-list, stats, Winline and light-theme verification
+
 
 on:
   workflow_dispatch:
@@ -46,11 +46,11 @@ jobs:
           async function text(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status);return t}
           async function json(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+t.slice(0,300));return JSON.parse(t)}
 
-          const shell=await text('/telegram-app-v24?build=24.0.4');
-          const oldUrlShell=await text('/telegram-app?build=24.0.4');
+          const shell=await text('/telegram-app-v24?build=24.0.5');
+          const oldUrlShell=await text('/telegram-app?build=24.0.5');
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('canonical shell marker missing');
           if(!oldUrlShell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('/telegram-app is not canonical V24');
-          for(const x of ['/telegram-app/v21.js?build=24.0.4','/telegram-app/v22.js?build=24.0.4','/telegram-app/v23-player.js?build=24.0.4'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
+          for(const x of ['/telegram-app/v21.js?build=24.0.5','/telegram-app/v22.js?build=24.0.5','/telegram-app/v23-player.js?build=24.0.5'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
           for(const x of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js']){
             if(shell.includes(x))throw new Error('legacy player script present in canonical shell '+x);
             if(oldUrlShell.includes(x))throw new Error('legacy player script present at old URL '+x);
@@ -64,7 +64,9 @@ jobs:
           const v22=await text('/telegram-app/v22.js');
           for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers','data-v15-player',"top='4px'"])if(!v22.includes(x))throw new Error('V22 missing '+x);
           const v23=await text('/telegram-app/v23-player.js');
-          for(const x of ['lockCanonicalPlayer','capturePlayerClick','blockedLegacyOpenPlayer','HOH_CANONICAL_PLAYER_UI','COUNTRY_GRADIENT','rankVisual','v23RankLeagueTop','winlineRecommendation','goal_game_pct','shot_attempts_per_game','Вся статистика игрока','v23Country','Контракт 2026/27','grid-template-columns:repeat(4','renderFullStats','power_play_points'])if(!v23.includes(x))throw new Error('V23 player UI missing '+x);
+          for(const x of ['lockCanonicalPlayer','capturePlayerClick','blockedLegacyOpenPlayer','HOH_CANONICAL_PLAYER_UI','COUNTRY_GRADIENT','rankVisual','v23RankLeagueTop','v23RecOdds','data-v23-rec-market','Все показатели','goals_per_60','shot_attempts_per_60','v23LastCover','grid-template-columns:repeat(4,minmax(0,1fr))','Вся статистика игрока','v23Country','Контракт 2026/27','renderFullStats','power_play_points'])if(!v23.includes(x))throw new Error('V23 player UI missing '+x);
+          if(v23.includes('По умолчанию открывается последний сезон'))throw new Error('player profile still contains explanatory season note');
+          if(v23.includes('ближайший вариант по силе сигнала'))throw new Error('player Winline card still contains explanatory footer');
           const v21=await text('/telegram-app/v21.js');
           if(v21.includes("textContent='V21'"))throw new Error('V21 still stamps old version into UI');
 
@@ -82,9 +84,13 @@ jobs:
           if(!['youtube_live','repository_cache'].includes(String(media.source||'')))throw new Error('Unexpected media source '+media.source);
           const seasonStats=await json('/api/telegram-center-v12/players/8479318/season/20252026');
           const ss=seasonStats.stats||{};
-          for(const k of ['games_played','goals','assists','points','shots','power_play_points','shooting_pct','avg_toi_seconds'])if(!(k in ss))throw new Error('V12 season stats missing '+k);
+          for(const k of ['games_played','goals','assists','points','shots','power_play_points','shooting_pct','avg_toi_seconds','goals_per_60','assists_per_60','points_per_60','shots_per_60'])if(!(k in ss))throw new Error('V12 season stats missing '+k);
           const v15core=await text('/telegram-app/v15-core.js');
           for(const x of ['mediaRefreshInstalled','visibilitychange','120000'])if(!v15core.includes(x))throw new Error('V15 core media refresh missing '+x);
+          for(const x of ['overflow-x:hidden','v15MineMeta','v15MineCountry','v15MineSalary','.v15Light .gameCard'])if(!v15core.includes(x))throw new Error('V15 core layout/light/mine missing '+x);
+          const v9=await text('/telegram-app/v9.js');
+          if(!v9.includes("badge=b.querySelector('.orangeText')"))throw new Error('V9 player localizer does not preserve country badge');
+          if(v9.includes('<span class="orangeText" style="font-size:10px">RU</span>'))throw new Error('V9 still hardcodes RU for all players');
           const v15team=await text('/telegram-app/v15-team.js');
           for(const x of ['cupText','v15SeriesSpoiler','Финал Кубка Стэнли','v15OddsMatch','nextOdds'])if(!v15team.includes(x))throw new Error('team UI upgrade missing '+x);
           for(const x of ['v15SeriesSpoiler','HOHSetNoSpoilers','hoh-spoilers-change'])if(!v21.includes(x))throw new Error('spoiler contract missing '+x);
@@ -94,6 +100,12 @@ jobs:
           if(!leoLast.game.vk?.web_url&&!leoLast.game.vk?.app_url)throw new Error('Leo Carlsson last playoff appearance has no VK broadcast link '+JSON.stringify(leoLast.game));
           const leoRec=await json('/api/telegram-center-v17/players/8484153/recommendation');
           if(leoRec.ok!==true)throw new Error('Leo Carlsson recommendation endpoint failed '+JSON.stringify(leoRec));
+          if(leoRec.recommendation){
+            const m=leoRec.recommendation.market||{};
+            if(!(Number(m.odds)>1)||!m.live||!m.market_id)throw new Error('player recommendation is not a real Winline market '+JSON.stringify(leoRec));
+          }
+          const dahlin=await json('/api/telegram-center-v17/players/8478403');
+          if(String(dahlin.player?.primary_country_code||'').toUpperCase()!=='SWE')throw new Error('Dahlin country metadata is not SWE '+JSON.stringify(dahlin.player));
           const matthews=await json('/api/telegram-center-v17/players/8479318');
           for(const k of ['primary_country_code','birth_date','height_cm','weight_kg','team_logo','salary_aav'])if(!matthews.player?.[k])throw new Error('Matthews profile missing '+k);
           if(matthews.player.current_team_tri!=='TOR')throw new Error('Matthews team mismatch '+matthews.player.current_team_tri);
@@ -116,7 +128,7 @@ jobs:
           const unauth=await raw('/api/telegram-center-v22/me');
           if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
           const centerStatus=await json('/api/telegram/center/status');
-          if(!String(centerStatus.mini_app_url||'').includes('/telegram-app-v24?build=24.0.4'))throw new Error('Center mini app URL is not canonical V24 '+centerStatus.mini_app_url);
+          if(!String(centerStatus.mini_app_url||'').includes('/telegram-app-v24?build=24.0.5'))throw new Error('Center mini app URL is not canonical V24 '+centerStatus.mini_app_url);
 
           const status=await json('/api/telegram-center-v19/status');
           if(status.backfill?.done===false)throw new Error('VK full backfill incomplete');
