@@ -88,6 +88,20 @@ async function playerSeasonDetail(playerId,season,env){
     const totals=Array.isArray(landing?.seasonTotals)?landing.seasonTotals:[];
     const seasonTotal=totals.find(x=>String(x?.season||"").replace(/\D/g,"")===String(season)&&Number(x?.gameTypeId??x?.gameType??2)===2&&["","NHL"].includes(String(x?.leagueAbbrev||x?.league||"NHL").toUpperCase()))||null;
     const stats=aggregatePlayer(rows,seasonTotal,position);
+    if(env?.DB&&position!=="G"){
+      const extra=await env.DB.prepare(`
+        SELECT SUM(CASE WHEN s.shot_attempts IS NOT NULL THEN s.shot_attempts ELSE 0 END) shot_attempts,
+               SUM(CASE WHEN s.shot_attempts IS NOT NULL THEN 1 ELSE 0 END) shot_attempt_games
+        FROM player_game_stats s JOIN games g ON g.game_pk=s.game_pk
+        WHERE s.player_id=? AND CAST(g.season_id AS TEXT)=? AND g.game_type=2
+          AND UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF');
+      `).bind(playerId,season).first().catch(()=>null);
+      const attempts=firstNumber(extra?.shot_attempts);
+      if(attempts!==null&&Number(extra?.shot_attempt_games||0)>0){
+        stats.shot_attempts=attempts;
+        stats.shot_attempts_per_game=perGame(attempts,stats.games_played||Number(extra.shot_attempt_games));
+      }
+    }
     const historicalTeam=teamFromGameLog(rows)||upper(landing?.currentTeamAbbrev||dbPlayer?.current_team_tri||"");
     const [teamRanks,leagueRanks]=position==="G"?[emptyRanks(),emptyRanks()]:await Promise.all([
       skaterTeamRanks(playerId,historicalTeam,season).catch(()=>emptyRanks()),
