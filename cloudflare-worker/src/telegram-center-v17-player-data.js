@@ -3,6 +3,7 @@ import fullNames from "../../ru_full_names.json" with { type: "json" };
 import pronunciationCache from "../../state/center_player_pronunciations_eliteprospects.json" with { type: "json" };
 import pronunciationText from "../../state/center_player_pronunciation_text_nhl.json" with { type: "json" };
 import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
+import { buildBettingInsights } from "./betting-insight-engine.js";
 
 const API="/api/telegram-center-v17";
 const NHL="https://api-web.nhle.com/v1";
@@ -10,7 +11,9 @@ const NHL="https://api-web.nhle.com/v1";
 export async function handleTelegramCenterV17PlayerData(request,env,path){
   if(!env?.DB)return null;
   if(path===`${API}/players`&&request.method==="GET")return players(request,env);
-  const m=/^\/api\/telegram-center-v17\/players\/(\d+)$/.exec(path);
+  let m=/^\/api\/telegram-center-v17\/players\/(\d+)\/recommendation$/.exec(path);
+  if(m&&request.method==="GET")return playerRecommendation(env,Number(m[1]));
+  m=/^\/api\/telegram-center-v17\/players\/(\d+)$/.exec(path);
   if(m&&request.method==="GET")return profile(env,Number(m[1]));
   return null;
 }
@@ -59,6 +62,45 @@ async function profile(env,id){
   const heightCm=hIn?Math.round(hIn*2.54):numOrNull(row?.height_cm),weightKg=wLb?Math.round(wLb*0.45359237):numOrNull(row?.weight_kg);
   const p={player_id:id,full_name_en:en,full_name_ru:row?.full_name_ru||fullNames?.[String(id)]||fallbackRuName(en)||null,current_team_tri:tri,position_code:up(row?.position_code||landing?.position||""),sweater_number:row?.sweater_number??landing?.sweaterNumber??null,primary_country_code:up(row?.primary_country_code||landing?.birthCountry||"").slice(0,3),birth_date:birth,age:age(birth),height_cm:heightCm,weight_kg:weightKg,pronunciation_text:pt?.pronunciation_text||null,pronunciation_source:pt?.pronunciation_source||null,team_logo:landing?.teamLogo||teamLogo(tri),headshot:landing?.headshot||photo(id,tri,currentSeason()),salary_aav:numOrNull(sal?.aav??sal?.cap_hit),salary_cash:numOrNull(sal?.salary_cash),profile_source:landing?"nhl_landing":row?"d1":pron?"pronunciation_cache":"salary_cache"};
   return json({ok:true,player:p});
+}
+
+async function playerRecommendation(env,id){
+  if(!Number.isSafeInteger(id)||id<=0)return json({ok:false,error:"invalid_player_id"},400);
+  try{
+    const p=await env.DB.prepare("SELECT player_id,current_team_tri,full_name_en,full_name_ru FROM players WHERE player_id=? LIMIT 1").bind(id).first();
+    if(!p?.current_team_tri)return json({ok:true,recommendation:null,reason:"player_team_unknown"});
+    const team=up(p.current_team_tri),now=new Date().toISOString();
+    const game=await env.DB.prepare(\`
+      SELECT game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,period_type,venue_name
+      FROM games
+      WHERE scheduled_start_utc>? AND (home_tri=? OR away_tri=?)
+      ORDER BY scheduled_start_utc ASC,game_pk ASC LIMIT 1;
+    \`).bind(now,team,team).first();
+    if(!game)return json({ok:true,recommendation:null,reason:"no_upcoming_game"});
+    const cards=await buildBettingInsights(env.DB,{
+      ...game,game_pk:Number(game.game_pk),home_tri:up(game.home_tri),away_tri:up(game.away_tri)
+    },{portfolio_limit:32}).catch(()=>[]);
+    const playerCards=cards.filter(x=>Number(x?.market?.player_id||x?.evidence?.player_id||0)===id||String(x?.market?.subject||"")===String(id));
+    const teamCards=cards.filter(x=>{
+      const m=up(x?.market?.subject||""),e=up(x?.evidence?.team_tri||x?.evidence?.team||"");
+      return m===team||e===team;
+    });
+    const pool=playerCards.length?playerCards:teamCards;
+    pool.sort((a,b)=>Number(b?.air_score??b?.score??0)-Number(a?.air_score??a?.score??0));
+    const best=pool[0];
+    if(!best)return json({ok:true,recommendation:null,reason:"no_matching_insight",game:{game_pk:Number(game.game_pk),scheduled_start_utc:game.scheduled_start_utc,home_tri:game.home_tri,away_tri:game.away_tri}});
+    const market=best.market||{},score=Math.max(0,Math.min(100,Math.round(Number(best.air_score??best.score??0))));
+    return json({ok:true,recommendation:{
+      scope:playerCards.length?"player":"team",score,
+      title:String(best.broadcast_title||best.title||best.value||"").trim(),
+      subtitle:String(best.broadcast_subtitle||best.explanation||"").trim(),
+      market:{type:market.type||null,label:market.label||null,subject:market.subject||null,side:market.side||null,line:market.line??null,odds:market.odds_is_demo===false?numOrNull(market.odds):null,deeplink:market.odds_is_demo===false?(market.deeplink||null):null,live:market.odds_is_demo===false},
+      game:{game_pk:Number(game.game_pk),scheduled_start_utc:game.scheduled_start_utc,home_tri:game.home_tri,away_tri:game.away_tri}
+    }});
+  }catch(error){
+    console.error("player recommendation failed",id,error);
+    return json({ok:true,recommendation:null,reason:"recommendation_unavailable"});
+  }
 }
 
 async function liveRoster(tri){
