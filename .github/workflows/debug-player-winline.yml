@@ -1,0 +1,27 @@
+name: Debug player Winline recommendation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/debug-player-winline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production recommendations
+        run: |
+          set -e
+          base="https://hoh-nhl-daily-results.znamteam-903.workers.dev"
+          for id in 8480839 8484153 8478403 8479318; do
+            echo "=== PLAYER $id ==="
+            curl -fsS "$base/api/telegram-center-v17/players/$id" | head -c 1200
+            echo
+            echo "--- recommendation ---"
+            curl -fsS "$base/api/telegram-center-v17/players/$id/recommendation"
+            echo
+          done
