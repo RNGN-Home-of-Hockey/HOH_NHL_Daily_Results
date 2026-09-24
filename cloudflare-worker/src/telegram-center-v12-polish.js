@@ -5,6 +5,7 @@ const API = "/api/telegram-center-v12";
 const NHL = "https://api-web.nhle.com/v1";
 const FALLBACK_SHORT_IDS = ["lE6HsW_lO3A","qpl6TBYZ6kk","PWS0j-pab8k","EdW_k6Yv60s","4Zqd87BfPk8","sgYGqUNa6Lc","OuZ48CZZe9M","4Z0U1rksbEA","dneld6G5cDc","C5vDDyYoQAw"];
 const NEWS_ID = "mjDYO1uaw7E";
+const YOUTUBE_HANDLE = "homeofhockey-yt";
 
 export async function handleTelegramCenterV12Polish(request,env,path){
   if(path===JS_PATH){
@@ -19,14 +20,35 @@ export async function handleTelegramCenterV12Polish(request,env,path){
   return null;
 }
 
-function mediaResponse(){
+async function mediaResponse(){
   let shorts=Array.isArray(mediaCache?.shorts_top10)?mediaCache.shorts_top10.filter(validMedia):[];
   if(shorts.length<2)shorts=FALLBACK_SHORT_IDS.map(id=>({id,kind:"short",url:`https://www.youtube.com/shorts/${id}`,title:"HOME OF HOCKEY SHORTS",thumb:`https://i.ytimg.com/vi/${id}/hq720.jpg`}));
   const day=Math.floor(Date.now()/86400000),a=day%shorts.length,b=(day*7+3)%shorts.length;
   const picked=[shorts[a],shorts[b===a?(b+1)%shorts.length:b]];
-  const news=validMedia(mediaCache?.news)?mediaCache.news:{id:NEWS_ID,kind:"news",url:`https://www.youtube.com/watch?v=${NEWS_ID}`,title:"HOME OF HOCKEY NEWS",thumb:`https://i.ytimg.com/vi/${NEWS_ID}/hq720.jpg`};
-  return json({ok:true,configured:true,items:[...picked.map(x=>normalizeMedia(x,"short")),normalizeMedia(news,"news")],source:"repository_cache"});
+  let news=null,source="repository_cache";
+  try{
+    const html=await fetchYouTubeFresh(`https://www.youtube.com/@${YOUTUBE_HANDLE}/videos?view=0&sort=dd&flow=grid`);
+    const live=parseLatestNews(html);
+    if(live){news=live;source="youtube_live"}
+  }catch{}
+  if(!news)news=validMedia(mediaCache?.news)?mediaCache.news:{id:NEWS_ID,kind:"news",url:`https://www.youtube.com/watch?v=${NEWS_ID}`,title:"HOME OF HOCKEY NEWS",thumb:`https://i.ytimg.com/vi/${NEWS_ID}/hq720.jpg`};
+  return json({ok:true,configured:true,items:[...picked.map(x=>normalizeMedia(x,"short")),normalizeMedia(news,"news")],source,news_id:String(news.id||"")});
 }
+async function fetchYouTubeFresh(url){
+  const r=await fetch(url,{headers:{"User-Agent":"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1","Accept-Language":"ru-RU,ru;q=0.9,en;q=0.7"},cf:{cacheTtl:60,cacheEverything:true}});
+  if(!r.ok)throw new Error("YouTube HTTP "+r.status);
+  return r.text();
+}
+function parseLatestNews(html){
+  const out=[],seen=new Set(),re=/"videoRenderer"\s*:\s*\{[\s\S]{0,700}?"videoId"\s*:\s*"([A-Za-z0-9_-]{11})"[\s\S]{0,3200}?"title"\s*:\s*\{[\s\S]{0,700}?(?:"text"|"simpleText")\s*:\s*"((?:\\.|[^"\\])+)"/g;
+  let m;while((m=re.exec(String(html||"")))&&out.length<30){
+    if(seen.has(m[1]))continue;seen.add(m[1]);
+    const title=decodeYouTubeText(m[2]);
+    out.push({id:m[1],kind:"news",url:`https://www.youtube.com/watch?v=${m[1]}`,title,thumb:`https://i.ytimg.com/vi/${m[1]}/hq720.jpg`});
+  }
+  return out.find(x=>/(?:\bnews\b|ньюс)/iu.test(x.title))||null;
+}
+function decodeYouTubeText(v){try{return JSON.parse('"' + String(v||"").replace(/"/g,'\\"') + '"').replace(/&amp;/g,"&")}catch{return String(v||"").replace(/\\u0026/g,"&").replace(/\\n/g," ")}}
 function validMedia(x){return Boolean(x&&String(x.url||"").startsWith("https://www.youtube.com/")&&String(x.thumb||"").startsWith("https://"))}
 function normalizeMedia(x,kind){return{kind,url:String(x.url||""),title:String(x.title|| (kind==="news"?"HOME OF HOCKEY NEWS":"HOME OF HOCKEY SHORTS")),thumb:String(x.thumb||"")}}
 
@@ -63,9 +85,11 @@ async function playerSeasonDetail(playerId,season,env){
     if(!landing&&!dbPlayer)return json({ok:false,error:"player_not_found"},404);
     const rows=Array.isArray(gameLog?.gameLog)?gameLog.gameLog:Array.isArray(gameLog?.games)?gameLog.games:[];
     const position=upper(dbPlayer?.position_code||landing?.position||"");
-    const stats=aggregateSkater(rows);
+    const totals=Array.isArray(landing?.seasonTotals)?landing.seasonTotals:[];
+    const seasonTotal=totals.find(x=>String(x?.season||"").replace(/\D/g,"")===String(season)&&Number(x?.gameTypeId??x?.gameType??2)===2&&["","NHL"].includes(String(x?.leagueAbbrev||x?.league||"NHL").toUpperCase()))||null;
+    const stats=aggregatePlayer(rows,seasonTotal,position);
     const historicalTeam=teamFromGameLog(rows)||upper(landing?.currentTeamAbbrev||dbPlayer?.current_team_tri||"");
-    const [teamRanks,leagueRanks]=await Promise.all([
+    const [teamRanks,leagueRanks]=position==="G"?[emptyRanks(),emptyRanks()]:await Promise.all([
       skaterTeamRanks(playerId,historicalTeam,season).catch(()=>emptyRanks()),
       skaterLeagueRanks(playerId,season).catch(()=>emptyRanks()),
     ]);
@@ -76,10 +100,45 @@ async function playerSeasonDetail(playerId,season,env){
   }catch(error){return json({ok:false,error:"player_season_detail_failed",detail:errorText(error)},503)}
 }
 
-function aggregateSkater(rows){
-  const out={games_played:Array.isArray(rows)?rows.length:0,goals:0,assists:0,points:0,shots:0};
-  for(const g of rows||[]){out.goals+=num(g?.goals);out.assists+=num(g?.assists);out.points+=num(g?.points);out.shots+=num(g?.shots)}
-  return out;
+function firstNumber(...vals){for(const v of vals){if(v===null||v===undefined||v==="")continue;const n=Number(v);if(Number.isFinite(n))return n}return null}
+function sumPresent(rows,...keys){let seen=false,total=0;for(const row of rows||[]){for(const key of keys){if(row?.[key]!==null&&row?.[key]!==undefined&&row?.[key]!==""){const n=Number(row[key]);if(Number.isFinite(n)){total+=n;seen=true}break}}}return seen?total:null}
+function clockSeconds(v){if(v===null||v===undefined||v==="")return null;if(Number.isFinite(Number(v)))return Number(v);const m=String(v).match(/^(\d+):(\d{2})$/);return m?Number(m[1])*60+Number(m[2]):null}
+function pctValue(v){const n=firstNumber(v);if(n===null)return null;return n<=1?Math.round(n*1000)/10:Math.round(n*10)/10}
+function averageClock(rows,...keys){let sum=0,count=0;for(const row of rows||[]){for(const key of keys){const s=clockSeconds(row?.[key]);if(s!==null){sum+=s;count++;break}}}return count?Math.round(sum/count):null}
+function totalClock(rows,...keys){let sum=0,seen=false;for(const row of rows||[]){for(const key of keys){const s=clockSeconds(row?.[key]);if(s!==null){sum+=s;seen=true;break}}}return seen?sum:null}
+function aggregatePlayer(rows,total,position){
+  rows=Array.isArray(rows)?rows:[];total=total||{};const goalie=upper(position)==="G";
+  if(goalie){
+    const saves=firstNumber(total.saves,sumPresent(rows,"saves")),shotsAgainst=firstNumber(total.shotsAgainst,sumPresent(rows,"shotsAgainst")),goalsAgainst=firstNumber(total.goalsAgainst,sumPresent(rows,"goalsAgainst"));
+    const toiTotal=firstNumber(clockSeconds(total.toi),totalClock(rows,"toi","timeOnIce")),games=firstNumber(total.gamesPlayed,rows.length)||0;
+    let wins=firstNumber(total.wins),losses=firstNumber(total.losses),otl=firstNumber(total.otLosses);
+    if(wins===null||losses===null||otl===null){wins=0;losses=0;otl=0;for(const g of rows){const d=String(g?.decision||"").toUpperCase();if(d==="W")wins++;else if(d==="L")losses++;else if(d==="O"||d==="OT")otl++}}
+    const savePct=pctValue(firstNumber(total.savePctg,total.savePct,shotsAgainst?Number(saves||0)/shotsAgainst:null));
+    const gaa=firstNumber(total.goalsAgainstAvg,total.goalsAgainstAverage,toiTotal&&goalsAgainst!==null?goalsAgainst*3600/toiTotal:null);
+    return {games_played:games,games_started:firstNumber(total.gamesStarted,sumPresent(rows,"gamesStarted")),wins,losses,ot_losses:otl,save_pct:savePct,gaa:gaa===null?null:Math.round(gaa*100)/100,shutouts:firstNumber(total.shutouts,sumPresent(rows,"shutouts")),saves,shots_against:shotsAgainst,goals_against:goalsAgainst,avg_toi_seconds:firstNumber(clockSeconds(total.avgToi),averageClock(rows,"toi","timeOnIce")),total_toi_seconds:toiTotal,assists:firstNumber(total.assists,sumPresent(rows,"assists")),points:firstNumber(total.points,sumPresent(rows,"points")),pim:firstNumber(total.pim,sumPresent(rows,"pim"))};
+  }
+  const games=firstNumber(total.gamesPlayed,rows.length)||0,goals=firstNumber(total.goals,sumPresent(rows,"goals"))??0,assists=firstNumber(total.assists,sumPresent(rows,"assists"))??0,points=firstNumber(total.points,sumPresent(rows,"points"))??0,shots=firstNumber(total.shots,sumPresent(rows,"shots"))??0;
+  const totalToi=firstNumber(clockSeconds(total.toi),totalClock(rows,"toi","timeOnIce"));
+  return {
+    games_played:games,goals,assists,points,shots,
+    shooting_pct:pctValue(firstNumber(total.shootingPctg,total.shootingPct,shots?goals/shots:null)),
+    plus_minus:firstNumber(total.plusMinus,sumPresent(rows,"plusMinus")),
+    pim:firstNumber(total.pim,sumPresent(rows,"pim")),
+    power_play_goals:firstNumber(total.powerPlayGoals,sumPresent(rows,"powerPlayGoals")),
+    power_play_points:firstNumber(total.powerPlayPoints,sumPresent(rows,"powerPlayPoints")),
+    shorthanded_goals:firstNumber(total.shorthandedGoals,sumPresent(rows,"shorthandedGoals")),
+    shorthanded_points:firstNumber(total.shorthandedPoints,sumPresent(rows,"shorthandedPoints")),
+    game_winning_goals:firstNumber(total.gameWinningGoals,sumPresent(rows,"gameWinningGoals")),
+    ot_goals:firstNumber(total.otGoals,sumPresent(rows,"otGoals")),
+    faceoff_pct:pctValue(firstNumber(total.faceoffWinningPctg,total.faceoffWinPct)),
+    avg_toi_seconds:firstNumber(clockSeconds(total.avgToi),averageClock(rows,"toi","timeOnIce")),
+    total_toi_seconds:totalToi,
+    shifts_per_game:firstNumber(total.shiftsPerGame),
+    hits:firstNumber(total.hits,sumPresent(rows,"hits")),
+    blocked_shots:firstNumber(total.blockedShots,sumPresent(rows,"blockedShots","blocked_shots")),
+    takeaways:firstNumber(total.takeaways,sumPresent(rows,"takeaways")),
+    giveaways:firstNumber(total.giveaways,sumPresent(rows,"giveaways"))
+  };
 }
 function teamFromGameLog(rows){for(const g of rows||[]){const tri=upper(localized(g?.teamAbbrev)||g?.teamAbbrev||g?.teamTri||"");if(/^[A-Z]{3}$/.test(tri))return tri}return""}
 function emptyRanks(){return{goals_rank:null,assists_rank:null,points_rank:null,shots_rank:null,total:null}}

@@ -51,17 +51,21 @@ jobs:
           }
 
           const v22=await text('/telegram-app/v22.js');
-          for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers','data-v15-player'])if(!v22.includes(x))throw new Error('V22 missing '+x);
+          for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers','data-v15-player',"top='4px'"])if(!v22.includes(x))throw new Error('V22 missing '+x);
 
           const v19=await text('/telegram-app/v19.js');
-          for(const x of ['v19LastGameRich','v19OddsMatch','v19TeamVk','TEAM_RU','mountPlayerTeamOdds','v19MetaSecond','Контракт 2026/27','finishType'])if(!v19.includes(x))throw new Error('V19 upgrade missing '+x);
+          for(const x of ['v19LastGameRich','v19OddsMatch','v19TeamVk','TEAM_RU','mountPlayerTeamOdds','v19MetaSecond','Контракт 2026/27','finishType','v19ThumbTeams','Вся статистика игрока','ПЛЕЙ-ОФФ'])if(!v19.includes(x))throw new Error('V19 upgrade missing '+x);
+          const v12=await text('/telegram-app/v12.js');
+          for(const x of ['youtube_live','parseLatestNews','aggregatePlayer','save_pct','power_play_points'])if(!v12.includes(x))throw new Error('V12 upgrade missing '+x);
+          const v15core=await text('/telegram-app/v15-core.js');
+          for(const x of ['mediaRefreshInstalled','visibilitychange','120000'])if(!v15core.includes(x))throw new Error('V15 core media refresh missing '+x);
           const v15team=await text('/telegram-app/v15-team.js');
           for(const x of ['cupText','v15SeriesSpoiler','Финал Кубка Стэнли','v15OddsMatch','nextOdds'])if(!v15team.includes(x))throw new Error('team UI upgrade missing '+x);
           const v21=await text('/telegram-app/v21.js');
           for(const x of ['v15SeriesSpoiler','HOHSetNoSpoilers','hoh-spoilers-change'])if(!v21.includes(x))throw new Error('spoiler contract missing '+x);
 
           const matthews=await json('/api/telegram-center-v17/players/8479318');
-          for(const k of ['primary_country_code','birth_date','height_cm','weight_kg','team_logo'])if(!matthews.player?.[k])throw new Error('Matthews profile missing '+k);
+          for(const k of ['primary_country_code','birth_date','height_cm','weight_kg','team_logo','salary_aav'])if(!matthews.player?.[k])throw new Error('Matthews profile missing '+k);
           if(matthews.player.current_team_tri!=='TOR')throw new Error('Matthews team mismatch '+matthews.player.current_team_tri);
           const rosenSearch=await json('/api/telegram-center-v17/players?q='+encodeURIComponent('Isak Rosen')+'&limit=20');
           const rosen=(rosenSearch.players||[]).find(x=>String(x.full_name_en||'').toLowerCase().includes('isak rosen'));
