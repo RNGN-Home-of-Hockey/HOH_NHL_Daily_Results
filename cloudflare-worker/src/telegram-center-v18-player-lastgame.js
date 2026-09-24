@@ -33,7 +33,8 @@ async function playerLastGame(env, playerId) {
       row = await env.DB.prepare(`
         SELECT g.game_pk,g.season_id,g.scheduled_start_utc,g.game_state,g.home_tri,g.away_tri,g.home_score,g.away_score,
                s.team_tri,s.goals,s.assists,s.points,s.shots,s.toi_seconds,
-               b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status
+               b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status,
+               m.match_method vk_match_method
         FROM player_game_stats s
         JOIN games g ON g.game_pk=s.game_pk
         LEFT JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
@@ -42,6 +43,10 @@ async function playerLastGame(env, playerId) {
         ORDER BY g.scheduled_start_utc DESC,g.game_pk DESC LIMIT 1;
       `).bind(playerId).first();
       participation = row ? "player_game_stats" : null;
+      if(row&&!row.source_key){
+        const b=await findBroadcastByPairTime(env.DB,row);
+        if(b)Object.assign(row,{source_key:b.source_key,vk_title:b.title,vk_url:b.web_url,vk_app_url:b.app_url,vk_thumbnail:b.thumbnail_url,vk_status:b.status,vk_kind:b.broadcast_kind,vk_match_method:b.match_method});
+      }
     }
 
     return json({
@@ -55,7 +60,7 @@ async function playerLastGame(env, playerId) {
           goals:num(row.goals ?? official?.goals),assists:num(row.assists ?? official?.assists),points:num(row.points ?? official?.points),
           shots:numOrNull(row.shots ?? official?.shots),toi_seconds:numOrNull(row.toi_seconds),
         },
-        vk:row.source_key?{source_key:row.source_key,title:row.vk_title,web_url:row.vk_url,app_url:row.vk_app_url,thumbnail_url:row.vk_thumbnail,status:row.vk_status}:null,
+        vk:row.source_key?{source_key:row.source_key,title:row.vk_title,web_url:row.vk_url,app_url:row.vk_app_url,thumbnail_url:row.vk_thumbnail,status:row.vk_status,kind:row.vk_kind||(row.vk_match_method==="pair_time_highlight_fallback"?"highlights":"full"),match_method:row.vk_match_method||null}:null,
       }:null,
     });
   } catch (error) {
@@ -82,7 +87,8 @@ async function loadOfficialLastAppearance(playerId){
 async function loadGameRow(db, gamePk, currentTeamTri, official){
   const g=await db.prepare(`
     SELECT g.game_pk,g.season_id,g.scheduled_start_utc,g.game_state,g.home_tri,g.away_tri,g.home_score,g.away_score,
-           b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status
+           b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status,
+           m.match_method vk_match_method
     FROM games g
     LEFT JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
     LEFT JOIN vk_broadcasts b ON b.source_key=m.source_key
@@ -91,15 +97,16 @@ async function loadGameRow(db, gamePk, currentTeamTri, official){
   if(!g)return null;
   if(!g.source_key){
     const b=await findBroadcastByPairTime(db,g);
-    if(b)Object.assign(g,{source_key:b.source_key,vk_title:b.title,vk_url:b.web_url,vk_app_url:b.app_url,vk_thumbnail:b.thumbnail_url,vk_status:b.status});
+    if(b)Object.assign(g,{source_key:b.source_key,vk_title:b.title,vk_url:b.web_url,vk_app_url:b.app_url,vk_thumbnail:b.thumbnail_url,vk_status:b.status,vk_kind:b.broadcast_kind,vk_match_method:b.match_method});
   }
   return {...g,team_tri:String(official?.teamAbbrev||currentTeamTri||"").toUpperCase(),goals:official?.goals,assists:official?.assists,points:official?.points,shots:official?.shots,toi_seconds:null};
 }
 async function findBroadcastByPairTime(db,game){
   const start=String(game?.scheduled_start_utc||""),home=String(game?.home_tri||"").toUpperCase(),away=String(game?.away_tri||"").toUpperCase();
   if(!start||!home||!away)return null;
-  return db.prepare(`
-    SELECT source_key,title,web_url,app_url,thumbnail_url,status,duration_seconds
+  const full=await db.prepare(`
+    SELECT source_key,title,web_url,app_url,thumbnail_url,status,duration_seconds,
+           'full' broadcast_kind,'pair_time_fallback' match_method
     FROM vk_broadcasts
     WHERE ((parsed_home_tri=? AND parsed_away_tri=?) OR (parsed_home_tri=? AND parsed_away_tri=?))
       AND COALESCE(scheduled_at,published_at) IS NOT NULL
@@ -111,8 +118,25 @@ async function findBroadcastByPairTime(db,game){
       AND LOWER(COALESCE(title,'')) NOT LIKE '%лучшие моменты%'
       AND LOWER(COALESCE(title,'')) NOT LIKE '%best moment%'
     ORDER BY ABS(julianday(COALESCE(scheduled_at,published_at))-julianday(?)) ASC,
-             COALESCE(duration_seconds,0) DESC,
-             updated_at DESC
+             COALESCE(duration_seconds,0) DESC,updated_at DESC
+    LIMIT 1;
+  `).bind(home,away,away,home,start,start).first().catch(()=>null);
+  if(full)return full;
+  return db.prepare(`
+    SELECT source_key,title,web_url,app_url,thumbnail_url,status,duration_seconds,
+           'highlights' broadcast_kind,'pair_time_highlight_fallback' match_method
+    FROM vk_broadcasts
+    WHERE ((parsed_home_tri=? AND parsed_away_tri=?) OR (parsed_home_tri=? AND parsed_away_tri=?))
+      AND COALESCE(scheduled_at,published_at) IS NOT NULL
+      AND ABS(julianday(COALESCE(scheduled_at,published_at))-julianday(?))<=1.0
+      AND COALESCE(duration_seconds,0)>=120
+      AND (
+        LOWER(COALESCE(title,'')) LIKE '%хайлайт%' OR LOWER(COALESCE(title,'')) LIKE '%highlight%'
+        OR LOWER(COALESCE(title,'')) LIKE '%обзор матча%' OR LOWER(COALESCE(title,'')) LIKE '%лучшие моменты%'
+        OR LOWER(COALESCE(title,'')) LIKE '%best moment%'
+      )
+    ORDER BY ABS(julianday(COALESCE(scheduled_at,published_at))-julianday(?)) ASC,
+             COALESCE(duration_seconds,0) DESC,updated_at DESC
     LIMIT 1;
   `).bind(home,away,away,home,start,start).first().catch(()=>null);
 }
