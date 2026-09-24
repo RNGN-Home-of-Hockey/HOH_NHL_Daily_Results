@@ -108,11 +108,40 @@ async function gameDetail(env, gamePk) {
 }
 
 async function loadBroadcast(db,gamePk){
-  return db.prepare(`
+  const direct=await db.prepare(`
     SELECT b.source_key,b.source_kind,b.owner_id,b.video_id,b.title,b.published_at,b.scheduled_at,b.status,b.web_url,b.app_url,b.thumbnail_url,b.duration_seconds,m.match_method,m.match_confidence,m.matched_at
     FROM game_vk_broadcasts m JOIN vk_broadcasts b ON b.source_key=m.source_key
     WHERE m.game_pk=? LIMIT 1;
   `).bind(gamePk).first();
+  if(direct)return direct;
+  const game=await db.prepare(`
+    SELECT game_pk,scheduled_start_utc,home_tri,away_tri FROM games WHERE game_pk=? LIMIT 1;
+  `).bind(gamePk).first();
+  return game?findBroadcastByPairTime(db,game):null;
+}
+async function findBroadcastByPairTime(db,game){
+  const start=String(game?.scheduled_start_utc||"");
+  const home=String(game?.home_tri||"").toUpperCase(),away=String(game?.away_tri||"").toUpperCase();
+  if(!start||!home||!away)return null;
+  return db.prepare(`
+    SELECT b.source_key,b.source_kind,b.owner_id,b.video_id,b.title,b.published_at,b.scheduled_at,b.status,
+           b.web_url,b.app_url,b.thumbnail_url,b.duration_seconds,
+           'pair_time_fallback' match_method,0.82 match_confidence,NULL matched_at
+    FROM vk_broadcasts b
+    WHERE ((b.parsed_home_tri=? AND b.parsed_away_tri=?) OR (b.parsed_home_tri=? AND b.parsed_away_tri=?))
+      AND COALESCE(b.scheduled_at,b.published_at) IS NOT NULL
+      AND ABS(julianday(COALESCE(b.scheduled_at,b.published_at))-julianday(?))<=2.0
+      AND (b.duration_seconds IS NULL OR b.duration_seconds>=1800)
+      AND LOWER(COALESCE(b.title,'')) NOT LIKE '%хайлайт%'
+      AND LOWER(COALESCE(b.title,'')) NOT LIKE '%highlight%'
+      AND LOWER(COALESCE(b.title,'')) NOT LIKE '%обзор матча%'
+      AND LOWER(COALESCE(b.title,'')) NOT LIKE '%лучшие моменты%'
+      AND LOWER(COALESCE(b.title,'')) NOT LIKE '%best moment%'
+    ORDER BY ABS(julianday(COALESCE(b.scheduled_at,b.published_at))-julianday(?)) ASC,
+             COALESCE(b.duration_seconds,0) DESC,
+             b.updated_at DESC
+    LIMIT 1;
+  `).bind(home,away,away,home,start,start).first().catch(()=>null);
 }
 
 async function loadHistoricalOdds(db,game){
