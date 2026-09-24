@@ -80,18 +80,18 @@ async function playerRecommendation(env,id){
     const cards=await buildBettingInsights(env.DB,{
       ...game,game_pk:Number(game.game_pk),home_tri:up(game.home_tri),away_tri:up(game.away_tri)
     },{portfolio_limit:32}).catch(()=>[]);
-    const playerCards=cards.filter(x=>Number(x?.market?.player_id||x?.evidence?.player_id||0)===id||String(x?.market?.subject||"")===String(id));
-    const teamCards=cards.filter(x=>{
+    const isPlayerCard=x=>Number(x?.market?.player_id||x?.evidence?.player_id||0)===id||String(x?.market?.subject||"")===String(id);
+    const isOwnTeamCard=x=>{
       const m=up(x?.market?.subject||""),e=up(x?.evidence?.team_tri||x?.evidence?.team||"");
       return m===team||e===team;
-    });
-    const pool=playerCards.length?playerCards:teamCards;
-    pool.sort((a,b)=>Number(b?.air_score??b?.score??0)-Number(a?.air_score??a?.score??0));
+    };
+    const relevant=cards.filter(x=>isPlayerCard(x)||isOwnTeamCard(x));
+    const pool=(relevant.length?relevant:cards).slice().sort((a,b)=>Number(b?.air_score??b?.score??0)-Number(a?.air_score??a?.score??0));
     const best=pool[0];
-    if(!best)return json({ok:true,recommendation:null,reason:"no_matching_insight",game:{game_pk:Number(game.game_pk),scheduled_start_utc:game.scheduled_start_utc,home_tri:game.home_tri,away_tri:game.away_tri}});
+    if(!best)return json({ok:true,recommendation:null,reason:"no_insights_for_upcoming_game",game:{game_pk:Number(game.game_pk),scheduled_start_utc:game.scheduled_start_utc,home_tri:game.home_tri,away_tri:game.away_tri}});
     const market=best.market||{},score=Math.max(0,Math.min(100,Math.round(Number(best.air_score??best.score??0))));
     return json({ok:true,recommendation:{
-      scope:playerCards.length?"player":"team",score,
+      scope:isPlayerCard(best)?"player":"team",score,
       title:String(best.broadcast_title||best.title||best.value||"").trim(),
       subtitle:String(best.broadcast_subtitle||best.explanation||"").trim(),
       market:{type:market.type||null,label:market.label||null,subject:market.subject||null,side:market.side||null,line:market.line??null,odds:market.odds_is_demo===false?numOrNull(market.odds):null,deeplink:market.odds_is_demo===false?(market.deeplink||null):null,live:market.odds_is_demo===false},
