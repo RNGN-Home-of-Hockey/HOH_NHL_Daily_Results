@@ -106,6 +106,8 @@ function clockSeconds(v){if(v===null||v===undefined||v==="")return null;if(Numbe
 function pctValue(v){const n=firstNumber(v);if(n===null)return null;return n<=1?Math.round(n*1000)/10:Math.round(n*10)/10}
 function averageClock(rows,...keys){let sum=0,count=0;for(const row of rows||[]){for(const key of keys){const s=clockSeconds(row?.[key]);if(s!==null){sum+=s;count++;break}}}return count?Math.round(sum/count):null}
 function totalClock(rows,...keys){let sum=0,seen=false;for(const row of rows||[]){for(const key of keys){const s=clockSeconds(row?.[key]);if(s!==null){sum+=s;seen=true;break}}}return seen?sum:null}
+function perGame(value,games){const n=Number(value);return games>0&&Number.isFinite(n)?Math.round(n/games*100)/100:null}
+function hitPct(rows,test){const list=Array.isArray(rows)?rows:[];if(!list.length)return null;return Math.round(list.filter(test).length/list.length*1000)/10}
 function aggregatePlayer(rows,total,position){
   rows=Array.isArray(rows)?rows:[];total=total||{};const goalie=upper(position)==="G";
   if(goalie){
@@ -137,7 +139,19 @@ function aggregatePlayer(rows,total,position){
     hits:firstNumber(total.hits,sumPresent(rows,"hits")),
     blocked_shots:firstNumber(total.blockedShots,sumPresent(rows,"blockedShots","blocked_shots")),
     takeaways:firstNumber(total.takeaways,sumPresent(rows,"takeaways")),
-    giveaways:firstNumber(total.giveaways,sumPresent(rows,"giveaways"))
+    giveaways:firstNumber(total.giveaways,sumPresent(rows,"giveaways")),
+    goals_per_game:perGame(goals,games),
+    assists_per_game:perGame(assists,games),
+    points_per_game:perGame(points,games),
+    shots_per_game:perGame(shots,games),
+    hits_per_game:perGame(firstNumber(total.hits,sumPresent(rows,"hits")),games),
+    blocked_shots_per_game:perGame(firstNumber(total.blockedShots,sumPresent(rows,"blockedShots","blocked_shots")),games),
+    pim_per_game:perGame(firstNumber(total.pim,sumPresent(rows,"pim")),games),
+    power_play_points_per_game:perGame(firstNumber(total.powerPlayPoints,sumPresent(rows,"powerPlayPoints")),games),
+    goal_game_pct:hitPct(rows,x=>Number(x?.goals||0)>=1),
+    point_game_pct:hitPct(rows,x=>Number(x?.points||0)>=1),
+    multi_point_game_pct:hitPct(rows,x=>Number(x?.points||0)>=2),
+    three_shot_game_pct:hitPct(rows,x=>Number(x?.shots||0)>=3)
   };
 }
 function teamFromGameLog(rows){for(const g of rows||[]){const tri=upper(localized(g?.teamAbbrev)||g?.teamAbbrev||g?.teamTri||"");if(/^[A-Z]{3}$/.test(tri))return tri}return""}
