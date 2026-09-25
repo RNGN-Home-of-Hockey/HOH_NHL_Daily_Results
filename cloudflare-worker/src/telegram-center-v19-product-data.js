@@ -100,11 +100,98 @@ async function gameDetail(env, gamePk) {
       loadCanonicalWinline(env.DB,game),
       loadHistoricalOdds(env.DB,game),
     ]);
-    return json({ok:true,version:"V19",game:decorateGame(game),broadcast,winline,historical_odds:historicalOdds});
+    const videoFallback=!broadcast&&FINAL_STATES.has(up(game.game_state))
+      ? await loadOfficialNhlYoutubeHighlight(game).catch(()=>null)
+      : null;
+    return json({ok:true,version:"V19",game:decorateGame(game),broadcast,video_fallback:videoFallback,winline,historical_odds:historicalOdds});
   }catch(error){
     if(isMissingVkSchema(error))return json({ok:false,error:"vk_schema_not_applied",detail:errorText(error)},503);
     return json({ok:false,error:"game_detail_failed",detail:errorText(error)},503);
   }
+}
+
+const NHL_YOUTUBE_HANDLE="@NHL";
+
+async function loadOfficialNhlYoutubeHighlight(game){
+  const away=String(game?.away_name_en||game?.away_tri||"").trim();
+  const home=String(game?.home_name_en||game?.home_tri||"").trim();
+  const d=new Date(String(game?.scheduled_start_utc||""));
+  const date=Number.isNaN(d.getTime())?"":d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric",timeZone:"UTC"});
+  const query=[away,home,date,"highlights"].filter(Boolean).join(" ");
+  const searchUrl="https://www.youtube.com/"+NHL_YOUTUBE_HANDLE+"/search?query="+encodeURIComponent(query);
+  const fallback={
+    source_kind:"youtube_nhl_search",
+    broadcast_kind:"highlights",
+    match_method:"official_nhl_youtube_search_fallback",
+    match_confidence:0.5,
+    title:[away,home].filter(Boolean).join(" — ")+" · NHL highlights",
+    web_url:searchUrl,
+    app_url:searchUrl,
+    thumbnail_url:null,
+    channel_handle:NHL_YOUTUBE_HANDLE,
+  };
+  let html="";
+  try{
+    const r=await fetch(searchUrl,{
+      headers:{
+        "User-Agent":"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
+        "Accept-Language":"en-US,en;q=0.9",
+      },
+      redirect:"follow",
+    });
+    if(!r.ok)return fallback;
+    html=await r.text();
+  }catch{return fallback}
+  const candidates=parseNhlYoutubeCandidates(html);
+  if(!candidates.length)return fallback;
+  const tokens=teamVideoTokens(away).concat(teamVideoTokens(home));
+  let best=null,bestScore=-1;
+  for(const candidate of candidates){
+    const title=String(candidate.title||"").toLowerCase();
+    let score=0;
+    for(const token of tokens)if(title.includes(token))score+=2;
+    if(/highlight|recap|extended|condensed|game recap/.test(title))score+=4;
+    if(/shorts|short #|mic'd up|interview|press conference/.test(title))score-=4;
+    if(score>bestScore){best=candidate;bestScore=score}
+  }
+  if(!best||bestScore<4)return fallback;
+  return {
+    source_kind:"youtube_nhl",
+    broadcast_kind:"highlights",
+    match_method:"official_nhl_youtube_search",
+    match_confidence:Math.min(0.96,0.68+bestScore*0.025),
+    video_id:best.video_id,
+    title:best.title||fallback.title,
+    web_url:"https://www.youtube.com/watch?v="+best.video_id,
+    app_url:"https://www.youtube.com/watch?v="+best.video_id,
+    thumbnail_url:"https://i.ytimg.com/vi/"+best.video_id+"/hq720.jpg",
+    channel_handle:NHL_YOUTUBE_HANDLE,
+  };
+}
+function parseNhlYoutubeCandidates(html){
+  const source=String(html||""),out=[],seen=new Set(),re=/"videoId":"([A-Za-z0-9_-]{11})"/g;
+  let m;
+  while((m=re.exec(source))&&out.length<30){
+    const id=m[1];
+    if(seen.has(id))continue;
+    const chunk=source.slice(m.index,Math.min(source.length,m.index+2400));
+    const tm=/"title":\{"runs":\[\{"text":"((?:\\.|[^"\\])+)"/.exec(chunk)
+      || /"title":\{"simpleText":"((?:\\.|[^"\\])+)"/.exec(chunk);
+    const title=tm?decodeYoutubeText(tm[1]):"";
+    if(!title)continue;
+    seen.add(id);
+    out.push({video_id:id,title});
+  }
+  return out;
+}
+function decodeYoutubeText(value){
+  const s=String(value||"");
+  try{return JSON.parse('"'+s.replace(/"/g,'\\"')+'"')}catch{
+    return s.replace(/\\u0026/g,"&").replace(/\\u003d/g,"=").replace(/\\n/g," ").replace(/\\\"/g,'"').replace(/\\\\/g,"\\");
+  }
+}
+function teamVideoTokens(name){
+  return String(name||"").toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>=4&&!["hockey","club","the"].includes(x));
 }
 
 async function loadBroadcast(db,gamePk){
