@@ -95,7 +95,7 @@ jobs:
           const v21=await text('/telegram-app/v21.js');
           if(v21.includes("textContent='V21'"))throw new Error('V21 still stamps old version into UI');
 
-          const v19=await text('/telegram-app/v19.js');
+          // v19 already loaded above for match-media regression checks
           for(const x of ['v19LastGameRich','v19OddsMatch','v19TeamVk','TEAM_RU','mountPlayerTeamOdds','v19MetaSecond','Контракт 2026/27','finishType','v19ThumbTeams','Вся статистика игрока','ПЛЕЙ-ОФФ'])if(!v19.includes(x))throw new Error('V19 upgrade missing '+x);
           const v12=await text('/telegram-app/v12.js');
           for(const x of ['installSeasons','injectMedia','decoratePhotoAndHeader'])if(!v12.includes(x))throw new Error('V12 frontend missing '+x);
