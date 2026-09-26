@@ -1,5 +1,5 @@
 name: Verify V22 Center
-# V24.3.0 visual refresh verification
+# V24.4.0 rotating background + news refresh verification
 
 
 
@@ -49,11 +49,11 @@ jobs:
           async function text(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status);return t}
           async function json(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+t.slice(0,300));return JSON.parse(t)}
 
-          const shell=await text('/telegram-app-v24?build=24.3.0');
-          const oldUrlShell=await text('/telegram-app?build=24.3.0');
+          const shell=await text('/telegram-app-v24?build=24.4.0');
+          const oldUrlShell=await text('/telegram-app?build=24.4.0');
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('canonical shell marker missing');
           if(!oldUrlShell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('/telegram-app is not canonical V24');
-          for(const x of ['/telegram-app/v21.js?build=24.3.0','/telegram-app/v22.js?build=24.3.0','/telegram-app/v23-player.js?build=24.3.0','/telegram-app/v24-visual.js?build=24.3.0'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
+          for(const x of ['/telegram-app/v21.js?build=24.4.0','/telegram-app/v22.js?build=24.4.0','/telegram-app/v23-player.js?build=24.4.0','/telegram-app/v24-visual.js?build=24.4.0'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
           for(const x of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js']){
             if(shell.includes(x))throw new Error('legacy player script present in canonical shell '+x);
             if(oldUrlShell.includes(x))throw new Error('legacy player script present at old URL '+x);
@@ -67,8 +67,8 @@ jobs:
           const v22=await text('/telegram-app/v22.js');
           for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers','data-v15-player',"top='4px'"])if(!v22.includes(x))throw new Error('V22 missing '+x);
           const visual=await text('/telegram-app/v24-visual.js');
-          for(const x of ['goalie-bg.webp','--hoh-glass-light','backdrop-filter','V24.2 complete visual audit','V24.3 score/odds/Winline regression fixes','white-space:nowrap','min-width:max-content','v19Cal','v20News','v22ProfileCard','v23Audio','right:74px','z-index:7','width:18px','font-size:10px'])if(!visual.includes(x))throw new Error('V24.3 visual layer missing '+x);
-          const bg=await raw('/telegram-app/goalie-bg.webp?build=24.3.0');
+          for(const x of ['goalie-bg.webp','--hoh-glass-light','backdrop-filter','V24.2 complete visual audit','V24.3 score/odds/Winline regression fixes','V24.4 rotating NHL player background + fixed Winline rendering','--hoh-bg-player','/api/telegram-center-v17/players?limit=60','white-space:nowrap','min-width:max-content','v19Cal','v20News','v22ProfileCard','v23Audio','right:74px','z-index:7','width:18px','font-size:10px'])if(!visual.includes(x))throw new Error('V24.4 visual layer missing '+x);
+          const bg=await raw('/telegram-app/goalie-bg.webp?build=24.4.0');
           if(!bg.r.ok)throw new Error('goalie background HTTP '+bg.r.status);
           if(!String(bg.r.headers.get('content-type')||'').includes('image/webp'))throw new Error('goalie background content-type '+bg.r.headers.get('content-type'));
           const v15core=await text('/telegram-app/v15-core.js');
@@ -146,18 +146,22 @@ jobs:
           }
 
           const v20=await text('/telegram-app/v20.js');
-          for(const x of ['limit=15','v20NewsExtra','v20More','v20CommentAvatar','width:22px!important','HOHEnsureCommentIdentity','.v20NewsExtra{display:none}','source_badge'])if(!v20.includes(x))throw new Error('V20 upgrade missing '+x);
+          for(const x of ['limit=15','v20NewsExtra','v20More','v20CommentAvatar','width:22px!important','HOHEnsureCommentIdentity','.v20NewsExtra{display:none}','source_badge','HOME_NEWS_REFRESH_MS','setInterval','visibilitychange','mountHomeNews(true)'])if(!v20.includes(x))throw new Error('V20 upgrade missing '+x);
           if(v20.includes("H.openPlayer=async function(id){await oldPlayer(id);await mountPlayerNews"))throw new Error('player news still mounted');
 
-          const news=await json('/api/telegram-center-v20/news/home?limit=15');
+          const news=await json('/api/telegram-center-v20/news/home?limit=15&v='+Date.now());
+          if(Number(news.refresh_interval_ms)!==600000)throw new Error('home news refresh interval mismatch '+JSON.stringify(news));
           if((news.news||[]).length<15)throw new Error('home news <15');
+          const newsStatusFresh=await json('/api/telegram-center-v20/news/status');
+          const lastSyncAt=Date.parse(String(newsStatusFresh.last_home_sync?.at||''));
+          if(!Number.isFinite(lastSyncAt)||Date.now()-lastSyncAt>20*60*1000)throw new Error('home news sync stale '+JSON.stringify(newsStatusFresh.last_home_sync));
           const ovi=await json('/api/telegram-center-v20/players/8471214/news?limit=100');
           if(!(ovi.news||[]).length)throw new Error('exact Ovechkin news empty');
 
           const unauth=await raw('/api/telegram-center-v22/me');
           if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
           const centerStatus=await json('/api/telegram/center/status');
-          if(String(centerStatus.mini_app_url||'')!=='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.3.0')throw new Error('Center mini app URL is not exact current build '+centerStatus.mini_app_url);
+          if(String(centerStatus.mini_app_url||'')!=='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.4.0')throw new Error('Center mini app URL is not exact current build '+centerStatus.mini_app_url);
           if(String(centerStatus.menu_button?.value?.web_app?.url||'')!==centerStatus.mini_app_url)throw new Error('Telegram menu button build mismatch '+JSON.stringify(centerStatus.menu_button));
           if(centerStatus.menu_button_matches_build!==true)throw new Error('Telegram menu build contract false '+JSON.stringify(centerStatus));
 
