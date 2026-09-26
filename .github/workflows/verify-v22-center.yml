@@ -88,6 +88,10 @@ jobs:
             if(!detail.broadcast&&!detail.video_fallback)throw new Error('completed game has no video fallback '+completedNoVk.game_pk);
             if(detail.video_fallback&&!String(detail.video_fallback.web_url||'').includes('youtube.com/'))throw new Error('fallback is not NHL YouTube '+JSON.stringify(detail.video_fallback));
           }
+          const bgPlayers=await json('/api/telegram-center-v17/players?limit=60&background=1&v='+Date.now());
+          const bgPool=(bgPlayers.players||[]).filter(p=>p?.headshot&&p?.current_team_tri).sort((a,b)=>Number(b.salary_aav||0)-Number(a.salary_aav||0)).slice(0,30);
+          if(bgPool.length<20)throw new Error('background player pool too small '+bgPool.length);
+          console.log('BACKGROUND_POOL_OK',bgPool.length,bgPool.slice(0,3).map(x=>x.full_name_en).join(', '));
           const v23=await text('/telegram-app/v23-player.js');
           for(const x of ['lockCanonicalPlayer','capturePlayerClick','blockedLegacyOpenPlayer','HOH_CANONICAL_PLAYER_UI','COUNTRY_GRADIENT','rankVisual','v23RankLeagueTop','v23RecOdds','data-v23-rec-market','Все показатели','goals_per_60','shot_attempts_per_60','v23LastCover','grid-template-columns:repeat(4,minmax(0,1fr))','Вся статистика игрока','v23Country','Контракт 2026/27','renderFullStats','power_play_points'])if(!v23.includes(x))throw new Error('V23 player UI missing '+x);
           if(v23.includes('По умолчанию открывается последний сезон'))throw new Error('player profile still contains explanatory season note');
@@ -152,6 +156,9 @@ jobs:
           const news=await json('/api/telegram-center-v20/news/home?limit=15&v='+Date.now());
           if(Number(news.refresh_interval_ms)!==600000)throw new Error('home news refresh interval mismatch '+JSON.stringify(news));
           if((news.news||[]).length<15)throw new Error('home news <15');
+          const latestNewsMs=Math.max(...(news.news||[]).map(x=>Date.parse(String(x.published_at||x.created_at||''))).filter(Number.isFinite));
+          if(!Number.isFinite(latestNewsMs)||Date.now()-latestNewsMs>30*60*60*1000)throw new Error('home news content stale latest='+String(news.news?.[0]?.published_at||news.news?.[0]?.created_at)+' title='+String(news.news?.[0]?.title||''));
+          console.log('V20_LATEST_NEWS',new Date(latestNewsMs).toISOString(),String(news.news?.[0]?.title||''));
           const newsStatusFresh=await json('/api/telegram-center-v20/news/status');
           const lastSyncAt=Date.parse(String(newsStatusFresh.last_home_sync?.at||''));
           if(!Number.isFinite(lastSyncAt)||Date.now()-lastSyncAt>20*60*1000)throw new Error('home news sync stale '+JSON.stringify(newsStatusFresh.last_home_sync));
