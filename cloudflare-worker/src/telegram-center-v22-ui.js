@@ -115,7 +115,7 @@ function normalizePlayers(){
 function version(){document.querySelectorAll('.v15Version,.v19Version').forEach(x=>{if(x.textContent!=='V22')x.textContent='V22'})}
 
 css();placeEye();mountMine();normalizePlayers();version();H.decorateHomeOdds?.();
-me(true).then(d=>{const p=d?.profile,stored=localStorage.getItem('hoh-center-theme');if(!stored)H.setTheme?.('light');else if(p?.exists&&p.theme_mode&&stored!==p.theme_mode)H.setTheme?.(p.theme_mode);if(p?.exists)window.HOHSetNoSpoilers?.(Boolean(p.no_spoilers));syncSettingsButton()}).catch(()=>{});
+me(true).then(d=>{const p=d?.profile,stored=localStorage.getItem('hoh-center-theme');if(!stored)H.setTheme?.('light');if(p?.exists)window.HOHSetNoSpoilers?.(Boolean(p.no_spoilers));syncSettingsButton()}).catch(()=>{});
 window.addEventListener('hoh-spoilers-change',async e=>{const enabled=Boolean(e.detail?.enabled);try{lastProfile=await H.api(API+'/me',{method:'PUT',body:JSON.stringify({no_spoilers:enabled})})}catch{}});
 const obs=new MutationObserver(()=>{requestAnimationFrame(()=>{placeEye();mountMine();normalizePlayers();version();H.decorateHomeOdds?.();syncSettingsButton()})});
 obs.observe(document.documentElement,{childList:true,subtree:true});
