@@ -156,7 +156,7 @@ jobs:
           for (const needle of ['v23RecBrandText','v23RecTeam','v23RecTrend','Ставка WINLINE','font:italic 950',"a.join('<br>')"]) if (!v23ui.includes(needle)) throw new Error('V23 player contract missing '+needle);
           if (v23ui.includes('/broadcast/winline-logo.png?asset=canonical-1') || v23ui.includes('<img class="v23RecBrand"')) throw new Error('V23 Winline image logo leaked back into player card');
           const v24ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v24-visual.js'), {}, '/telegram-app/v24-visual.js')).text();
-          for (const needle of ['V24.6 stable hockey silhouette + no image Winline logo','top:calc(50% - 6px)','background-size:auto,auto 78%','object-fit:contain']) if (!v24ui.includes(needle)) throw new Error('V24 visual contract missing '+needle);
+          for (const needle of ['V24.6 stable hockey silhouette + no image Winline logo','top:calc(50% - 6px)','background-size:auto,auto 78%','display:none!important']) if (!v24ui.includes(needle)) throw new Error('V24 visual contract missing '+needle);
           if (v24ui.includes('--hoh-bg-player') || v24ui.includes('background=1&v=')) throw new Error('V24 must not dynamically zoom player headshots');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v19.js'), {}, '/telegram-app/v19.js');
           const v19 = await r.text();
