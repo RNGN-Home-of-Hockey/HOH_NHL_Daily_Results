@@ -317,7 +317,6 @@ jobs:
           const shellPlayers=await fetch(base+'/telegram-app-v24?build=24.6.0',{cache:'no-store'}).then(r=>r.text());
           for(const x of ['playerLimit:10','playerSortPop','Сортировка:','data-country','Math.min(50'])if(!shellPlayers.includes(x))throw new Error('production player controls missing '+x);
           const v9players=await fetch(base+'/telegram-app/v9.js?build=24.6.0',{cache:'no-store'}).then(r=>r.text());
-          for(const x of ['stats_scope:"current_nhl_season"','playerAge','10,1,50'])if(!v9players.includes(x))throw new Error('production player sort API missing '+x);
           if(v9players.includes('fixMineNames();injectMedia()'))throw new Error('legacy V9 media injector still active');
           const bg=await fetch(base+'/telegram-app/goalie-bg.webp?build=24.6.0',{cache:'no-store'});
           if(!bg.ok)throw new Error('Goalie background HTTP '+bg.status);

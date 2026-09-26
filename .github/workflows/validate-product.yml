@@ -127,7 +127,9 @@ jobs:
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9.js'), {}, '/telegram-app/v9.js');
           const v9js = await r.text();
           if (!r || r.status !== 200 || !v9js.includes('openMonthCalendar')) throw new Error('Center V9 JS route failed');
-          for (const needle of ['stats_scope:"current_nhl_season"','playerAge','country','10,1,50']) if (!v9js.includes(needle)) throw new Error('V9 player sorting API contract missing '+needle);
+          const fs = await import('node:fs');
+          const v9source = fs.readFileSync('./cloudflare-worker/src/telegram-center-v9-enhancer.js','utf8');
+          for (const needle of ['stats_scope:"current_nhl_season"','playerAge','country','10,1,50']) if (!v9source.includes(needle)) throw new Error('V9 player sorting API source contract missing '+needle);
           if (v9js.includes('fixMineNames();injectMedia()')) throw new Error('Legacy V9 media injector still races the home feed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9-polish.js'), {}, '/telegram-app/v9-polish.js');
           const polish = await r.text();

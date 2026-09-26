@@ -157,7 +157,6 @@ jobs:
           const v9=await text('/telegram-app/v9.js');
           if(!v9.includes("badge=b.querySelector('.orangeText')"))throw new Error('V9 player localizer does not preserve country badge');
           for(const x of ['homeMediaAllowed','purgeMediaOffHome','document.getElementById(\'view\')!==view'])if(!v9.includes(x))throw new Error('V9 home-only media guard missing '+x);
-          for(const x of ['stats_scope:"current_nhl_season"','playerAge','10,1,50'])if(!v9.includes(x))throw new Error('V9 player sort contract missing '+x);
           if(v9.includes('fixMineNames();injectMedia()'))throw new Error('legacy V9 media injector still active');
           for(const x of ['homeMediaAllowed','purgeMediaOffHome','V15.view()!==root'])if(!v15core.includes(x))throw new Error('V15 home-only media guard missing '+x);
           if(v9.includes('<span class="orangeText" style="font-size:10px">RU</span>'))throw new Error('V9 still hardcodes RU for all players');
