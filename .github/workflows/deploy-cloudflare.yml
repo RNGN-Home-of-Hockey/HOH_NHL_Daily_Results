@@ -148,7 +148,7 @@ jobs:
             r=await fetch(url,{headers:{accept:'application/json'},cache:'no-store'});
             d=await r.json().catch(()=>({}));
             console.log('TELEGRAM_CENTER_STATUS_ATTEMPT',i+1,JSON.stringify(d));
-            if(r.ok&&d.runtime_marker==='telegram-center-2026-09-24-v24.2')break;
+            if(r.ok&&d.ok&&d.runtime_marker==='telegram-center-2026-09-24-v24.2'&&d.menu_button_matches_build===true)break;
             await new Promise(res=>setTimeout(res,2000));
           }
           console.log('TELEGRAM_CENTER_STATUS',JSON.stringify(d));
