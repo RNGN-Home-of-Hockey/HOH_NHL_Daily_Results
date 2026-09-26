@@ -108,10 +108,11 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          for (const needle of ['NHL CENTER','Center подключён','V24.5.0','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v19.js','/telegram-app/v20.js','/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js']) {
+          for (const needle of ['NHL CENTER','Center подключён','V24.6.0','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v19.js','/telegram-app/v20.js','/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js']) {
             if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center shell missing: '+needle);
           }
           if (!mini.includes('data-tab="follows">Мои</button>')) throw new Error('Center subscription tab contract missing');
+          for (const needle of ['playerLimit:10','playerSortPop','Сортировка:','data-country','Math.min(50']) if (!mini.includes(needle)) throw new Error('Center player filter contract missing '+needle);
           if (mini.includes('<span class="v8">V8</span>')) throw new Error('Telegram Center leaked stale V8 build badge');
           if (!String(r.headers.get('cache-control') || '').includes('no-store')) throw new Error('Telegram Center shell must be no-store');
           if (mini.includes('<script src="/telegram-app/app.js"></script>')) throw new Error('Telegram Center must not depend on cached external app.js');
@@ -124,7 +125,10 @@ jobs:
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9.css'), {}, '/telegram-app/v9.css');
           if (!r || r.status !== 200 || !(await r.text()).includes('.monthModal')) throw new Error('Center V9 CSS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9.js'), {}, '/telegram-app/v9.js');
-          if (!r || r.status !== 200 || !(await r.text()).includes('openMonthCalendar')) throw new Error('Center V9 JS route failed');
+          const v9js = await r.text();
+          if (!r || r.status !== 200 || !v9js.includes('openMonthCalendar')) throw new Error('Center V9 JS route failed');
+          for (const needle of ['stats_scope:"current_nhl_season"','playerAge','country','10,1,50']) if (!v9js.includes(needle)) throw new Error('V9 player sorting API contract missing '+needle);
+          if (v9js.includes('fixMineNames();injectMedia()')) throw new Error('Legacy V9 media injector still races the home feed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9-polish.js'), {}, '/telegram-app/v9-polish.js');
           const polish = await r.text();
           if (!r || r.status !== 200 || !polish.includes('fixMine') || !polish.includes('fixProfile')) throw new Error('Center V9 polish route failed');
@@ -143,23 +147,24 @@ jobs:
           if (media.items.filter(x=>x.kind==='short').length !== 2 || media.items.filter(x=>x.kind==='news').length !== 1) throw new Error('Center V12 media mix failed');
           if (!media.items.every(x=>String(x.url||'').startsWith('https://www.youtube.com/') && String(x.thumb||'').startsWith('https://'))) throw new Error('Center V12 media links failed');
           const v15core = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v15-core.js'), {}, '/telegram-app/v15-core.js')).text();
-          if (!v15core.includes('/broadcast/winline-logo.png?asset=canonical-1') || !v15core.includes('<img class="v15WinlineLogo"')) throw new Error('V15 immutable Winline asset contract missing');
+          if (!v15core.includes('v15WinlineBrand') || v15core.includes('/broadcast/winline-logo.png?asset=canonical-1') || v15core.includes('<img class="v15WinlineLogo"')) throw new Error('V15 Winline must render as text, not a separate image');
           const v22ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v22.js'), {}, '/telegram-app/v22.js')).text();
           for (const needle of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','data-tab="follows"','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds']) if (!v22ui.includes(needle)) throw new Error('V22 navigation/settings contract missing '+needle);
           const v23ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v23-player.js'), {}, '/telegram-app/v23-player.js')).text();
-          for (const needle of ['/broadcast/winline-logo.png?asset=canonical-1','v23RecTeam','v23RecTrend','Ставка WINLINE','font:italic 950',"a.join('<br>')"]) if (!v23ui.includes(needle)) throw new Error('V23 player contract missing '+needle);
+          for (const needle of ['v23RecBrandText','v23RecTeam','v23RecTrend','Ставка WINLINE','font:italic 950',"a.join('<br>')"]) if (!v23ui.includes(needle)) throw new Error('V23 player contract missing '+needle);
+          if (v23ui.includes('/broadcast/winline-logo.png?asset=canonical-1') || v23ui.includes('<img class="v23RecBrand"')) throw new Error('V23 Winline image logo leaked back into player card');
           const v24ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v24-visual.js'), {}, '/telegram-app/v24-visual.js')).text();
-          for (const needle of ['V24.5 stable hockey silhouette + immutable Winline asset','top:calc(50% - 6px)','background-size:auto,auto 78%','object-fit:contain']) if (!v24ui.includes(needle)) throw new Error('V24 visual contract missing '+needle);
+          for (const needle of ['V24.6 stable hockey silhouette + no image Winline logo','top:calc(50% - 6px)','background-size:auto,auto 78%','object-fit:contain']) if (!v24ui.includes(needle)) throw new Error('V24 visual contract missing '+needle);
           if (v24ui.includes('--hoh-bg-player') || v24ui.includes('background=1&v=')) throw new Error('V24 must not dynamically zoom player headshots');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v19.js'), {}, '/telegram-app/v19.js');
           const v19 = await r.text();
-          for (const needle of ['openBroadcasts','v19Audio','aspect-ratio:16/9','historical_pregame','v19Country']) {
+          for (const needle of ['openBroadcasts','v19Audio','aspect-ratio:16/9','historical_pregame','v19Country','v19WinlineBrand','decorateHomeOdds']) {
             if (!r || r.status !== 200 || !v19.includes(needle)) throw new Error('Center V19 UI missing: '+needle);
           }
           if (v19.includes('new MutationObserver')) throw new Error('V19 authoritative UI must not add a MutationObserver layer');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v20.js'), {}, '/telegram-app/v20.js');
           const v20 = await r.text();
-          for (const needle of ['СВЕЖЕЕ В НХЛ','v20PlayerNews','v20CommentSend','/api/telegram-center-v20']) {
+          for (const needle of ['СВЕЖЕЕ В НХЛ','v20PlayerNews','v20CommentSend','/api/telegram-center-v20','v25HomeStable','v25FeaturedGame','Смотреть в VK Видео','#gameList{display:none']) {
             if (!r || r.status !== 200 || !v20.includes(needle)) throw new Error('Center V20 UI missing: '+needle);
           }
           if (v20.includes('sports.ru/')) throw new Error('V20 UI must not expose Sports.ru links');
