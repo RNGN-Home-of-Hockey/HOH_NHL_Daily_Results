@@ -251,9 +251,15 @@ async function centerStatus(request, env) {
       deliverySetup = deliveryMode === "polling"
         ? await ensureTelegramCenterPolling(env, { force: true })
         : await ensureTelegramCenterWebhook(env, { force: true });
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await new Promise((resolve) => setTimeout(resolve, 900));
       await readTelegramState();
       menuUrl = String(menuButton?.value?.web_app?.url || "");
+      if (menuUrl !== expectedMiniApp && deliveryMode === "polling") {
+        deliverySetup = await ensureTelegramCenterPolling(env, { force: true });
+        await new Promise((resolve) => setTimeout(resolve, 1400));
+        await readTelegramState();
+        menuUrl = String(menuButton?.value?.web_app?.url || "");
+      }
     }
   }
 
@@ -439,6 +445,10 @@ export async function ensureTelegramCenterPolling(env, { force = false } = {}) {
       web_app: { url: miniApp },
     },
   };
+  if (force) {
+    await telegramRequest(env, "setChatMenuButton", { menu_button: { type: "commands" } });
+    await new Promise((resolve) => setTimeout(resolve, 450));
+  }
   const [deleteWebhook, commandsResult, menuButtonResult] = await Promise.all([
     telegramRequest(env, "deleteWebhook", { drop_pending_updates: false }),
     telegramRequest(env, "setMyCommands", {
@@ -456,11 +466,11 @@ export async function ensureTelegramCenterPolling(env, { force = false } = {}) {
 
   let menuCheck = null;
   let menuButtonUrl = "";
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     if (attempt > 0) {
       await telegramRequest(env, "setChatMenuButton", menuPayload);
     }
-    await new Promise((resolve) => setTimeout(resolve, 250 + attempt * 150));
+    await new Promise((resolve) => setTimeout(resolve, 600 + attempt * 300));
     menuCheck = await telegramRequest(env, "getChatMenuButton", {});
     menuButtonUrl = menuCheck.ok ? String(menuCheck.response?.result?.web_app?.url || "") : "";
     if (menuButtonUrl === miniApp) break;
