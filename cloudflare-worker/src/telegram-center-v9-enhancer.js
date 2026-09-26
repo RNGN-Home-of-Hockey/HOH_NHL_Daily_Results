@@ -48,49 +48,53 @@ async function playersBySalary(request, env) {
   if (!env.DB) return json({ok:false,error:"missing_d1_binding"},503);
   const u = new URL(request.url);
   const team = upper(u.searchParams.get("team") || "");
+  const country = upper(u.searchParams.get("country") || "");
   const q = String(u.searchParams.get("q") || "").trim();
-  const limit = clampInt(u.searchParams.get("limit"),160,1,250);
+  const limit = clampInt(u.searchParams.get("limit"),10,1,50);
   const sort = String(u.searchParams.get("sort") || "salary").trim().toLowerCase();
+  const season=currentSeasonId();
+  const allowed=new Set(["salary","points","goals","assists","pim","shots","hits","blocks","height","weight","age","followers"]);
+  const sortKey=allowed.has(sort)?sort:"salary";
   try {
     const r = await env.DB.prepare(`
       SELECT p.player_id,p.full_name_en,COALESCE(m.full_name_ru,p.full_name_ru) full_name_ru,
-             p.current_team_tri,p.position_code,p.sweater_number,m.primary_country_code,m.birth_date,
-             COALESCE(s.followers,0) follower_count
+             p.current_team_tri,p.position_code,p.sweater_number,m.primary_country_code,m.birth_date,m.height_cm,m.weight_kg,
+             COALESCE(s.followers,0) follower_count,
+             COALESCE(st.games_played,0) games_played,COALESCE(st.goals,0) goals,COALESCE(st.assists,0) assists,
+             COALESCE(st.points,0) points,COALESCE(st.shots,0) shots,COALESCE(st.hits,0) hits,
+             COALESCE(st.blocked_shots,0) blocked_shots,COALESCE(st.pim,0) pim
       FROM players p
       LEFT JOIN player_profile_meta m ON m.player_id=p.player_id
+      LEFT JOIN (SELECT subject_key,COUNT(*) followers FROM subscriptions WHERE subject_type='player' GROUP BY subject_key) s
+        ON s.subject_key=CAST(p.player_id AS TEXT)
       LEFT JOIN (
-        SELECT subject_key,COUNT(*) followers
-        FROM subscriptions
-        WHERE subject_type='player'
-        GROUP BY subject_key
-      ) s ON s.subject_key=CAST(p.player_id AS TEXT)
+        SELECT pgs.player_id,COUNT(DISTINCT pgs.game_pk) games_played,SUM(COALESCE(pgs.goals,0)) goals,
+               SUM(COALESCE(pgs.assists,0)) assists,SUM(COALESCE(pgs.points,0)) points,SUM(COALESCE(pgs.shots,0)) shots,
+               SUM(COALESCE(pgs.hits,0)) hits,SUM(COALESCE(pgs.blocked_shots,0)) blocked_shots,SUM(COALESCE(pgs.pim,0)) pim
+        FROM player_game_stats pgs JOIN games g ON g.game_pk=pgs.game_pk
+        WHERE g.season_id=? AND g.game_type IN (1,2,3)
+        GROUP BY pgs.player_id
+      ) st ON st.player_id=p.player_id
       WHERE COALESCE(p.active,1)=1
         AND (?='' OR p.current_team_tri=?)
+        AND (?='' OR COALESCE(m.primary_country_code,'')=?)
         AND (?='' OR p.full_name_en LIKE '%'||?||'%' OR COALESCE(m.full_name_ru,p.full_name_ru,'') LIKE '%'||?||'%');
-    `).bind(team,team,q,q,q).all();
-    const season=currentSeasonId();
+    `).bind(season,team,team,country,country,q,q,q).all();
     const salaries=salaryCache?.players||{};
     const rows=(r.results||[]).map(p=>{
       const id=String(p.player_id),salary=salaries[id]||null;
-      return {
-        ...p,
-        full_name_ru:p.full_name_ru||fullNames?.[id]||null,
-        photo:playerPhoto(p.player_id,p.current_team_tri,season),
-        salary_aav:Number(salary?.aav||salary?.cap_hit||0)||null,
-        salary_cap_hit:Number(salary?.cap_hit||salary?.aav||0)||null,
-        salary_source_url:salary?.source_url||null,
-        follower_count:Number(p.follower_count||0),
-      };
+      return {...p,full_name_ru:p.full_name_ru||fullNames?.[id]||null,photo:playerPhoto(p.player_id,p.current_team_tri,season),
+        salary_aav:Number(salary?.aav||salary?.cap_hit||0)||null,salary_cap_hit:Number(salary?.cap_hit||salary?.aav||0)||null,
+        salary_source_url:salary?.source_url||null,follower_count:Number(p.follower_count||0),age:playerAge(p.birth_date)};
     });
-    rows.sort((a,b)=>{
-      if(sort==="followers") return b.follower_count-a.follower_count || (b.salary_aav||0)-(a.salary_aav||0) || playerName(a).localeCompare(playerName(b),"ru");
-      return (b.salary_aav||0)-(a.salary_aav||0) || b.follower_count-a.follower_count || playerName(a).localeCompare(playerName(b),"ru");
-    });
-    return json({ok:true,season,sort,players:rows.slice(0,limit),salary_source:salaryCache?.source||"PuckPedia",salary_season:salaryCache?.season||"2026-27"});
+    const val=(p,k)=>{if(k==="salary")return Number(p.salary_aav)||0;if(k==="followers")return Number(p.follower_count)||0;if(k==="height")return Number(p.height_cm)||0;if(k==="weight")return Number(p.weight_kg)||0;if(k==="age")return Number(p.age)||0;if(k==="blocks")return Number(p.blocked_shots)||0;return Number(p[k])||0};
+    rows.sort((a,b)=>val(b,sortKey)-val(a,sortKey)||(Number(b.salary_aav)||0)-(Number(a.salary_aav)||0)||playerName(a).localeCompare(playerName(b),"ru"));
+    return json({ok:true,season,sort:sortKey,country,limit,total:rows.length,players:rows.slice(0,limit),salary_source:salaryCache?.source||"PuckPedia",salary_season:salaryCache?.season||"2026-27",stats_scope:"current_nhl_season"});
   } catch (error) {
     return json({ok:false,error:"player_list_failed",detail:errorText(error)},503);
   }
 }
+function playerAge(v){if(!v)return null;const d=new Date(String(v)+"T00:00:00Z"),z=new Date();if(Number.isNaN(d.getTime()))return null;let a=z.getUTCFullYear()-d.getUTCFullYear();const m=z.getUTCMonth()-d.getUTCMonth();if(m<0||(m===0&&z.getUTCDate()<d.getUTCDate()))a--;return a}
 
 async function calendarForMonth(request, env) {
   const month = String(new URL(request.url).searchParams.get("month") || "").trim();
@@ -274,7 +278,7 @@ function installCalendarButton(){if(currentTab()!=='games'||document.querySelect
 async function openMonthCalendar(){if(calendarBusy)return;calendarBusy=true;try{const date=(document.querySelector('#view .dateBox')?.textContent||new Date().toISOString().slice(0,10)).trim();const month=date.slice(0,7);const d=await getJson(V9+'/calendar?month='+month);const first=new Date(month+'-01T12:00:00');const shift=(first.getDay()+6)%7;const cells=[];for(let i=0;i<shift;i++)cells.push('<div></div>');const today=new Date();const todayKey=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');for(let day=1;day<=d.days;day++){const key=month+'-'+String(day).padStart(2,'0'),count=Number(d.counts?.[key]||0);cells.push('<button class="dayCell '+(count?'has ':'')+(key===todayKey?'today':'')+'" data-day="'+key+'"><span class="dayNum">'+day+'</span><span class="dayCount">'+(count?count+' матч.':'—')+'</span></button>')}const wrap=document.createElement('div');wrap.className='monthModal';wrap.id='monthModal';wrap.innerHTML='<div class="monthCard"><div class="monthHead"><b>'+month+'</b><button class="monthClose">×</button></div><div class="weekdayGrid">'+['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(x=>'<div class="weekday">'+x+'</div>').join('')+'</div><div class="dayGrid">'+cells.join('')+'</div><div class="calendarHint">Число под датой — количество матчей НХЛ в этот день</div></div>';document.body.appendChild(wrap);wrap.querySelector('.monthClose').onclick=()=>wrap.remove();wrap.querySelectorAll('[data-day]').forEach(b=>b.onclick=async()=>{const target=b.dataset.day;wrap.remove();await jumpToDate(target)})}catch(e){alert('Календарь: '+(e.message||e))}finally{calendarBusy=false}}
 async function jumpToDate(target){let guard=0;while(guard++<40){const box=document.querySelector('#view .dateBox');if(!box)return;const cur=(box.textContent||'').trim();if(cur===target)return;const dir=cur<target?'next':'prev';const btn=document.getElementById(dir);if(!btn)return;btn.click();let n=0;while(n++<30){await wait(80);const now=(document.querySelector('#view .dateBox')?.textContent||'').trim();if(now!==cur)break}}}
 async function injectMedia(){purgeMediaOffHome();if(mediaLoaded||!homeMediaAllowed())return;const view=document.getElementById('view');if(!view||view.querySelector('.mediaShelf,.v12Media,.v15Media'))return;try{const d=await getJson(V9+'/media');if(!homeMediaAllowed()||document.getElementById('view')!==view)return;if(!d.configured||!Array.isArray(d.items)||d.items.length<3)return;mediaLoaded=true;const shelf=document.createElement('section');shelf.className='mediaShelf';shelf.innerHTML=d.items.slice(0,3).map(x=>'<a class="mediaCard '+(x.kind==='news'?'news':'')+'" href="'+esc(x.url)+'" target="_blank" rel="noopener"><img src="'+esc(x.thumb||'')+'" alt=""><span class="mediaPlay">▶</span><div class="mediaMeta"><div class="mediaType">'+(x.kind==='news'?'HOH NEWS':'SHORTS')+'</div><div class="mediaTitle">'+esc(x.title)+'</div></div></a>').join('');if(!homeMediaAllowed()||document.getElementById('view')!==view)return;const toolbar=view.querySelector('.toolbar');if(toolbar)view.insertBefore(shelf,toolbar);else view.prepend(shelf)}catch{}}
-function run(){purgeMediaOffHome();decorateMetrics();installCalendarButton();localizeVisiblePlayers();decoratePlayerSalaries();fixMineNames();injectMedia()}
+function run(){purgeMediaOffHome();decorateMetrics();installCalendarButton();localizeVisiblePlayers();decoratePlayerSalaries();fixMineNames()}
 let timer=null;const obs=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(run,35)});obs.observe(document.documentElement,{subtree:true,childList:true});
 document.addEventListener('click',()=>setTimeout(run,80),true);run();
 })();`;

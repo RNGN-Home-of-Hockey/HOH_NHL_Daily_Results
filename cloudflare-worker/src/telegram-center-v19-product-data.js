@@ -12,6 +12,7 @@ export async function handleTelegramCenterV19ProductData(request, env, path) {
 
   if (path === `${API}/status`) return productStatus(env);
   if (path === `${API}/broadcasts`) return broadcasts(request, env);
+  if (path === `${API}/featured`) return featuredGame(request, env);
   const game = new RegExp(`^${API}/games/(\\d+)$`).exec(path);
   if (game) return gameDetail(env, Number(game[1]));
   return json({ ok:false, error:"not_found" }, 404);
@@ -80,6 +81,48 @@ async function broadcasts(request, env) {
     if(isMissingVkSchema(error))return json({ok:false,error:"vk_schema_not_applied",detail:errorText(error)},503);
     return json({ok:false,error:"broadcast_archive_failed",detail:errorText(error)},503);
   }
+}
+
+async function featuredGame(request,env){
+  const u=new URL(request.url),date=cleanDate(u.searchParams.get("date")||"");
+  if(!date)return json({ok:false,error:"invalid_date"},400);
+  try{
+    const rows=await env.DB.prepare(`
+      SELECT date(datetime(g.scheduled_start_utc,'-8 hours')) calendar_date,
+             g.game_pk,g.season_id,g.game_type,g.scheduled_start_utc,g.game_state,g.home_tri,g.away_tri,g.home_score,g.away_score,g.period_type,g.venue_name,
+             ht.name_en home_name_en,ht.name_ru home_name_ru,ht.logo_url home_logo,
+             at.name_en away_name_en,at.name_ru away_name_ru,at.logo_url away_logo,
+             b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status
+      FROM games g
+      LEFT JOIN teams ht ON ht.tri_code=g.home_tri LEFT JOIN teams at ON at.tri_code=g.away_tri
+      LEFT JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk LEFT JOIN vk_broadcasts b ON b.source_key=m.source_key
+      WHERE date(datetime(g.scheduled_start_utc,'-8 hours'))=? AND g.game_type IN (1,2,3)
+      ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC;
+    `).bind(date).all();
+    const games=(rows.results||[]).map(x=>({calendar_date:x.calendar_date,game_pk:Number(x.game_pk),game_type:Number(x.game_type),scheduled_start_utc:x.scheduled_start_utc,game_state:x.game_state,home_score:x.home_score,away_score:x.away_score,period_type:x.period_type,venue_name:x.venue_name,
+      home:{tri:x.home_tri,name_ru:x.home_name_ru,name_en:x.home_name_en,logo:x.home_logo||teamLogo(x.home_tri)},away:{tri:x.away_tri,name_ru:x.away_name_ru,name_en:x.away_name_en,logo:x.away_logo||teamLogo(x.away_tri)},
+      vk:x.source_key?{source_key:x.source_key,title:x.vk_title,web_url:x.vk_url,app_url:x.vk_app_url,thumbnail_url:x.vk_thumbnail,status:x.vk_status}:null}));
+    if(!games.length)return json({ok:true,date,featured:null});
+    const tris=[...new Set(games.flatMap(g=>[g.home.tri,g.away.tri]).filter(Boolean))],ph=tris.map(()=>"?").join(",");
+    const [standings,followers]=await Promise.all([
+      tris.length?env.DB.prepare(`SELECT s.team_tri,s.games_played,s.wins,s.points,s.league_rank FROM standings_snapshots s JOIN (SELECT team_tri,MAX(snapshot_date) md FROM standings_snapshots GROUP BY team_tri) x ON x.team_tri=s.team_tri AND x.md=s.snapshot_date WHERE s.team_tri IN (${ph});`).bind(...tris).all():{results:[]},
+      tris.length?env.DB.prepare(`SELECT subject_key team_tri,COUNT(*) followers FROM subscriptions WHERE subject_type='team' AND subject_key IN (${ph}) GROUP BY subject_key;`).bind(...tris).all():{results:[]}
+    ]);
+    const st=new Map((standings.results||[]).map(x=>[x.team_tri,x])),fol=new Map((followers.results||[]).map(x=>[x.team_tri,Number(x.followers||0)]));
+    let overrides={};try{overrides=JSON.parse(String(env.HOH_FEATURED_GAMES_JSON||"{}"))||{}}catch{}
+    const special=text=>{const s=String(text||"").toLowerCase(),defs=[["winter classic","Зимняя классика"],["stadium series","Stadium Series"],["heritage classic","Heritage Classic"],["global series","Global Series"],["outdoor","Матч под открытым небом"],["classic","Специальный матч NHL"]];return defs.find(([k])=>s.includes(k))?.[1]||null};
+    const scored=games.map(g=>{const a=st.get(g.away.tri)||{},h=st.get(g.home.tri)||{},aw=Number(a.games_played)>0?Number(a.wins||0)/Number(a.games_played):0,hw=Number(h.games_played)>0?Number(h.wins||0)/Number(h.games_played):0,followers=(fol.get(g.away.tri)||0)+(fol.get(g.home.tri)||0),sp=special([g.venue_name,g.vk?.title].filter(Boolean).join(" ")),ov=overrides[String(g.game_pk)]||null,rankQ=(a.league_rank?33-Number(a.league_rank):0)+(h.league_rank?33-Number(h.league_rank):0);const score=(ov?10000:0)+(sp?2000:0)+(g.game_type===3?500:0)+(aw+hw)*240+Math.log2(1+followers)*55+rankQ*2+(g.vk?20:0);return{g,score,aw,hw,followers,sp,ov}});
+    scored.sort((a,b)=>b.score-a.score||String(a.g.scheduled_start_utc).localeCompare(String(b.g.scheduled_start_utc)));
+    const best=scored[0],g=best.g,away=g.away.name_ru||g.away.name_en||g.away.tri,home=g.home.name_ru||g.home.name_en||g.home.tri,avg=(best.aw+best.hw)/2;
+    let reason=best.ov?.description||best.ov?.reason||best.sp||"";
+    if(!reason&&g.game_type===3)reason="Главная пара дня в плей-офф.";
+    if(!reason&&avg>=.55)reason="Одна из сильнейших пар дня по текущему проценту побед.";
+    if(!reason&&best.followers>0)reason="Самая заметная пара дня по интересу пользователей HOME OF HOCKEY.";
+    if(!reason)reason="Главный матч игрового дня по сочетанию силы команд и турнирного контекста.";
+    const vkUrl=best.ov?.vk_url||g.vk?.web_url||g.vk?.app_url||"https://vkvideo.ru/@nhl_home_of_hockey/lives";
+    const cover=best.ov?.cover_url||g.vk?.thumbnail_url||null;
+    return json({ok:true,date,featured:{...g,title:best.ov?.title||away+" — "+home,description:reason,vk_url:vkUrl,thumbnail_url:cover,selection_score:Math.round(best.score),signals:{special:best.sp||null,followers:best.followers,away_win_pct:best.aw||null,home_win_pct:best.hw||null,manual:Boolean(best.ov)}}});
+  }catch(error){return json({ok:false,error:"featured_game_failed",detail:errorText(error)},503)}
 }
 
 async function gameDetail(env, gamePk) {
