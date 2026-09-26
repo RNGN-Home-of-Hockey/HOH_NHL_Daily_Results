@@ -115,6 +115,12 @@ jobs:
           if (mini.includes('<span class="v8">V8</span>')) throw new Error('Telegram Center leaked stale V8 build badge');
           if (!String(r.headers.get('cache-control') || '').includes('no-store')) throw new Error('Telegram Center shell must be no-store');
           if (mini.includes('<script src="/telegram-app/app.js"></script>')) throw new Error('Telegram Center must not depend on cached external app.js');
+          for (const asset of ['/telegram-app/v9.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v19.js','/telegram-app/v20.js','/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js','/telegram-app/v24-visual.js']) {
+            const ar = await handleTeamCurrentRequest(new Request('https://example.test'+asset), {}, asset);
+            if (!ar || ar.status !== 200) throw new Error('Center browser asset route failed: '+asset);
+            const js = await ar.text();
+            try { new Function(js); } catch (e) { throw new Error('Center browser asset syntax invalid '+asset+': '+e.message); }
+          }
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9.css'), {}, '/telegram-app/v9.css');
           if (!r || r.status !== 200 || !(await r.text()).includes('.monthModal')) throw new Error('Center V9 CSS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v9.js'), {}, '/telegram-app/v9.js');
