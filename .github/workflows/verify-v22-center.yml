@@ -38,7 +38,21 @@ jobs:
     timeout-minutes: 12
     steps:
       - name: Wait for Worker deploy
-        run: sleep 25
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.4.1';
+          for(let i=0;i<60;i++){
+            const r=await fetch(url,{cache:'no-store'});
+            const body=await r.text().catch(()=>'');
+            const build=String(r.headers.get('x-hoh-mini-app-build')||'');
+            console.log('CENTER_DEPLOY_WAIT',i+1,r.status,build);
+            if(r.ok&&build==='24.4.1'&&body.includes('HOH_MINI_APP_BUILD="24.4.1"'))process.exit(0);
+            await new Promise(resolve=>setTimeout(resolve,2000));
+          }
+          throw new Error('V24.4.1 did not reach production before verification');
+          JS
       - name: Verify production V22 contracts
         shell: bash
         run: |
