@@ -10,7 +10,8 @@ const V20_JS=String.raw`(function(){
 'use strict';
 const H=window.HOHV15;if(!H)return;
 const API='/api/telegram-center-v20';
-const S=window.HOHV20=window.HOHV20||{returnCtx:null,homeNewsMounting:false};
+const HOME_NEWS_REFRESH_MS=10*60*1000;
+const S=window.HOHV20=window.HOHV20||{returnCtx:null,homeNewsMounting:false,homeNewsMountedAt:0,homeNewsTimer:null};
 function esc(v){return H.esc?H.esc(v):String(v==null?'':v)}
 function when(v){if(!v)return'';const d=new Date(v);return Number.isNaN(d.getTime())?'':d.toLocaleString('ru-RU',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}
 function css(){if(document.getElementById('v20css'))return;const s=document.createElement('style');s.id='v20css';s.textContent=
@@ -18,7 +19,26 @@ function css(){if(document.getElementById('v20css'))return;const s=document.crea
 function sourceBadge(x){const b=String(x?.source_badge||'').trim();return b?'<span class="v20Badge">'+esc(b)+'</span>':''}
 function row(x,playerId){const c=Number(x.comment_count||0);return '<button class="v20NewsRow" data-v20-news="'+x.news_id+'"'+(playerId?' data-v20-player="'+playerId+'"':'')+'><span class="time">'+esc(when(x.published_at||x.created_at).split(',')[0]||'')+'</span><b>'+sourceBadge(x)+esc(x.title)+'</b><span class="comments">| '+c+'</span></button>'}
 function bindRows(root=document){root.querySelectorAll?.('[data-v20-news]').forEach(x=>{if(x.dataset.v20Bound)return;x.dataset.v20Bound='1';x.onclick=e=>{e.preventDefault();e.stopPropagation();openNews(Number(x.dataset.v20News),{playerId:Number(x.dataset.v20Player||0)})}})}
-async function mountHomeNews(){if(H.state.profile||H.currentTab()!=='games'||!H.tabsVisible())return;const root=H.view();if(!root)return;const current=[...root.querySelectorAll('.v20News')];if(current.length){current.slice(1).forEach(x=>x.remove());bindRows(current[0]);return}if(S.homeNewsMounting)return;S.homeNewsMounting=true;try{const d=await H.api(API+'/news/home?limit=15');const news=d.news||[];if(!news.length||H.view()!==root||H.state.profile||H.currentTab()!=='games')return;root.querySelectorAll('.v20News').forEach(x=>x.remove());const box=document.createElement('section');box.className='v20News';const first=news.slice(0,5),extra=news.slice(5,15);box.innerHTML='<div class="v20NewsHead"><b>СВЕЖЕЕ В НХЛ</b><span>5 свежих</span></div>'+first.map(x=>row(x,0)).join('')+(extra.length?'<div class="v20NewsExtra">'+extra.map(x=>row(x,0)).join('')+'</div><button class="v20More" type="button">Ещё '+extra.length+'</button>':'');const media=root.querySelector('.v15Media');if(media)media.after(box);else{const toolbar=root.querySelector('.toolbar');toolbar?root.insertBefore(box,toolbar):root.prepend(box)}const more=box.querySelector('.v20More');if(more)more.onclick=()=>{const on=box.classList.toggle('expanded');more.textContent=on?'Скрыть':('Ещё '+extra.length)};bindRows(box)}catch(e){console.warn('V20 home news',e)}finally{S.homeNewsMounting=false}}
+async function mountHomeNews(force=false){
+  if(H.state.profile||H.currentTab()!=='games'||!H.tabsVisible())return;
+  const root=H.view();if(!root)return;
+  const current=[...root.querySelectorAll('.v20News')];
+  if(current.length&&!force){current.slice(1).forEach(x=>x.remove());bindRows(current[0]);return}
+  if(S.homeNewsMounting)return;
+  S.homeNewsMounting=true;
+  try{
+    const d=await H.api(API+'/news/home?limit=15&v='+Math.floor(Date.now()/HOME_NEWS_REFRESH_MS));
+    const news=d.news||[];
+    if(!news.length||H.view()!==root||H.state.profile||H.currentTab()!=='games')return;
+    root.querySelectorAll('.v20News').forEach(x=>x.remove());
+    const box=document.createElement('section');box.className='v20News';
+    const first=news.slice(0,5),extra=news.slice(5,15);
+    box.innerHTML='<div class="v20NewsHead"><b>СВЕЖЕЕ В НХЛ</b><span>5 свежих</span></div>'+first.map(x=>row(x,0)).join('')+(extra.length?'<div class="v20NewsExtra">'+extra.map(x=>row(x,0)).join('')+'</div><button class="v20More" type="button">Ещё '+extra.length+'</button>':'');
+    const media=root.querySelector('.v15Media');if(media)media.after(box);else{const toolbar=root.querySelector('.toolbar');toolbar?root.insertBefore(box,toolbar):root.prepend(box)}
+    const more=box.querySelector('.v20More');if(more)more.onclick=()=>{const on=box.classList.toggle('expanded');more.textContent=on?'Скрыть':('Ещё '+extra.length)};
+    bindRows(box);S.homeNewsMountedAt=Date.now();
+  }catch(e){console.warn('V20 home news',e)}finally{S.homeNewsMounting=false}
+}
 async function mountPlayerNews(id){const profile=document.querySelector('.v19PlayerProfile');if(!profile||profile.querySelector('.v20PlayerNewsWrap'))return;try{const d=await H.api(API+'/players/'+id+'/news?limit=20'),news=d.news||[];if(!news.length)return;const wrap=document.createElement('section');wrap.className='v20PlayerNewsWrap';wrap.innerHTML='<div class="v19Section">Новости игрока</div><div class="v20PlayerNews">'+news.map(x=>row(x,id)).join('')+'</div>';const win=profile.querySelector('.v19Winline');if(win)win.before(wrap);else profile.appendChild(wrap);bindRows(wrap)}catch(e){console.warn('V20 player news',e)}}
 function timed(p,ms=8000){return Promise.race([p,new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')),ms))])}
 async function openNews(id,ctx={}){const root=H.view();if(!root)return;S.returnCtx=ctx;H.state.profile=true;const tabs=document.getElementById('tabs');if(tabs)tabs.style.display='none';root.innerHTML='<div class="v20Detail">'+H.backRow('Новость')+'<div class="v15Loading">Загрузка новости…</div></div>';const back=document.getElementById('v15Back');if(back)back.onclick=()=>backFromNews();try{const d=await timed(H.api(API+'/news/'+id),8000),n=d.news||{};const commentsPromise=timed(H.api(API+'/news/'+id+'/comments'),5000).catch(()=>({comments:[]}));root.innerHTML='<div class="v20Detail">'+H.backRow('Новость')+'<article class="v20Article">'+(n.source_badge?'<div class="v20ArticleBadge">'+esc(n.source_badge)+'</div>':'')+'<h1>'+esc(n.title||'Новость НХЛ')+'</h1><div class="date">'+esc(when(n.published_at||n.created_at))+'</div>'+(n.body_text?'<div class="body">'+esc(n.body_text)+'</div>':'')+'</article><div class="v20CommentsHead"><b>КОММЕНТАРИИ</b><span id="v20CommentCount">'+Number(n.comment_count||0)+'</span></div><div class="v20Comments" id="v20Comments"><div class="v20Empty">Загрузка комментариев…</div></div><div class="v20Composer"><textarea id="v20CommentText" maxlength="1000" placeholder="Написать комментарий…"></textarea><button id="v20CommentSend">Отправить</button></div></div>';const b=document.getElementById('v15Back');if(b)b.onclick=()=>backFromNews();const send=document.getElementById('v20CommentSend');if(send)send.onclick=()=>sendComment(id);const cm=await commentsPromise;renderComments(cm.comments||[])}catch(e){root.innerHTML='<div class="v20Detail">'+H.backRow('Новость')+'<div class="v20Empty">Не удалось загрузить новость. Можно вернуться назад и открыть её снова.</div></div>';const b=document.getElementById('v15Back');if(b)b.onclick=()=>backFromNews()}}
@@ -29,6 +49,8 @@ css();document.querySelectorAll('.v15Version').forEach(x=>x.textContent='V20');
 // Player rendering is owned exclusively by V23.
 const oldRun=H.runCore;
 H.runCore=function(){const r=typeof oldRun==='function'?oldRun.apply(this,arguments):undefined;setTimeout(mountHomeNews,120);return r};
-document.addEventListener('click',e=>{const tab=e.target.closest?.('.tab');if(tab?.dataset.tab==='games')setTimeout(mountHomeNews,180)},true);
+document.addEventListener('click',e=>{const tab=e.target.closest?.('.tab');if(tab?.dataset.tab==='games')setTimeout(()=>mountHomeNews(Date.now()-Number(S.homeNewsMountedAt||0)>=HOME_NEWS_REFRESH_MS),180)},true);
+if(!S.homeNewsTimer)S.homeNewsTimer=setInterval(()=>{if(document.visibilityState==='visible')mountHomeNews(true)},HOME_NEWS_REFRESH_MS);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-Number(S.homeNewsMountedAt||0)>=HOME_NEWS_REFRESH_MS)setTimeout(()=>mountHomeNews(true),120)});
 setTimeout(mountHomeNews,180);setTimeout(mountHomeNews,700);setTimeout(mountHomeNews,1500);
 })();`;
