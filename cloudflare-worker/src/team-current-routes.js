@@ -139,6 +139,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
     if (!cleanBaseResponse) return new Response("mini_app_shell_unavailable", { status: 503 });
     let body = await cleanBaseResponse.text();
     body = body.replace('data-tab="mine">Мои</button>', 'data-tab="follows">Мои</button>');
+    body = body.replace('<span class="v8">V8</span>', '<span class="v8">V24.4.0</span>');
     if (!body.includes('/telegram-app/v8-brand.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v8-brand.css?build=24.4.0"></head>');
     if (!body.includes('/telegram-app/v9.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v9.css?build=24.4.0"></head>');
     body = body.replace('</body>', '<script>window.HOH_CANONICAL_PLAYER_UI="V24";window.HOH_MINI_APP_BUILD="24.4.0";</script></body>');
