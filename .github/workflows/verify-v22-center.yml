@@ -52,6 +52,8 @@ jobs:
           const shell=await text('/telegram-app-v24?build=24.4.0');
           const oldUrlShell=await text('/telegram-app?build=24.4.0');
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('canonical shell marker missing');
+          if(!shell.includes('<span class="v8">V24.4.0</span>'))throw new Error('canonical shell visible build badge is not V24.4.0');
+          if(shell.includes('<span class="v8">V8</span>'))throw new Error('canonical shell leaked stale V8 badge');
           if(!oldUrlShell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('/telegram-app is not canonical V24');
           for(const x of ['/telegram-app/v21.js?build=24.4.0','/telegram-app/v22.js?build=24.4.0','/telegram-app/v23-player.js?build=24.4.0','/telegram-app/v24-visual.js?build=24.4.0'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
           for(const x of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js']){
