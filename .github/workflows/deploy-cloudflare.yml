@@ -162,8 +162,20 @@ jobs:
           if(!d.delivery_setup?.ok||d.delivery_setup?.mode!=='polling')throw new Error('Telegram Center polling setup failed '+JSON.stringify(d.delivery_setup));
           if(!d.commands?.ok||!(d.commands.items||[]).some(x=>x.command==='menu'))throw new Error('Telegram Center commands missing '+JSON.stringify(d.commands));
           if(!d.menu_button?.ok||d.menu_button?.value?.type!=='web_app')throw new Error('Telegram Center menu button missing '+JSON.stringify(d.menu_button));
-          if(String(d.menu_button?.value?.web_app?.url||'')!=='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.4.0')throw new Error('Telegram Center menu button is not on exact current build '+JSON.stringify(d.menu_button));
+          if(String(d.menu_button?.value?.web_app?.url||'')!=='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.4.1')throw new Error('Telegram Center menu button is not on exact current build '+JSON.stringify(d.menu_button));
           if(d.menu_button_matches_build!==true)throw new Error('Telegram Center menu build contract failed '+JSON.stringify(d));
+          const origin='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const browserAssets=['/telegram-app/v9.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v19.js','/telegram-app/v20.js','/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js','/telegram-app/v24-visual.js'];
+          for(const asset of browserAssets){
+            const ar=await fetch(origin+asset+'?build=24.4.1',{cache:'no-store'});
+            const js=await ar.text();
+            if(!ar.ok)throw new Error('Production Center browser asset HTTP '+ar.status+' '+asset);
+            try{new Function(js)}catch(e){throw new Error('Production Center browser asset syntax invalid '+asset+': '+e.message)}
+            if(asset==='/telegram-app/v15-core.js'&&(!js.includes('.brand,.status{display:none')||!js.includes("t.textContent='Главное'"))){
+              throw new Error('Production V15 core behavior markers missing');
+            }
+          }
+          console.log('TELEGRAM_CENTER_BROWSER_BUNDLES_OK',browserAssets.length);
           console.log('TELEGRAM_CENTER_PRODUCTION_SMOKE_OK',JSON.stringify({
             marker:d.runtime_marker,
             bot:d.bot.username,
@@ -279,18 +291,18 @@ jobs:
           const match=await get('/api/telegram-center-v19/games/'+playoff.game_pk);
           if(!match.game?.is_playoff)throw new Error('playoff match detail flag missing');
           console.log('ARCHIVE_OK','regular',regular.games.length,'playoffs',playoffs.games.length,'vk_game',oldVk.game_pk,'playoff_game',playoff.game_pk,'odds_source',match.winline?.source||'none');
-          const shell=await fetch(base+'/telegram-app-v24?build=24.4.0',{cache:'no-store'}).then(r=>r.text());
-          const legacyUrlShell=await fetch(base+'/telegram-app?build=24.4.0',{cache:'no-store'}).then(r=>r.text());
+          const shell=await fetch(base+'/telegram-app-v24?build=24.4.1',{cache:'no-store'}).then(r=>r.text());
+          const legacyUrlShell=await fetch(base+'/telegram-app?build=24.4.1',{cache:'no-store'}).then(r=>r.text());
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('Canonical V24 marker missing from production shell');
           if(!legacyUrlShell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('Legacy /telegram-app URL is not canonical');
-          if(!shell.includes('/telegram-app/v19.js?build=24.4.0'))throw new Error('V19 script missing from canonical shell');
-          if(!shell.includes('/telegram-app/v23-player.js?build=24.4.0'))throw new Error('V23 player script missing from canonical shell');
-          if(!shell.includes('/telegram-app/v24-visual.js?build=24.4.0'))throw new Error('V24 visual layer missing from canonical shell');
-          const visual=await fetch(base+'/telegram-app/v24-visual.js?build=24.4.0',{cache:'no-store'}).then(async r=>{if(!r.ok)throw new Error('V24 visual HTTP '+r.status);return r.text()});
+          if(!shell.includes('/telegram-app/v19.js?build=24.4.1'))throw new Error('V19 script missing from canonical shell');
+          if(!shell.includes('/telegram-app/v23-player.js?build=24.4.1'))throw new Error('V23 player script missing from canonical shell');
+          if(!shell.includes('/telegram-app/v24-visual.js?build=24.4.1'))throw new Error('V24 visual layer missing from canonical shell');
+          const visual=await fetch(base+'/telegram-app/v24-visual.js?build=24.4.1',{cache:'no-store'}).then(async r=>{if(!r.ok)throw new Error('V24 visual HTTP '+r.status);return r.text()});
           for(const needle of ['V24.2 complete visual audit','V24.3 score/odds/Winline regression fixes','V24.4 rotating NHL player background + fixed Winline rendering','--hoh-bg-player','/api/telegram-center-v17/players?limit=60','white-space:nowrap','min-width:max-content','v19Cal','v20News','v22ProfileCard','right:74px','z-index:7','width:18px','font-size:10px'])if(!visual.includes(needle))throw new Error('V24.4 visual contract missing '+needle);
           const winlineLogo=await fetch(base+'/broadcast/winline-logo.png',{cache:'no-store'});
           if(!winlineLogo.ok||!String(winlineLogo.headers.get('content-type')||'').includes('image/png'))throw new Error('fixed Winline logo unavailable');
-          const bg=await fetch(base+'/telegram-app/goalie-bg.webp?build=24.4.0',{cache:'no-store'});
+          const bg=await fetch(base+'/telegram-app/goalie-bg.webp?build=24.4.1',{cache:'no-store'});
           if(!bg.ok)throw new Error('Goalie background HTTP '+bg.status);
           if(!String(bg.headers.get('content-type')||'').includes('image/webp'))throw new Error('Goalie background content-type '+bg.headers.get('content-type'));
           for(const forbidden of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js']){

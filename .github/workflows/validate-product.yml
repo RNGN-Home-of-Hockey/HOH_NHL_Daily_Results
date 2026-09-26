@@ -108,7 +108,7 @@ jobs:
           import { handleTelegramProductBotRequest } from './cloudflare-worker/src/telegram-product-bot.js';
           let r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app'), {}, '/telegram-app');
           const mini = await r.text();
-          for (const needle of ['NHL CENTER','Center подключён','V24.4.0','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v19.js','/telegram-app/v20.js','/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js']) {
+          for (const needle of ['NHL CENTER','Center подключён','V24.4.1','WINLINE','/api/telegram-center-v7','/telegram-app/v9.css','/telegram-app/v9.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v19.js','/telegram-app/v20.js','/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js']) {
             if (!r || r.status !== 200 || !mini.includes(needle)) throw new Error('Telegram Center shell missing: '+needle);
           }
           if (!mini.includes('data-tab="follows">Мои</button>')) throw new Error('Center subscription tab contract missing');
