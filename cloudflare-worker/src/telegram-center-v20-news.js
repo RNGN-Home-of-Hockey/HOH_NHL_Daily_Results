@@ -48,15 +48,11 @@ export async function runSportsRuNewsMaintenance(env,{force=false,homeOnly=false
 async function homeNews(request,env){
   const limit=clamp(new URL(request.url).searchParams.get("limit"),10,1,20);
   try{
-    let rows=await queryHomeNews(env.DB,limit);
-    if((rows.results||[]).length<limit){
-      await runSportsRuNewsMaintenance(env,{homeOnly:true}).catch(()=>null);
-      rows=await queryHomeNews(env.DB,limit);
-    }
-    return json({ok:true,version:"V20",news:rows.results||[]});
+    const sync=await runSportsRuNewsMaintenance(env,{homeOnly:true}).catch(error=>({ok:false,error:errorText(error)}));
+    const rows=await queryHomeNews(env.DB,limit);
+    return json({ok:true,version:"V20",refresh_interval_ms:HOME_MIN_INTERVAL_MS,sync,news:rows.results||[]});
   }catch(error){return json({ok:false,error:"news_schema_not_ready",detail:errorText(error)},503)}
 }
-
 async function queryHomeNews(db,limit){
   return db.prepare(`
     SELECT n.news_id,n.title,n.body_text,n.source_badge,n.published_at,n.created_at,
@@ -170,12 +166,13 @@ async function manualSync(request,env){
 
 async function scanNhlMain(env){
   let html;
-  try{html=await fetchText(NHL_PAGE)}catch(error){return {ok:false,error:"sports_main_fetch_failed",detail:errorText(error),stored:0,politics:0}}
+  const freshPage=freshSportsUrl(NHL_PAGE);
+  try{html=await fetchText(freshPage)}catch(error){return {ok:false,error:"sports_main_fetch_failed",detail:errorText(error),stored:0,politics:0}}
   let items=extractHtmlNews(html,NHL_PAGE).slice(0,60);
   const rssUrl=discoverRssUrl(html,NHL_PAGE);
   if(rssUrl){
     try{
-      const rssItems=extractSportsRss(await fetchText(rssUrl));
+      const rssItems=extractSportsRss(await fetchText(freshSportsUrl(rssUrl)));
       items=mergeFeedMetadata(items,rssItems);
     }catch{}
   }
@@ -442,10 +439,17 @@ function validDate(v){if(!v)return null;const d=new Date(v);return Number.isNaN(
 function cleanText(v){return decodeEntities(String(v||"").replace(/<script\b[\s\S]*?<\/script>/gi," ").replace(/<style\b[\s\S]*?<\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim())}
 function decodeEntities(v){return String(v||"").replace(/&nbsp;|&#160;/gi," ").replace(/&amp;/gi,"&").replace(/&quot;/gi,'"').replace(/&#39;|&apos;/gi,"'").replace(/&lt;/gi,"<").replace(/&gt;/gi,">").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n)||32))}
 function norm(v){return cleanText(v).toLocaleLowerCase("ru").replaceAll("ё","е")}
+function freshSportsUrl(value){
+  try{
+    const u=new URL(value);
+    if(/(^|\.)sports\.ru$/i.test(u.hostname))u.searchParams.set("_hoh_refresh",String(Math.floor(Date.now()/HOME_MIN_INTERVAL_MS)));
+    return u.toString();
+  }catch{return String(value||"")}
+}
 async function fetchText(url){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
   try{
-    const r=await fetch(url,{signal:controller.signal,headers:{Accept:"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Language":"ru-RU,ru;q=0.9,en;q=0.6","User-Agent":USER_AGENT}});
+    const r=await fetch(url,{signal:controller.signal,cache:"no-store",headers:{Accept:"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Accept-Language":"ru-RU,ru;q=0.9,en;q=0.6","Cache-Control":"no-cache, no-store, max-age=0","Pragma":"no-cache","User-Agent":USER_AGENT}});
     if(!r.ok)throw new Error("HTTP "+r.status+" "+url);
     return await r.text();
   }finally{clearTimeout(timer)}
