@@ -1,5 +1,5 @@
 name: Verify V22 Center
-# V24.4.1 rotating background + news refresh verification
+# V24.5.0 rotating background + news refresh verification
 
 
 
@@ -42,16 +42,16 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
-          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.4.1';
+          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.5.0';
           for(let i=0;i<60;i++){
             const r=await fetch(url,{cache:'no-store'});
             const body=await r.text().catch(()=>'');
             const build=String(r.headers.get('x-hoh-mini-app-build')||'');
             console.log('CENTER_DEPLOY_WAIT',i+1,r.status,build);
-            if(r.ok&&build==='24.4.1'&&body.includes('HOH_MINI_APP_BUILD="24.4.1"'))process.exit(0);
+            if(r.ok&&build==='24.5.0'&&body.includes('HOH_MINI_APP_BUILD="24.5.0"'))process.exit(0);
             await new Promise(resolve=>setTimeout(resolve,2000));
           }
-          throw new Error('V24.4.1 did not reach production before verification');
+          throw new Error('V24.5.0 did not reach production before verification');
           JS
       - name: Verify production V22 contracts
         shell: bash
@@ -63,21 +63,21 @@ jobs:
           async function text(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status);return t}
           async function json(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+t.slice(0,300));return JSON.parse(t)}
 
-          const shell=await text('/telegram-app-v24?build=24.4.1');
-          const oldUrlShell=await text('/telegram-app?build=24.4.1');
+          const shell=await text('/telegram-app-v24?build=24.5.0');
+          const oldUrlShell=await text('/telegram-app?build=24.5.0');
           if(!shell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('canonical shell marker missing');
-          if(!shell.includes('<span class="v8">V24.4.1</span>'))throw new Error('canonical shell visible build badge is not V24.4.1');
+          if(!shell.includes('<span class="v8">V24.5.0</span>'))throw new Error('canonical shell visible build badge is not V24.5.0');
           if(shell.includes('<span class="v8">V8</span>'))throw new Error('canonical shell leaked stale V8 badge');
           const browserAssets=['/telegram-app/v9.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v19.js','/telegram-app/v20.js','/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js','/telegram-app/v24-visual.js'];
           for(const asset of browserAssets){
-            const js=await text(asset+'?build=24.4.1');
+            const js=await text(asset+'?build=24.5.0');
             try{new Function(js)}catch(e){throw new Error('production browser asset syntax invalid '+asset+': '+e.message)}
             if(asset==='/telegram-app/v15-core.js'&&(!js.includes('.brand,.status{display:none')||!js.includes("t.textContent='Главное'"))){
               throw new Error('production V15 core behavior markers missing');
             }
           }
           if(!oldUrlShell.includes('HOH_CANONICAL_PLAYER_UI="V24"'))throw new Error('/telegram-app is not canonical V24');
-          for(const x of ['/telegram-app/v21.js?build=24.4.1','/telegram-app/v22.js?build=24.4.1','/telegram-app/v23-player.js?build=24.4.1','/telegram-app/v24-visual.js?build=24.4.1'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
+          for(const x of ['/telegram-app/v21.js?build=24.5.0','/telegram-app/v22.js?build=24.5.0','/telegram-app/v23-player.js?build=24.5.0','/telegram-app/v24-visual.js?build=24.5.0'])if(!shell.includes(x))throw new Error('canonical shell missing '+x);
           for(const x of ['/telegram-app/v9-polish.js','/telegram-app/v12.js','/telegram-app/v15-player.js','/telegram-app/v16.js','/telegram-app/v17.js','/telegram-app/v18.js']){
             if(shell.includes(x))throw new Error('legacy player script present in canonical shell '+x);
             if(oldUrlShell.includes(x))throw new Error('legacy player script present at old URL '+x);
@@ -91,10 +91,15 @@ jobs:
           const v22=await text('/telegram-app/v22.js');
           for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers','data-v15-player',"top='4px'"])if(!v22.includes(x))throw new Error('V22 missing '+x);
           const visual=await text('/telegram-app/v24-visual.js');
-          for(const x of ['goalie-bg.webp','--hoh-glass-light','backdrop-filter','V24.2 complete visual audit','V24.3 score/odds/Winline regression fixes','V24.4 rotating NHL player background + fixed Winline rendering','--hoh-bg-player','/api/telegram-center-v17/players?limit=60','white-space:nowrap','min-width:max-content','v19Cal','v20News','v22ProfileCard','v23Audio','right:74px','z-index:7','width:18px','font-size:10px'])if(!visual.includes(x))throw new Error('V24.4 visual layer missing '+x);
-          const bg=await raw('/telegram-app/goalie-bg.webp?build=24.4.1');
+          if(visual.includes('--hoh-bg-player')||visual.includes('background=1&v='))throw new Error('V24 dynamic headshot background leaked into production');
+          for(const x of ['goalie-bg.webp','--hoh-glass-light','backdrop-filter','V24.2 complete visual audit','V24.3 score/odds/Winline regression fixes','V24.5 stable hockey silhouette + immutable Winline asset','white-space:nowrap','min-width:max-content','v19Cal','v20News','v22ProfileCard','v23Audio','right:74px','top:calc(50% - 6px)','z-index:7','width:18px','font-size:10px'])if(!visual.includes(x))throw new Error('V24.4 visual layer missing '+x);
+          const bg=await raw('/telegram-app/goalie-bg.webp?build=24.5.0');
           if(!bg.r.ok)throw new Error('goalie background HTTP '+bg.r.status);
           if(!String(bg.r.headers.get('content-type')||'').includes('image/webp'))throw new Error('goalie background content-type '+bg.r.headers.get('content-type'));
+          const v22nav=await text('/telegram-app/v22.js');
+          for(const x of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds'])if(!v22nav.includes(x))throw new Error('V22 navigation/settings missing '+x);
+          const v23player=await text('/telegram-app/v23-player.js');
+          for(const x of ['/broadcast/winline-logo.png?asset=canonical-1','v23RecTeam','v23RecTrend','Ставка WINLINE','font:italic 950',"a.join('<br>')"])if(!v23player.includes(x))throw new Error('V23 player UX missing '+x);
           const v15core=await text('/telegram-app/v15-core.js');
           if(!v15core.includes("localStorage.getItem('hoh-center-theme')||'light'"))throw new Error('light theme is not default');
           const v19=await text('/telegram-app/v19.js');
@@ -193,7 +198,7 @@ jobs:
           const unauth=await raw('/api/telegram-center-v22/me');
           if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
           const centerStatus=await json('/api/telegram/center/status');
-          if(String(centerStatus.mini_app_url||'')!=='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.4.1')throw new Error('Center mini app URL is not exact current build '+centerStatus.mini_app_url);
+          if(String(centerStatus.mini_app_url||'')!=='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.5.0')throw new Error('Center mini app URL is not exact current build '+centerStatus.mini_app_url);
           if(String(centerStatus.menu_button?.value?.web_app?.url||'')!==centerStatus.mini_app_url)throw new Error('Telegram menu button build mismatch '+JSON.stringify(centerStatus.menu_button));
           if(centerStatus.menu_button_matches_build!==true)throw new Error('Telegram menu build contract false '+JSON.stringify(centerStatus));
 

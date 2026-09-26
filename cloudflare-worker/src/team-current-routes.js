@@ -139,27 +139,27 @@ export async function handleTeamCurrentRequest(request, env, path) {
     if (!cleanBaseResponse) return new Response("mini_app_shell_unavailable", { status: 503 });
     let body = await cleanBaseResponse.text();
     body = body.replace('data-tab="mine">Мои</button>', 'data-tab="follows">Мои</button>');
-    body = body.replace('<span class="v8">V8</span>', '<span class="v8">V24.4.1</span>');
-    if (!body.includes('/telegram-app/v8-brand.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v8-brand.css?build=24.4.1"></head>');
-    if (!body.includes('/telegram-app/v9.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v9.css?build=24.4.1"></head>');
-    body = body.replace('</body>', '<script>window.HOH_CANONICAL_PLAYER_UI="V24";window.HOH_MINI_APP_BUILD="24.4.1";</script></body>');
+    body = body.replace('<span class="v8">V8</span>', '<span class="v8">V24.5.0</span>');
+    if (!body.includes('/telegram-app/v8-brand.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v8-brand.css?build=24.5.0"></head>');
+    if (!body.includes('/telegram-app/v9.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v9.css?build=24.5.0"></head>');
+    body = body.replace('</body>', '<script>window.HOH_CANONICAL_PLAYER_UI="V24";window.HOH_MINI_APP_BUILD="24.5.0";</script></body>');
     for (const src of [
-      "/telegram-app/v9.js?build=24.4.1",
-      "/telegram-app/v15-core.js?build=24.4.1",
-      "/telegram-app/v15-team.js?build=24.4.1",
-      "/telegram-app/v19.js?build=24.4.1",
-      "/telegram-app/v20.js?build=24.4.1",
-      "/telegram-app/v21.js?build=24.4.1",
-      "/telegram-app/v22.js?build=24.4.1",
-      "/telegram-app/v23-player.js?build=24.4.1",
-      "/telegram-app/v24-visual.js?build=24.4.1"
+      "/telegram-app/v9.js?build=24.5.0",
+      "/telegram-app/v15-core.js?build=24.5.0",
+      "/telegram-app/v15-team.js?build=24.5.0",
+      "/telegram-app/v19.js?build=24.5.0",
+      "/telegram-app/v20.js?build=24.5.0",
+      "/telegram-app/v21.js?build=24.5.0",
+      "/telegram-app/v22.js?build=24.5.0",
+      "/telegram-app/v23-player.js?build=24.5.0",
+      "/telegram-app/v24-visual.js?build=24.5.0"
     ]) body = body.replace('</body>', '<script src="'+src+'"></script></body>');
     return new Response(body, {status:200,headers:{
       "Content-Type":"text/html; charset=utf-8",
       "Cache-Control":"no-store, no-cache, must-revalidate, max-age=0",
       "Pragma":"no-cache",
       "Expires":"0",
-      "X-HOH-Mini-App-Build":"24.4.1",
+      "X-HOH-Mini-App-Build":"24.5.0",
       "X-HOH-Player-UI":"V24-canonical",
       "X-Content-Type-Options":"nosniff"
     }});
