@@ -63,7 +63,7 @@ async function putMe(request,env){
     const t=await env.DB.prepare("SELECT tri_code FROM teams WHERE tri_code=? LIMIT 1").bind(favTeam).first();
     if(!t)return json({ok:false,error:"invalid_favorite_team"},400);
   }
-  const theme=body?.theme_mode===undefined?(current?.theme_mode||"dark"):String(body.theme_mode||"").toLowerCase();
+  const theme=body?.theme_mode===undefined?(current?.theme_mode||"light"):String(body.theme_mode||"").toLowerCase();
   if(!["dark","light"].includes(theme))return json({ok:false,error:"invalid_theme"},400);
   const noSpoilers=body?.no_spoilers===undefined?Boolean(Number(current?.no_spoilers||0)):Boolean(body.no_spoilers);
 
@@ -111,7 +111,7 @@ async function avatar(env,id){
 }
 
 function decorateProfile(p,id){
-  if(!p)return {exists:false,telegram_user_id:id,display_username:null,profile_name:null,birth_date:null,city:null,hockey_since_year:null,favorite_team_tri:null,favorite_player:null,theme_mode:"dark",no_spoilers:false,has_avatar:false,avatar_url:null,username_changed_at:null};
+  if(!p)return {exists:false,telegram_user_id:id,display_username:null,profile_name:null,birth_date:null,city:null,hockey_since_year:null,favorite_team_tri:null,favorite_player:null,theme_mode:"light",no_spoilers:false,has_avatar:false,avatar_url:null,username_changed_at:null};
   return {...p,exists:true,no_spoilers:Boolean(Number(p.no_spoilers)),has_avatar:Boolean(Number(p.has_avatar)),avatar_url:Number(p.has_avatar)?API+"/avatars/"+id:null};
 }
 function cleanUsername(v){const s=String(v||"").trim().replace(/^@/,"");return /^[A-Za-zА-Яа-яЁё0-9_]{3,24}$/u.test(s)?s:null}

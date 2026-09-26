@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS app_user_profiles (
   hockey_since_year INTEGER,
   favorite_team_tri TEXT,
   favorite_player TEXT,
-  theme_mode TEXT NOT NULL DEFAULT 'dark' CHECK(theme_mode IN ('dark','light')),
+  theme_mode TEXT NOT NULL DEFAULT 'light' CHECK(theme_mode IN ('dark','light')),
   avatar_mime TEXT,
   avatar_base64 TEXT,
   avatar_bytes INTEGER,
