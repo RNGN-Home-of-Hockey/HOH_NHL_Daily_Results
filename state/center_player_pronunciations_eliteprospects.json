@@ -1,5 +1,5 @@
 {
-  "matched": 572,
+  "matched": 460,
   "players": {
     "8470613": {
       "full_name_en": "Brent Burns",
@@ -274,6 +274,13 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/nicolas_deslauriers.mp3",
       "team_tri": "CAR"
     },
+    "8475253": {
+      "full_name_en": "Garrett Wilson",
+      "player_id": 8475253,
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/garrett_wilson.mp3",
+      "team_tri": "PHI"
+    },
     "8475279": {
       "full_name_en": "Ben Chiarot",
       "player_id": 8475279,
@@ -357,13 +364,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/charlie_coyle.mp3",
       "team_tri": "CBJ"
-    },
-    "8475752": {
-      "full_name_en": "Tyler Pitlick",
-      "player_id": 8475752,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/tyler_pitlick.mp3",
-      "team_tri": "MIN"
     },
     "8475753": {
       "full_name_en": "Justin Faulk",
@@ -757,13 +757,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/hampus_lindholm.mp3",
       "team_tri": "BOS"
     },
-    "8476867": {
-      "full_name_en": "Brendan Gaunce",
-      "player_id": 8476867,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/brendan_gaunce.mp3",
-      "team_tri": "BOS"
-    },
     "8476869": {
       "full_name_en": "Brady Skjei",
       "player_id": 8476869,
@@ -841,13 +834,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/radek_faksa.mp3",
       "team_tri": "DAL"
     },
-    "8476897": {
-      "full_name_en": "Oskar Sundqvist",
-      "player_id": 8476897,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/oskar_sundqvist.mp3",
-      "team_tri": "STL"
-    },
     "8476902": {
       "full_name_en": "Esa Lindell",
       "player_id": 8476902,
@@ -868,13 +854,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/shayne_gostisbehere.mp3",
       "team_tri": "CAR"
-    },
-    "8476907": {
-      "full_name_en": "Mackenzie MacEachern",
-      "player_id": 8476907,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/mackenzie_maceachern.mp3",
-      "team_tri": "VAN"
     },
     "8476914": {
       "full_name_en": "Joonas Korpisalo",
@@ -1072,26 +1051,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/shea_theodore.mp3",
       "team_tri": "VGK"
     },
-    "8477450": {
-      "full_name_en": "Jason Dickinson",
-      "player_id": 8477450,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jason_dickinson.mp3",
-      "team_tri": "EDM"
-    },
     "8477451": {
       "full_name_en": "Ryan Hartman",
       "player_id": 8477451,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ryan_hartman.mp3",
       "team_tri": "MIN"
-    },
-    "8477463": {
-      "full_name_en": "Steven Santini",
-      "player_id": 8477463,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/steven_santini.mp3",
-      "team_tri": "TBL"
     },
     "8477465": {
       "full_name_en": "Tristan Jarry",
@@ -1120,13 +1085,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/tyler_bertuzzi.mp3",
       "team_tri": "CHI"
-    },
-    "8477480": {
-      "full_name_en": "Eric Comrie",
-      "player_id": 8477480,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/eric_comrie.mp3",
-      "team_tri": "SJS"
     },
     "8477488": {
       "full_name_en": "Brett Pesce",
@@ -1217,20 +1175,6 @@
       "player_id": 8477527,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ross_johnston.mp3",
-      "team_tri": "STL"
-    },
-    "8477541": {
-      "full_name_en": "Dakota Mermis",
-      "player_id": 8477541,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dakota_mermis.mp3",
-      "team_tri": "TOR"
-    },
-    "8477573": {
-      "full_name_en": "Nathan Walker",
-      "player_id": 8477573,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/nathan_walker.mp3",
       "team_tri": "STL"
     },
     "8477810": {
@@ -1371,7 +1315,7 @@
       "player_id": 8477971,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/andreas_englund.mp3",
-      "team_tri": "CGY"
+      "team_tri": "DET"
     },
     "8477986": {
       "full_name_en": "Brandon Montour",
@@ -1387,27 +1331,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/christian_dvorak.mp3",
       "team_tri": "PHI"
     },
-    "8477990": {
-      "full_name_en": "Brandon Halverson",
-      "player_id": 8477990,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/brandon_halverson.mp3",
-      "team_tri": "DAL"
-    },
-    "8477992": {
-      "full_name_en": "Jonas Johansson",
-      "player_id": 8477992,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jonas_johansson.mp3",
-      "team_tri": "TBL"
-    },
-    "8477993": {
-      "full_name_en": "Justin Kirkland",
-      "player_id": 8477993,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/justin_kirkland.mp3",
-      "team_tri": "MIN"
-    },
     "8478009": {
       "full_name_en": "Ilya Sorokin",
       "player_id": 8478009,
@@ -1421,13 +1344,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/brayden_point.mp3",
       "team_tri": "TBL"
-    },
-    "8478021": {
-      "full_name_en": "William Lagesson",
-      "player_id": 8478021,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/william_lagesson.mp3",
-      "team_tri": "DET"
     },
     "8478024": {
       "full_name_en": "Ville Husso",
@@ -1463,27 +1379,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/victor_olofsson.mp3",
       "team_tri": "VGK"
-    },
-    "8478115": {
-      "full_name_en": "Pierre Engvall",
-      "player_id": 8478115,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/pierre_engvall.mp3",
-      "team_tri": "NYI"
-    },
-    "8478176": {
-      "full_name_en": "Joe Hicketts",
-      "player_id": 8478176,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/joe_hicketts.mp3",
-      "team_tri": "LAK"
-    },
-    "8478211": {
-      "full_name_en": "Dryden Hunt",
-      "player_id": 8478211,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dryden_hunt.mp3",
-      "team_tri": "CGY"
     },
     "8478366": {
       "full_name_en": "Frank Vatrano",
@@ -1821,13 +1716,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/mason_marchment.mp3",
       "team_tri": "SJS"
     },
-    "8479026": {
-      "full_name_en": "Philippe Myers",
-      "player_id": 8479026,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/philippe_myers.mp3",
-      "team_tri": "TOR"
-    },
     "8479193": {
       "full_name_en": "Casey DeSmith",
       "player_id": 8479193,
@@ -1841,13 +1729,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/charlie_lindgren.mp3",
       "team_tri": "WSH"
-    },
-    "8479293": {
-      "full_name_en": "Brandon Tanev",
-      "player_id": 8479293,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/brandon_tanev.mp3",
-      "team_tri": "UTA"
     },
     "8479312": {
       "full_name_en": "Alex Lyon",
@@ -1890,13 +1771,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/charlie_mcavoy.mp3",
       "team_tri": "BOS"
-    },
-    "8479333": {
-      "full_name_en": "Libor Hajek",
-      "player_id": 8479333,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/libor_hajek.mp3",
-      "team_tri": "SJS"
     },
     "8479336": {
       "full_name_en": "Carl Grundstrom",
@@ -1968,13 +1842,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/taylor_raddysh.mp3",
       "team_tri": "NYR"
     },
-    "8479393": {
-      "full_name_en": "Noah Gregor",
-      "player_id": 8479393,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/noah_gregor.mp3",
-      "team_tri": "WPG"
-    },
     "8479394": {
       "full_name_en": "Carter Hart",
       "player_id": 8479394,
@@ -1988,13 +1855,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/samuel_girard.mp3",
       "team_tri": "PIT"
-    },
-    "8479406": {
-      "full_name_en": "Filip Gustavsson",
-      "player_id": 8479406,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/filip_gustavsson.mp3",
-      "team_tri": "MIN"
     },
     "8479407": {
       "full_name_en": "Jesper Bratt",
@@ -2037,13 +1897,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/tanner_laczynski.mp3",
       "team_tri": "VGK"
-    },
-    "8479578": {
-      "full_name_en": "Casey Fitzgerald",
-      "player_id": 8479578,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/casey_fitzgerald.mp3",
-      "team_tri": "FLA"
     },
     "8479675": {
       "full_name_en": "Trevor Moore",
@@ -2241,13 +2094,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/drake_batherson.mp3",
       "team_tri": "OTT"
     },
-    "8480238": {
-      "full_name_en": "Jiri Patera",
-      "player_id": 8480238,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jiri_patera.mp3",
-      "team_tri": "BOS"
-    },
     "8480281": {
       "full_name_en": "Alexey Toropchenko",
       "player_id": 8480281,
@@ -2304,26 +2150,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/quinn_hughes.mp3",
       "team_tri": "MIN"
     },
-    "8480806": {
-      "full_name_en": "Isac Lundeström",
-      "player_id": 8480806,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/isac_lundestrom.mp3",
-      "team_tri": "CBJ"
-    },
     "8480807": {
       "full_name_en": "Mattias Samuelsson",
       "player_id": 8480807,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/mattias_samuelsson.mp3",
       "team_tri": "BUF"
-    },
-    "8480813": {
-      "full_name_en": "Joe Veleno",
-      "player_id": 8480813,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/joe_veleno.mp3",
-      "team_tri": "NYR"
     },
     "8480817": {
       "full_name_en": "K'Andre Miller",
@@ -2402,54 +2234,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/barrett_hayton.mp3",
       "team_tri": "UTA"
     },
-    "8480853": {
-      "full_name_en": "Liam Foudy",
-      "player_id": 8480853,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/liam_foudy.mp3",
-      "team_tri": "NYI"
-    },
     "8480860": {
       "full_name_en": "Kevin Bahl",
       "player_id": 8480860,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/kevin_bahl.mp3",
       "team_tri": "CGY"
-    },
-    "8480873": {
-      "full_name_en": "Rasmus Sandin",
-      "player_id": 8480873,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/rasmus_sandin.mp3",
-      "team_tri": "WSH"
-    },
-    "8480874": {
-      "full_name_en": "Adam Ginning",
-      "player_id": 8480874,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/adam_ginning.mp3",
-      "team_tri": "VGK"
-    },
-    "8480885": {
-      "full_name_en": "Olivier Rodrigue",
-      "player_id": 8480885,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/olivier_rodrigue.mp3",
-      "team_tri": "TBL"
-    },
-    "8480887": {
-      "full_name_en": "Jordan Harris",
-      "player_id": 8480887,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jordan_harris.mp3",
-      "team_tri": "BOS"
-    },
-    "8480890": {
-      "full_name_en": "Jan Jenik",
-      "player_id": 8480890,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jan_jenik.mp3",
-      "team_tri": "LAK"
     },
     "8480947": {
       "full_name_en": "Kevin Lankinen",
@@ -2520,13 +2310,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/spencer_stastney.mp3",
       "team_tri": "EDM"
-    },
-    "8481518": {
-      "full_name_en": "Nolan Foote",
-      "player_id": 8481518,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/nolan_foote.mp3",
-      "team_tri": "PHI"
     },
     "8481519": {
       "full_name_en": "Spencer Knight",
@@ -2605,13 +2388,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/cole_caufield.mp3",
       "team_tri": "MTL"
     },
-    "8481547": {
-      "full_name_en": "Simon Lundmark",
-      "player_id": 8481547,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/simon_lundmark.mp3",
-      "team_tri": "TBL"
-    },
     "8481553": {
       "full_name_en": "Bobby Brink",
       "player_id": 8481553,
@@ -2639,13 +2415,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/drew_helleson.mp3",
       "team_tri": "ANA"
-    },
-    "8481564": {
-      "full_name_en": "Ryan Johnson",
-      "player_id": 8481564,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ryan_johnson.mp3",
-      "team_tri": "BUF"
     },
     "8481567": {
       "full_name_en": "Henry Thrun",
@@ -2773,26 +2542,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dustin_wolf.mp3",
       "team_tri": "CGY"
     },
-    "8481699": {
-      "full_name_en": "Aku Raty",
-      "player_id": 8481699,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/aku_raty.mp3",
-      "team_tri": "EDM"
-    },
     "8481711": {
       "full_name_en": "Matias Maccelli",
       "player_id": 8481711,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/matias_maccelli.mp3",
       "team_tri": "NYI"
-    },
-    "8481715": {
-      "full_name_en": "Hunter Skinner",
-      "player_id": 8481715,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/hunter_skinner.mp3",
-      "team_tri": "NSH"
     },
     "8481716": {
       "full_name_en": "Dmitri Voronkov",
@@ -2857,13 +2612,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/lucas_raymond.mp3",
       "team_tri": "DET"
     },
-    "8482087": {
-      "full_name_en": "Kaiden Guhle",
-      "player_id": 8482087,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/kaiden_guhle.mp3",
-      "team_tri": "MTL"
-    },
     "8482095": {
       "full_name_en": "Tyler Kleven",
       "player_id": 8482095,
@@ -2904,7 +2652,7 @@
       "player_id": 8482111,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/justin_barron.mp3",
-      "team_tri": "NSH"
+      "team_tri": "STL"
     },
     "8482113": {
       "full_name_en": "Anton Lundell",
@@ -2968,13 +2716,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/cole_perfetti.mp3",
       "team_tri": "WPG"
-    },
-    "8482153": {
-      "full_name_en": "Brendan Brisson",
-      "player_id": 8482153,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/brendan_brisson.mp3",
-      "team_tri": "TOR"
     },
     "8482165": {
       "full_name_en": "Yan Kuznetsov",
@@ -3044,14 +2785,7 @@
       "player_id": 8482447,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/leevi_merilainen.mp3",
-      "team_tri": "OTT"
-    },
-    "8482472": {
-      "full_name_en": "Henrik Tikkanen",
-      "player_id": 8482472,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/henrik_tikkanen.mp3",
-      "team_tri": "NYI"
+      "team_tri": "VAN"
     },
     "8482476": {
       "full_name_en": "Emil Heineman",
@@ -3067,13 +2801,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jakub_dobes.mp3",
       "team_tri": "MTL"
     },
-    "8482515": {
-      "full_name_en": "Artur Akhtyamov",
-      "player_id": 8482515,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/artur_akhtyamov.mp3",
-      "team_tri": "TOR"
-    },
     "8482661": {
       "full_name_en": "Jesper Wallstedt",
       "player_id": 8482661,
@@ -3081,33 +2808,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jesper_wallstedt.mp3",
       "team_tri": "MIN"
     },
-    "8482663": {
-      "full_name_en": "Dylan Duke",
-      "player_id": 8482663,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dylan_duke.mp3",
-      "team_tri": "TBL"
-    },
     "8482667": {
       "full_name_en": "William Eklund",
       "player_id": 8482667,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/william_eklund.mp3",
       "team_tri": "OTT"
-    },
-    "8482676": {
-      "full_name_en": "Sean Behrens",
-      "player_id": 8482676,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/sean_behrens.mp3",
-      "team_tri": "COL"
-    },
-    "8482678": {
-      "full_name_en": "Corson Ceulemans",
-      "player_id": 8482678,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/corson_ceulemans.mp3",
-      "team_tri": "CBJ"
     },
     "8482682": {
       "full_name_en": "Sasha Pastujov",
@@ -3122,20 +2828,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/aatu_raty.mp3",
       "team_tri": "VAN"
-    },
-    "8482692": {
-      "full_name_en": "Guillaume Richard",
-      "player_id": 8482692,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/guillaume_richard.mp3",
-      "team_tri": "CBJ"
-    },
-    "8482693": {
-      "full_name_en": "Roman Schmidt",
-      "player_id": 8482693,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/roman_schmidt.mp3",
-      "team_tri": "MIN"
     },
     "8482699": {
       "full_name_en": "Dylan Guenther",
@@ -3164,13 +2856,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/cole_sillinger.mp3",
       "team_tri": "CBJ"
-    },
-    "8482714": {
-      "full_name_en": "Chase Stillman",
-      "player_id": 8482714,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/chase_stillman.mp3",
-      "team_tri": "DET"
     },
     "8482726": {
       "full_name_en": "Samuel Helenius",
@@ -3207,13 +2892,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/brennan_othmann.mp3",
       "team_tri": "CGY"
     },
-    "8482748": {
-      "full_name_en": "Francesco Pinelli",
-      "player_id": 8482748,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/francesco_pinelli.mp3",
-      "team_tri": "LAK"
-    },
     "8482751": {
       "full_name_en": "Ryan Winterton",
       "player_id": 8482751,
@@ -3228,27 +2906,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ville_koivunen.mp3",
       "team_tri": "PIT"
     },
-    "8482759": {
-      "full_name_en": "Viljami Marjala",
-      "player_id": 8482759,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/viljami_marjala.mp3",
-      "team_tri": "EDM"
-    },
-    "8482760": {
-      "full_name_en": "Samu Salminen",
-      "player_id": 8482760,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/samu_salminen.mp3",
-      "team_tri": "FLA"
-    },
-    "8482761": {
-      "full_name_en": "Carl Lindbom",
-      "player_id": 8482761,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/carl_lindbom.mp3",
-      "team_tri": "VGK"
-    },
     "8482765": {
       "full_name_en": "Isak Rosen",
       "player_id": 8482765,
@@ -3256,47 +2913,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/isak_rosen.mp3",
       "team_tri": "WPG"
     },
-    "8482766": {
-      "full_name_en": "William Stromgren",
-      "player_id": 8482766,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/william_stromgren.mp3",
-      "team_tri": "CGY"
-    },
     "8482775": {
       "full_name_en": "Oliver Kapanen",
       "player_id": 8482775,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/oliver_kapanen.mp3",
       "team_tri": "MTL"
-    },
-    "8482776": {
-      "full_name_en": "Andre Gasseau",
-      "player_id": 8482776,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/andre_gasseau.mp3",
-      "team_tri": "SJS"
-    },
-    "8482781": {
-      "full_name_en": "Carson Lambos",
-      "player_id": 8482781,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/carson_lambos.mp3",
-      "team_tri": "MIN"
-    },
-    "8482787": {
-      "full_name_en": "Nikita Chibrikov",
-      "player_id": 8482787,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/nikita_chibrikov.mp3",
-      "team_tri": "WPG"
-    },
-    "8482804": {
-      "full_name_en": "Ty Murchison",
-      "player_id": 8482804,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ty_murchison.mp3",
-      "team_tri": "PHI"
     },
     "8482807": {
       "full_name_en": "Ethan Del Mastro",
@@ -3312,26 +2934,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/arvid_soderblom.mp3",
       "team_tri": "CHI"
     },
-    "8482860": {
-      "full_name_en": "Aleksi Heimosalmi",
-      "player_id": 8482860,
+    "8482866": {
+      "full_name_en": "Ville Ottavainen",
+      "player_id": 8482866,
       "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/aleksi_heimosalmi.mp3",
-      "team_tri": "CAR"
-    },
-    "8482867": {
-      "full_name_en": "Jakub Malek",
-      "player_id": 8482867,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jakub_malek.mp3",
-      "team_tri": "NJD"
-    },
-    "8482868": {
-      "full_name_en": "Kalle Vaisanen",
-      "player_id": 8482868,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/kalle_vaisanen.mp3",
-      "team_tri": "BOS"
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ville_ottavainen.mp3",
+      "team_tri": "SEA"
     },
     "8482873": {
       "full_name_en": "Topias Vilen",
@@ -3340,13 +2948,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/topias_vilen.mp3",
       "team_tri": "NJD"
     },
-    "8482875": {
-      "full_name_en": "Aku Koskenvuo",
-      "player_id": 8482875,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/aku_koskenvuo.mp3",
-      "team_tri": "VAN"
-    },
     "8482877": {
       "full_name_en": "Jaroslav Chmelar",
       "player_id": 8482877,
@@ -3354,61 +2955,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jaroslav_chmelar.mp3",
       "team_tri": "NYR"
     },
-    "8482911": {
-      "full_name_en": "Joel Nystrom",
-      "player_id": 8482911,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/joel_nystrom.mp3",
-      "team_tri": "CAR"
-    },
-    "8482915": {
-      "full_name_en": "Ilya Safonov",
-      "player_id": 8482915,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ilya_safonov.mp3",
-      "team_tri": "VAN"
-    },
-    "8482922": {
-      "full_name_en": "Kirill Kirsanov",
-      "player_id": 8482922,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/kirill_kirsanov.mp3",
-      "team_tri": "LAK"
-    },
-    "8483110": {
-      "full_name_en": "Anri Ravinskis",
-      "player_id": 8483110,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/anri_ravinskis.mp3",
-      "team_tri": "VAN"
-    },
-    "8483114": {
-      "full_name_en": "Thomas Milic",
-      "player_id": 8483114,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/thomas_milic.mp3",
-      "team_tri": "WPG"
-    },
-    "8483428": {
-      "full_name_en": "Filip Bystedt",
-      "player_id": 8483428,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/filip_bystedt.mp3",
-      "team_tri": "SJS"
-    },
     "8483431": {
       "full_name_en": "Logan Cooley",
       "player_id": 8483431,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/logan_cooley.mp3",
       "team_tri": "UTA"
-    },
-    "8483433": {
-      "full_name_en": "Jack Devine",
-      "player_id": 8483433,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jack_devine.mp3",
-      "team_tri": "FLA"
     },
     "8483455": {
       "full_name_en": "Isaac Howard",
@@ -3431,20 +2983,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/david_jiricek.mp3",
       "team_tri": "PHI"
     },
-    "8483463": {
-      "full_name_en": "Aleksanteri Kaskimaki",
-      "player_id": 8483463,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/aleksanteri_kaskimaki.mp3",
-      "team_tri": "STL"
-    },
-    "8483465": {
-      "full_name_en": "Joakim Kemell",
-      "player_id": 8483465,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/joakim_kemell.mp3",
-      "team_tri": "NSH"
-    },
     "8483468": {
       "full_name_en": "Jiri Kulich",
       "player_id": 8483468,
@@ -3466,13 +3004,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jonathan_lekkerimaki.mp3",
       "team_tri": "VAN"
     },
-    "8483488": {
-      "full_name_en": "Filip Mesar",
-      "player_id": 8483488,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/filip_mesar.mp3",
-      "team_tri": "MTL"
-    },
     "8483490": {
       "full_name_en": "Pavel Mintyukov",
       "player_id": 8483490,
@@ -3486,20 +3017,6 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ivan_miroshnichenko.mp3",
       "team_tri": "WSH"
-    },
-    "8483496": {
-      "full_name_en": "Viktor Neuchev",
-      "player_id": 8483496,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/viktor_neuchev.mp3",
-      "team_tri": "CAR"
-    },
-    "8483498": {
-      "full_name_en": "Calle Odelius",
-      "player_id": 8483498,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/calle_odelius.mp3",
-      "team_tri": "NYI"
     },
     "8483499": {
       "full_name_en": "Liam Ohgren",
@@ -3515,41 +3032,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/noah_ostlund.mp3",
       "team_tri": "BUF"
     },
-    "8483509": {
-      "full_name_en": "Otto Salin",
-      "player_id": 8483509,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/otto_salin.mp3",
-      "team_tri": "LAK"
-    },
-    "8483510": {
-      "full_name_en": "Elias Salomonsson",
-      "player_id": 8483510,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/elias_salomonsson.mp3",
-      "team_tri": "WPG"
-    },
-    "8483511": {
-      "full_name_en": "Matyas Sapovaliv",
-      "player_id": 8483511,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/matyas_sapovaliv.mp3",
-      "team_tri": "VGK"
-    },
-    "8483519": {
-      "full_name_en": "Gleb Trikozov",
-      "player_id": 8483519,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/gleb_trikozov.mp3",
-      "team_tri": "CAR"
-    },
-    "8483520": {
-      "full_name_en": "Fabian Wagner",
-      "player_id": 8483520,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/fabian_wagner.mp3",
-      "team_tri": "WPG"
-    },
     "8483524": {
       "full_name_en": "Shane Wright",
       "player_id": 8483524,
@@ -3564,12 +3046,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/danila_yurov.mp3",
       "team_tri": "MIN"
     },
-    "8483575": {
-      "full_name_en": "Matt Murray",
-      "player_id": 8483575,
+    "8483565": {
+      "full_name_en": "Nick Blankenburg",
+      "player_id": 8483565,
       "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/matt_murray.mp3",
-      "team_tri": "NSH"
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/nick_blankenburg.mp3",
+      "team_tri": "TOR"
     },
     "8483609": {
       "full_name_en": "Adam Klapka",
@@ -3606,34 +3088,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/anton_johansson.mp3",
       "team_tri": "DET"
     },
-    "8483687": {
-      "full_name_en": "Marek Alscher",
-      "player_id": 8483687,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/marek_alscher.mp3",
-      "team_tri": "FLA"
-    },
-    "8483704": {
-      "full_name_en": "Dans Locmelis",
-      "player_id": 8483704,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dans_locmelis.mp3",
-      "team_tri": "BOS"
-    },
-    "8483705": {
-      "full_name_en": "Arseni Koromyslov",
-      "player_id": 8483705,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/arseni_koromyslov.mp3",
-      "team_tri": "STL"
-    },
-    "8483712": {
-      "full_name_en": "Ludvig Jansson",
-      "player_id": 8483712,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ludvig_jansson.mp3",
-      "team_tri": "FLA"
-    },
     "8483763": {
       "full_name_en": "Maksymilian Szuber",
       "player_id": 8483763,
@@ -3662,68 +3116,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/andrei_kuzmenko.mp3",
       "team_tri": "PIT"
     },
-    "8483841": {
-      "full_name_en": "Xavier Parent",
-      "player_id": 8483841,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/xavier_parent.mp3",
-      "team_tri": "NJD"
-    },
-    "8483898": {
-      "full_name_en": "Tomas Suchanek",
-      "player_id": 8483898,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/tomas_suchanek.mp3",
-      "team_tri": "ANA"
-    },
-    "8483930": {
-      "full_name_en": "Ivan Ivan",
-      "player_id": 8483930,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ivan_ivan.mp3",
-      "team_tri": "BOS"
-    },
-    "8484135": {
-      "full_name_en": "Parker Ford",
-      "player_id": 8484135,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/parker_ford.mp3",
-      "team_tri": "WPG"
-    },
-    "8484144": {
-      "full_name_en": "Connor Bedard",
-      "player_id": 8484144,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/connor_bedard.mp3",
-      "team_tri": "CHI"
-    },
     "8484164": {
       "full_name_en": "Dalibor Dvorsky",
       "player_id": 8484164,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dalibor_dvorsky.mp3",
       "team_tri": "STL"
-    },
-    "8484165": {
-      "full_name_en": "David Edstrom",
-      "player_id": 8484165,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/david_edstrom.mp3",
-      "team_tri": "NSH"
-    },
-    "8484171": {
-      "full_name_en": "Adam Gajan",
-      "player_id": 8484171,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/adam_gajan.mp3",
-      "team_tri": "CHI"
-    },
-    "8484177": {
-      "full_name_en": "Lenni Hameenaho",
-      "player_id": 8484177,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/lenni_hameenaho.mp3",
-      "team_tri": "NJD"
     },
     "8484180": {
       "full_name_en": "Samuel Honzek",
@@ -3732,34 +3130,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/samuel_honzek.mp3",
       "team_tri": "CGY"
     },
-    "8484183": {
-      "full_name_en": "Jesse Kiiskinen",
-      "player_id": 8484183,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jesse_kiiskinen.mp3",
-      "team_tri": "DET"
-    },
-    "8484184": {
-      "full_name_en": "Rasmus Kumpulainen",
-      "player_id": 8484184,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/rasmus_kumpulainen.mp3",
-      "team_tri": "MIN"
-    },
-    "8484195": {
-      "full_name_en": "Martin Misiak",
-      "player_id": 8484195,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/martin_misiak.mp3",
-      "team_tri": "CHI"
-    },
-    "8484206": {
-      "full_name_en": "Felix Nilsson",
-      "player_id": 8484206,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/felix_nilsson.mp3",
-      "team_tri": "NSH"
-    },
     "8484223": {
       "full_name_en": "Axel Sandin-Pellikka",
       "player_id": 8484223,
@@ -3767,40 +3137,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/axel_sandin_pellikka.mp3",
       "team_tri": "DET"
     },
-    "8484230": {
-      "full_name_en": "Otto Stenberg",
-      "player_id": 8484230,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/otto_stenberg.mp3",
-      "team_tri": "STL"
-    },
-    "8484233": {
-      "full_name_en": "Maxim Strbak",
-      "player_id": 8484233,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/maxim_strbak.mp3",
-      "team_tri": "BUF"
-    },
-    "8484238": {
-      "full_name_en": "Anton Wahlberg",
-      "player_id": 8484238,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/anton_wahlberg.mp3",
-      "team_tri": "ANA"
-    },
     "8484240": {
       "full_name_en": "Tom Willander",
       "player_id": 8484240,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/tom_willander.mp3",
       "team_tri": "VAN"
-    },
-    "8484380": {
-      "full_name_en": "Wilmer Skoog",
-      "player_id": 8484380,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/wilmer_skoog.mp3",
-      "team_tri": "DET"
     },
     "8484387": {
       "full_name_en": "Matvei Michkov",
@@ -3816,61 +3158,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/daniil_but.mp3",
       "team_tri": "UTA"
     },
-    "8484392": {
-      "full_name_en": "Felix Unger Sorum",
-      "player_id": 8484392,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/felix_unger_sorum.mp3",
-      "team_tri": "CAR"
-    },
-    "8484408": {
-      "full_name_en": "Vilmer Alriksson",
-      "player_id": 8484408,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/vilmer_alriksson.mp3",
-      "team_tri": "VAN"
-    },
-    "8484472": {
-      "full_name_en": "Oiva Keskinen",
-      "player_id": 8484472,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/oiva_keskinen.mp3",
-      "team_tri": "CBJ"
-    },
-    "8484507": {
-      "full_name_en": "Gabriel Szturc",
-      "player_id": 8484507,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/gabriel_szturc.mp3",
-      "team_tri": "TBL"
-    },
-    "8484616": {
-      "full_name_en": "Matyas Melovsky",
-      "player_id": 8484616,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/matyas_melovsky.mp3",
-      "team_tri": "NJD"
-    },
-    "8484766": {
-      "full_name_en": "Jesse Pulkkinen",
-      "player_id": 8484766,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/jesse_pulkkinen.mp3",
-      "team_tri": "NYI"
-    },
     "8484790": {
       "full_name_en": "Adam Jiricek",
       "player_id": 8484790,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/adam_jiricek.mp3",
       "team_tri": "STL"
-    },
-    "8484796": {
-      "full_name_en": "Emil Hemming",
-      "player_id": 8484796,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/emil_hemming.mp3",
-      "team_tri": "DAL"
     },
     "8484797": {
       "full_name_en": "Konsta Helenius",
@@ -3886,61 +3179,12 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/berkly_catton.mp3",
       "team_tri": "SEA"
     },
-    "8484836": {
-      "full_name_en": "Ondrej Becher",
-      "player_id": 8484836,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ondrej_becher.mp3",
-      "team_tri": "DET"
-    },
-    "8484853": {
-      "full_name_en": "Herman Traff",
-      "player_id": 8484853,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/herman_traff.mp3",
-      "team_tri": "ANA"
-    },
-    "8484854": {
-      "full_name_en": "Alfons Freij",
-      "player_id": 8484854,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/alfons_freij.mp3",
-      "team_tri": "WPG"
-    },
-    "8484929": {
-      "full_name_en": "Juha Jaaska",
-      "player_id": 8484929,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/juha_jaaska.mp3",
-      "team_tri": "CAR"
-    },
     "8484984": {
       "full_name_en": "Ivan Demidov",
       "player_id": 8484984,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ivan_demidov.mp3",
       "team_tri": "MTL"
-    },
-    "8485049": {
-      "full_name_en": "Miroslav Holinka",
-      "player_id": 8485049,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/miroslav_holinka.mp3",
-      "team_tri": "TOR"
-    },
-    "8485163": {
-      "full_name_en": "Tomas Cibulka",
-      "player_id": 8485163,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/tomas_cibulka.mp3",
-      "team_tri": "EDM"
-    },
-    "8485384": {
-      "full_name_en": "Vojtech Cihar",
-      "player_id": 8485384,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/vojtech_cihar.mp3",
-      "team_tri": "LAK"
     },
     "8485388": {
       "full_name_en": "Victor Eklund",
@@ -3956,13 +3200,6 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/anton_frondell.mp3",
       "team_tri": "CHI"
     },
-    "8485404": {
-      "full_name_en": "Radim Mrtka",
-      "player_id": 8485404,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/radim_mrtka.mp3",
-      "team_tri": "BUF"
-    },
     "8485469": {
       "full_name_en": "Jack Williams",
       "player_id": 8485469,
@@ -3977,36 +3214,15 @@
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/maxim_shabanov.mp3",
       "team_tri": "MIN"
     },
-    "8486074": {
-      "full_name_en": "Adam Novotny",
-      "player_id": 8486074,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/adam_novotny.mp3",
-      "team_tri": "VAN"
-    },
     "8486103": {
       "full_name_en": "Ivar Stenberg",
       "player_id": 8486103,
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ivar_stenberg.mp3",
       "team_tri": "SJS"
-    },
-    "8486148": {
-      "full_name_en": "Max Lundgren",
-      "player_id": 8486148,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/max_lundgren.mp3",
-      "team_tri": "BOS"
-    },
-    "8486205": {
-      "full_name_en": "Phillip Sinn",
-      "player_id": 8486205,
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/phillip_sinn.mp3",
-      "team_tri": "SJS"
     }
   },
-  "roster_players": 1286,
+  "roster_players": 858,
   "source": "eliteprospects_player_audio",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
@@ -4032,38 +3248,10 @@
       "team_tri": "ANA"
     },
     {
-      "first_name": "Coulson",
-      "full_name_en": "Coulson Pitre",
-      "last_name": "Pitre",
-      "player_id": 8484216,
-      "team_tri": "ANA"
-    },
-    {
-      "first_name": "Cruz",
-      "full_name_en": "Cruz Lucius",
-      "last_name": "Lucius",
-      "player_id": 8483479,
-      "team_tri": "ANA"
-    },
-    {
       "first_name": "Cutter",
       "full_name_en": "Cutter Gauthier",
       "last_name": "Gauthier",
       "player_id": 8483445,
-      "team_tri": "ANA"
-    },
-    {
-      "first_name": "Damian",
-      "full_name_en": "Damian Clara",
-      "last_name": "Clara",
-      "player_id": 8484391,
-      "team_tri": "ANA"
-    },
-    {
-      "first_name": "Ethan",
-      "full_name_en": "Ethan Procyszyn",
-      "last_name": "Procyszyn",
-      "player_id": 8484867,
       "team_tri": "ANA"
     },
     {
@@ -4102,13 +3290,6 @@
       "team_tri": "ANA"
     },
     {
-      "first_name": "Konnor",
-      "full_name_en": "Konnor Smith",
-      "last_name": "Smith",
-      "player_id": 8484395,
-      "team_tri": "ANA"
-    },
-    {
       "first_name": "Leo",
       "full_name_en": "Leo Carlsson",
       "last_name": "Carlsson",
@@ -4116,31 +3297,10 @@
       "team_tri": "ANA"
     },
     {
-      "first_name": "Lucas",
-      "full_name_en": "Lucas Pettersson",
-      "last_name": "Pettersson",
-      "player_id": 8484767,
-      "team_tri": "ANA"
-    },
-    {
       "first_name": "Marcus",
       "full_name_en": "Marcus Nordmark",
       "last_name": "Nordmark",
       "player_id": 8486072,
-      "team_tri": "ANA"
-    },
-    {
-      "first_name": "Nathan",
-      "full_name_en": "Nathan Gaucher",
-      "last_name": "Gaucher",
-      "player_id": 8483444,
-      "team_tri": "ANA"
-    },
-    {
-      "first_name": "Nico",
-      "full_name_en": "Nico Myatovic",
-      "last_name": "Myatovic",
-      "player_id": 8484201,
       "team_tri": "ANA"
     },
     {
@@ -4155,13 +3315,6 @@
       "full_name_en": "Nikita Nesterenko",
       "last_name": "Nesterenko",
       "player_id": 8481754,
-      "team_tri": "ANA"
-    },
-    {
-      "first_name": "Noah",
-      "full_name_en": "Noah Warren",
-      "last_name": "Warren",
-      "player_id": 8483521,
       "team_tri": "ANA"
     },
     {
@@ -4214,41 +3367,6 @@
       "team_tri": "ANA"
     },
     {
-      "first_name": "Yegor",
-      "full_name_en": "Yegor Sidorov",
-      "last_name": "Sidorov",
-      "player_id": 8484396,
-      "team_tri": "ANA"
-    },
-    {
-      "first_name": "Alex",
-      "full_name_en": "Alex Steeves",
-      "last_name": "Steeves",
-      "player_id": 8482634,
-      "team_tri": "BOS"
-    },
-    {
-      "first_name": "Attilio",
-      "full_name_en": "Attilio Biasca",
-      "last_name": "Biasca",
-      "player_id": 8484583,
-      "team_tri": "BOS"
-    },
-    {
-      "first_name": "Billy",
-      "full_name_en": "Billy Sweezey",
-      "last_name": "Sweezey",
-      "player_id": 8482399,
-      "team_tri": "BOS"
-    },
-    {
-      "first_name": "Brian",
-      "full_name_en": "Brian Halonen",
-      "last_name": "Halonen",
-      "player_id": 8483531,
-      "team_tri": "BOS"
-    },
-    {
       "first_name": "Connor",
       "full_name_en": "Connor Clifton",
       "last_name": "Clifton",
@@ -4298,27 +3416,6 @@
       "team_tri": "BOS"
     },
     {
-      "first_name": "Loke",
-      "full_name_en": "Loke Johansson",
-      "last_name": "Johansson",
-      "player_id": 8485072,
-      "team_tri": "BOS"
-    },
-    {
-      "first_name": "Lukas",
-      "full_name_en": "Lukas Reichel",
-      "last_name": "Reichel",
-      "player_id": 8482117,
-      "team_tri": "BOS"
-    },
-    {
-      "first_name": "Luke",
-      "full_name_en": "Luke Cavallin",
-      "last_name": "Cavallin",
-      "player_id": 8483654,
-      "team_tri": "BOS"
-    },
-    {
       "first_name": "Mark",
       "full_name_en": "Mark Kastelic",
       "last_name": "Kastelic",
@@ -4330,20 +3427,6 @@
       "full_name_en": "Mason Lohrei",
       "last_name": "Lohrei",
       "player_id": 8482511,
-      "team_tri": "BOS"
-    },
-    {
-      "first_name": "Matthew",
-      "full_name_en": "Matthew Poitras",
-      "last_name": "Poitras",
-      "player_id": 8483505,
-      "team_tri": "BOS"
-    },
-    {
-      "first_name": "Maxence",
-      "full_name_en": "Maxence Guenette",
-      "last_name": "Guenette",
-      "player_id": 8481679,
       "team_tri": "BOS"
     },
     {
@@ -4361,31 +3444,10 @@
       "team_tri": "BOS"
     },
     {
-      "first_name": "Navrin",
-      "full_name_en": "Navrin Mutter",
-      "last_name": "Mutter",
-      "player_id": 8481817,
-      "team_tri": "BOS"
-    },
-    {
       "first_name": "Pavel",
       "full_name_en": "Pavel Zacha",
       "last_name": "Zacha",
       "player_id": 8478401,
-      "team_tri": "BOS"
-    },
-    {
-      "first_name": "Riley",
-      "full_name_en": "Riley Duran",
-      "last_name": "Duran",
-      "player_id": 8482213,
-      "team_tri": "BOS"
-    },
-    {
-      "first_name": "Simon",
-      "full_name_en": "Simon Zajicek",
-      "last_name": "Zajicek",
-      "player_id": 8485538,
       "team_tri": "BOS"
     },
     {
@@ -4403,24 +3465,10 @@
       "team_tri": "BOS"
     },
     {
-      "first_name": "Aidan",
-      "full_name_en": "Aidan McDonough",
-      "last_name": "McDonough",
-      "player_id": 8481683,
-      "team_tri": "BUF"
-    },
-    {
       "first_name": "Beck",
       "full_name_en": "Beck Malenstyn",
       "last_name": "Malenstyn",
       "player_id": 8479359,
-      "team_tri": "BUF"
-    },
-    {
-      "first_name": "Carson",
-      "full_name_en": "Carson Meyer",
-      "last_name": "Meyer",
-      "player_id": 8480292,
       "team_tri": "BUF"
     },
     {
@@ -4445,38 +3493,10 @@
       "team_tri": "BUF"
     },
     {
-      "first_name": "Dennis",
-      "full_name_en": "Dennis Gilbert",
-      "last_name": "Gilbert",
-      "player_id": 8478502,
-      "team_tri": "BUF"
-    },
-    {
-      "first_name": "Gavin",
-      "full_name_en": "Gavin McCarthy",
-      "last_name": "McCarthy",
-      "player_id": 8484192,
-      "team_tri": "BUF"
-    },
-    {
       "first_name": "Jack",
       "full_name_en": "Jack Rathbone",
       "last_name": "Rathbone",
       "player_id": 8480056,
-      "team_tri": "BUF"
-    },
-    {
-      "first_name": "Jake",
-      "full_name_en": "Jake Richard",
-      "last_name": "Richard",
-      "player_id": 8483755,
-      "team_tri": "BUF"
-    },
-    {
-      "first_name": "Jason",
-      "full_name_en": "Jason Polin",
-      "last_name": "Polin",
-      "player_id": 8484255,
       "team_tri": "BUF"
     },
     {
@@ -4508,17 +3528,10 @@
       "team_tri": "BUF"
     },
     {
-      "first_name": "Mason",
-      "full_name_en": "Mason Geertsen",
-      "last_name": "Geertsen",
-      "player_id": 8477419,
-      "team_tri": "BUF"
-    },
-    {
       "first_name": "Matt",
-      "full_name_en": "Matt Villalta",
-      "last_name": "Villalta",
-      "player_id": 8480191,
+      "full_name_en": "Matt Grzelcyk",
+      "last_name": "Grzelcyk",
+      "player_id": 8476891,
       "team_tri": "BUF"
     },
     {
@@ -4536,13 +3549,6 @@
       "team_tri": "BUF"
     },
     {
-      "first_name": "Riley",
-      "full_name_en": "Riley Fiddler-Schultz",
-      "last_name": "Fiddler-Schultz",
-      "player_id": 8483090,
-      "team_tri": "BUF"
-    },
-    {
       "first_name": "Ryan",
       "full_name_en": "Ryan McLeod",
       "last_name": "McLeod",
@@ -4550,24 +3556,10 @@
       "team_tri": "BUF"
     },
     {
-      "first_name": "Scott",
-      "full_name_en": "Scott Ratzlaff",
-      "last_name": "Ratzlaff",
-      "player_id": 8484218,
-      "team_tri": "BUF"
-    },
-    {
       "first_name": "Topias",
       "full_name_en": "Topias Leinonen",
       "last_name": "Leinonen",
       "player_id": 8483475,
-      "team_tri": "BUF"
-    },
-    {
-      "first_name": "Trevor",
-      "full_name_en": "Trevor Kuntar",
-      "last_name": "Kuntar",
-      "player_id": 8482479,
       "team_tri": "BUF"
     },
     {
@@ -4585,20 +3577,6 @@
       "team_tri": "BUF"
     },
     {
-      "first_name": "Vsevolod",
-      "full_name_en": "Vsevolod Komarov",
-      "last_name": "Komarov",
-      "player_id": 8483732,
-      "team_tri": "BUF"
-    },
-    {
-      "first_name": "Zac",
-      "full_name_en": "Zac Funk",
-      "last_name": "Funk",
-      "player_id": 8484757,
-      "team_tri": "BUF"
-    },
-    {
       "first_name": "Zach",
       "full_name_en": "Zach Benson",
       "last_name": "Benson",
@@ -4613,24 +3591,10 @@
       "team_tri": "BUF"
     },
     {
-      "first_name": "Bradly",
-      "full_name_en": "Bradly Nadeau",
-      "last_name": "Nadeau",
-      "player_id": 8484203,
-      "team_tri": "CAR"
-    },
-    {
       "first_name": "Brandon",
       "full_name_en": "Brandon Bussi",
       "last_name": "Bussi",
       "player_id": 8483548,
-      "team_tri": "CAR"
-    },
-    {
-      "first_name": "Bryce",
-      "full_name_en": "Bryce Montgomery",
-      "last_name": "Montgomery",
-      "player_id": 8482888,
       "team_tri": "CAR"
     },
     {
@@ -4645,20 +3609,6 @@
       "full_name_en": "Charles Alexis Legault",
       "last_name": "Legault",
       "player_id": 8484428,
-      "team_tri": "CAR"
-    },
-    {
-      "first_name": "Dominik",
-      "full_name_en": "Dominik Badinka",
-      "last_name": "Badinka",
-      "player_id": 8484781,
-      "team_tri": "CAR"
-    },
-    {
-      "first_name": "Ivan",
-      "full_name_en": "Ivan Ryabkin",
-      "last_name": "Ryabkin",
-      "player_id": 8485368,
       "team_tri": "CAR"
     },
     {
@@ -4683,31 +3633,10 @@
       "team_tri": "CAR"
     },
     {
-      "first_name": "Justin",
-      "full_name_en": "Justin Robidas",
-      "last_name": "Robidas",
-      "player_id": 8482785,
-      "team_tri": "CAR"
-    },
-    {
       "first_name": "Nikolaj",
       "full_name_en": "Nikolaj Ehlers",
       "last_name": "Ehlers",
       "player_id": 8477940,
-      "team_tri": "CAR"
-    },
-    {
-      "first_name": "Noel",
-      "full_name_en": "Noel Fransén",
-      "last_name": "Fransén",
-      "player_id": 8484998,
-      "team_tri": "CAR"
-    },
-    {
-      "first_name": "Pierre-Olivier",
-      "full_name_en": "Pierre-Olivier Joseph",
-      "last_name": "Joseph",
-      "player_id": 8480058,
       "team_tri": "CAR"
     },
     {
@@ -4718,20 +3647,6 @@
       "team_tri": "CAR"
     },
     {
-      "first_name": "Ronan",
-      "full_name_en": "Ronan Seeley",
-      "last_name": "Seeley",
-      "player_id": 8482187,
-      "team_tri": "CAR"
-    },
-    {
-      "first_name": "Ruslan",
-      "full_name_en": "Ruslan Khazheyev",
-      "last_name": "Khazheyev",
-      "player_id": 8484440,
-      "team_tri": "CAR"
-    },
-    {
       "first_name": "Sean",
       "full_name_en": "Sean Walker",
       "last_name": "Walker",
@@ -4739,52 +3654,10 @@
       "team_tri": "CAR"
     },
     {
-      "first_name": "Seth",
-      "full_name_en": "Seth Jarvis",
-      "last_name": "Jarvis",
-      "player_id": 8482093,
-      "team_tri": "CAR"
-    },
-    {
-      "first_name": "Skyler",
-      "full_name_en": "Skyler Brind'Amour",
-      "last_name": "Brind'Amour",
-      "player_id": 8480291,
-      "team_tri": "CAR"
-    },
-    {
-      "first_name": "Zach",
-      "full_name_en": "Zach Sawchenko",
-      "last_name": "Sawchenko",
-      "player_id": 8479313,
-      "team_tri": "CAR"
-    },
-    {
-      "first_name": "Boston",
-      "full_name_en": "Boston Buckberger",
-      "last_name": "Buckberger",
-      "player_id": 8486177,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Caleb",
-      "full_name_en": "Caleb MacDonald",
-      "last_name": "MacDonald",
-      "player_id": 8485472,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Charlie",
-      "full_name_en": "Charlie Elick",
-      "last_name": "Elick",
-      "player_id": 8484808,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Colton",
-      "full_name_en": "Colton White",
-      "last_name": "White",
-      "player_id": 8478841,
+      "first_name": "Adam",
+      "full_name_en": "Adam Fantilli",
+      "last_name": "Fantilli",
+      "player_id": 8484166,
       "team_tri": "CBJ"
     },
     {
@@ -4795,20 +3668,6 @@
       "team_tri": "CBJ"
     },
     {
-      "first_name": "Elvis",
-      "full_name_en": "Elvis Merzlikins",
-      "last_name": "Merzlikins",
-      "player_id": 8478007,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Evan",
-      "full_name_en": "Evan Gardner",
-      "last_name": "Gardner",
-      "player_id": 8484997,
-      "team_tri": "CBJ"
-    },
-    {
       "first_name": "Jake",
       "full_name_en": "Jake Christiansen",
       "last_name": "Christiansen",
@@ -4816,31 +3675,10 @@
       "team_tri": "CBJ"
     },
     {
-      "first_name": "James",
-      "full_name_en": "James Malatesta",
-      "last_name": "Malatesta",
-      "player_id": 8482744,
-      "team_tri": "CBJ"
-    },
-    {
       "first_name": "Jet",
       "full_name_en": "Jet Greaves",
       "last_name": "Greaves",
       "player_id": 8482982,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Jordan",
-      "full_name_en": "Jordan Dumais",
-      "last_name": "Dumais",
-      "player_id": 8483688,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Josh",
-      "full_name_en": "Josh Eernisse",
-      "last_name": "Eernisse",
-      "player_id": 8486173,
       "team_tri": "CBJ"
     },
     {
@@ -4865,66 +3703,10 @@
       "team_tri": "CBJ"
     },
     {
-      "first_name": "Luca",
-      "full_name_en": "Luca Marrelli",
-      "last_name": "Marrelli",
-      "player_id": 8484777,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Luca",
-      "full_name_en": "Luca Pinelli",
-      "last_name": "Pinelli",
-      "player_id": 8484214,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Luke",
-      "full_name_en": "Luke Tuch",
-      "last_name": "Tuch",
-      "player_id": 8482134,
-      "team_tri": "CBJ"
-    },
-    {
       "first_name": "Mathieu",
       "full_name_en": "Mathieu Olivier",
       "last_name": "Olivier",
       "player_id": 8479671,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Max",
-      "full_name_en": "Max McCue",
-      "last_name": "McCue",
-      "player_id": 8482881,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Nolan",
-      "full_name_en": "Nolan Lalonde",
-      "last_name": "Lalonde",
-      "player_id": 8483869,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Owen",
-      "full_name_en": "Owen Sillinger",
-      "last_name": "Sillinger",
-      "player_id": 8483538,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Pheonix",
-      "full_name_en": "Pheonix Copley",
-      "last_name": "Copley",
-      "player_id": 8477831,
-      "team_tri": "CBJ"
-    },
-    {
-      "first_name": "Riley",
-      "full_name_en": "Riley Bezeau",
-      "last_name": "Bezeau",
-      "player_id": 8483804,
       "team_tri": "CBJ"
     },
     {
@@ -4949,38 +3731,10 @@
       "team_tri": "CGY"
     },
     {
-      "first_name": "Andrew",
-      "full_name_en": "Andrew Basha",
-      "last_name": "Basha",
-      "player_id": 8484782,
-      "team_tri": "CGY"
-    },
-    {
-      "first_name": "Arsenii",
-      "full_name_en": "Arsenii Sergeev",
-      "last_name": "Sergeev",
-      "player_id": 8482949,
-      "team_tri": "CGY"
-    },
-    {
-      "first_name": "Axel",
-      "full_name_en": "Axel Hurtig",
-      "last_name": "Hurtig",
-      "player_id": 8484481,
-      "team_tri": "CGY"
-    },
-    {
       "first_name": "Aydar",
       "full_name_en": "Aydar Suniev",
       "last_name": "Suniev",
       "player_id": 8484234,
-      "team_tri": "CGY"
-    },
-    {
-      "first_name": "Ben",
-      "full_name_en": "Ben Jones",
-      "last_name": "Jones",
-      "player_id": 8480259,
       "team_tri": "CGY"
     },
     {
@@ -5006,13 +3760,6 @@
     },
     {
       "first_name": "Jake",
-      "full_name_en": "Jake Livingstone",
-      "last_name": "Livingstone",
-      "player_id": 8484256,
-      "team_tri": "CGY"
-    },
-    {
-      "first_name": "Jake",
       "full_name_en": "Jake Middleton",
       "last_name": "Middleton",
       "player_id": 8478136,
@@ -5023,13 +3770,6 @@
       "full_name_en": "Jonathan Castagna",
       "last_name": "Castagna",
       "player_id": 8484154,
-      "team_tri": "CGY"
-    },
-    {
-      "first_name": "Kirill",
-      "full_name_en": "Kirill Zarubin",
-      "last_name": "Zarubin",
-      "player_id": 8485012,
       "team_tri": "CGY"
     },
     {
@@ -5061,13 +3801,6 @@
       "team_tri": "CGY"
     },
     {
-      "first_name": "Mike",
-      "full_name_en": "Mike Benning",
-      "last_name": "Benning",
-      "player_id": 8482107,
-      "team_tri": "CGY"
-    },
-    {
       "first_name": "Rory",
       "full_name_en": "Rory Kerins",
       "last_name": "Kerins",
@@ -5075,24 +3808,10 @@
       "team_tri": "CGY"
     },
     {
-      "first_name": "Sam",
-      "full_name_en": "Sam Morton",
-      "last_name": "Morton",
-      "player_id": 8484821,
-      "team_tri": "CGY"
-    },
-    {
       "first_name": "Simon",
       "full_name_en": "Simon Nemec",
       "last_name": "Nemec",
       "player_id": 8483495,
-      "team_tri": "CGY"
-    },
-    {
-      "first_name": "Tyson",
-      "full_name_en": "Tyson Gross",
-      "last_name": "Gross",
-      "player_id": 8486056,
       "team_tri": "CGY"
     },
     {
@@ -5124,13 +3843,6 @@
       "team_tri": "CHI"
     },
     {
-      "first_name": "Anthony (AJ)",
-      "full_name_en": "Anthony (AJ) Spellacy",
-      "last_name": "Spellacy",
-      "player_id": 8484858,
-      "team_tri": "CHI"
-    },
-    {
       "first_name": "Artyom",
       "full_name_en": "Artyom Levshunov",
       "last_name": "Levshunov",
@@ -5145,52 +3857,10 @@
       "team_tri": "CHI"
     },
     {
-      "first_name": "Connor",
-      "full_name_en": "Connor Mackey",
-      "last_name": "Mackey",
-      "player_id": 8482067,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Connor",
-      "full_name_en": "Connor Mylymok",
-      "last_name": "Mylymok",
-      "player_id": 8485166,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Derrick",
-      "full_name_en": "Derrick Pouliot",
-      "last_name": "Pouliot",
-      "player_id": 8476884,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Dillon",
-      "full_name_en": "Dillon Boucher",
-      "last_name": "Boucher",
-      "player_id": 8485554,
-      "team_tri": "CHI"
-    },
-    {
       "first_name": "Dominic",
       "full_name_en": "Dominic Toninato",
       "last_name": "Toninato",
       "player_id": 8476952,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Drew",
-      "full_name_en": "Drew Commesso",
-      "last_name": "Commesso",
-      "player_id": 8482123,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Dylan",
-      "full_name_en": "Dylan Anhorn",
-      "last_name": "Anhorn",
-      "player_id": 8484906,
       "team_tri": "CHI"
     },
     {
@@ -5201,38 +3871,10 @@
       "team_tri": "CHI"
     },
     {
-      "first_name": "Gavin",
-      "full_name_en": "Gavin Hayes",
-      "last_name": "Hayes",
-      "player_id": 8483453,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Jake",
-      "full_name_en": "Jake Furlong",
-      "last_name": "Furlong",
-      "player_id": 8483745,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Jiri",
-      "full_name_en": "Jiri Felcman",
-      "last_name": "Felcman",
-      "player_id": 8484400,
-      "team_tri": "CHI"
-    },
-    {
       "first_name": "Kevin",
       "full_name_en": "Kevin Korchinski",
       "last_name": "Korchinski",
       "player_id": 8483466,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Marek",
-      "full_name_en": "Marek Vanacker",
-      "last_name": "Vanacker",
-      "player_id": 8484761,
       "team_tri": "CHI"
     },
     {
@@ -5254,13 +3896,6 @@
       "full_name_en": "Patrick Kane",
       "last_name": "Kane",
       "player_id": 8474141,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Paul",
-      "full_name_en": "Paul Ludwinski",
-      "last_name": "Ludwinski",
-      "player_id": 8483480,
       "team_tri": "CHI"
     },
     {
@@ -5299,27 +3934,6 @@
       "team_tri": "CHI"
     },
     {
-      "first_name": "Samuel",
-      "full_name_en": "Samuel Savoie",
-      "last_name": "Savoie",
-      "player_id": 8483677,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Stanislav",
-      "full_name_en": "Stanislav Berezhnoy",
-      "last_name": "Berezhnoy",
-      "player_id": 8485729,
-      "team_tri": "CHI"
-    },
-    {
-      "first_name": "Taige",
-      "full_name_en": "Taige Harding",
-      "last_name": "Harding",
-      "player_id": 8482923,
-      "team_tri": "CHI"
-    },
-    {
       "first_name": "Wyatt",
       "full_name_en": "Wyatt Kaiser",
       "last_name": "Kaiser",
@@ -5334,38 +3948,10 @@
       "team_tri": "COL"
     },
     {
-      "first_name": "Alex",
-      "full_name_en": "Alex Gagne",
-      "last_name": "Gagne",
-      "player_id": 8482942,
-      "team_tri": "COL"
-    },
-    {
       "first_name": "Cale",
       "full_name_en": "Cale Makar",
       "last_name": "Makar",
       "player_id": 8480069,
-      "team_tri": "COL"
-    },
-    {
-      "first_name": "Christian",
-      "full_name_en": "Christian Wolanin",
-      "last_name": "Wolanin",
-      "player_id": 8478846,
-      "team_tri": "COL"
-    },
-    {
-      "first_name": "Cooper",
-      "full_name_en": "Cooper Gay",
-      "last_name": "Gay",
-      "player_id": 8485474,
-      "team_tri": "COL"
-    },
-    {
-      "first_name": "Domenick",
-      "full_name_en": "Domenick Fensore",
-      "last_name": "Fensore",
-      "player_id": 8481562,
       "team_tri": "COL"
     },
     {
@@ -5383,31 +3969,10 @@
       "team_tri": "COL"
     },
     {
-      "first_name": "Gavin",
-      "full_name_en": "Gavin Brindley",
-      "last_name": "Brindley",
-      "player_id": 8484149,
-      "team_tri": "COL"
-    },
-    {
       "first_name": "Georgii",
       "full_name_en": "Georgii Merkulov",
       "last_name": "Merkulov",
       "player_id": 8483567,
-      "team_tri": "COL"
-    },
-    {
-      "first_name": "Gustav",
-      "full_name_en": "Gustav Stjernberg",
-      "last_name": "Stjernberg",
-      "player_id": 8486118,
-      "team_tri": "COL"
-    },
-    {
-      "first_name": "Ilya",
-      "full_name_en": "Ilya Nabokov",
-      "last_name": "Nabokov",
-      "player_id": 8484996,
       "team_tri": "COL"
     },
     {
@@ -5425,13 +3990,6 @@
       "team_tri": "COL"
     },
     {
-      "first_name": "Matthew",
-      "full_name_en": "Matthew DiMarsico",
-      "last_name": "DiMarsico",
-      "player_id": 8486151,
-      "team_tri": "COL"
-    },
-    {
       "first_name": "Nicolas",
       "full_name_en": "Nicolas Roy",
       "last_name": "Roy",
@@ -5439,24 +3997,10 @@
       "team_tri": "COL"
     },
     {
-      "first_name": "Nikita",
-      "full_name_en": "Nikita Prishchepov",
-      "last_name": "Prishchepov",
-      "player_id": 8485105,
-      "team_tri": "COL"
-    },
-    {
       "first_name": "Parker",
       "full_name_en": "Parker Kelly",
       "last_name": "Kelly",
       "player_id": 8480448,
-      "team_tri": "COL"
-    },
-    {
-      "first_name": "Saige",
-      "full_name_en": "Saige Weinstein",
-      "last_name": "Weinstein",
-      "player_id": 8484556,
       "team_tri": "COL"
     },
     {
@@ -5502,34 +4046,6 @@
       "team_tri": "COL"
     },
     {
-      "first_name": "Angus",
-      "full_name_en": "Angus MacDonell",
-      "last_name": "MacDonell",
-      "player_id": 8484468,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Aram",
-      "full_name_en": "Aram Minnetian",
-      "last_name": "Minnetian",
-      "player_id": 8484194,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Arno",
-      "full_name_en": "Arno Tiefensee",
-      "last_name": "Tiefensee",
-      "player_id": 8484442,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Artem",
-      "full_name_en": "Artem Shlaine",
-      "last_name": "Shlaine",
-      "player_id": 8482214,
-      "team_tri": "DAL"
-    },
-    {
       "first_name": "Arttu",
       "full_name_en": "Arttu Hyry",
       "last_name": "Hyry",
@@ -5537,45 +4053,10 @@
       "team_tri": "DAL"
     },
     {
-      "first_name": "Ayrton",
-      "full_name_en": "Ayrton Martino",
-      "last_name": "Martino",
-      "player_id": 8482690,
-      "team_tri": "DAL"
-    },
-    {
       "first_name": "Cameron",
       "full_name_en": "Cameron Hughes",
       "last_name": "Hughes",
       "player_id": 8478888,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Christian",
-      "full_name_en": "Christian Fitzgerald",
-      "last_name": "Fitzgerald",
-      "player_id": 8486174,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Connor",
-      "full_name_en": "Connor Punnett",
-      "last_name": "Punnett",
-      "player_id": 8484523,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Dylan",
-      "full_name_en": "Dylan Hryckowian",
-      "last_name": "Hryckowian",
-      "player_id": 8486130,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Jack",
-      "full_name_en": "Jack Anderson",
-      "last_name": "Anderson",
-      "player_id": 8486126,
       "team_tri": "DAL"
     },
     {
@@ -5590,13 +4071,6 @@
       "full_name_en": "Jaxon Fuder",
       "last_name": "Fuder",
       "player_id": 8485691,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Justin",
-      "full_name_en": "Justin Ertel",
-      "last_name": "Ertel",
-      "player_id": 8482919,
       "team_tri": "DAL"
     },
     {
@@ -5628,31 +4102,10 @@
       "team_tri": "DAL"
     },
     {
-      "first_name": "Matthew",
-      "full_name_en": "Matthew Seminoff",
-      "last_name": "Seminoff",
-      "player_id": 8483514,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Niilopekka",
-      "full_name_en": "Niilopekka Muhonen",
-      "last_name": "Muhonen",
-      "player_id": 8485041,
-      "team_tri": "DAL"
-    },
-    {
       "first_name": "Nils",
       "full_name_en": "Nils Lundkvist",
       "last_name": "Lundkvist",
       "player_id": 8480878,
-      "team_tri": "DAL"
-    },
-    {
-      "first_name": "Rémi",
-      "full_name_en": "Rémi Poirier",
-      "last_name": "Poirier",
-      "player_id": 8482465,
       "team_tri": "DAL"
     },
     {
@@ -5663,45 +4116,10 @@
       "team_tri": "DAL"
     },
     {
-      "first_name": "Cameron",
-      "full_name_en": "Cameron Butler",
-      "last_name": "Butler",
-      "player_id": 8483045,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Carter",
-      "full_name_en": "Carter Bear",
-      "last_name": "Bear",
-      "player_id": 8485362,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Carter",
-      "full_name_en": "Carter Gylander",
-      "last_name": "Gylander",
-      "player_id": 8481757,
-      "team_tri": "DET"
-    },
-    {
       "first_name": "Carter",
       "full_name_en": "Carter Mazur",
       "last_name": "Mazur",
       "player_id": 8482802,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Dominik",
-      "full_name_en": "Dominik Shine",
-      "last_name": "Shine",
-      "player_id": 8479942,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Dylan",
-      "full_name_en": "Dylan James",
-      "last_name": "James",
-      "player_id": 8483459,
       "team_tri": "DET"
     },
     {
@@ -5723,20 +4141,6 @@
       "full_name_en": "Jacob Bernard-Docker",
       "last_name": "Bernard-Docker",
       "player_id": 8480879,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Jacob",
-      "full_name_en": "Jacob Bryson",
-      "last_name": "Bryson",
-      "player_id": 8480196,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "John",
-      "full_name_en": "John Leonard",
-      "last_name": "Leonard",
-      "player_id": 8481077,
       "team_tri": "DET"
     },
     {
@@ -5768,13 +4172,6 @@
       "team_tri": "DET"
     },
     {
-      "first_name": "Michal",
-      "full_name_en": "Michal Postava",
-      "last_name": "Postava",
-      "player_id": 8485545,
-      "team_tri": "DET"
-    },
-    {
       "first_name": "Moritz",
       "full_name_en": "Moritz Seider",
       "last_name": "Seider",
@@ -5786,55 +4183,6 @@
       "full_name_en": "Nate Danielson",
       "last_name": "Danielson",
       "player_id": 8484160,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Noah",
-      "full_name_en": "Noah Dower Nilsson",
-      "last_name": "Dower Nilsson",
-      "player_id": 8484161,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Ronnie",
-      "full_name_en": "Ronnie Attard",
-      "last_name": "Attard",
-      "player_id": 8481521,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Shai",
-      "full_name_en": "Shai Buium",
-      "last_name": "Buium",
-      "player_id": 8482777,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Sheldon",
-      "full_name_en": "Sheldon Dries",
-      "last_name": "Dries",
-      "player_id": 8480326,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Sutter",
-      "full_name_en": "Sutter Muzzatti",
-      "last_name": "Muzzatti",
-      "player_id": 8484425,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Theo",
-      "full_name_en": "Theo Rochette",
-      "last_name": "Rochette",
-      "player_id": 8482184,
-      "team_tri": "DET"
-    },
-    {
-      "first_name": "Trey",
-      "full_name_en": "Trey Augustine",
-      "last_name": "Augustine",
-      "player_id": 8484141,
       "team_tri": "DET"
     },
     {
@@ -5852,27 +4200,6 @@
       "team_tri": "EDM"
     },
     {
-      "first_name": "Atro",
-      "full_name_en": "Atro Leppanen",
-      "last_name": "Leppanen",
-      "player_id": 8485509,
-      "team_tri": "EDM"
-    },
-    {
-      "first_name": "Beau",
-      "full_name_en": "Beau Akey",
-      "last_name": "Akey",
-      "player_id": 8484139,
-      "team_tri": "EDM"
-    },
-    {
-      "first_name": "Brady",
-      "full_name_en": "Brady Stonehouse",
-      "last_name": "Stonehouse",
-      "player_id": 8483847,
-      "team_tri": "EDM"
-    },
-    {
       "first_name": "Colton",
       "full_name_en": "Colton Dach",
       "last_name": "Dach",
@@ -5880,31 +4207,10 @@
       "team_tri": "EDM"
     },
     {
-      "first_name": "Connor",
-      "full_name_en": "Connor Clattenburg",
-      "last_name": "Clattenburg",
-      "player_id": 8484529,
-      "team_tri": "EDM"
-    },
-    {
-      "first_name": "Connor",
-      "full_name_en": "Connor Ungar",
-      "last_name": "Ungar",
-      "player_id": 8483083,
-      "team_tri": "EDM"
-    },
-    {
       "first_name": "Damien",
       "full_name_en": "Damien Carfagna",
       "last_name": "Carfagna",
       "player_id": 8485484,
-      "team_tri": "EDM"
-    },
-    {
-      "first_name": "Eduards",
-      "full_name_en": "Eduards Tralmaks",
-      "last_name": "Tralmaks",
-      "player_id": 8482631,
       "team_tri": "EDM"
     },
     {
@@ -5929,13 +4235,6 @@
       "team_tri": "EDM"
     },
     {
-      "first_name": "James",
-      "full_name_en": "James Stefan",
-      "last_name": "Stefan",
-      "player_id": 8483100,
-      "team_tri": "EDM"
-    },
-    {
       "first_name": "Josh",
       "full_name_en": "Josh Samanski",
       "last_name": "Samanski",
@@ -5943,10 +4242,10 @@
       "team_tri": "EDM"
     },
     {
-      "first_name": "Joshua",
-      "full_name_en": "Joshua Brown",
-      "last_name": "Brown",
-      "player_id": 8477384,
+      "first_name": "Matt",
+      "full_name_en": "Matt Savoie",
+      "last_name": "Savoie",
+      "player_id": 8483512,
       "team_tri": "EDM"
     },
     {
@@ -5968,20 +4267,6 @@
       "full_name_en": "Owen Michaels",
       "last_name": "Michaels",
       "player_id": 8486161,
-      "team_tri": "EDM"
-    },
-    {
-      "first_name": "Quinn",
-      "full_name_en": "Quinn Hutson",
-      "last_name": "Hutson",
-      "player_id": 8485511,
-      "team_tri": "EDM"
-    },
-    {
-      "first_name": "Riley",
-      "full_name_en": "Riley Stillman",
-      "last_name": "Stillman",
-      "player_id": 8479388,
       "team_tri": "EDM"
     },
     {
@@ -6013,13 +4298,6 @@
       "team_tri": "EDM"
     },
     {
-      "first_name": "William",
-      "full_name_en": "William Nicholl",
-      "last_name": "Nicholl",
-      "player_id": 8485087,
-      "team_tri": "EDM"
-    },
-    {
       "first_name": "Aleksander",
       "full_name_en": "Aleksander Barkov",
       "last_name": "Barkov",
@@ -6031,13 +4309,6 @@
       "full_name_en": "Alexander Petrovic",
       "last_name": "Petrovic",
       "player_id": 8475755,
-      "team_tri": "FLA"
-    },
-    {
-      "first_name": "Angus",
-      "full_name_en": "Angus Crookshank",
-      "last_name": "Crookshank",
-      "player_id": 8481065,
       "team_tri": "FLA"
     },
     {
@@ -6069,13 +4340,6 @@
       "team_tri": "FLA"
     },
     {
-      "first_name": "Cooper",
-      "full_name_en": "Cooper Black",
-      "last_name": "Black",
-      "player_id": 8484900,
-      "team_tri": "FLA"
-    },
-    {
       "first_name": "Dmitry",
       "full_name_en": "Dmitry Kulikov",
       "last_name": "Kulikov",
@@ -6090,13 +4354,6 @@
       "team_tri": "FLA"
     },
     {
-      "first_name": "Emil",
-      "full_name_en": "Emil Pieniniemi",
-      "last_name": "Pieniniemi",
-      "player_id": 8484213,
-      "team_tri": "FLA"
-    },
-    {
       "first_name": "Garnet",
       "full_name_en": "Garnet Hathaway",
       "last_name": "Hathaway",
@@ -6104,24 +4361,10 @@
       "team_tri": "FLA"
     },
     {
-      "first_name": "Gracyn",
-      "full_name_en": "Gracyn Sawchyn",
-      "last_name": "Sawchyn",
-      "player_id": 8484224,
-      "team_tri": "FLA"
-    },
-    {
       "first_name": "Gustav",
       "full_name_en": "Gustav Forsling",
       "last_name": "Forsling",
       "player_id": 8478055,
-      "team_tri": "FLA"
-    },
-    {
-      "first_name": "Hunter",
-      "full_name_en": "Hunter St. Martin",
-      "last_name": "St. Martin",
-      "player_id": 8485071,
       "team_tri": "FLA"
     },
     {
@@ -6146,13 +4389,6 @@
       "team_tri": "FLA"
     },
     {
-      "first_name": "Kirill",
-      "full_name_en": "Kirill Gerasimyuk",
-      "last_name": "Gerasimyuk",
-      "player_id": 8482914,
-      "team_tri": "FLA"
-    },
-    {
       "first_name": "Lars",
       "full_name_en": "Lars Eller",
       "last_name": "Eller",
@@ -6160,24 +4396,10 @@
       "team_tri": "FLA"
     },
     {
-      "first_name": "MacKenzie",
-      "full_name_en": "MacKenzie Entwistle",
-      "last_name": "Entwistle",
-      "player_id": 8480025,
-      "team_tri": "FLA"
-    },
-    {
-      "first_name": "Matvei",
-      "full_name_en": "Matvei Shuravin",
-      "last_name": "Shuravin",
-      "player_id": 8485004,
-      "team_tri": "FLA"
-    },
-    {
-      "first_name": "Mikulas",
-      "full_name_en": "Mikulas Hovorka",
-      "last_name": "Hovorka",
-      "player_id": 8484933,
+      "first_name": "Nathan",
+      "full_name_en": "Nathan Bastian",
+      "last_name": "Bastian",
+      "player_id": 8479414,
       "team_tri": "FLA"
     },
     {
@@ -6188,32 +4410,11 @@
       "team_tri": "FLA"
     },
     {
-      "first_name": "Tyler",
-      "full_name_en": "Tyler Muszelik",
-      "last_name": "Muszelik",
-      "player_id": 8483736,
-      "team_tri": "FLA"
-    },
-    {
       "first_name": "Uvis",
       "full_name_en": "Uvis Balinskis",
       "last_name": "Balinskis",
       "player_id": 8484304,
       "team_tri": "FLA"
-    },
-    {
-      "first_name": "Aatu",
-      "full_name_en": "Aatu Jamsen",
-      "last_name": "Jamsen",
-      "player_id": 8482466,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Adam",
-      "full_name_en": "Adam Goljer",
-      "last_name": "Goljer",
-      "player_id": 8486039,
-      "team_tri": "LAK"
     },
     {
       "first_name": "Alex",
@@ -6230,150 +4431,10 @@
       "team_tri": "LAK"
     },
     {
-      "first_name": "Angus",
-      "full_name_en": "Angus Booth",
-      "last_name": "Booth",
-      "player_id": 8483699,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Carter",
-      "full_name_en": "Carter George",
-      "last_name": "George",
-      "player_id": 8484857,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Cole",
-      "full_name_en": "Cole Guttman",
-      "last_name": "Guttman",
-      "player_id": 8480252,
-      "team_tri": "LAK"
-    },
-    {
       "first_name": "Erik",
       "full_name_en": "Erik Gustafsson",
       "last_name": "Gustafsson",
       "player_id": 8476979,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Erik",
-      "full_name_en": "Erik Portillo",
-      "last_name": "Portillo",
-      "player_id": 8481707,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Giorgos",
-      "full_name_en": "Giorgos Pantelas",
-      "last_name": "Pantelas",
-      "player_id": 8486081,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Grant",
-      "full_name_en": "Grant Slukynsky",
-      "last_name": "Slukynsky",
-      "player_id": 8486160,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Hampton",
-      "full_name_en": "Hampton Slukynsky",
-      "last_name": "Slukynsky",
-      "player_id": 8484417,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Henry",
-      "full_name_en": "Henry Brzustewicz",
-      "last_name": "Brzustewicz",
-      "player_id": 8485381,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Jakub",
-      "full_name_en": "Jakub Dvorak",
-      "last_name": "Dvorak",
-      "player_id": 8484163,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Jan",
-      "full_name_en": "Jan Chovan",
-      "last_name": "Chovan",
-      "player_id": 8485429,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Jared",
-      "full_name_en": "Jared Woolley",
-      "last_name": "Woolley",
-      "player_id": 8484844,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Jared",
-      "full_name_en": "Jared Wright",
-      "last_name": "Wright",
-      "player_id": 8483756,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Jimmy",
-      "full_name_en": "Jimmy Lombardi",
-      "last_name": "Lombardi",
-      "player_id": 8485602,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Kaleb",
-      "full_name_en": "Kaleb Lawrence",
-      "last_name": "Lawrence",
-      "player_id": 8483052,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Kenny",
-      "full_name_en": "Kenny Connors",
-      "last_name": "Connors",
-      "player_id": 8483675,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Koehn",
-      "full_name_en": "Koehn Ziemmer",
-      "last_name": "Ziemmer",
-      "player_id": 8484243,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Lane",
-      "full_name_en": "Lane Pederson",
-      "last_name": "Pederson",
-      "player_id": 8478967,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Liam",
-      "full_name_en": "Liam Lefebvre",
-      "last_name": "Lefebvre",
-      "player_id": 8486060,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Lucas",
-      "full_name_en": "Lucas Ambrosio",
-      "last_name": "Ambrosio",
-      "player_id": 8486350,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Martin",
-      "full_name_en": "Martin Chromiak",
-      "last_name": "Chromiak",
-      "player_id": 8482160,
       "team_tri": "LAK"
     },
     {
@@ -6384,45 +4445,10 @@
       "team_tri": "LAK"
     },
     {
-      "first_name": "Scott",
-      "full_name_en": "Scott Perunovich",
-      "last_name": "Perunovich",
-      "player_id": 8481059,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Taylor",
-      "full_name_en": "Taylor Ward",
-      "last_name": "Ward",
-      "player_id": 8483406,
-      "team_tri": "LAK"
-    },
-    {
-      "first_name": "Ben",
-      "full_name_en": "Ben Dexheimer",
-      "last_name": "Dexheimer",
-      "player_id": 8486182,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Caedan",
-      "full_name_en": "Caedan Bankier",
-      "last_name": "Bankier",
-      "player_id": 8482863,
-      "team_tri": "MIN"
-    },
-    {
       "first_name": "Charlie",
       "full_name_en": "Charlie Stramel",
       "last_name": "Stramel",
       "player_id": 8484231,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Chase",
-      "full_name_en": "Chase Wutzke",
-      "last_name": "Wutzke",
-      "player_id": 8485037,
       "team_tri": "MIN"
     },
     {
@@ -6433,48 +4459,6 @@
       "team_tri": "MIN"
     },
     {
-      "first_name": "Dylan",
-      "full_name_en": "Dylan Gambrell",
-      "last_name": "Gambrell",
-      "player_id": 8479580,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Filip",
-      "full_name_en": "Filip Ruzicka",
-      "last_name": "Ruzicka",
-      "player_id": 8486275,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Hunter",
-      "full_name_en": "Hunter Haight",
-      "last_name": "Haight",
-      "player_id": 8483452,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Jack",
-      "full_name_en": "Jack Peart",
-      "last_name": "Peart",
-      "player_id": 8482686,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Jagger",
-      "full_name_en": "Jagger Joshua",
-      "last_name": "Joshua",
-      "player_id": 8484248,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Mason",
-      "full_name_en": "Mason Shaw",
-      "last_name": "Shaw",
-      "player_id": 8479972,
-      "team_tri": "MIN"
-    },
-    {
       "first_name": "Matt",
       "full_name_en": "Matt Boldy",
       "last_name": "Boldy",
@@ -6482,45 +4466,10 @@
       "team_tri": "MIN"
     },
     {
-      "first_name": "Matt",
-      "full_name_en": "Matt Kiersted",
-      "last_name": "Kiersted",
-      "player_id": 8482641,
-      "team_tri": "MIN"
-    },
-    {
       "first_name": "Nico",
       "full_name_en": "Nico Sturm",
       "last_name": "Sturm",
       "player_id": 8481477,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Rieger",
-      "full_name_en": "Rieger Lorenz",
-      "last_name": "Lorenz",
-      "player_id": 8483478,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Riley",
-      "full_name_en": "Riley Heidt",
-      "last_name": "Heidt",
-      "player_id": 8484178,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Riley",
-      "full_name_en": "Riley Mercer",
-      "last_name": "Mercer",
-      "player_id": 8483918,
-      "team_tri": "MIN"
-    },
-    {
-      "first_name": "Stevie",
-      "full_name_en": "Stevie Leskovar",
-      "last_name": "Leskovar",
-      "player_id": 8485074,
       "team_tri": "MIN"
     },
     {
@@ -6559,20 +4508,6 @@
       "team_tri": "MTL"
     },
     {
-      "first_name": "Bryce",
-      "full_name_en": "Bryce Pickford",
-      "last_name": "Pickford",
-      "player_id": 8485218,
-      "team_tri": "MTL"
-    },
-    {
-      "first_name": "David",
-      "full_name_en": "David Reinbacher",
-      "last_name": "Reinbacher",
-      "player_id": 8484220,
-      "team_tri": "MTL"
-    },
-    {
       "first_name": "Ethan",
       "full_name_en": "Ethan Samson",
       "last_name": "Samson",
@@ -6594,24 +4529,10 @@
       "team_tri": "MTL"
     },
     {
-      "first_name": "Jacob",
-      "full_name_en": "Jacob Fowler",
-      "last_name": "Fowler",
-      "player_id": 8484170,
-      "team_tri": "MTL"
-    },
-    {
       "first_name": "Jake",
       "full_name_en": "Jake Evans",
       "last_name": "Evans",
       "player_id": 8478133,
-      "team_tri": "MTL"
-    },
-    {
-      "first_name": "Jared",
-      "full_name_en": "Jared Davidson",
-      "last_name": "Davidson",
-      "player_id": 8483728,
       "team_tri": "MTL"
     },
     {
@@ -6626,20 +4547,6 @@
       "full_name_en": "Juraj Slafkovský",
       "last_name": "Slafkovský",
       "player_id": 8483515,
-      "team_tri": "MTL"
-    },
-    {
-      "first_name": "Lucas",
-      "full_name_en": "Lucas Condotta",
-      "last_name": "Condotta",
-      "player_id": 8483549,
-      "team_tri": "MTL"
-    },
-    {
-      "first_name": "Luke",
-      "full_name_en": "Luke Mittelstadt",
-      "last_name": "Mittelstadt",
-      "player_id": 8482687,
       "team_tri": "MTL"
     },
     {
@@ -6664,20 +4571,6 @@
       "team_tri": "MTL"
     },
     {
-      "first_name": "Owen",
-      "full_name_en": "Owen Beck",
-      "last_name": "Beck",
-      "player_id": 8483424,
-      "team_tri": "MTL"
-    },
-    {
-      "first_name": "Owen",
-      "full_name_en": "Owen Protz",
-      "last_name": "Protz",
-      "player_id": 8485008,
-      "team_tri": "MTL"
-    },
-    {
       "first_name": "Phillip",
       "full_name_en": "Phillip Danault",
       "last_name": "Danault",
@@ -6689,13 +4582,6 @@
       "full_name_en": "Reilly Walsh",
       "last_name": "Walsh",
       "player_id": 8480054,
-      "team_tri": "MTL"
-    },
-    {
-      "first_name": "Tyler",
-      "full_name_en": "Tyler Thorpe",
-      "last_name": "Thorpe",
-      "player_id": 8484533,
       "team_tri": "MTL"
     },
     {
@@ -6720,13 +4606,6 @@
       "team_tri": "NJD"
     },
     {
-      "first_name": "Anton",
-      "full_name_en": "Anton Silaev",
-      "last_name": "Silaev",
-      "player_id": 8484987,
-      "team_tri": "NJD"
-    },
-    {
       "first_name": "Arseny",
       "full_name_en": "Arseny Gritsyuk",
       "last_name": "Gritsyuk",
@@ -6734,24 +4613,10 @@
       "team_tri": "NJD"
     },
     {
-      "first_name": "Ben",
-      "full_name_en": "Ben Steeves",
-      "last_name": "Steeves",
-      "player_id": 8484834,
-      "team_tri": "NJD"
-    },
-    {
       "first_name": "Brenden",
       "full_name_en": "Brenden Dillon",
       "last_name": "Dillon",
       "player_id": 8475455,
-      "team_tri": "NJD"
-    },
-    {
-      "first_name": "Cam",
-      "full_name_en": "Cam Squires",
-      "last_name": "Squires",
-      "player_id": 8484405,
       "team_tri": "NJD"
     },
     {
@@ -6769,20 +4634,6 @@
       "team_tri": "NJD"
     },
     {
-      "first_name": "Ethan",
-      "full_name_en": "Ethan Edwards",
-      "last_name": "Edwards",
-      "player_id": 8482194,
-      "team_tri": "NJD"
-    },
-    {
-      "first_name": "Etienne",
-      "full_name_en": "Etienne Morin",
-      "last_name": "Morin",
-      "player_id": 8484198,
-      "team_tri": "NJD"
-    },
-    {
       "first_name": "Evan",
       "full_name_en": "Evan Rodrigues",
       "last_name": "Rodrigues",
@@ -6797,24 +4648,10 @@
       "team_tri": "NJD"
     },
     {
-      "first_name": "Jeremy",
-      "full_name_en": "Jeremy Hanzel",
-      "last_name": "Hanzel",
-      "player_id": 8483086,
-      "team_tri": "NJD"
-    },
-    {
       "first_name": "Johnathan",
       "full_name_en": "Johnathan Kovacevic",
       "last_name": "Kovacevic",
       "player_id": 8480192,
-      "team_tri": "NJD"
-    },
-    {
-      "first_name": "Josh",
-      "full_name_en": "Josh Filmon",
-      "last_name": "Filmon",
-      "player_id": 8483439,
       "team_tri": "NJD"
     },
     {
@@ -6839,13 +4676,6 @@
       "team_tri": "NJD"
     },
     {
-      "first_name": "Mikael",
-      "full_name_en": "Mikael Diotte",
-      "last_name": "Diotte",
-      "player_id": 8483085,
-      "team_tri": "NJD"
-    },
-    {
       "first_name": "Nico",
       "full_name_en": "Nico Hischier",
       "last_name": "Hischier",
@@ -6860,17 +4690,17 @@
       "team_tri": "NJD"
     },
     {
+      "first_name": "Rémi",
+      "full_name_en": "Rémi Poirier",
+      "last_name": "Poirier",
+      "player_id": 8482465,
+      "team_tri": "NJD"
+    },
+    {
       "first_name": "Seamus",
       "full_name_en": "Seamus Casey",
       "last_name": "Casey",
       "player_id": 8483429,
-      "team_tri": "NJD"
-    },
-    {
-      "first_name": "Shane",
-      "full_name_en": "Shane Lachance",
-      "last_name": "Lachance",
-      "player_id": 8482941,
       "team_tri": "NJD"
     },
     {
@@ -6888,13 +4718,6 @@
       "team_tri": "NSH"
     },
     {
-      "first_name": "Aiden",
-      "full_name_en": "Aiden Fink",
-      "last_name": "Fink",
-      "player_id": 8484494,
-      "team_tri": "NSH"
-    },
-    {
       "first_name": "Alexander",
       "full_name_en": "Alexander Kerfoot",
       "last_name": "Kerfoot",
@@ -6902,87 +4725,10 @@
       "team_tri": "NSH"
     },
     {
-      "first_name": "Andrew",
-      "full_name_en": "Andrew Gibson",
-      "last_name": "Gibson",
-      "player_id": 8484174,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Austin",
-      "full_name_en": "Austin Roest",
-      "last_name": "Roest",
-      "player_id": 8483844,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Brady",
-      "full_name_en": "Brady Martin",
-      "last_name": "Martin",
-      "player_id": 8485405,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Chase",
-      "full_name_en": "Chase Bradley",
-      "last_name": "Bradley",
-      "player_id": 8482507,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Cole",
-      "full_name_en": "Cole O'Hara",
-      "last_name": "O'Hara",
-      "player_id": 8483696,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Daniel",
-      "full_name_en": "Daniel Nieminen",
-      "last_name": "Nieminen",
-      "player_id": 8485636,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Hiroki",
-      "full_name_en": "Hiroki Gojsic",
-      "last_name": "Gojsic",
-      "player_id": 8485005,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Isak",
-      "full_name_en": "Isak Posch",
-      "last_name": "Posch",
-      "player_id": 8485473,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Jake",
-      "full_name_en": "Jake Lucchini",
-      "last_name": "Lucchini",
-      "player_id": 8481422,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Joey",
-      "full_name_en": "Joey Willis",
-      "last_name": "Willis",
-      "player_id": 8484412,
-      "team_tri": "NSH"
-    },
-    {
       "first_name": "Jonathan",
       "full_name_en": "Jonathan Marchessault",
       "last_name": "Marchessault",
       "player_id": 8476539,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Kalan",
-      "full_name_en": "Kalan Lind",
-      "last_name": "Lind",
-      "player_id": 8484187,
       "team_tri": "NSH"
     },
     {
@@ -7014,13 +4760,6 @@
       "team_tri": "NSH"
     },
     {
-      "first_name": "Ozzy",
-      "full_name_en": "Ozzy Wiesblatt",
-      "last_name": "Wiesblatt",
-      "player_id": 8482103,
-      "team_tri": "NSH"
-    },
-    {
       "first_name": "Reid",
       "full_name_en": "Reid Schaefer",
       "last_name": "Schaefer",
@@ -7042,20 +4781,6 @@
       "team_tri": "NSH"
     },
     {
-      "first_name": "Tanner",
-      "full_name_en": "Tanner Molendyk",
-      "last_name": "Molendyk",
-      "player_id": 8484196,
-      "team_tri": "NSH"
-    },
-    {
-      "first_name": "Viggo",
-      "full_name_en": "Viggo Gustafsson",
-      "last_name": "Gustafsson",
-      "player_id": 8485000,
-      "team_tri": "NSH"
-    },
-    {
       "first_name": "Vitali",
       "full_name_en": "Vitali Pinchuk",
       "last_name": "Pinchuk",
@@ -7063,87 +4788,17 @@
       "team_tri": "NSH"
     },
     {
-      "first_name": "Alex",
-      "full_name_en": "Alex Jefferies",
-      "last_name": "Jefferies",
-      "player_id": 8482154,
-      "team_tri": "NYI"
+      "first_name": "William",
+      "full_name_en": "William Trudeau",
+      "last_name": "Trudeau",
+      "player_id": 8482806,
+      "team_tri": "NSH"
     },
     {
       "first_name": "Calum",
       "full_name_en": "Calum Ritchie",
       "last_name": "Ritchie",
       "player_id": 8484221,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Cole",
-      "full_name_en": "Cole Eiserman",
-      "last_name": "Eiserman",
-      "player_id": 8484807,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Daniil",
-      "full_name_en": "Daniil Prokhorov",
-      "last_name": "Prokhorov",
-      "player_id": 8485448,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Daylan",
-      "full_name_en": "Daylan Kuefler",
-      "last_name": "Kuefler",
-      "player_id": 8483104,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Ethan",
-      "full_name_en": "Ethan Bear",
-      "last_name": "Bear",
-      "player_id": 8478451,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Gleb",
-      "full_name_en": "Gleb Veremyev",
-      "last_name": "Veremyev",
-      "player_id": 8485462,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Isaiah",
-      "full_name_en": "Isaiah George",
-      "last_name": "George",
-      "player_id": 8483448,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Jesse",
-      "full_name_en": "Jesse Nurmi",
-      "last_name": "Nurmi",
-      "player_id": 8484208,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Joey",
-      "full_name_en": "Joey Larson",
-      "last_name": "Larson",
-      "player_id": 8485490,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Joshua",
-      "full_name_en": "Joshua Kotai",
-      "last_name": "Kotai",
-      "player_id": 8486136,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Kashawn",
-      "full_name_en": "Kashawn Aitcheson",
-      "last_name": "Aitcheson",
-      "player_id": 8485352,
       "team_tri": "NYI"
     },
     {
@@ -7154,24 +4809,10 @@
       "team_tri": "NYI"
     },
     {
-      "first_name": "Marshall",
-      "full_name_en": "Marshall Warren",
-      "last_name": "Warren",
-      "player_id": 8481569,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Mathew",
-      "full_name_en": "Mathew Barzal",
-      "last_name": "Barzal",
-      "player_id": 8478445,
-      "team_tri": "NYI"
-    },
-    {
-      "first_name": "Matt",
-      "full_name_en": "Matt Luff",
-      "last_name": "Luff",
-      "player_id": 8479644,
+      "first_name": "Logan",
+      "full_name_en": "Logan Stanley",
+      "last_name": "Stanley",
+      "player_id": 8479378,
       "team_tri": "NYI"
     },
     {
@@ -7196,25 +4837,11 @@
       "team_tri": "NYI"
     },
     {
-      "first_name": "Quinn",
-      "full_name_en": "Quinn Finley",
-      "last_name": "Finley",
-      "player_id": 8483441,
-      "team_tri": "NYI"
-    },
-    {
       "first_name": "Tony",
       "full_name_en": "Tony DeAngelo",
       "last_name": "DeAngelo",
       "player_id": 8477950,
       "team_tri": "NYI"
-    },
-    {
-      "first_name": "Drew",
-      "full_name_en": "Drew Fortescue",
-      "last_name": "Fortescue",
-      "player_id": 8484169,
-      "team_tri": "NYR"
     },
     {
       "first_name": "Gabe",
@@ -7228,6 +4855,13 @@
       "full_name_en": "Igor Shesterkin",
       "last_name": "Shesterkin",
       "player_id": 8478048,
+      "team_tri": "NYR"
+    },
+    {
+      "first_name": "Joseph",
+      "full_name_en": "Joseph Veleno",
+      "last_name": "Veleno",
+      "player_id": 8480813,
       "team_tri": "NYR"
     },
     {
@@ -7322,13 +4956,6 @@
       "team_tri": "OTT"
     },
     {
-      "first_name": "Matthew",
-      "full_name_en": "Matthew Andonovski",
-      "last_name": "Andonovski",
-      "player_id": 8484429,
-      "team_tri": "OTT"
-    },
-    {
       "first_name": "Michael",
       "full_name_en": "Michael Amadio",
       "last_name": "Amadio",
@@ -7371,24 +4998,10 @@
       "team_tri": "OTT"
     },
     {
-      "first_name": "Aleksei",
-      "full_name_en": "Aleksei Kolosov",
-      "last_name": "Kolosov",
-      "player_id": 8482783,
-      "team_tri": "PHI"
-    },
-    {
       "first_name": "Alex",
       "full_name_en": "Alex Bump",
       "last_name": "Bump",
       "player_id": 8483731,
-      "team_tri": "PHI"
-    },
-    {
-      "first_name": "Cam",
-      "full_name_en": "Cam Dineen",
-      "last_name": "Dineen",
-      "player_id": 8479341,
       "team_tri": "PHI"
     },
     {
@@ -7399,20 +5012,6 @@
       "team_tri": "PHI"
     },
     {
-      "first_name": "Carson",
-      "full_name_en": "Carson Bjarnason",
-      "last_name": "Bjarnason",
-      "player_id": 8484147,
-      "team_tri": "PHI"
-    },
-    {
-      "first_name": "Cole",
-      "full_name_en": "Cole Knuble",
-      "last_name": "Knuble",
-      "player_id": 8483787,
-      "team_tri": "PHI"
-    },
-    {
       "first_name": "Dan",
       "full_name_en": "Dan Vladar",
       "last_name": "Vladar",
@@ -7420,45 +5019,10 @@
       "team_tri": "PHI"
     },
     {
-      "first_name": "Danila",
-      "full_name_en": "Danila Klimovich",
-      "last_name": "Klimovich",
-      "player_id": 8482918,
-      "team_tri": "PHI"
-    },
-    {
       "first_name": "Denver",
       "full_name_en": "Denver Barkey",
       "last_name": "Barkey",
       "player_id": 8484142,
-      "team_tri": "PHI"
-    },
-    {
-      "first_name": "Hunter",
-      "full_name_en": "Hunter McDonald",
-      "last_name": "McDonald",
-      "player_id": 8483760,
-      "team_tri": "PHI"
-    },
-    {
-      "first_name": "Jack",
-      "full_name_en": "Jack Studnicka",
-      "last_name": "Studnicka",
-      "player_id": 8480021,
-      "team_tri": "PHI"
-    },
-    {
-      "first_name": "Jacob",
-      "full_name_en": "Jacob Gaucher",
-      "last_name": "Gaucher",
-      "player_id": 8481848,
-      "team_tri": "PHI"
-    },
-    {
-      "first_name": "Jett",
-      "full_name_en": "Jett Luchanko",
-      "last_name": "Luchanko",
-      "player_id": 8484779,
       "team_tri": "PHI"
     },
     {
@@ -7476,31 +5040,10 @@
       "team_tri": "PHI"
     },
     {
-      "first_name": "Noah",
-      "full_name_en": "Noah Powell",
-      "last_name": "Powell",
-      "player_id": 8485045,
-      "team_tri": "PHI"
-    },
-    {
-      "first_name": "Oliver",
-      "full_name_en": "Oliver Bonk",
-      "last_name": "Bonk",
-      "player_id": 8484148,
-      "team_tri": "PHI"
-    },
-    {
       "first_name": "Porter",
       "full_name_en": "Porter Martone",
       "last_name": "Martone",
       "player_id": 8485406,
-      "team_tri": "PHI"
-    },
-    {
-      "first_name": "Riley",
-      "full_name_en": "Riley Thompson",
-      "last_name": "Thompson",
-      "player_id": 8486135,
       "team_tri": "PHI"
     },
     {
@@ -7511,24 +5054,10 @@
       "team_tri": "PHI"
     },
     {
-      "first_name": "Spencer",
-      "full_name_en": "Spencer Gill",
-      "last_name": "Gill",
-      "player_id": 8484804,
-      "team_tri": "PHI"
-    },
-    {
       "first_name": "Tyson",
       "full_name_en": "Tyson Foerster",
       "last_name": "Foerster",
       "player_id": 8482159,
-      "team_tri": "PHI"
-    },
-    {
-      "first_name": "Zachary",
-      "full_name_en": "Zachary Aston-Reese",
-      "last_name": "Aston-Reese",
-      "player_id": 8479944,
       "team_tri": "PHI"
     },
     {
@@ -7616,13 +5145,6 @@
       "team_tri": "PIT"
     },
     {
-      "first_name": "Alexis",
-      "full_name_en": "Alexis Bernier",
-      "last_name": "Bernier",
-      "player_id": 8484838,
-      "team_tri": "SEA"
-    },
-    {
       "first_name": "Ben",
       "full_name_en": "Ben Meyers",
       "last_name": "Meyers",
@@ -7665,6 +5187,13 @@
       "team_tri": "SEA"
     },
     {
+      "first_name": "Jake",
+      "full_name_en": "Jake O'Brien",
+      "last_name": "O'Brien",
+      "player_id": 8485383,
+      "team_tri": "SEA"
+    },
+    {
       "first_name": "Joey",
       "full_name_en": "Joey Daccord",
       "last_name": "Daccord",
@@ -7672,17 +5201,10 @@
       "team_tri": "SEA"
     },
     {
-      "first_name": "Joshua",
-      "full_name_en": "Joshua Mahura",
+      "first_name": "Josh",
+      "full_name_en": "Josh Mahura",
       "last_name": "Mahura",
       "player_id": 8479372,
-      "team_tri": "SEA"
-    },
-    {
-      "first_name": "Julius",
-      "full_name_en": "Julius Miettinen",
-      "last_name": "Miettinen",
-      "player_id": 8484773,
       "team_tri": "SEA"
     },
     {
@@ -7697,13 +5219,6 @@
       "full_name_en": "Matty Beniers",
       "last_name": "Beniers",
       "player_id": 8482665,
-      "team_tri": "SEA"
-    },
-    {
-      "first_name": "Ryden",
-      "full_name_en": "Ryden Evers",
-      "last_name": "Evers",
-      "player_id": 8486009,
       "team_tri": "SEA"
     },
     {
@@ -7735,13 +5250,6 @@
       "team_tri": "SJS"
     },
     {
-      "first_name": "Carson",
-      "full_name_en": "Carson Wetsch",
-      "last_name": "Wetsch",
-      "player_id": 8484845,
-      "team_tri": "SJS"
-    },
-    {
       "first_name": "Collin",
       "full_name_en": "Collin Graf",
       "last_name": "Graf",
@@ -7756,31 +5264,10 @@
       "team_tri": "SJS"
     },
     {
-      "first_name": "Eric",
-      "full_name_en": "Eric Pohlkamp",
-      "last_name": "Pohlkamp",
-      "player_id": 8484421,
-      "team_tri": "SJS"
-    },
-    {
-      "first_name": "Ethan",
-      "full_name_en": "Ethan Cardwell",
-      "last_name": "Cardwell",
-      "player_id": 8482206,
-      "team_tri": "SJS"
-    },
-    {
       "first_name": "Igor",
       "full_name_en": "Igor Chernyshov",
       "last_name": "Chernyshov",
       "player_id": 8484994,
-      "team_tri": "SJS"
-    },
-    {
-      "first_name": "Jimmy",
-      "full_name_en": "Jimmy Huntington",
-      "last_name": "Huntington",
-      "player_id": 8481228,
       "team_tri": "SJS"
     },
     {
@@ -7795,13 +5282,6 @@
       "full_name_en": "Kyle Keyser",
       "last_name": "Keyser",
       "player_id": 8480356,
-      "team_tri": "SJS"
-    },
-    {
-      "first_name": "Leo",
-      "full_name_en": "Leo Sahlin-Wallenius",
-      "last_name": "Sahlin-Wallenius",
-      "player_id": 8484763,
       "team_tri": "SJS"
     },
     {
@@ -7854,13 +5334,6 @@
       "team_tri": "SJS"
     },
     {
-      "first_name": "Tye",
-      "full_name_en": "Tye Felhaber",
-      "last_name": "Felhaber",
-      "player_id": 8479746,
-      "team_tri": "SJS"
-    },
-    {
       "first_name": "Will",
       "full_name_en": "Will Smith",
       "last_name": "Smith",
@@ -7875,13 +5348,6 @@
       "team_tri": "SJS"
     },
     {
-      "first_name": "Colin",
-      "full_name_en": "Colin Ralph",
-      "last_name": "Ralph",
-      "player_id": 8484865,
-      "team_tri": "STL"
-    },
-    {
       "first_name": "Colton",
       "full_name_en": "Colton Parayko",
       "last_name": "Parayko",
@@ -7889,31 +5355,10 @@
       "team_tri": "STL"
     },
     {
-      "first_name": "Dylan",
-      "full_name_en": "Dylan Peterson",
-      "last_name": "Peterson",
-      "player_id": 8482121,
-      "team_tri": "STL"
-    },
-    {
-      "first_name": "Felix",
-      "full_name_en": "Felix Trudeau",
-      "last_name": "Trudeau",
-      "player_id": 8486134,
-      "team_tri": "STL"
-    },
-    {
       "first_name": "Georgii",
       "full_name_en": "Georgii Romanov",
       "last_name": "Romanov",
       "player_id": 8484312,
-      "team_tri": "STL"
-    },
-    {
-      "first_name": "Jack",
-      "full_name_en": "Jack Finley",
-      "last_name": "Finley",
-      "player_id": 8482090,
       "team_tri": "STL"
     },
     {
@@ -7938,13 +5383,6 @@
       "team_tri": "STL"
     },
     {
-      "first_name": "Justin",
-      "full_name_en": "Justin Carbonneau",
-      "last_name": "Carbonneau",
-      "player_id": 8485382,
-      "team_tri": "STL"
-    },
-    {
       "first_name": "Logan",
       "full_name_en": "Logan Mailloux",
       "last_name": "Mailloux",
@@ -7952,24 +5390,10 @@
       "team_tri": "STL"
     },
     {
-      "first_name": "Nikita",
-      "full_name_en": "Nikita Susuev",
-      "last_name": "Susuev",
-      "player_id": 8484476,
-      "team_tri": "STL"
-    },
-    {
       "first_name": "Pavel",
       "full_name_en": "Pavel Buchnevich",
       "last_name": "Buchnevich",
       "player_id": 8477402,
-      "team_tri": "STL"
-    },
-    {
-      "first_name": "Quinton",
-      "full_name_en": "Quinton Burns",
-      "last_name": "Burns",
-      "player_id": 8484151,
       "team_tri": "STL"
     },
     {
@@ -7991,13 +5415,6 @@
       "full_name_en": "Tyler Tucker",
       "last_name": "Tucker",
       "player_id": 8481006,
-      "team_tri": "STL"
-    },
-    {
-      "first_name": "Will",
-      "full_name_en": "Will Cranley",
-      "last_name": "Cranley",
-      "player_id": 8482205,
       "team_tri": "STL"
     },
     {
@@ -8036,24 +5453,10 @@
       "team_tri": "TBL"
     },
     {
-      "first_name": "Connor",
-      "full_name_en": "Connor Kurth",
-      "last_name": "Kurth",
-      "player_id": 8483727,
-      "team_tri": "TBL"
-    },
-    {
       "first_name": "Conor",
       "full_name_en": "Conor Geekie",
       "last_name": "Geekie",
       "player_id": 8483447,
-      "team_tri": "TBL"
-    },
-    {
-      "first_name": "Cooper",
-      "full_name_en": "Cooper Flinton",
-      "last_name": "Flinton",
-      "player_id": 8482951,
       "team_tri": "TBL"
     },
     {
@@ -8071,13 +5474,6 @@
       "team_tri": "TBL"
     },
     {
-      "first_name": "Dyllan",
-      "full_name_en": "Dyllan Gill",
-      "last_name": "Gill",
-      "player_id": 8483692,
-      "team_tri": "TBL"
-    },
-    {
       "first_name": "Emil",
       "full_name_en": "Emil Lilleberg",
       "last_name": "Lilleberg",
@@ -8085,31 +5481,10 @@
       "team_tri": "TBL"
     },
     {
-      "first_name": "Ethan",
-      "full_name_en": "Ethan Czata",
-      "last_name": "Czata",
-      "player_id": 8485386,
-      "team_tri": "TBL"
-    },
-    {
-      "first_name": "Ethan",
-      "full_name_en": "Ethan Gauthier",
-      "last_name": "Gauthier",
-      "player_id": 8484173,
-      "team_tri": "TBL"
-    },
-    {
       "first_name": "Gage",
       "full_name_en": "Gage Goncalves",
       "last_name": "Goncalves",
       "player_id": 8482201,
-      "team_tri": "TBL"
-    },
-    {
-      "first_name": "Harrison",
-      "full_name_en": "Harrison Meneghin",
-      "last_name": "Meneghin",
-      "player_id": 8484636,
       "team_tri": "TBL"
     },
     {
@@ -8141,13 +5516,6 @@
       "team_tri": "TBL"
     },
     {
-      "first_name": "Lucas",
-      "full_name_en": "Lucas Mercuri",
-      "last_name": "Mercuri",
-      "player_id": 8482518,
-      "team_tri": "TBL"
-    },
-    {
       "first_name": "Mads",
       "full_name_en": "Mads Sogaard",
       "last_name": "Sogaard",
@@ -8169,45 +5537,10 @@
       "team_tri": "TBL"
     },
     {
-      "first_name": "Milo",
-      "full_name_en": "Milo Roelens",
-      "last_name": "Roelens",
-      "player_id": 8483921,
-      "team_tri": "TBL"
-    },
-    {
       "first_name": "Nick",
       "full_name_en": "Nick Abruzzese",
       "last_name": "Abruzzese",
       "player_id": 8481720,
-      "team_tri": "TBL"
-    },
-    {
-      "first_name": "Noah",
-      "full_name_en": "Noah Steen",
-      "last_name": "Steen",
-      "player_id": 8485091,
-      "team_tri": "TBL"
-    },
-    {
-      "first_name": "Sam",
-      "full_name_en": "Sam O'Reilly",
-      "last_name": "O'Reilly",
-      "player_id": 8484770,
-      "team_tri": "TBL"
-    },
-    {
-      "first_name": "Tomas",
-      "full_name_en": "Tomas Kralovic",
-      "last_name": "Kralovic",
-      "player_id": 8486241,
-      "team_tri": "TBL"
-    },
-    {
-      "first_name": "Tristan",
-      "full_name_en": "Tristan Allard",
-      "last_name": "Allard",
-      "player_id": 8484310,
       "team_tri": "TBL"
     },
     {
@@ -8225,38 +5558,10 @@
       "team_tri": "TBL"
     },
     {
-      "first_name": "Ben",
-      "full_name_en": "Ben Danford",
-      "last_name": "Danford",
-      "player_id": 8484805,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Blake",
-      "full_name_en": "Blake Smith",
-      "last_name": "Smith",
-      "player_id": 8484540,
-      "team_tri": "TOR"
-    },
-    {
       "first_name": "Bo",
       "full_name_en": "Bo Groulx",
       "last_name": "Groulx",
       "player_id": 8480870,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Borya",
-      "full_name_en": "Borya Valis",
-      "last_name": "Valis",
-      "player_id": 8485115,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Brandon",
-      "full_name_en": "Brandon Buhr",
-      "last_name": "Buhr",
-      "player_id": 8486129,
       "team_tri": "TOR"
     },
     {
@@ -8271,20 +5576,6 @@
       "full_name_en": "Chris Tanev",
       "last_name": "Tanev",
       "player_id": 8475690,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Cole",
-      "full_name_en": "Cole McWard",
-      "last_name": "McWard",
-      "player_id": 8484287,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Dakota",
-      "full_name_en": "Dakota Joshua",
-      "last_name": "Joshua",
-      "player_id": 8478057,
       "team_tri": "TOR"
     },
     {
@@ -8316,45 +5607,10 @@
       "team_tri": "TOR"
     },
     {
-      "first_name": "Hayes",
-      "full_name_en": "Hayes Hundley",
-      "last_name": "Hundley",
-      "player_id": 8486145,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Henrik",
-      "full_name_en": "Henrik Rybinski",
-      "last_name": "Rybinski",
-      "player_id": 8481662,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Jacob",
-      "full_name_en": "Jacob Quillan",
-      "last_name": "Quillan",
-      "player_id": 8484901,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Landon",
-      "full_name_en": "Landon Sim",
-      "last_name": "Sim",
-      "player_id": 8483741,
-      "team_tri": "TOR"
-    },
-    {
       "first_name": "Luke",
       "full_name_en": "Luke Haymes",
       "last_name": "Haymes",
       "player_id": 8485467,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Marshall",
-      "full_name_en": "Marshall Rifai",
-      "last_name": "Rifai",
-      "player_id": 8483546,
       "team_tri": "TOR"
     },
     {
@@ -8365,34 +5621,6 @@
       "team_tri": "TOR"
     },
     {
-      "first_name": "Michael",
-      "full_name_en": "Michael Pezzetta",
-      "last_name": "Pezzetta",
-      "player_id": 8479543,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Noah",
-      "full_name_en": "Noah Chadwick",
-      "last_name": "Chadwick",
-      "player_id": 8484464,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Ryan",
-      "full_name_en": "Ryan Tverberg",
-      "last_name": "Tverberg",
-      "player_id": 8482525,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Samuel",
-      "full_name_en": "Samuel Hlavaj",
-      "last_name": "Hlavaj",
-      "player_id": 8482085,
-      "team_tri": "TOR"
-    },
-    {
       "first_name": "Sergei",
       "full_name_en": "Sergei Bobrovsky",
       "last_name": "Bobrovsky",
@@ -8400,38 +5628,10 @@
       "team_tri": "TOR"
     },
     {
-      "first_name": "Steven",
-      "full_name_en": "Steven Lorentz",
-      "last_name": "Lorentz",
-      "player_id": 8478904,
-      "team_tri": "TOR"
-    },
-    {
       "first_name": "Teddy",
       "full_name_en": "Teddy Blueger",
       "last_name": "Blueger",
       "player_id": 8476927,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Tinus Luc",
-      "full_name_en": "Tinus Luc Koblar",
-      "last_name": "Koblar",
-      "player_id": 8485564,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Vinni",
-      "full_name_en": "Vinni Lettieri",
-      "last_name": "Lettieri",
-      "player_id": 8479968,
-      "team_tri": "TOR"
-    },
-    {
-      "first_name": "Vinny",
-      "full_name_en": "Vinny Borgesi",
-      "last_name": "Borgesi",
-      "player_id": 8486125,
       "team_tri": "TOR"
     },
     {
@@ -8477,13 +5677,6 @@
       "team_tri": "UTA"
     },
     {
-      "first_name": "Michael",
-      "full_name_en": "Michael Hrabal",
-      "last_name": "Hrabal",
-      "player_id": 8484181,
-      "team_tri": "UTA"
-    },
-    {
       "first_name": "Mikhail",
       "full_name_en": "Mikhail Sergachev",
       "last_name": "Sergachev",
@@ -8505,31 +5698,10 @@
       "team_tri": "UTA"
     },
     {
-      "first_name": "Akil",
-      "full_name_en": "Akil Thomas",
-      "last_name": "Thomas",
-      "player_id": 8480851,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Aleksei",
-      "full_name_en": "Aleksei Medvedev",
-      "last_name": "Medvedev",
-      "player_id": 8485401,
-      "team_tri": "VAN"
-    },
-    {
       "first_name": "Arshdeep",
       "full_name_en": "Arshdeep Bains",
       "last_name": "Bains",
       "player_id": 8483395,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Braeden",
-      "full_name_en": "Braeden Cootes",
-      "last_name": "Cootes",
-      "player_id": 8485385,
       "team_tri": "VAN"
     },
     {
@@ -8540,20 +5712,6 @@
       "team_tri": "VAN"
     },
     {
-      "first_name": "Chase",
-      "full_name_en": "Chase Wouters",
-      "last_name": "Wouters",
-      "player_id": 8481163,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Cole",
-      "full_name_en": "Cole Clayton",
-      "last_name": "Clayton",
-      "player_id": 8482839,
-      "team_tri": "VAN"
-    },
-    {
       "first_name": "Drew",
       "full_name_en": "Drew O'Connor",
       "last_name": "O'Connor",
@@ -8561,38 +5719,10 @@
       "team_tri": "VAN"
     },
     {
-      "first_name": "Gabriel",
-      "full_name_en": "Gabriel Chiarot",
-      "last_name": "Chiarot",
-      "player_id": 8485635,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Jack",
-      "full_name_en": "Jack Thompson",
-      "last_name": "Thompson",
-      "player_id": 8482144,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Kirill",
-      "full_name_en": "Kirill Kudryavtsev",
-      "last_name": "Kudryavtsev",
-      "player_id": 8483467,
-      "team_tri": "VAN"
-    },
-    {
       "first_name": "Marco",
       "full_name_en": "Marco Rossi",
       "last_name": "Rossi",
       "player_id": 8482079,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Matthew",
-      "full_name_en": "Matthew Stienburg",
-      "last_name": "Stienburg",
-      "player_id": 8481737,
       "team_tri": "VAN"
     },
     {
@@ -8617,45 +5747,10 @@
       "team_tri": "VAN"
     },
     {
-      "first_name": "Riley",
-      "full_name_en": "Riley Patterson",
-      "last_name": "Patterson",
-      "player_id": 8484874,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Sawyer",
-      "full_name_en": "Sawyer Mynio",
-      "last_name": "Mynio",
-      "player_id": 8484202,
-      "team_tri": "VAN"
-    },
-    {
       "first_name": "Thatcher",
       "full_name_en": "Thatcher Demko",
       "last_name": "Demko",
       "player_id": 8477967,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Trey",
-      "full_name_en": "Trey Fix-Wolansky",
-      "last_name": "Fix-Wolansky",
-      "player_id": 8480441,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Ty",
-      "full_name_en": "Ty Mueller",
-      "last_name": "Mueller",
-      "player_id": 8484406,
-      "team_tri": "VAN"
-    },
-    {
-      "first_name": "Ty",
-      "full_name_en": "Ty Young",
-      "last_name": "Young",
-      "player_id": 8483751,
       "team_tri": "VAN"
     },
     {
@@ -8701,34 +5796,6 @@
       "team_tri": "VGK"
     },
     {
-      "first_name": "Jaycob",
-      "full_name_en": "Jaycob Megna",
-      "last_name": "Megna",
-      "player_id": 8477034,
-      "team_tri": "VGK"
-    },
-    {
-      "first_name": "Jeremy",
-      "full_name_en": "Jeremy Davies",
-      "last_name": "Davies",
-      "player_id": 8479602,
-      "team_tri": "VGK"
-    },
-    {
-      "first_name": "Kai",
-      "full_name_en": "Kai Uchacz",
-      "last_name": "Uchacz",
-      "player_id": 8485251,
-      "team_tri": "VGK"
-    },
-    {
-      "first_name": "Lukas",
-      "full_name_en": "Lukas Cormier",
-      "last_name": "Cormier",
-      "player_id": 8482141,
-      "team_tri": "VGK"
-    },
-    {
       "first_name": "Marc",
       "full_name_en": "Marc Gatcomb",
       "last_name": "Gatcomb",
@@ -8764,13 +5831,6 @@
       "team_tri": "WPG"
     },
     {
-      "first_name": "Colby",
-      "full_name_en": "Colby Barlow",
-      "last_name": "Barlow",
-      "player_id": 8484143,
-      "team_tri": "WPG"
-    },
-    {
       "first_name": "Cole",
       "full_name_en": "Cole Koepke",
       "last_name": "Koepke",
@@ -8799,59 +5859,10 @@
       "team_tri": "WPG"
     },
     {
-      "first_name": "Garrett",
-      "full_name_en": "Garrett Brown",
-      "last_name": "Brown",
-      "player_id": 8483672,
-      "team_tri": "WPG"
-    },
-    {
-      "first_name": "Isaac",
-      "full_name_en": "Isaac Poulter",
-      "last_name": "Poulter",
-      "player_id": 8483659,
-      "team_tri": "WPG"
-    },
-    {
-      "first_name": "Isaak",
-      "full_name_en": "Isaak Phillips",
-      "last_name": "Phillips",
-      "player_id": 8482192,
-      "team_tri": "WPG"
-    },
-    {
       "first_name": "Jack",
       "full_name_en": "Jack St. Ivany",
       "last_name": "St. Ivany",
       "player_id": 8481030,
-      "team_tri": "WPG"
-    },
-    {
-      "first_name": "Jacob",
-      "full_name_en": "Jacob Julien",
-      "last_name": "Julien",
-      "player_id": 8484430,
-      "team_tri": "WPG"
-    },
-    {
-      "first_name": "Kevin",
-      "full_name_en": "Kevin He",
-      "last_name": "He",
-      "player_id": 8484864,
-      "team_tri": "WPG"
-    },
-    {
-      "first_name": "Kieron",
-      "full_name_en": "Kieron Walton",
-      "last_name": "Walton",
-      "player_id": 8485070,
-      "team_tri": "WPG"
-    },
-    {
-      "first_name": "Lucas",
-      "full_name_en": "Lucas Wahlin",
-      "last_name": "Wahlin",
-      "player_id": 8486141,
       "team_tri": "WPG"
     },
     {
@@ -8901,13 +5912,6 @@
       "full_name_en": "Viggo Björck",
       "last_name": "Björck",
       "player_id": 8486025,
-      "team_tri": "WPG"
-    },
-    {
-      "first_name": "Walker",
-      "full_name_en": "Walker Duehr",
-      "last_name": "Duehr",
-      "player_id": 8482652,
       "team_tri": "WPG"
     },
     {
