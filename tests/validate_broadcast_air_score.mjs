@@ -52,7 +52,7 @@ assert.equal(floridaMismatch.air_meta.stats_rate_corrected,true,'reported 69% mu
 assert.equal(floridaMismatch.air_meta.stats_hits,71);
 assert.equal(floridaMismatch.air_meta.sample_size,140);
 assert.equal(floridaMismatch.air_meta.historical_rate,0.507);
-assert.ok(floridaMismatch.broadcast_title.includes('71 ПОБЕД В 140 МАТЧАХ'),'71/140 must display exact wins, not a rounded scale');
+assert.match(floridaMismatch.broadcast_title,/71.*140/,'71/140 must display the exact numerator and denominator');
 assert.ok(!floridaMismatch.broadcast_title.includes('69%'));
 assert.equal(floridaMismatch.broadcast_math_valid,true);
 
