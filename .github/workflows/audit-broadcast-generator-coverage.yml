@@ -75,7 +75,7 @@ jobs:
             freeze_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.pregame_archive.freeze_at_puck_drop // empty' 2>/dev/null || true)"
             settle_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.pregame_archive.postgame_settlement // empty' 2>/dev/null || true)"
             echo "POLICY_WAIT $attempt min=$min_policy target=$target_policy chars=$chars_policy max_sample=$max_sample_policy stats=$stats_policy integrity=$integrity_policy live=$live_poll_policy/$live_sync_policy freeze=$freeze_policy settle=$settle_policy"
-            if [ "$min_policy" = "1.5" ] && [ "$target_policy" = "4" ] && [ "$chars_policy" = "58" ] && [ "$max_sample_policy" = "40" ] && [ "$stats_policy" = "same_season_streak_v2" ] && [ "$integrity_policy" = "exact_market_v12_editorial_copy" ] && [ "$live_poll_policy" = "15" ] && [ "$live_sync_policy" = "60" ] && [ "$freeze_policy" = "true" ] && [ "$settle_policy" = "true" ]; then ready=1; break; fi
+            if [ "$min_policy" = "1.5" ] && [ "$target_policy" = "4" ] && [ "$chars_policy" = "58" ] && [ "$max_sample_policy" = "40" ] && [ "$stats_policy" = "same_season_streak_v2" ] && [ "$integrity_policy" = "exact_market_v13_live_shared_operator" ] && [ "$live_poll_policy" = "15" ] && [ "$live_sync_policy" = "60" ] && [ "$freeze_policy" = "true" ] && [ "$settle_policy" = "true" ]; then ready=1; break; fi
             sleep 2
           done
           if [ "$ready" -ne 1 ]; then
