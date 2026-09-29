@@ -68,8 +68,9 @@ jobs:
             target_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.featured_target // empty' 2>/dev/null || true)"
             chars_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.max_headline_chars // empty' 2>/dev/null || true)"
             stats_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.stats_validation // empty' 2>/dev/null || true)"
-            echo "POLICY_WAIT $attempt min=$min_policy target=$target_policy chars=$chars_policy stats=$stats_policy"
-            if [ "$min_policy" = "1.5" ] && [ "$target_policy" = "4" ] && [ "$chars_policy" = "58" ] && [ "$stats_policy" = "same_season_streak_v2" ]; then ready=1; break; fi
+            integrity_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.integrity_version // empty' 2>/dev/null || true)"
+            echo "POLICY_WAIT $attempt min=$min_policy target=$target_policy chars=$chars_policy stats=$stats_policy integrity=$integrity_policy"
+            if [ "$min_policy" = "1.5" ] && [ "$target_policy" = "4" ] && [ "$chars_policy" = "58" ] && [ "$stats_policy" = "same_season_streak_v2" ] && [ "$integrity_policy" = "exact_market_v3" ]; then ready=1; break; fi
             sleep 2
           done
           if [ "$ready" -ne 1 ]; then
