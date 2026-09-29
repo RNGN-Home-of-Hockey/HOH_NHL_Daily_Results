@@ -151,7 +151,7 @@ const missingHistoricalRate=annotateAirUtility({
   market:{type:'moneyline',subject:'CAR',side:'CAR',odds:1.79,odds_is_demo:false,odds_source:'provider_live'}
 });
 assert.equal(missingHistoricalRate.air_meta.historical_rate,null);
-assert.equal(missingHistoricalRate.broadcast_title,'CAR — сезонный профиль');
+assert.equal(missingHistoricalRate.broadcast_title,'CAR — СЕЗОННЫЙ ПРОФИЛЬ');
 assert.ok(missingHistoricalRate.air_score<90,'large sample without hit rate must not receive elite AIR score');
 console.log('BROADCAST_ADVANCED_HEADLINE_NULL_RATE_OK',advancedNoRate.broadcast_title);
 
