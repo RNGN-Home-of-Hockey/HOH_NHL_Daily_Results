@@ -21,7 +21,7 @@ export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
   s=expandBroadcastTerms(s);
   for(const [full,short] of FULL_TEAM_SHORT)s=s.replaceAll(full,short);
   for(const [,short] of FULL_TEAM_SHORT)s=s.replaceAll(short+" ИЛИ НИЧЬЯ",short+" НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ");
-  s=s.replace(/\b([A-Z]{3}) ИЛИ НИЧЬЯ\b/g,"$1 НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ");
+  s=s.replace(/\b([A-Z]{3}) ИЛИ НИЧЬЯ(?=\s|$|[—:,.])/g,"$1 НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ");
   s=s
     .replace(/ПО РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ/g,"ПО БАЛАНСУ МОМЕНТОВ")
     .replace(/ПО СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ/g,"ПО СОЗДАНИЮ МОМЕНТОВ")
