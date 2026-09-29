@@ -115,6 +115,11 @@ export default {
             console.error("scheduled Winline live feed maintenance failed", error);
           }),
         );
+        ctx.waitUntil(
+          archiveUpcomingBroadcastAnalytics(env,{limit:4,horizon_minutes:10}).catch((error) => {
+            console.error("scheduled closing pregame archive failed", error);
+          }),
+        );
       }
       return;
     }

@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { annotateAirUtility } from '../cloudflare-worker/src/betting-insight-engine.js';
+import { annotateAirUtility, broadcastCardSemanticsValid } from '../cloudflare-worker/src/betting-insight-engine.js';
 
 const bostonHome=annotateAirUtility({
   score:80,
@@ -27,13 +27,12 @@ const huge=annotateAirUtility({
 });
 
 assert.ok(bostonHome.air_score>safeHandicap.air_score,'good price + 14/20 must outrank low-price 59/80');
-assert.ok(safeHandicap.broadcast_title.includes('74%'),'80-game sample should be percentage-first');
-assert.ok(safeHandicap.broadcast_title.includes('80 ИГР'),'80-game exact sample should stay visible');
+assert.ok(safeHandicap.broadcast_title.includes('59 ИЗ 80'),'80-game sample must expose exact hit count');
 assert.ok(safeHandicap.broadcast_title.startsWith('BOS НЕ ПРОИГРЫВАЛ В 2+ ШАЙБЫ'),'positive +1.5 handicap should be human-readable');
-assert.ok(splitTotal.broadcast_title.includes('75%'),'two 20-game venue splits should become one combined percentage');
+assert.equal(splitTotal.broadcast_math_valid,false,'two venue splits must not become an exact market frequency');
 assert.equal(splitTotal.broadcast_detail,'NYR в гостях 17/20 · BOS дома 13/20','combined split keeps readable team-level detail');
-assert.ok(huge.broadcast_title.includes('200+ ИГР'),'100+ samples should use rounded scale');
-assert.equal(bostonHome.broadcast_title,'BOS выиграл 14 из последних 20 матчей дома','<=30 non-handicap samples stay as natural counts');
+assert.ok(huge.broadcast_title.includes('147 ИЗ 216'),'large samples must expose exact numerator and denominator');
+assert.match(bostonHome.broadcast_title,/14 ИЗ 20/,'<=30 non-handicap samples must keep exact count');
 const shortHandicap=annotateAirUtility({
   score:82,
   title:'CAR закрыла фору -1.5 в 14 из последних 20 матчей',
@@ -53,7 +52,7 @@ assert.equal(floridaMismatch.air_meta.stats_rate_corrected,true,'reported 69% mu
 assert.equal(floridaMismatch.air_meta.stats_hits,71);
 assert.equal(floridaMismatch.air_meta.sample_size,140);
 assert.equal(floridaMismatch.air_meta.historical_rate,0.507);
-assert.ok(floridaMismatch.broadcast_title.includes('51%'),'71/140 must display as 51%, never 69%');
+assert.match(floridaMismatch.broadcast_title,/71.*140/,'71/140 must display the exact numerator and denominator');
 assert.ok(!floridaMismatch.broadcast_title.includes('69%'));
 assert.equal(floridaMismatch.broadcast_math_valid,true);
 
@@ -65,6 +64,23 @@ const unpairedPercent=annotateAirUtility({
 });
 assert.equal(unpairedPercent.air_meta.stats_verified,false);
 assert.equal(unpairedPercent.broadcast_math_valid,false,'percentage copy without exact hits/sample must not enter broadcast queue');
+const syntheticFlorida=annotateAirUtility({
+  score:99,title:'ПОБЕДА — В 69% МАТЧЕЙ · 100+ ИГР',
+  evidence:{away:{hits:40,sample:70,hit_rate:40/70},home:{hits:56,sample:70,hit_rate:56/70}},
+  market:{type:'moneyline',period:'GAME',subject:'FLA',side:'FLA',label:'ПОБЕДА FLA',odds:2.00,odds_is_demo:false,odds_source:'provider_live'}
+});
+assert.equal(syntheticFlorida.air_meta.stats_source,'away+home');
+assert.equal(syntheticFlorida.broadcast_math_valid,false,'combined venue samples cannot become Florida win-rate copy');
+assert.doesNotMatch(String(floridaMismatch.broadcast_title),/100\+ ИГР|69%/);
+assert.equal(broadcastCardSemanticsValid({
+  broadcast_math_valid:true,broadcast_title:'ВАНКУВЕР — 5 ИЗ 7 ПРОТИВ ВАНКУВЕР',
+  evidence:{split:'h2h',team:'VAN',opponent:'VAN'},
+  market:{type:'handicap',period:'P1',subject:'VAN',side:'VAN',line:0,label:'1-Й ПЕРИОД · ВАНКУВЕР · ФОРА 0'}
+},{home_tri:'EDM',away_tri:'VAN'}),false,'team cannot be its own H2H opponent');
+assert.equal(broadcastCardSemanticsValid({
+  broadcast_math_valid:true,broadcast_title:'3-Й ПЕРИОД: ФЛОРИДА — 7 ИЗ 10',
+  evidence:{team:'FLA'},market:{type:'period_1_result',period:'P1',subject:'FLA',label:'1-Й ПЕРИОД · ПОБЕДА FLA'}
+},{home_tri:'CAR',away_tri:'FLA'}),false,'TV period must match the actual Winline market period');
 console.log('BROADCAST_AIR_SCORE_OK',JSON.stringify({
   bostonHome:bostonHome.air_score,
   safeHandicap:safeHandicap.air_score,
@@ -87,7 +103,7 @@ const nestedCoverWithNulls=annotateAirUtility({
   market:{type:'handicap',subject:'BUF',side:'BUF',line:1.5,label:'BUF +1.5',odds:1.49,odds_is_demo:false,odds_source:'provider_live'}
 });
 assert.equal(nestedCoverWithNulls.air_meta.historical_rate,0.738,'null evidence fields must not collapse to zero');
-assert.ok(nestedCoverWithNulls.broadcast_title.includes('74%'),'nested cover.hit_rate must drive handicap percentage');
+assert.equal(nestedCoverWithNulls.broadcast_math_valid,false,'supporting cover stats cannot masquerade as exact selected-market history');
 assert.ok(nestedCoverWithNulls.broadcast_title.startsWith('BUF НЕ ПРОИГРЫВАЛ В 2+ ШАЙБЫ'),'positive handicap headline should name the team');
 console.log('BROADCAST_NESTED_COVER_RATE_OK',nestedCoverWithNulls.broadcast_title);
 
@@ -135,7 +151,7 @@ const missingHistoricalRate=annotateAirUtility({
   market:{type:'moneyline',subject:'CAR',side:'CAR',odds:1.79,odds_is_demo:false,odds_source:'provider_live'}
 });
 assert.equal(missingHistoricalRate.air_meta.historical_rate,null);
-assert.equal(missingHistoricalRate.broadcast_title,'CAR — сезонный профиль');
+assert.equal(missingHistoricalRate.broadcast_title,'CAR — СЕЗОННЫЙ ПРОФИЛЬ');
 assert.ok(missingHistoricalRate.air_score<90,'large sample without hit rate must not receive elite AIR score');
 console.log('BROADCAST_ADVANCED_HEADLINE_NULL_RATE_OK',advancedNoRate.broadcast_title);
 

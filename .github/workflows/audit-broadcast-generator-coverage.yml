@@ -108,8 +108,13 @@ jobs:
             max_title="$(echo "$JSON" | jq -r '[.cards[]? | (.broadcast_title // .title // "") | length] | max // 0')"
             unverified_streaks="$(echo "$JSON" | jq -r '[.cards[]? | select((.evidence.current_streak // 0) >= 3 and (.evidence.streak_verified != true))] | length')"
             bogus_streak_copy="$(echo "$JSON" | jq -r '[.cards[]? | select(((.broadcast_title // .title // "") | test("[0-9]+ МАТЧ(А|ЕЙ)? ПОДРЯД";"i")) and (.evidence.streak_verified != true))] | length')"
+            bad_title_jargon="$(echo "$JSON" | jq -r '[.cards[]? | select((.broadcast_title // "") | test("(^|[^A-Z0-9])(P1|P2|P3|PERIOD_[123]_RESULT|DOUBLE_CHANCE|TEAM_OR_DRAW|NO_DRAW)([^A-Z0-9]|$)";"i"))] | length')"
+            bad_market_jargon="$(echo "$JSON" | jq -r '[.cards[]? | select((.market.label // "") | test("(^|[^A-Z0-9])(P1|P2|P3|PERIOD_[123]_RESULT|DOUBLE_CHANCE|TEAM_OR_DRAW|NO_DRAW|ТМ|ТБ)([^A-Z0-9]|$)";"i"))] | length')"
+            synthetic_scale="$(echo "$JSON" | jq -r '[.cards[]? | select((.broadcast_title // "") | test("[0-9]+\\+ ИГР";"i"))] | length')"
+            self_h2h="$(echo "$JSON" | jq -r '[.cards[]? | select((.evidence.split // "")=="h2h" and ((.evidence.team // .market.subject // "")|ascii_upcase)==((.evidence.opponent // "")|ascii_upcase) and ((.evidence.team // .market.subject // "")!=""))] | length')"
+            period_mismatch="$(echo "$JSON" | jq -r '[.cards[]? | select((((.broadcast_title // "")|test("1-Й ПЕРИОД";"i")) and ((.market.period // "")!="P1")) or (((.broadcast_title // "")|test("2-Й ПЕРИОД";"i")) and ((.market.period // "")!="P2")) or (((.broadcast_title // "")|test("3-Й ПЕРИОД";"i")) and ((.market.period // "")!="P3")))] | length')"
             ftotal_now="$(echo "$JSON" | jq -r '.featured_cards | length // 0')"
-            echo "$JSON" | jq -c '{FIRST_FIVE_BROADCAST_BASE:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,start:.game.scheduled_start_utc,provider_markets:.provider_market_count,eligible_150:.eligible_provider_market_count,cards:(.cards|length),featured:(.featured_cards|length),min_odds:([.cards[]?.market.odds]|min//null),max_title_chars:([.cards[]?|(.broadcast_title//.title//"")|length]|max//0),stats_validation:.broadcast_card_policy.stats_validation,featured_titles:[.featured_cards[]?|{title:(.broadcast_title//.title),odds:.market.odds,market:.market.label,streak_verified:.evidence.streak_verified,current_streak:.evidence.current_streak}]}}'
+            echo "$JSON" | jq -c '{FIRST_FIVE_BROADCAST_BASE:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,start:.game.scheduled_start_utc,provider_markets:.provider_market_count,eligible_150:.eligible_provider_market_count,cards:(.cards|length),featured:(.featured_cards|length),min_odds:([.cards[]?.market.odds]|min//null),max_title_chars:([.cards[]?|(.broadcast_title//.title//"")|length]|max//0),stats_validation:.broadcast_card_policy.stats_validation,featured_titles:[.featured_cards[]?|{title:(.broadcast_title//.title),odds:.market.odds,market:.market.label,stats_source:.air_meta.stats_source,stats_hits:.air_meta.stats_hits,sample:.air_meta.sample_size,streak_verified:.evidence.streak_verified,current_streak:.evidence.current_streak}]}}'
             if [ "$low_cards" -ne 0 ] || [ "$featured_low" -ne 0 ]; then
               echo "LOW_ODDS_CARD_LEAK game=$pk cards=$low_cards featured=$featured_low"
               exit 1
@@ -121,6 +126,11 @@ jobs:
             if [ "$unverified_streaks" -ne 0 ] || [ "$bogus_streak_copy" -ne 0 ]; then
               echo "UNVERIFIED_STREAK_LEAK game=$pk evidence=$unverified_streaks copy=$bogus_streak_copy"
               echo "$JSON" | jq -c '[.cards[]? | select((.evidence.current_streak // 0) >= 3 or ((.broadcast_title // .title // "") | test("[0-9]+ МАТЧ(А|ЕЙ)? ПОДРЯД";"i"))) | {id,broadcast_title,title,market,evidence:{current_streak:.evidence.current_streak,streak_verified:.evidence.streak_verified,streak_game_pks:.evidence.streak_game_pks,stats_validation:.evidence.stats_validation}}]'
+              exit 1
+            fi
+            if [ "$bad_title_jargon" -ne 0 ] || [ "$bad_market_jargon" -ne 0 ] || [ "$synthetic_scale" -ne 0 ] || [ "$self_h2h" -ne 0 ] || [ "$period_mismatch" -ne 0 ]; then
+              echo "BROADCAST_SEMANTIC_LEAK game=$pk title_jargon=$bad_title_jargon market_jargon=$bad_market_jargon synthetic=$synthetic_scale self_h2h=$self_h2h period=$period_mismatch"
+              echo "$JSON" | jq -c '[.cards[]? | {id,broadcast_title,market,evidence:{team:.evidence.team,opponent:.evidence.opponent,split:.evidence.split},air_meta}]'
               exit 1
             fi
             if [ "$eligible" -ge 4 ] && { [ "$card_count" -lt 4 ] || [ "$ftotal_now" -lt 4 ]; }; then

@@ -399,17 +399,18 @@ async function broadcastGameRoute(env, gamePk) {
   }
 }
 
-export async function archiveUpcomingBroadcastAnalytics(env,{limit=12}={}){
+export async function archiveUpcomingBroadcastAnalytics(env,{limit=12,horizon_minutes=1800}={}){
   if(!env?.DB)return {ok:false,error:"missing_d1_binding"};
+  const horizon=Math.max(1,Math.min(1800,Number(horizon_minutes)||1800));
   const rows=await env.DB.prepare(`
     SELECT game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score
     FROM games
     WHERE game_type IN (2,3)
       AND datetime(scheduled_start_utc)>datetime('now')
-      AND datetime(scheduled_start_utc)<=datetime('now','+30 hours')
+      AND datetime(scheduled_start_utc)<=datetime('now','+'||?||' minutes')
     ORDER BY datetime(scheduled_start_utc) ASC
     LIMIT ?;
-  `).bind(Math.max(1,Math.min(20,Number(limit)||12))).all();
+  `).bind(horizon,Math.max(1,Math.min(20,Number(limit)||12))).all();
   let games=0,cards=0;
   for(const game of rows.results||[]){
     try{
