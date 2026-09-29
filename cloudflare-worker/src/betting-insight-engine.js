@@ -144,8 +144,11 @@ export async function buildBettingInsights(db, game, options = {}) {
   const portfolioForBroadcast=dedupe([...(portfolio||[]),...h2hEditorial]);
 
   const recentBroadcastHeadlines=await loadRecentBroadcastHeadlines(db);
+  const airAnnotated=portfolioForBroadcast.map((card)=>annotateAirUtility(card,game));
+  const mathSafe=airAnnotated.filter(card=>card?.broadcast_math_valid!==false);
+  generatorDiagnostics.suppressed_math_invalid_count=Math.max(0,airAnnotated.length-mathSafe.length);
   const diversified=diversifyBroadcastAngles(
-    portfolioForBroadcast.map((card)=>annotateAirUtility(card,game)),
+    mathSafe,
     {recent_headlines:recentBroadcastHeadlines}
   );
   const annotated=resolveContradictoryAdvice(diversified);
@@ -163,8 +166,9 @@ export function annotateAirUtility(input, game=null) {
   const card={...input,evidence:input?.evidence?{...input.evidence}:{}};
   const market=card.market||{};
   const sourceScore=finiteAirScore(card.portfolio_score,card.score,55);
-  const sample=editorialSampleSize(card);
-  const hitRate=editorialHitRate(card);
+  const stats=editorialStats(card);
+  const sample=stats.sample;
+  const hitRate=stats.rate;
   const odds=Number(market.odds);
   const realPrice=Number.isFinite(odds)&&odds>1&&market.odds_is_demo===false;
   const implied=realPrice?1/odds:null;
@@ -313,8 +317,16 @@ export function annotateAirUtility(input, game=null) {
     score_ceiling:ceiling,
     exceptional_match:Boolean(exceptional),
     real_winline_price:realPrice,
+    stats_verified:stats.verified,
+    stats_source:stats.source,
+    stats_rate_corrected:stats.rate_corrected,
+    stats_reported_rate:stats.reported_rate,
+    stats_hits:stats.hits,
+    stats_consistent:stats.consistent,
   };
-  const formatted=formatBroadcastTitle(card,{sample,hitRate,game});
+  const frequencyClaim=hasFrequencyClaim(card);
+  card.broadcast_math_valid=stats.consistent!==false&&(!frequencyClaim||stats.verified===true||isAnalyticalNarrative(card));
+  const formatted=formatBroadcastTitle(card,{sample,hitRate,hits:stats.hits,stats,game});
   const narrative=buildNarrative(
     {...card,broadcast_title:formatted.title,broadcast_detail:formatted.detail},
     {game,sample,hitRate}
@@ -334,9 +346,12 @@ export function annotateAirUtility(input, game=null) {
 export function formatBroadcastTitle(card, precomputed={}) {
   const evidence=card?.evidence||{};
   const market=card?.market||{};
-  const sample=finiteAirNumber(precomputed.sample)??editorialSampleSize(card)??0;
+  const stats=precomputed.stats||editorialStats(card);
+  const sample=finiteAirNumber(precomputed.sample)??stats.sample??0;
   const rate=finiteAirNumber(precomputed.hitRate);
-  const hitRate=rate!==null?rate:editorialHitRate(card);
+  const hitRate=rate!==null?rate:stats.rate;
+  const hitsPre=finiteAirNumber(precomputed.hits);
+  const hits=hitsPre!==null?Math.round(hitsPre):stats.hits;
   const game=precomputed.game||null;
   const original=String(card?.title||card?.value||"").trim();
 
@@ -346,12 +361,11 @@ export function formatBroadcastTitle(card, precomputed={}) {
   if(isAnalyticalNarrative(card)){
     return formatAdvancedBroadcastTitle(card,original);
   }
-  if(!sample||!Number.isFinite(hitRate))return {title:original,detail:null};
+  if(!sample||!Number.isFinite(hitRate)||stats.consistent===false)return {title:original,detail:null};
 
   const type=String(market.type||"").toLowerCase();
   const line=Number(market.line);
   const pct=Math.round(hitRate*100);
-  const hits=editorialHitCount(card,sample,hitRate);
   const sampleLabel=sample>=100?String(Math.floor(sample/100)*100)+"+ ИГР":String(sample)+" ИГР";
   const label=String(market.label||"").trim().toUpperCase().replace(/\./g,",");
   let title;
@@ -467,53 +481,53 @@ function formatAdvancedBroadcastTitle(card,original){
   return {title,detail:detail.length?detail.join(" · "):null};
 }
 
-function editorialSampleSize(card){
+function editorialStats(card){
   const e=card?.evidence||{};
-  const away=finiteAirNumber(e.away?.sample),home=finiteAirNumber(e.home?.sample);
-  if(away!==null&&away>0&&home!==null&&home>0)return away+home;
-  const candidates=[
-    card?.sample,e.sample,e.sample_size,e.window,e.games,
-    e.cover?.sample,e.attack?.sample,e.opponent_defense?.sample,
-    e.home?.sample,e.away?.sample,
-  ].map(finiteAirNumber).filter(v=>v!==null&&v>0);
-  return candidates.length?Math.max(...candidates):0;
+  const direct=exactStats(e.hits,firstAirPositiveNumber(e.decisions,e.sample,e.sample_size,e.games,e.window),e.hit_rate,"evidence");
+  if(direct)return direct;
+  for(const [name,obj] of [["cover",e.cover],["attack",e.attack],["opponent_defense",e.opponent_defense]]){
+    const pair=exactStats(obj?.hits,firstAirPositiveNumber(obj?.decisions,obj?.sample,obj?.games,obj?.window),firstAirRate(obj?.hit_rate,obj?.rate),name);
+    if(pair)return pair;
+  }
+  const away=exactStats(e.away?.hits,firstAirPositiveNumber(e.away?.decisions,e.away?.sample,e.away?.games),firstAirRate(e.away?.hit_rate,e.away?.rate),"away");
+  const home=exactStats(e.home?.hits,firstAirPositiveNumber(e.home?.decisions,e.home?.sample,e.home?.games),firstAirRate(e.home?.hit_rate,e.home?.rate),"home");
+  if(away&&home){
+    const hits=away.hits+home.hits,sample=away.sample+home.sample;
+    return {hits,sample,rate:hits/sample,verified:true,consistent:away.consistent&&home.consistent,source:"away+home",rate_corrected:away.rate_corrected||home.rate_corrected,reported_rate:null};
+  }
+  const wins=exactStats(e.wins,firstAirPositiveNumber(e.games,e.sample),e.win_rate,"wins");
+  if(wins)return wins;
+  const rateOnly=pairedRateStats(e.hit_rate,firstAirPositiveNumber(e.decisions,e.sample,e.sample_size,e.games,e.window),"evidence_rate")
+    ||pairedRateStats(e.cover?.hit_rate,firstAirPositiveNumber(e.cover?.decisions,e.cover?.sample,e.cover?.games),"cover_rate")
+    ||pairedRateStats(e.attack?.hit_rate,firstAirPositiveNumber(e.attack?.decisions,e.attack?.sample,e.attack?.games),"attack_rate")
+    ||pairedRateStats(e.opponent_defense?.hit_rate,firstAirPositiveNumber(e.opponent_defense?.decisions,e.opponent_defense?.sample,e.opponent_defense?.games),"opponent_defense_rate");
+  return rateOnly||{hits:null,sample:0,rate:null,verified:false,consistent:true,source:null,rate_corrected:false,reported_rate:null};
 }
+function exactStats(hitsValue,sampleValue,reportedRateValue,source){
+  const hits=finiteAirNumber(hitsValue),sample=finiteAirNumber(sampleValue),reported=firstAirRate(reportedRateValue);
+  if(hits===null||sample===null)return null;
+  const h=Math.round(hits),s=Math.round(sample);
+  if(s<=0||h<0||h>s)return {hits:h,sample:s,rate:null,verified:false,consistent:false,source,rate_corrected:false,reported_rate:reported};
+  const rate=h/s,corrected=reported!==null&&Math.abs(reported-rate)>0.005;
+  return {hits:h,sample:s,rate,verified:true,consistent:true,source,rate_corrected:corrected,reported_rate:reported};
+}
+function pairedRateStats(rateValue,sampleValue,source){
+  const rate=firstAirRate(rateValue),sample=finiteAirNumber(sampleValue);
+  if(rate===null||sample===null||sample<=0)return null;
+  return {hits:null,sample:Math.round(sample),rate,verified:false,consistent:true,source,rate_corrected:false,reported_rate:rate};
+}
+function hasFrequencyClaim(card){
+  const text=String(card?.broadcast_title||card?.title||card?.value||"").toUpperCase();
+  return /\d+\s*%|\d+\s+ИЗ\s+\d+|\d+\s+МАТЧ(?:А|ЕЙ)?\s+ПОДРЯД|\d+\+?\s+ИГР/.test(text);
+}
+function editorialSampleSize(card){return editorialStats(card).sample||0}
 function editorialHitCount(card,sample,hitRate){
-  const e=card?.evidence||{};
-  const direct=[
-    e.hits,e.cover?.hits,e.attack?.hits,e.opponent_defense?.hits,
-    e.home?.hits,e.away?.hits,
-  ].map(finiteAirNumber).find(v=>v!==null);
-  if(direct!==undefined&&direct!==null)return Math.max(0,Math.round(direct));
+  const stats=editorialStats(card);
+  if(stats.verified&&Number.isFinite(stats.hits))return stats.hits;
   if(Number.isFinite(sample)&&sample>0&&Number.isFinite(hitRate))return Math.max(0,Math.round(sample*hitRate));
   return null;
 }
-function editorialHitRate(card){
-  const e=card?.evidence||{};
-  const awayRate=firstAirRate(e.away?.hit_rate,e.away?.rate);
-  const homeRate=firstAirRate(e.home?.hit_rate,e.home?.rate);
-  const awayN=finiteAirNumber(e.away?.sample),homeN=finiteAirNumber(e.home?.sample);
-  if(awayRate!==null&&homeRate!==null){
-    if(awayN!==null&&homeN!==null&&awayN+homeN>0)return (awayRate*awayN+homeRate*homeN)/(awayN+homeN);
-    return (awayRate+homeRate)/2;
-  }
-  const direct=firstAirRate(
-    e.hit_rate,e.average_rate,e.combined_rate,e.rate,e.cover_rate,e.win_rate,
-    e.cover?.hit_rate,e.cover?.rate,
-    e.attack?.hit_rate,e.attack?.rate,
-    e.opponent_defense?.hit_rate,e.opponent_defense?.rate,
-    e.home?.hit_rate,e.home?.rate,
-    e.away?.hit_rate,e.away?.rate,
-  );
-  if(direct!==null)return direct;
-  const hits=finiteAirNumber(e.hits),sample=firstAirPositiveNumber(e.sample,e.sample_size,e.window);
-  if(hits!==null&&sample!==null&&sample>0)return hits/sample;
-  const coverHits=finiteAirNumber(e.cover?.hits),coverSample=finiteAirNumber(e.cover?.sample);
-  if(coverHits!==null&&coverSample!==null&&coverSample>0)return coverHits/coverSample;
-  const wins=finiteAirNumber(e.wins),games=finiteAirNumber(e.games);
-  if(wins!==null&&games!==null&&games>0)return wins/games;
-  return null;
-}
+function editorialHitRate(card){return editorialStats(card).rate}
 function finiteAirNumber(value){
   if(value===null||value===undefined||value==="")return null;
   const n=Number(value);
