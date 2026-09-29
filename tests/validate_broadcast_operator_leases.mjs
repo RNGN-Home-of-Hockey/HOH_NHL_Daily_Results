@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { handleBroadcastOperatorRequest } from '../cloudflare-worker/src/broadcast-operator.js';
+import { compatibleOperatorLease, handleBroadcastOperatorRequest } from '../cloudflare-worker/src/broadcast-operator.js';
 
 const leases=new Map();
 const env={BROADCAST_OPERATOR_OPEN:'1',DB:{prepare(sql){return statement(sql)}}};
@@ -11,10 +11,16 @@ let d=await r.json();
 assert.equal(d.lease.operator_id,'operator-alpha');
 
 r=await lease('POST','operator-beta','Бета');
-assert.equal(r.status,423,'second operator must not take an active room');
+assert.equal(r.status,200,'second operator must be allowed into an active room');
 d=await r.json();
-assert.equal(d.error,'game_locked');
-assert.equal(d.lease.operator_name,'Альфа');
+assert.equal(d.shared,true);
+assert.equal(d.acquired,false);
+assert.equal(d.lease.operator_name,'Альфа','presence may still show the first active operator');
+
+const shared=await compatibleOperatorLease(env.DB,gamePk,'operator-beta');
+assert.equal(shared.ok,true,'an existing lease must never block card actions');
+assert.equal(shared.shared,true);
+assert.equal(shared.lease.operator_id,'operator-alpha');
 
 r=await handleBroadcastOperatorRequest(
   new Request('https://example.test/api/broadcast/operator/leases/'+gamePk),
@@ -36,7 +42,7 @@ assert.equal(r.status,200);
 d=await r.json();
 assert.equal(d.lease,null);
 
-console.log('BROADCAST_OPERATOR_LEASE_COLLISION_OK');
+console.log('BROADCAST_OPERATOR_SHARED_ACCESS_OK');
 
 function lease(method,operator_id,operator_name){
   return handleBroadcastOperatorRequest(new Request('https://example.test/api/broadcast/operator/leases/'+gamePk,{
