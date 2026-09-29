@@ -70,10 +70,9 @@ function extractProfile(card,context){
     ""
   );
   let opponentCode=upper(!isObject(e.opponent)?e.opponent:"");
-  if(!opponentCode&&teamCode){
-    if(upper(game.home_tri)===teamCode)opponentCode=upper(game.away_tri);
-    else if(upper(game.away_tri)===teamCode)opponentCode=upper(game.home_tri);
-  }
+  const homeCode=upper(game.home_tri),awayCode=upper(game.away_tri);
+  const expectedOpponent=teamCode===homeCode?awayCode:teamCode===awayCode?homeCode:"";
+  if(teamCode&&expectedOpponent&&(!opponentCode||opponentCode===teamCode||![homeCode,awayCode].includes(opponentCode)))opponentCode=expectedOpponent;
   const team=displayTeam(teamCode,game);
   const opponent=displayTeam(opponentCode,game);
 
