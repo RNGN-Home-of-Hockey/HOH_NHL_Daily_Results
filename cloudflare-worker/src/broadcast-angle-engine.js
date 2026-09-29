@@ -20,9 +20,10 @@ export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
   s=expandBroadcastTerms(s);
   for(const [full,short] of FULL_TEAM_SHORT)s=s.replaceAll(full,short);
   s=s
-    .replace(/ПО РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ/g,"ПО ОПАСНЫМ МОМЕНТАМ")
-    .replace(/ПО СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ/g,"ПО ОПАСНЫМ МОМЕНТАМ")
-    .replace(/ПО МИНИМУМУ ДОПУЩЕННЫХ ОПАСНЫХ МОМЕНТОВ/g,"ПО ЗАЩИТЕ ОПАСНЫХ МОМЕНТОВ")
+    .replace(/ПО РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ/g,"ПО БАЛАНСУ МОМЕНТОВ")
+    .replace(/ПО СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ/g,"ПО СОЗДАНИЮ МОМЕНТОВ")
+    .replace(/ПО МИНИМУМУ ДОПУЩЕННЫХ ОПАСНЫХ МОМЕНТОВ/g,"ПО ЗАЩИТЕ ОТ МОМЕНТОВ")
+    .replace(/ПО ЗАЩИТЕ ОТ ОПАСНЫХ МОМЕНТОВ/g,"ПО ЗАЩИТЕ ОТ МОМЕНТОВ")
     .replace(/ПОСЛЕДНИХ МАТЧЕЙ/g,"МАТЧЕЙ")
     .replace(/В ОСНОВНОЕ ВРЕМЯ/g,"ЗА 60 МИН")
     .replace(/\s*—\s*/g," — ")
@@ -31,8 +32,9 @@ export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
   let compact=s
     .replace(/ — №/g," №")
     .replace(/,\s+/g,", ")
-    .replace(/ ПО ОПАСНЫМ МОМЕНТАМ/g," ПО ОПАСНЫМ")
-    .replace(/ ПО ЗАЩИТЕ ОПАСНЫХ МОМЕНТОВ/g," ПО ЗАЩИТЕ");
+    .replace(/ ПО БАЛАНСУ МОМЕНТОВ/g," ПО БАЛАНСУ")
+    .replace(/ ПО СОЗДАНИЮ МОМЕНТОВ/g," ПО СОЗДАНИЮ")
+    .replace(/ ПО ЗАЩИТЕ ОТ МОМЕНТОВ/g," ПО ЗАЩИТЕ");
   if(compact.length<=max)return compact;
   compact=compact
     .replace(/ТОТАЛ КОМАНДЫ МЕНЬШЕ/g,"ИТМ")
