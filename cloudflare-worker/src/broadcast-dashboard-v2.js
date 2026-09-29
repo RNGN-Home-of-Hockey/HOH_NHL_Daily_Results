@@ -8,6 +8,13 @@ import { buildCommentatorBrief } from "./commentator-brief.js";
 
 const BROADCAST_PATH = "/broadcast";
 const MIN_BROADCAST_ODDS = 1.50;
+export function broadcastGameLooksLive(game,nowMs=Date.now()){
+  const state=String(game?.game_state||"").toUpperCase();
+  if(["LIVE","CRIT","INTERMISSION"].includes(state))return true;
+  if(["FINAL","OFF"].includes(state))return false;
+  const start=Date.parse(String(game?.scheduled_start_utc||""));
+  return Number.isFinite(start)&&nowMs>=start&&(nowMs-start)<=8*60*60*1000;
+}
 const BROADCAST_PORTFOLIO_LIMIT = 48;
 const MAX_BROADCAST_HEADLINE_CHARS = 58;
 
@@ -92,6 +99,11 @@ async function broadcastGamesRoute(env) {
         WHERE g.game_type IN (2,3)
           AND (
             UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
+            OR (
+              datetime(g.scheduled_start_utc) <= datetime('now')
+              AND datetime(g.scheduled_start_utc) >= datetime('now','-8 hours')
+              AND UPPER(COALESCE(g.game_state,'')) NOT IN ('FINAL','OFF')
+            )
             OR datetime(g.scheduled_start_utc) >= datetime('now')
             OR (
               UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF')
@@ -99,7 +111,18 @@ async function broadcastGamesRoute(env) {
               AND EXISTS (SELECT 1 FROM broadcast_insight_history bih WHERE bih.game_pk=g.game_pk)
             )
           )
-        ORDER BY datetime(g.scheduled_start_utc) ASC, g.game_pk ASC
+        ORDER BY
+          CASE
+            WHEN UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT','INTERMISSION') THEN 0
+            WHEN datetime(g.scheduled_start_utc) <= datetime('now')
+                 AND datetime(g.scheduled_start_utc) >= datetime('now','-8 hours')
+                 AND UPPER(COALESCE(g.game_state,'')) NOT IN ('FINAL','OFF') THEN 0
+            WHEN datetime(g.scheduled_start_utc) >= datetime('now') THEN 1
+            ELSE 2
+          END ASC,
+          CASE WHEN UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF') THEN datetime(g.scheduled_start_utc) END DESC,
+          datetime(g.scheduled_start_utc) ASC,
+          g.game_pk ASC
         LIMIT 100;
       `).all(),
       env.DB.prepare(`
@@ -108,6 +131,11 @@ async function broadcastGamesRoute(env) {
             WHERE game_type IN (2,3)
               AND (
                 UPPER(COALESCE(game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
+                OR (
+                  datetime(scheduled_start_utc) <= datetime('now')
+                  AND datetime(scheduled_start_utc) >= datetime('now','-8 hours')
+                  AND UPPER(COALESCE(game_state,'')) NOT IN ('FINAL','OFF')
+                )
                 OR datetime(scheduled_start_utc) >= datetime('now')
                 OR (
                   UPPER(COALESCE(game_state,'')) IN ('FINAL','OFF')
@@ -150,7 +178,7 @@ async function broadcastQueueSummaryRoute(env,gamePk){
       `).bind(gamePk).first(),
     ]);
     if(!game)return jsonResponse({ok:false,error:"game_not_found"},404);
-    const live=["LIVE","CRIT"].includes(String(game.game_state||"").toUpperCase());
+    const live=broadcastGameLooksLive(game);
     const maxAgeMs=live?45_000:5*60_000;
     const generatedAt=Date.parse(String(cached?.generated_at||"").replace(" ","T")+"Z");
     if(cached&&Number.isFinite(generatedAt)&&(Date.now()-generatedAt)<maxAgeMs){
@@ -388,7 +416,7 @@ async function broadcastGameRoute(env, gamePk) {
       provider_market_count:providerMarkets.length,
       eligible_provider_market_count:eligibleProviderMarkets.length,
       market_coverage:summarizeMarketCoverage(eligibleProviderMarkets,broadcastCardsWithEvidence),
-      broadcast_card_policy:{min_odds:MIN_BROADCAST_ODDS,featured_target:4,portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,max_headline_chars:MAX_BROADCAST_HEADLINE_CHARS,max_frequency_sample:40,stats_validation:"same_season_streak_v2",integrity_version:"exact_market_v12_editorial_copy",live_monitoring:{ui_poll_seconds:15,winline_sync_target_seconds:60,winline_feed_throttle_seconds:45,live_quote_max_age_seconds:90},pregame_archive:{closing_window_minutes:10,freeze_at_puck_drop:true,postgame_settlement:true}},
+      broadcast_card_policy:{min_odds:MIN_BROADCAST_ODDS,featured_target:4,portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,max_headline_chars:MAX_BROADCAST_HEADLINE_CHARS,max_frequency_sample:40,stats_validation:"same_season_streak_v2",integrity_version:"exact_market_v13_live_shared_operator",live_monitoring:{ui_poll_seconds:15,winline_sync_target_seconds:60,winline_feed_throttle_seconds:45,live_quote_max_age_seconds:90},pregame_archive:{closing_window_minutes:10,freeze_at_puck_drop:true,postgame_settlement:true}},
       generator_diagnostics:generatorDiagnostics,
       data_degraded_sections:dataDegradedSections,
       quick_cards:quickCards,
@@ -666,7 +694,7 @@ function triFromWinlineName(v){return WINLINE_TEAM_NAMES[normalizeWinlineText(v)
 function finiteMarketLine(...values){for(const v of values){if(v===null||v===undefined||v==="")continue;const n=Number(String(v).replace(",",".").replace(/[^0-9+.-]/g,""));if(Number.isFinite(n))return n}return null}
 function marketLineFromType(v){const m=String(v||"").match(/:([+-]?\d+(?:\.\d+)?)$/);return m?m[1]:null}
 function isoOrNull(v){const raw=String(v||"").trim();const t=Date.parse(raw.includes("T")?raw:raw.replace(" ","T")+"Z");return Number.isFinite(t)?new Date(t).toISOString():null}
-function broadcastWinlineMaxAgeMs(game){const left=Date.parse(String(game?.scheduled_start_utc||""))-Date.now();if(!Number.isFinite(left))return 90*60*1000;if(left>30*60*60*1000)return 7*60*60*1000;if(left>6*60*60*1000)return 90*60*1000;if(left>60*60*1000)return 45*60*1000;return 20*60*1000}
+function broadcastWinlineMaxAgeMs(game){if(broadcastGameLooksLive(game))return 90*1000;const left=Date.parse(String(game?.scheduled_start_utc||""))-Date.now();if(!Number.isFinite(left))return 90*60*1000;if(left>30*60*60*1000)return 7*60*60*1000;if(left>6*60*60*1000)return 90*60*1000;if(left>60*60*1000)return 45*60*1000;return 20*60*1000}
 export function mergeBroadcastInsights(statisticalInsights,pricedInsights){
   const out=[],seenIds=new Set(),pricedMarkets=new Set();
   for(const card of pricedInsights||[]){
@@ -732,7 +760,7 @@ function jsResponse(js){return new Response(js,{status:200,headers:{"Content-Typ
 function pngResponse(base64){const raw=atob(base64);const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i+=1)bytes[i]=raw.charCodeAt(i);return new Response(bytes,{status:200,headers:{"Content-Type":"image/png","Cache-Control":"public, max-age=31536000, immutable","X-Content-Type-Options":"nosniff"}})}
 
 function browserApp(){
-const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],featuredCards=[],liveCards=[],pregameArchive=null,liveMonitoring=null,liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null,queueWarmRunning=false;
+const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],featuredCards=[],liveCards=[],pregameArchive=null,liveMonitoring=null,liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null,gameListTimer=null,queueWarmRunning=false;
 const operatorId=(()=>{let v=localStorage.getItem('hohBroadcastOperatorId')||'';if(!v){v='op-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));localStorage.setItem('hohBroadcastOperatorId',v)}return v})();
 let operatorName=localStorage.getItem('hohBroadcastOperatorName')||'';
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -757,13 +785,20 @@ function absoluteOverlayUrl(gamePk){
 function fmtDate(v){if(!v)return'';const d=new Date(v);return d.toLocaleString('ru-RU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).replace(',',' ·')}
 function typeLabel(t){const n=Number(t);return n===1?'Предсезонка':n===3?'Плей-офф':'Регулярка'}
 async function api(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
-async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} матчей · ближайшие + live + предматчевый архив за 7 дней`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null);await refreshActions();void warmQueueSummaries();if(!actionTimer)actionTimer=setInterval(refreshActions,15000)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
+async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} матчей · ближайшие + live + предматчевый архив за 7 дней`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null);await refreshActions();void warmQueueSummaries();if(!actionTimer)actionTimer=setInterval(refreshActions,15000);if(!gameListTimer)gameListTimer=setInterval(refreshGameList,15000)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
+async function refreshGameList(){try{const d=await api('/api/broadcast/games');const fresh=d.games||[],byPk=new Map(games.map(g=>[Number(g.game_pk),g]));games=fresh.map(g=>({...byPk.get(Number(g.game_pk)),...g}));$('#counts').textContent=`${d.counts.games} матчей · ближайшие + live + предматчевый архив за 7 дней`;renderGames();void warmQueueSummaries()}catch{}}
 function renderAir(card){const air=$('#air'),text=$('#airtext');if(card){air.classList.add('live');text.textContent=`${card.headline_ru}: ${card.stat_text_ru}`}else{air.classList.remove('live');text.textContent='Сейчас ничего не показано'}}
+function gameLooksLive(g){
+  const state=String(g?.game_state||'').toUpperCase();
+  if(['LIVE','CRIT','INTERMISSION'].includes(state))return true;
+  if(['FINAL','OFF'].includes(state))return false;
+  const start=Date.parse(String(g?.scheduled_start_utc||''));
+  return Number.isFinite(start)&&Date.now()>=start&&(Date.now()-start)<=8*60*60*1000;
+}
 function queueSummaryFresh(g){
   const raw=String(g?.queue_summary_generated_at||'').trim();
   const t=Date.parse(raw.includes('T')?raw:(raw?raw.replace(' ','T')+'Z':''));
-  const live=['LIVE','CRIT'].includes(String(g?.game_state||'').toUpperCase());
-  return Number.isFinite(t)&&(Date.now()-t)<(live?45000:5*60*1000);
+  return Number.isFinite(t)&&(Date.now()-t)<(gameLooksLive(g)?45000:5*60*1000);
 }
 function queueBadge(g){
   const strong=Number(g?.strong_count);
@@ -817,7 +852,7 @@ function renderGames(){
   const selectedGame=games.find(g=>Number(g.game_pk)===Number(selected));
   if(selectedGame)groupOpen[Number(selectedGame.game_type)]=true;
   const groups=[{type:2,label:'Регулярка'},{type:3,label:'Плей-офф'}];
-  const row=g=>{const room=[g.on_air_card_id?'<b class="pill">ON AIR</b>':'',g.operator_name?`<span class="roomop">${esc(g.operator_name)}</span>`:''].filter(Boolean).join(' ');const q=queueBadge(g);return `<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span class="roomstate">${room}</span></div><div class="gqueue">${q}</div></button>`};
+  const row=g=>{const room=[gameLooksLive(g)?'<b class="pill">LIVE</b>':'',g.on_air_card_id?'<b class="pill">ON AIR</b>':'',g.operator_name?`<span class="roomop">${esc(g.operator_name)}</span>`:''].filter(Boolean).join(' ');const q=queueBadge(g);return `<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span class="roomstate">${room}</span></div><div class="gqueue">${q}</div></button>`};
   $('#games').innerHTML=groups.map(group=>{
     const rows=games.filter(g=>Number(g.game_type)===group.type);
     if(!rows.length)return'';
@@ -830,7 +865,7 @@ async function selectGame(id){const previous=selected;if(previous&&Number(previo
 function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[side+'_name']||tri,logo=g[side+'_logo'];return `<div class="team ${side==='home'?'home':''}">${side==='home'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}<div class="logo">${logo?`<img src="${esc(logo)}" alt="">`:`<span class="fallback">${esc(tri)}</span>`}</div>${side==='away'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}</div>`}
 function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>p.period_number+'-Й ПЕРИОД '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct==null||!Number.isFinite(Number(a.faceoff_pct))?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct==null||!Number.isFinite(Number(h.faceoff_pct))?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
-function isLiveGame(){return ['LIVE','CRIT','INTERMISSION'].includes(String(currentData?.game?.game_state||'').toUpperCase())}
+function isLiveGame(){return gameLooksLive(currentData?.game)}
 function isStartedGame(){const s=String(currentData?.game?.game_state||'').toUpperCase();return isLiveGame()||['FINAL','OFF'].includes(s)||Date.now()>=Date.parse(String(currentData?.game?.scheduled_start_utc||''))}
 function renderCombinedCards(){
   const liveMode=isLiveGame(),featured=[],seen=new Set();
@@ -862,7 +897,7 @@ function renderCombinedCards(){
 function cardKey(c){
   return String(c?.id||[c?.insight_type,c?.market?.type,c?.market?.period,c?.market?.subject,c?.market?.side,c?.market?.line].join(':'));
 }
-async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;if(currentData?.game&&l.game)currentData.game={...currentData.game,...l.game};liveMonitoring=l.monitoring||null;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds))&&Number(x.market.odds)>=1.50);renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?l.game.period_number+'-Й ПЕРИОД':null,l.game.time_remaining].filter(Boolean);const nhlAt=l.fetched_at?new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';const winAt=l.provider_live_updated_at?new Date(l.provider_live_updated_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'нет live-линии';const freshness=liveMonitoring?.winline_status==='fresh'?'свежая':liveMonitoring?.winline_status==='stale'?'УСТАРЕЛА':'нет';c.textContent=parts.join(' · ')+' · NHL '+nhlAt+' · WINLINE '+winAt+' · '+freshness}if(['LIVE','CRIT','INTERMISSION'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`Предматчевых ${historicalCards.length} · NHL live feed временно недоступен`}}}
+async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;if(currentData?.game&&l.game)currentData.game={...currentData.game,...l.game};liveMonitoring=l.monitoring||null;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds))&&Number(x.market.odds)>=1.50);renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?l.game.period_number+'-Й ПЕРИОД':null,l.game.time_remaining].filter(Boolean);const nhlAt=l.fetched_at?new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';const winAt=l.provider_live_updated_at?new Date(l.provider_live_updated_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'нет live-линии';const freshness=liveMonitoring?.winline_status==='fresh'?'свежая':liveMonitoring?.winline_status==='stale'?'УСТАРЕЛА':'нет';c.textContent=parts.join(' · ')+' · NHL '+nhlAt+' · WINLINE '+winAt+' · '+freshness}if(gameLooksLive(l.game||currentData?.game)&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`Предматчевых ${historicalCards.length} · NHL live feed временно недоступен`}}}
 const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
   CGY:{name:"КАЛГАРИ",color:"#D2001C"},CAR:{name:"КАРОЛИНА",color:"#CE1126"},CHI:{name:"ЧИКАГО",color:"#CF0A2C"},

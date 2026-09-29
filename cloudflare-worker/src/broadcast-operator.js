@@ -397,10 +397,14 @@ async function acquireOperatorLease(request,env,gamePk){
        OR datetime(broadcast_operator_leases.expires_at)<=datetime('now');
   `).bind(gamePk,operatorId,operatorName).run();
   const lease=await activeOperatorLease(env.DB,gamePk);
-  if(!lease||String(lease.operator_id)!==operatorId){
-    return json({ok:false,error:"game_locked",message:`Матч уже ведёт ${lease?.operator_name||"другой оператор"}`,game_pk:gamePk,lease},423);
+  if(!lease){
+    return json({ok:true,acquired:false,shared:true,game_pk:gamePk,lease:null});
   }
-  return json({ok:true,acquired:true,game_pk:gamePk,lease});
+  const owned=String(lease.operator_id)===operatorId;
+  // Leases are advisory only. Several operators may work with the same game.
+  // The first active lease remains visible as presence information, but it must
+  // never block another operator from opening cards or sending a plaque.
+  return json({ok:true,acquired:owned,shared:!owned,game_pk:gamePk,lease});
 }
 
 async function releaseOperatorLease(request,env,gamePk){
@@ -422,12 +426,12 @@ async function activeOperatorLease(db,gamePk){
   return row||null;
 }
 
-async function compatibleOperatorLease(db,gamePk,rawOperatorId){
+export async function compatibleOperatorLease(db,gamePk,rawOperatorId){
   const lease=await activeOperatorLease(db,gamePk);
-  if(!lease)return {ok:true,lease:null};
+  if(!lease)return {ok:true,lease:null,shared:false};
   const operatorId=normalizeOperatorId(rawOperatorId);
-  if(operatorId&&String(lease.operator_id)===operatorId)return {ok:true,lease};
-  return {ok:false,error:"game_locked",message:`Матч уже ведёт ${lease.operator_name||"другой оператор"}`,game_pk:gamePk,lease};
+  const owned=Boolean(operatorId&&String(lease.operator_id)===operatorId);
+  return {ok:true,lease,shared:!owned};
 }
 
 async function renewOperatorLease(db,gamePk,operatorId){
