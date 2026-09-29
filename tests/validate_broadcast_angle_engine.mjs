@@ -30,7 +30,7 @@ assert.doesNotMatch(longRank,/ХАРРИКЕЙНЗ|ПАНТЕРЗ/);
 const historyCard={
   title:"exact line",
   evidence:{
-    hits:8,decisions:10,hit_rate:.8,window:10,current_streak:4,
+    hits:8,decisions:10,hit_rate:.8,window:10,current_streak:4,streak_verified:true,
     trend_windows:[
       {window:10,hits:8,decisions:10,hit_rate:.8,pushes:0},
       {window:20,hits:15,decisions:20,hit_rate:.75,pushes:0},
@@ -42,6 +42,11 @@ const historyCard={
 const historyAngles=buildBroadcastAngles(historyCard,{});
 assert.ok(historyAngles.some(x=>x.family==="hit_rate"&&/8 ИЗ 10/.test(x.title)));
 assert.ok(historyAngles.some(x=>x.family==="streak"&&/4 МАТЧА ПОДРЯД/.test(x.title)));
+const unverifiedAngles=buildBroadcastAngles({...historyCard,evidence:{...historyCard.evidence,current_streak:40,streak_verified:false}},{});
+assert.ok(!unverifiedAngles.some(x=>x.family==="streak"),"unverified 40-game streak must be suppressed");
+const noVariant=diversifyBroadcastAngles([{title:"P2 · PERIOD_2_RESULT КАРОЛИНА ХАРРИКЕЙНЗ — ОЧЕНЬ ДЛИННЫЙ ТЕХНИЧЕСКИЙ ЗАГОЛОВОК БЕЗ ВАРИАНТОВ"}])[0];
+assert.ok(noVariant.broadcast_title.length<=58,"cards without angle variants must obey the fixed headline limit");
+assert.doesNotMatch(noVariant.broadcast_title,/ХАРРИКЕЙНЗ/);
 assert.ok(historyAngles.some(x=>x.family==="multi_window"&&/8 ИЗ 10/.test(x.title)&&/15 ИЗ 20/.test(x.title)));
 assert.ok(historyAngles.every(x=>/\d/.test(x.title)),"numeric evidence must stay numeric on TV");
 

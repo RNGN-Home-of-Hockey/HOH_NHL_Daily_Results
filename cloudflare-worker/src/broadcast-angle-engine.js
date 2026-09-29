@@ -75,7 +75,7 @@ export function diversifyBroadcastAngles(cards=[],options={}){
   const recentShapes=new Set((options.recent_headlines||[]).map(titleShape).filter(Boolean));
   return cards.map((card,index)=>{
     const vars=Array.isArray(card.broadcast_angle_variants)?card.broadcast_angle_variants:[];
-    if(!vars.length)return card;
+    if(!vars.length)return {...card,broadcast_title:fitBroadcastTitle(card.broadcast_title||card.title||card.value||"")};
     const human=vars.filter(v=>!hasRawTvJargon(v?.title));
     const candidates=human.length?human:vars;
     let best=candidates[0],bestScore=-1e9;
@@ -89,14 +89,14 @@ export function diversifyBroadcastAngles(cards=[],options={}){
     const f=String(best.family||"other");
     familyCount.set(f,(familyCount.get(f)||0)+1);shapes.add(titleShape(best.title));
     const op=syncOperatorAngle(card.operator_narrative,best);
-    return {...card,broadcast_title:best.title,broadcast_subtitle:best.subtitle||card.broadcast_subtitle||null,
+    return {...card,broadcast_title:fitBroadcastTitle(best.title),broadcast_subtitle:best.subtitle||card.broadcast_subtitle||null,
       broadcast_angle_id:best.id,broadcast_angle_family:f,broadcast_angle_reason:best.reason||null,
       operator_narrative:op};
   });
 }
 
 function hasRawTvJargon(v){
-  return /\b(?:xg|xgf|xga|xgd|corsi|fenwick|gsax|pdo)(?:\b|\/)/i.test(String(v||""));
+  return /\b(?:xg|xgf|xga|xgd|corsi|fenwick|gsax|pdo|moneyline|team_total|game_total|handicap|period_[123]_result)(?:\b|\/)/i.test(String(v||""));
 }
 function syncOperatorAngle(operator,best){
   if(!operator||typeof operator!=="object")return operator||null;
@@ -132,7 +132,7 @@ function addHistory(out,e,m,p={}){
   put(out,"history_pct","hit_rate_pct",`${label} ПРОХОДИТ В ${pct}% МАТЧЕЙ`,`ПОСЛЕДНИЕ ${Math.round(dec)} МАТЧЕЙ`,h2h?70:(dec<8?Math.min(78,historyAngleScore+2):90),"процент прохода линии");
   if(push>0)put(out,"history_push","integer_line",`${label} — ${Math.round(hits)} ПОБЕД И ${Math.round(push)} ВОЗВРАТА`,`${Math.round(dec)} РЕШЁННЫХ ИСХОДОВ`,h2h?72:89,"целая линия с возвратами");
   const streak=n(e.current_streak);
-  if(streak>=3)put(out,"streak","streak",`${label} ПРОХОДИТ ${Math.round(streak)} МАТЧА ПОДРЯД`,"ТЕКУЩАЯ СЕРИЯ",h2h?76:97,"серия по той же линии");
+  if(streak>=3&&e.streak_verified===true)put(out,"streak","streak",`${label} ПРОХОДИТ ${Math.round(streak)} МАТЧА ПОДРЯД`,"ТЕКУЩАЯ СЕРИЯ",h2h?76:97,"проверенная серия по той же линии");
 }
 function addRanks(out,p,m){
   if(!p?.team||n(p.teamRank)===null)return;

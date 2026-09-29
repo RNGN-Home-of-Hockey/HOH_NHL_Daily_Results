@@ -339,7 +339,6 @@ function rateStats(rows, predicate) {
 }
 
 function trendHitText(stat, window) {
-  if (Number(stat?.streak || 0) >= 20) return `в ${stat.streak} матчах подряд`;
   return `в ${stat.hits} из ${lastGamesPhrase(window)}`;
 }
 

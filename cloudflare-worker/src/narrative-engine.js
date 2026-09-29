@@ -217,7 +217,7 @@ function buildOperator(p,card,context,selectedAngle=null,angles=[]){
     details.push("Динамика этой же точной линии: "+text+".");
   }
   const currentStreak=finite(e.current_streak);
-  if(currentStreak!==null&&currentStreak>=2)details.push(`Текущая серия этой же линии: ${Math.round(currentStreak)} прохода подряд.`);
+  if(e.streak_verified===true&&currentStreak!==null&&currentStreak>=2)details.push(`Проверенная текущая серия этой же линии: ${Math.round(currentStreak)} прохода подряд.`);
   if(p.sample!==null)details.push(`База сигнала: ${Math.round(p.sample)} матчей.`);
   if(p.season)details.push(`Сезон данных: ${seasonLabel(p.season)}.`);
   if(p.persistent)details.push("Профиль подтверждается предыдущим сезоном.");
