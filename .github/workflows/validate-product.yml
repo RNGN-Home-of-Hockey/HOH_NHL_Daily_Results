@@ -251,6 +251,7 @@ jobs:
         run: |
           node tests/validate_broadcast_operator.mjs
           node tests/validate_broadcast_operator_leases.mjs
+          node tests/validate_broadcast_live_visibility.mjs
           node tests/validate_broadcast_air_score.mjs
           node tests/validate_broadcast_value_score_v2.mjs
           node tests/validate_broadcast_multi_match_state.mjs
