@@ -186,7 +186,7 @@ function marketLabel(market) {
   if(type==="moneyline")return (p+(side==="draw"?"НИЧЬЯ":"ПОБЕДА "+subject)).trim();
   if(/^period_[123]_result$/.test(type))return (p+(side==="draw"?"НИЧЬЯ":"ПОБЕДА "+subject)).trim();
   if(type==="handicap")return (p+subject+" · ФОРА "+signedLabel(market.line)).trim();
-  if(type==="game_total")return (p+(side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+line).trim();
+  if(type==="game_total")return (p+(side==="under"?"ОБЩИЙ ТОТАЛ МЕНЬШЕ ":"ОБЩИЙ ТОТАЛ БОЛЬШЕ ")+line).trim();
   if(type==="team_total")return (p+subject+" · "+(side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+line).trim();
   if(type==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ — "+subject;
   if(type==="first_goal_team")return "ПЕРВЫЙ ГОЛ — "+subject;
