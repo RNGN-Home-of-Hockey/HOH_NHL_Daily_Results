@@ -232,9 +232,26 @@ function marketUtilityPenalty(market) {
 }
 
 function comparePrimaryCandidates(a, b) {
+  // For the same exact market, concrete verified history is more useful on air
+  // than a generic analytical context card. Example: "CAR won 16/20 at home"
+  // should lead over "CAR #2 in xG balance" when both point to CAR moneyline.
+  const evidenceDiff = primaryEvidencePriority(b) - primaryEvidencePriority(a);
+  if (evidenceDiff) return evidenceDiff;
   const priorityDiff = primaryPriority(b) - primaryPriority(a);
   if (priorityDiff) return priorityDiff;
   return compareRawCards(a, b);
+}
+
+function primaryEvidencePriority(card) {
+  const e=card?.evidence||{};
+  const hits=Number(e.hits),sample=Number(e.decisions??e.sample??e.window??e.games),rate=Number(e.hit_rate);
+  const hasExactFrequency=Number.isFinite(hits)&&Number.isFinite(sample)&&sample>0&&hits>=0&&hits<=sample&&Number.isFinite(rate);
+  if(!hasExactFrequency)return 0;
+  let score=40+Math.min(20,sample/2);
+  if(String(e.split||"").toLowerCase()==="current_venue")score+=10;
+  if(String(cardCategory(card))==="provider_history")score+=6;
+  if(e.target_market_frequency_verified===true)score+=4;
+  return score;
 }
 
 function primaryPriority(card) {
