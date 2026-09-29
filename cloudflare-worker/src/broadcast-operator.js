@@ -523,12 +523,13 @@ function rendererPayloadFromRow(row){
   const candidate=parsePayload(row.payload_json);
   const tri=renderTeamCode(row,candidate);
   const meta=TEAM_META[tri]||{name:tri||"КОМАНДА",color:"#00E6C3"};
-  const logo=tri===String(row.home_tri||"").toUpperCase()?row.home_logo:row.away_logo;
   const market=candidate.market&&typeof candidate.market==="object"?candidate.market:{};
+  const gameTotal=String(market.type||row.suggested_market_type||"").toLowerCase()==="game_total";
+  const logo=gameTotal?null:(tri===String(row.home_tri||"").toUpperCase()?row.home_logo:row.away_logo);
   const odds=Number(market.odds??row.manual_odds);
   return {
     team:tri,
-    team_name:meta.name,
+    team_name:gameTotal?"МАТЧ":meta.name,
     headline_team_name:renderHeadlineTeamName(row,tri,meta.name),
     team_color:meta.color,
     team_logo_url:logo||undefined,
@@ -583,10 +584,11 @@ function renderMarketText(candidate,row,teamName){
     return "ФОРА "+(value===null?"":renderLineText(value))+" ГОЛА";
   }
   if(type==="team_total")return (side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+(Number.isFinite(line)?String(Math.abs(line)).replace(".",","):"")+" ГОЛА";
-  if(type==="game_total")return (side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+(Number.isFinite(line)?String(line).replace(".",","):"");
+  if(type==="game_total")return (side==="under"?"ОБЩИЙ ТОТАЛ МЕНЬШЕ ":"ОБЩИЙ ТОТАЛ БОЛЬШЕ ")+(Number.isFinite(line)?String(line).replace(".",","):"");
   if(type==="moneyline")return"ПОБЕДА";
   if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";
   if(type==="period_2_result")return"2-Й ПЕРИОД · ПОБЕДА";
+  if(type==="double_chance")return side==="no_draw"?"БЕЗ НИЧЬЕЙ":"НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ";
   const fallback=renderDisplayText(m.label||row.stat_text_ru||"СТАВКА WINLINE").replace(teamName,"").replace(/^\s*[·—-]+\s*/,"").trim();
   return fallback||"СТАВКА WINLINE";
 }
