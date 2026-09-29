@@ -8,6 +8,13 @@ import { buildCommentatorBrief } from "./commentator-brief.js";
 
 const BROADCAST_PATH = "/broadcast";
 const MIN_BROADCAST_ODDS = 1.50;
+export function broadcastGameLooksLive(game,nowMs=Date.now()){
+  const state=String(game?.game_state||"").toUpperCase();
+  if(["LIVE","CRIT","INTERMISSION"].includes(state))return true;
+  if(["FINAL","OFF"].includes(state))return false;
+  const start=Date.parse(String(game?.scheduled_start_utc||""));
+  return Number.isFinite(start)&&nowMs>=start&&(nowMs-start)<=8*60*60*1000;
+}
 const BROADCAST_PORTFOLIO_LIMIT = 48;
 const MAX_BROADCAST_HEADLINE_CHARS = 58;
 
@@ -171,7 +178,7 @@ async function broadcastQueueSummaryRoute(env,gamePk){
       `).bind(gamePk).first(),
     ]);
     if(!game)return jsonResponse({ok:false,error:"game_not_found"},404);
-    const live=["LIVE","CRIT"].includes(String(game.game_state||"").toUpperCase());
+    const live=broadcastGameLooksLive(game);
     const maxAgeMs=live?45_000:5*60_000;
     const generatedAt=Date.parse(String(cached?.generated_at||"").replace(" ","T")+"Z");
     if(cached&&Number.isFinite(generatedAt)&&(Date.now()-generatedAt)<maxAgeMs){
@@ -687,7 +694,7 @@ function triFromWinlineName(v){return WINLINE_TEAM_NAMES[normalizeWinlineText(v)
 function finiteMarketLine(...values){for(const v of values){if(v===null||v===undefined||v==="")continue;const n=Number(String(v).replace(",",".").replace(/[^0-9+.-]/g,""));if(Number.isFinite(n))return n}return null}
 function marketLineFromType(v){const m=String(v||"").match(/:([+-]?\d+(?:\.\d+)?)$/);return m?m[1]:null}
 function isoOrNull(v){const raw=String(v||"").trim();const t=Date.parse(raw.includes("T")?raw:raw.replace(" ","T")+"Z");return Number.isFinite(t)?new Date(t).toISOString():null}
-function broadcastWinlineMaxAgeMs(game){const left=Date.parse(String(game?.scheduled_start_utc||""))-Date.now();if(!Number.isFinite(left))return 90*60*1000;if(left>30*60*60*1000)return 7*60*60*1000;if(left>6*60*60*1000)return 90*60*1000;if(left>60*60*1000)return 45*60*1000;return 20*60*1000}
+function broadcastWinlineMaxAgeMs(game){if(broadcastGameLooksLive(game))return 90*1000;const left=Date.parse(String(game?.scheduled_start_utc||""))-Date.now();if(!Number.isFinite(left))return 90*60*1000;if(left>30*60*60*1000)return 7*60*60*1000;if(left>6*60*60*1000)return 90*60*1000;if(left>60*60*1000)return 45*60*1000;return 20*60*1000}
 export function mergeBroadcastInsights(statisticalInsights,pricedInsights){
   const out=[],seenIds=new Set(),pricedMarkets=new Set();
   for(const card of pricedInsights||[]){
