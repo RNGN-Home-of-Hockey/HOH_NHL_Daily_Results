@@ -60,11 +60,12 @@ function compat(a,m){
 
 function single(game,m,row,i){
   const a=row.a,label=labelFor(m),score=clip(Math.round(a.score*.62+row.n*.48));
+  const targetFrequencyVerified=exactAtomMarket(a,m);
   return {
     id:String(game.game_pk)+":combo:s:"+key(m)+":"+safe(a.id)+":"+i,insight_type:"market_combination_single",category:"market_combination",
     kind:"history",timing:"pregame",score,eyebrow:"WINLINE × DATA CORE",value:a.value||label,title:a.title||label,
     explanation:join(a.explanation,"Факт автоматически привязан к реальной линии WINLINE: "+label+"."),
-    evidence:{...clone(a.evidence),market_combination:true,market_first:true,primary_source_category:a.category,combination_support_count:1,combination_compatibility:row.n,source_insight_ids:[a.id],provider_market_key:key(m)},
+    evidence:{...clone(a.evidence),market_combination:true,market_first:true,primary_source_category:a.category,combination_support_count:1,combination_compatibility:row.n,source_insight_ids:[a.id],provider_market_key:key(m),source_market_key:atomMarketKey(a),target_market_frequency_verified:targetFrequencyVerified},
     market:asMarket(m)
   };
 }
@@ -72,15 +73,24 @@ function single(game,m,row,i){
 function pair(game,m,ar,br,i){
   const a=ar.a,b=br.a,primary=a.score>=b.score?a:b,support=primary===a?b:a,label=labelFor(m);
   const score=clip(Math.round(Math.min(a.score,b.score)*.50+((ar.n+br.n)/2)*.42+15));
+  const targetFrequencyVerified=exactAtomMarket(primary,m);
   return {
     id:String(game.game_pk)+":combo:p:"+key(m)+":"+safe(a.id)+":"+safe(b.id)+":"+i,insight_type:"market_combination_pair",category:"market_combination",
     kind:"history",timing:"pregame",score,eyebrow:"2 НЕЗАВИСИМЫХ СИГНАЛА",value:primary.value||label,title:primary.title||label,
     explanation:join(primary.explanation,"Дополнительное независимое подтверждение: "+(support.title||support.category)+".","Оба сигнала связаны с текущей линией WINLINE: "+label+"."),
     evidence:{...clone(primary.evidence),market_combination:true,market_first:true,primary_source_category:primary.category,combination_support_count:2,
-      combination_compatibility:Math.round((ar.n+br.n)/2),source_insight_ids:[a.id,b.id],provider_market_key:key(m),
+      combination_compatibility:Math.round((ar.n+br.n)/2),source_insight_ids:[a.id,b.id],provider_market_key:key(m),source_market_key:atomMarketKey(primary),target_market_frequency_verified:targetFrequencyVerified,
       supporting_signals:[{category:support.category,insight_type:support.source?.insight_type||null,score:support.score,title:support.title,value:support.value,evidence:clone(support.evidence)}]},
     market:asMarket(m)
   };
+}
+
+function exactAtomMarket(a,m){
+  return atomMarketKey(a)===key(m);
+}
+function atomMarketKey(a){
+  if(!a)return"";
+  return [a.type||"unknown",a.period||"GAME",a.subject||"all",a.side||"none",a.line===null||a.line===undefined?"none":Number(a.line).toFixed(2)].join(":");
 }
 
 function isLineBoundCard(card,e,category){
