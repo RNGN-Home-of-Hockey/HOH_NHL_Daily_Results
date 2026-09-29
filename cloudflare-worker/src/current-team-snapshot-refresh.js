@@ -8,7 +8,8 @@ base_ranked AS (
            ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC
          ) rn
   FROM team_game_features f
-  WHERE f.game_type IN (2,3)
+  JOIN games gf ON gf.game_pk=f.game_pk
+  WHERE f.game_type IN (2,3) AND UPPER(COALESCE(gf.game_state,'')) IN ('FINAL','OFF')
 ),
 base_summary AS (
   SELECT b.team_tri,w.window_games,MAX(b.scheduled_start_utc) as_of_utc,COUNT(*) sample_size,
@@ -40,7 +41,7 @@ advanced_ranked AS (
          ) rn
   FROM team_game_advanced_features a
   JOIN games g ON g.game_pk=a.game_pk
-  WHERE g.game_type IN (2,3)
+  WHERE g.game_type IN (2,3) AND UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF')
 ),
 advanced_summary AS (
   SELECT a.team_tri,w.window_games,COUNT(*) advanced_sample_size,
