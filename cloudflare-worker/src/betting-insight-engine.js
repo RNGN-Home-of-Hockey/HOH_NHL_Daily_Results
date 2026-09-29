@@ -151,7 +151,9 @@ export async function buildBettingInsights(db, game, options = {}) {
     mathSafe,
     {recent_headlines:recentBroadcastHeadlines}
   );
-  const annotated=resolveContradictoryAdvice(diversified);
+  const semanticSafe=diversified.filter(card=>broadcastCardSemanticsValid(card,game));
+  generatorDiagnostics.suppressed_semantic_invalid_count=Math.max(0,diversified.length-semanticSafe.length);
+  const annotated=resolveContradictoryAdvice(semanticSafe);
   generatorDiagnostics.recent_broadcast_headline_count=recentBroadcastHeadlines.length;
   generatorDiagnostics.suppressed_contradictory_count=Math.max(0,diversified.length-annotated.length);
   generatorDiagnostics.final_portfolio_count=annotated.length;
@@ -164,6 +166,7 @@ export async function buildBettingInsights(db, game, options = {}) {
 
 export function annotateAirUtility(input, game=null) {
   const card={...input,evidence:input?.evidence?{...input.evidence}:{}};
+  card.market={...(card.market||{}),label:broadcastMarketLabel(card.market||{})};
   const market=card.market||{};
   const sourceScore=finiteAirScore(card.portfolio_score,card.score,55);
   const stats=editorialStats(card);
@@ -326,8 +329,9 @@ export function annotateAirUtility(input, game=null) {
   };
   const frequencyClaim=hasFrequencyClaim(card);
   const frequencyCapable=Number.isFinite(hitRate)&&sample>0;
-  card.broadcast_math_valid=stats.consistent!==false&&(isAnalyticalNarrative(card)||!frequencyCapable||stats.verified===true);
-  if(frequencyClaim&&stats.verified!==true&&!isAnalyticalNarrative(card))card.broadcast_math_valid=false;
+  const semanticStatsOk=frequencyStatsSemanticallyValid(card,stats);
+  card.broadcast_math_valid=stats.consistent!==false&&(isAnalyticalNarrative(card)||!frequencyCapable||(stats.verified===true&&semanticStatsOk));
+  if(frequencyClaim&&(!semanticStatsOk||stats.verified!==true)&&!isAnalyticalNarrative(card))card.broadcast_math_valid=false;
   const formatted=formatBroadcastTitle(card,{sample,hitRate,hits:stats.hits,stats,game});
   const narrative=buildNarrative(
     {...card,broadcast_title:formatted.title,broadcast_detail:formatted.detail},
@@ -368,8 +372,7 @@ export function formatBroadcastTitle(card, precomputed={}) {
   const type=String(market.type||"").toLowerCase();
   const line=Number(market.line);
   const pct=Math.round(hitRate*100);
-  const sampleLabel=sample>=100?String(Math.floor(sample/100)*100)+"+ ИГР":String(sample)+" ИГР";
-  const label=String(market.label||"").trim().toUpperCase().replace(/\./g,",");
+  const label=broadcastMarketLabel(market).toUpperCase().replace(/\./g,",");
   let title;
 
   // Period/result and small-sample cards must still be spoken Russian.
@@ -401,14 +404,18 @@ export function formatBroadcastTitle(card, precomputed={}) {
     const plain=line>0
       ?(subject?subject+" НЕ ПРОИГРЫВАЛ В "+margin+"+ ШАЙБЫ":"НЕ ПРОИГРЫВАЛ В "+margin+"+ ШАЙБЫ")
       :(subject?subject+" ПОБЕЖДАЛ В "+margin+"+ ШАЙБЫ":"ПОБЕДА В "+margin+"+ ШАЙБЫ");
-    title=sample<=30&&Number.isFinite(hits)
-      ?plain+" — "+hits+" ИЗ "+sample+" МАТЧЕЙ"
-      :plain+" — "+pct+"% МАТЧЕЙ · "+sampleLabel;
-  } else if(sample<=30) {
+    if(Number.isFinite(hits))title=plain+" — "+hits+" ИЗ "+sample+" МАТЧЕЙ";
+    else return {title:original,detail:null};
+  } else if(type==="moneyline"&&Number.isFinite(hits)){
+    const subject=String(market.subject||evidence.team||"КОМАНДА").trim().toUpperCase();
+    title=subject+" — "+hits+" ПОБЕД В "+sample+" МАТЧАХ";
+  } else if((type==="game_total"||type==="team_total")&&Number.isFinite(hits)){
+    title=(label||"ТОТАЛ")+" — "+hits+" ИЗ "+sample+" МАТЧЕЙ";
+  } else if(Number.isFinite(hits)){
+    title=(label||original)+" — "+hits+" ИЗ "+sample+" МАТЧЕЙ";
+  } else {
     return {title:original,detail:null};
-  } else if(type==="moneyline")title="ПОБЕДА — В "+pct+"% МАТЧЕЙ · "+sampleLabel;
-  else if(type==="game_total"||type==="team_total")title=(label||"ТОТАЛ")+" ПРОШЁЛ В "+pct+"% МАТЧЕЙ · "+sampleLabel;
-  else title=pct+"% МАТЧЕЙ · "+sampleLabel;
+  }
 
   let detail=null;
   const away=evidence.away,home=evidence.home;
@@ -416,8 +423,8 @@ export function formatBroadcastTitle(card, precomputed={}) {
     const awayTeam=String(game?.away_tri||evidence.away_team||card?.away_tri||"ГОСТИ");
     const homeTeam=String(game?.home_tri||evidence.home_team||card?.home_tri||"ХОЗЯЕВА");
     detail=awayTeam+" в гостях "+away.hits+"/"+away.sample+" · "+homeTeam+" дома "+home.hits+"/"+home.sample;
-  }else if(sample>=100){
-    detail="Точная выборка: "+sample+" игр";
+  }else if(sample>=40&&Number.isFinite(hits)){
+    detail="Точная выборка: "+hits+" из "+sample+" матчей";
   }
   return {title,detail};
 }
@@ -518,6 +525,57 @@ function pairedRateStats(rateValue,sampleValue,source){
   if(rate===null||sample===null||sample<=0)return null;
   return {hits:null,sample:Math.round(sample),rate,verified:false,consistent:true,source,rate_corrected:false,reported_rate:rate};
 }
+function frequencyStatsSemanticallyValid(card,stats){
+  if(!stats?.verified)return false;
+  const e=card?.evidence||{},m=card?.market||{},type=String(m.type||"").toLowerCase(),source=String(stats.source||"");
+  if(source==="evidence"){
+    if(e.exact_provider_line===true)return true;
+    if(e.hits!==null&&e.hits!==undefined&&/market|regulation|expanded|h2h|provider|team_game_features/i.test(String(e.feature_layer||"")))return true;
+    if(Number(stats.sample)<=40&&e.hits!==null&&e.hits!==undefined)return true;
+  }
+  if(source==="wins"&&type==="moneyline"){
+    const team=String(e.team||m.subject||"").toUpperCase(),subject=String(m.subject||"").toUpperCase();
+    return Boolean(subject)&&team===subject;
+  }
+  return false;
+}
+function broadcastPeriodLabel(v){const p=String(v||"GAME").toUpperCase();return p==="P1"?"1-Й ПЕРИОД · ":p==="P2"?"2-Й ПЕРИОД · ":p==="P3"?"3-Й ПЕРИОД · ":p==="REG"?"60 МИНУТ · ":""}
+function broadcastMarketLabel(m={}){
+  const type=String(m.type||"").toLowerCase(),subject=String(m.subject||"").toUpperCase(),side=String(m.side||"").toLowerCase(),period=broadcastPeriodLabel(m.period);
+  const ln=finiteAirNumber(m.line),num=ln===null?"":String(Math.round(ln*100)/100).replace(".",","),signed=ln===null?"":(ln>0?"+":"")+num;
+  if(type==="moneyline")return (period+"ПОБЕДА "+subject).trim();
+  const pm=/^period_([123])_result$/.exec(type);if(pm)return pm[1]+"-Й ПЕРИОД · ПОБЕДА "+subject;
+  if(type==="handicap")return (period+subject+" · ФОРА "+signed).trim();
+  if(type==="game_total")return (period+(side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+num).trim();
+  if(type==="team_total")return (period+subject+" · "+(side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+num).trim();
+  if(type==="double_chance")return (period+(side==="no_draw"?"БЕЗ НИЧЬЕЙ":subject+" ИЛИ НИЧЬЯ")).trim();
+  if(type==="both_teams_score")return side==="yes"?"ОБЕ КОМАНДЫ ЗАБЬЮТ":"ОБЕ КОМАНДЫ НЕ ЗАБЬЮТ";
+  if(type==="first_goal_team")return "ПЕРВЫЙ ГОЛ · "+subject;
+  if(type==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ · "+subject;
+  return humanizeBroadcastText(m.label||[period,type,subject,side,num].filter(Boolean).join(" "));
+}
+function humanizeBroadcastText(value){
+  return String(value||"").replace(/\bP1\b/gi,"1-Й ПЕРИОД").replace(/\bP2\b/gi,"2-Й ПЕРИОД").replace(/\bP3\b/gi,"3-Й ПЕРИОД")
+    .replace(/\bPERIOD_1_RESULT\b/gi,"ПОБЕДА В 1-М ПЕРИОДЕ").replace(/\bPERIOD_2_RESULT\b/gi,"ПОБЕДА В 2-М ПЕРИОДЕ").replace(/\bPERIOD_3_RESULT\b/gi,"ПОБЕДА В 3-М ПЕРИОДЕ")
+    .replace(/\bDOUBLE_CHANCE\b/gi,"ДВОЙНОЙ ШАНС").replace(/\bTEAM_OR_DRAW\b/gi,"КОМАНДА ИЛИ НИЧЬЯ").replace(/\bNO_DRAW\b/gi,"БЕЗ НИЧЬЕЙ")
+    .replace(/(^|[\s·—:])ТМ(?=\s|$)/gi,"$1ТОТАЛ МЕНЬШЕ").replace(/(^|[\s·—:])ТБ(?=\s|$)/gi,"$1ТОТАЛ БОЛЬШЕ").replace(/\s+/g," ").trim().toUpperCase();
+}
+export function broadcastCardSemanticsValid(card,game={}){
+  if(!card||card.broadcast_math_valid===false)return false;
+  const m=card.market||{},e=card.evidence||{},title=String(card.broadcast_title||card.title||"");
+  if(/\b(?:P[123]|PERIOD_[123]_RESULT|DOUBLE_CHANCE|TEAM_OR_DRAW|NO_DRAW)\b/i.test(title+" "+String(m.label||"")))return false;
+  const type=String(m.type||"").toLowerCase(),mp=String(m.period||"GAME").toUpperCase();
+  const tm=/([123])-Й ПЕРИОД/i.exec(title),titlePeriod=tm?"P"+tm[1]:null;
+  const typePeriod=/^period_([123])_result$/.exec(type),expected=typePeriod?"P"+typePeriod[1]:/^(P[123])$/.test(mp)?mp:null;
+  if(titlePeriod&&expected&&titlePeriod!==expected)return false;
+  const team=String(e.team||m.subject||"").toUpperCase(),opponent=String(e.opponent||"").toUpperCase();
+  if(String(e.split||"").toLowerCase()==="h2h"&&team&&opponent){
+    if(team===opponent)return false;
+    const home=String(game.home_tri||"").toUpperCase(),away=String(game.away_tri||"").toUpperCase(),wanted=team===home?away:team===away?home:"";
+    if(wanted&&opponent!==wanted)return false;
+  }
+  return true;
+}
 function hasFrequencyClaim(card){
   const text=String(card?.broadcast_title||card?.title||card?.value||"").toUpperCase();
   return /\d+\s*%|\d+\s+ИЗ\s+\d+|\d+\s+МАТЧ(?:А|ЕЙ)?\s+ПОДРЯД|\d+\+?\s+ИГР/.test(text);
@@ -526,7 +584,6 @@ function editorialSampleSize(card){return editorialStats(card).sample||0}
 function editorialHitCount(card,sample,hitRate){
   const stats=editorialStats(card);
   if(stats.verified&&Number.isFinite(stats.hits))return stats.hits;
-  if(Number.isFinite(sample)&&sample>0&&Number.isFinite(hitRate))return Math.max(0,Math.round(sample*hitRate));
   return null;
 }
 function editorialHitRate(card){return editorialStats(card).rate}
