@@ -89,7 +89,7 @@ async function broadcastGamesRoute(env) {
         LEFT JOIN broadcast_operator_leases bol ON bol.game_pk=g.game_pk AND datetime(bol.expires_at)>datetime('now')
         LEFT JOIN broadcast_cards onair ON onair.game_pk=g.game_pk AND onair.status='shown'
         LEFT JOIN broadcast_queue_summaries bqs ON bqs.game_pk=g.game_pk
-        WHERE g.game_type IN (1,2,3)
+        WHERE g.game_type IN (2,3)
           AND (
             UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
             OR datetime(g.scheduled_start_utc) >= datetime('now')
@@ -105,7 +105,7 @@ async function broadcastGamesRoute(env) {
       env.DB.prepare(`
         SELECT
           (SELECT COUNT(*) FROM games
-            WHERE game_type IN (1,2,3)
+            WHERE game_type IN (2,3)
               AND (
                 UPPER(COALESCE(game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
                 OR datetime(scheduled_start_utc) >= datetime('now')
@@ -388,7 +388,7 @@ async function broadcastGameRoute(env, gamePk) {
       provider_market_count:providerMarkets.length,
       eligible_provider_market_count:eligibleProviderMarkets.length,
       market_coverage:summarizeMarketCoverage(eligibleProviderMarkets,broadcastCardsWithEvidence),
-      broadcast_card_policy:{min_odds:MIN_BROADCAST_ODDS,featured_target:4,portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,max_headline_chars:MAX_BROADCAST_HEADLINE_CHARS,max_frequency_sample:40,stats_validation:"same_season_streak_v2",integrity_version:"exact_market_v9_target_evidence",live_monitoring:{ui_poll_seconds:15,winline_sync_target_seconds:60,winline_feed_throttle_seconds:45,live_quote_max_age_seconds:90},pregame_archive:{closing_window_minutes:10,freeze_at_puck_drop:true,postgame_settlement:true}},
+      broadcast_card_policy:{min_odds:MIN_BROADCAST_ODDS,featured_target:4,portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,max_headline_chars:MAX_BROADCAST_HEADLINE_CHARS,max_frequency_sample:40,stats_validation:"same_season_streak_v2",integrity_version:"exact_market_v10_team_copy_integrity",live_monitoring:{ui_poll_seconds:15,winline_sync_target_seconds:60,winline_feed_throttle_seconds:45,live_quote_max_age_seconds:90},pregame_archive:{closing_window_minutes:10,freeze_at_puck_drop:true,postgame_settlement:true}},
       generator_diagnostics:generatorDiagnostics,
       data_degraded_sections:dataDegradedSections,
       quick_cards:quickCards,
@@ -816,7 +816,7 @@ async function warmQueueSummaries(){
 function renderGames(){
   const selectedGame=games.find(g=>Number(g.game_pk)===Number(selected));
   if(selectedGame)groupOpen[Number(selectedGame.game_type)]=true;
-  const groups=[{type:1,label:'Предсезонка'},{type:2,label:'Регулярка'},{type:3,label:'Плей-офф'}];
+  const groups=[{type:2,label:'Регулярка'},{type:3,label:'Плей-офф'}];
   const row=g=>{const room=[g.on_air_card_id?'<b class="pill">ON AIR</b>':'',g.operator_name?`<span class="roomop">${esc(g.operator_name)}</span>`:''].filter(Boolean).join(' ');const q=queueBadge(g);return `<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span class="roomstate">${room}</span></div><div class="gqueue">${q}</div></button>`};
   $('#games').innerHTML=groups.map(group=>{
     const rows=games.filter(g=>Number(g.game_type)===group.type);
@@ -886,15 +886,32 @@ function teamCodeFromCard(card){
   return away||home||"";
 }
 function cardTeam(card){
-  const g=currentData?.game||{},tri=teamCodeFromCard(card),side=tri===String(g.home_tri||"").toUpperCase()?"home":"away";
+  const g=currentData?.game||{},type=String(card?.market?.type||"").toLowerCase();
+  if(type==="game_total"){
+    return {tri:"",name:"МАТЧ",color:"#00E6C3",logo:""};
+  }
+  const tri=teamCodeFromCard(card),side=tri===String(g.home_tri||"").toUpperCase()?"home":"away";
   const meta=TEAM_META[tri]||{name:tri||"КОМАНДА",color:"#00E6C3"};
   return {tri,name:meta.name,color:meta.color,logo:g[side+"_logo"]||""};
+}
+const AGAINST_UI={
+  "ЛОС-АНДЖЕЛЕС":"ЛОС-АНДЖЕЛЕСА","СЕНТ-ЛУИС":"СЕНТ-ЛУИСА","КАРОЛИНА":"КАРОЛИНЫ","ФЛОРИДА":"ФЛОРИДЫ",
+  "МИННЕСОТА":"МИННЕСОТЫ","ОТТАВА":"ОТТАВЫ","ФИЛАДЕЛЬФИЯ":"ФИЛАДЕЛЬФИИ","ЮТА":"ЮТЫ","МОНРЕАЛЬ":"МОНРЕАЛЯ",
+  "ПИТТСБУРГ":"ПИТТСБУРГА","КОЛАМБУС":"КОЛАМБУСА","БОСТОН":"БОСТОНА","АНАХАЙМ":"АНАХАЙМА","ДАЛЛАС":"ДАЛЛАСА",
+  "ДЕТРОЙТ":"ДЕТРОЙТА","ЭДМОНТОН":"ЭДМОНТОНА","СИЭТЛ":"СИЭТЛА","ВАНКУВЕР":"ВАНКУВЕРА","ВЕГАС":"ВЕГАСА",
+  "ВАШИНГТОН":"ВАШИНГТОНА","ВИННИПЕГ":"ВИННИПЕГА","НЭШВИЛЛ":"НЭШВИЛЛА"
+};
+function applyAgainstUi(value){
+  let s=String(value??"");
+  for(const [name,form] of Object.entries(AGAINST_UI))s=s.replace(new RegExp("(ПРОТИВ\\s+)"+name+"(?=\\s|$|[.,;:!?—-])","gi"),"$1"+form);
+  return s;
 }
 function displayText(value){
   let s=String(value??"");
   for(const [tri,meta] of Object.entries(TEAM_META))s=s.replace(new RegExp("\\b"+tri+"\\b","gi"),meta.name);
   s=s.replace(/(^|[^A-Z0-9])P1(?=$|[^A-Z0-9])/gi,'$11-Й ПЕРИОД').replace(/(^|[^A-Z0-9])P2(?=$|[^A-Z0-9])/gi,'$12-Й ПЕРИОД').replace(/(^|[^A-Z0-9])P3(?=$|[^A-Z0-9])/gi,'$13-Й ПЕРИОД');
-  return s.replace(/([+-]?\\d+)\\.(\\d+)/g,"$1,$2").toUpperCase();
+  s=s.replace(/([+-]?\\d+)\\.(\\d+)/g,"$1,$2").toUpperCase();
+  return applyAgainstUi(s);
 }
 function lineText(value){
   const n=Number(value);if(!Number.isFinite(n))return"";
@@ -906,12 +923,13 @@ function marketDescription(card,team){
   const line=Number(m.line);
   if(type==="handicap"){let v=Number.isFinite(line)?line:null;if(v===null){const mm=String(m.label||"").match(/([+-]\\d+(?:[.,]\\d+)?)/);if(mm)v=Number(mm[1].replace(",","."))}return "ФОРА "+(v===null?"":lineText(v))+" ГОЛА"}
   if(type==="team_total"){const dir=side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?lineText(Math.abs(line)).replace("+",""):"")+" ГОЛА"}
-  if(type==="game_total"){const dir=side==="under"?"ТОТАЛ МЕНЬШЕ":"ТОТАЛ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?String(line).replace(".",","):"")}
+  if(type==="game_total"){const dir=side==="under"?"ОБЩИЙ ТОТАЛ МЕНЬШЕ":"ОБЩИЙ ТОТАЛ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?String(line).replace(".",","):"")}
   if(type==="moneyline")return"ПОБЕДА";
   if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";
   if(type==="period_1_result")return"1-Й ПЕРИОД · ПОБЕДА";
   if(type==="period_2_result")return"2-Й ПЕРИОД · ПОБЕДА";
   if(type==="period_3_result")return"3-Й ПЕРИОД · ПОБЕДА";
+  if(type==="double_chance")return side==="no_draw"?"БЕЗ НИЧЬЕЙ":"НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ";
   const fallback=displayText(m.label||"СТАВКА WINLINE").replace(team.name,"").replace(/^\\s*[·—-]+\\s*/,"").trim();
   return fallback||"СТАВКА WINLINE";
 }

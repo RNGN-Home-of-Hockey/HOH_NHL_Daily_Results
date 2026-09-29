@@ -63,10 +63,13 @@ function extractProfile(card,context){
   const nestedTeam=isObject(e.team)?e.team:null;
   const nestedOpponent=isObject(e.opponent)?e.opponent:null;
 
+  // The fact belongs to the evidence team. The market subject can differ
+  // on market-combination cards, so using it first can literally swap the ranks
+  // between the two teams (e.g. CAR #2 becoming FLA #2 on a FLA market).
   const teamCode=upper(
-    market.subject ||
     (!isObject(e.team)?e.team:null) ||
     card.team_tri ||
+    market.subject ||
     ""
   );
   let opponentCode=upper(!isObject(e.opponent)?e.opponent:"");

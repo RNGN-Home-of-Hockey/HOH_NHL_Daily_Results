@@ -184,6 +184,23 @@ assert.equal(localizedAdvanced.operator_narrative.raw.team_code,'CAR','operator 
 assert.match(localizedAdvanced.operator_narrative.details.join(' '),/КАРОЛИНА/,'commentator prose should use Russian display name');
 
 
+const swappedRankContext=annotateAirUtility({
+  score:94,
+  category:'market_combination',
+  title:'CAR — №2 NHL ПО xG differential',
+  evidence:{
+    team:'CAR',opponent:'FLA',metric:'xgd60',opponent_metric:'xgd60',
+    team_rank:2,opponent_rank:18,rank_gap:16,sample:82,advanced_snapshot:true,
+    market_combination:true,target_market_frequency_verified:false
+  },
+  market:{type:'handicap',period:'GAME',subject:'FLA',side:'FLA',line:-1,odds:3.05,odds_is_demo:false,odds_source:'provider_live'}
+},{
+  home_tri:'CAR',away_tri:'FLA',home_name_ru:'Каролина Харрикейнз',away_name_ru:'Флорида Пантерз'
+});
+assert.match(swappedRankContext.broadcast_title,/КАРОЛИНА/,'rank fact must stay attached to the evidence team');
+assert.doesNotMatch(swappedRankContext.broadcast_title,/ФЛОРИДА\s+—\s+№2/,'market subject must never steal CAR rank #2');
+assert.equal(broadcastCardSemanticsValid(swappedRankContext,{home_tri:'CAR',away_tri:'FLA'}),false,'opposite-side result market must reject swapped analytical evidence');
+
 const relabeledBtts=annotateAirUtility({
   score:99,
   title:'КАРОЛИНА ЗАБИВАЛА 3+ ШАЙБЫ В 19 ИЗ 20',

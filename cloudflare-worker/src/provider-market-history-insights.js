@@ -503,7 +503,7 @@ function marketLabel(m){
   if(t==="handicap")return `${s} · ${p}ФОРА ${signed(line)}`;
   if(t==="moneyline")return side==="draw"?"НИЧЬЯ В ОСНОВНОЕ ВРЕМЯ":`ПОБЕДА ${s}`;
   if(/^period_[123]_result$/.test(t))return side==="draw"?`${p}НИЧЬЯ`:`${p}ПОБЕДА ${s}`;
-  if(t==="double_chance")return side==="no_draw"?"12 — БЕЗ НИЧЬЕЙ":`${s} ИЛИ НИЧЬЯ`;
+  if(t==="double_chance")return side==="no_draw"?"12 — БЕЗ НИЧЬЕЙ":`${s} НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ`;
   if(t==="both_teams_score")return side==="yes"?"ОБЕ ЗАБЬЮТ — ДА":"ОБЕ ЗАБЬЮТ — НЕТ";
   if(t==="first_goal_team")return `ПЕРВЫЙ ГОЛ — ${s}`;
   if(t==="team_goal_bucket")return `${s} · ${side==="0_1"?"0–1":side==="2"?"РОВНО 2":"3+"} ШАЙБЫ`;

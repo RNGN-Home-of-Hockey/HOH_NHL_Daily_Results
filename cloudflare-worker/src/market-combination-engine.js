@@ -39,6 +39,11 @@ function atom(card,game){
 
 function compat(a,m){
   const t=String(m.market_type||""),sub=up(m.subject||""),p=period(m.period),target=marketDirection(m);let s=0;
+  // Directional team evidence is not "context" for the opposite side.
+  // Example: CAR ranks #2 and FLA #18 cannot be used to sell FLA -1.
+  // Reject it before scoring instead of letting generic family/sample bonuses
+  // overpower the direction mismatch.
+  if(target&&a.direction&&String(target).startsWith("team:")&&String(a.direction).startsWith("team:")&&target!==a.direction)return -100;
   if(a.type===t)s+=34;else if(family(a.type,t))s+=22;else if(cross(a,t))s+=14;
   if(a.period===p)s+=18;else if(a.period==="GAME"&&p==="REG")s+=7;else if(!["GAME","REG"].includes(p))s-=12;
   if(sub){if(a.team===sub||a.subject===sub)s+=22;else if(a.opponent===sub&&opponentUseful(a,t))s+=10;else if(a.subject&&a.subject!==sub)s-=18}else if(t==="game_total")s+=8;
@@ -71,7 +76,7 @@ function single(game,m,row,i){
 }
 
 function pair(game,m,ar,br,i){
-  const a=ar.a,b=br.a,primary=a.score>=b.score?a:b,support=primary===a?b:a,label=labelFor(m);
+  const a=ar.a,b=br.a,primary=primaryAtomForMarket(a,b,m),support=primary===a?b:a,label=labelFor(m);
   const score=clip(Math.round(Math.min(a.score,b.score)*.50+((ar.n+br.n)/2)*.42+15));
   const targetFrequencyVerified=exactAtomMarket(primary,m);
   return {
@@ -85,6 +90,17 @@ function pair(game,m,ar,br,i){
   };
 }
 
+function primaryAtomForMarket(a,b,m){
+  const q=x=>{
+    let score=Number(x?.score||0)/100;
+    if(exactAtomMarket(x,m))score+=100;
+    if(x?.hit!==null&&x?.hit!==undefined)score+=40;
+    if(Number(x?.sample||0)>=10)score+=Math.min(20,Number(x.sample)/2);
+    if(x?.lineBound)score+=8;
+    return score;
+  };
+  return q(a)>=q(b)?a:b;
+}
 function exactAtomMarket(a,m){
   return atomMarketKey(a)===key(m);
 }
