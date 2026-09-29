@@ -51,10 +51,16 @@ globalThis.fetch=async (url,options={})=>{
     renderCalls+=1;
     assert.equal(options.method,'POST');
     const payload=JSON.parse(options.body);
-    assert.equal(payload.team,'CAR');
-    assert.equal(payload.team_name,'КАРОЛИНА');
-    assert.equal(payload.headline_team_name,'КАРОЛИНА ХАРРИКЕЙНЗ');
-    assert.equal(payload.market,'ФОРА +1,5 ГОЛА');
+    if(String(payload.market||'').startsWith('ОБЩИЙ ТОТАЛ')){
+      assert.equal(payload.team_name,'МАТЧ','game total overlay must not masquerade as one team');
+      assert.equal(payload.market,'ОБЩИЙ ТОТАЛ БОЛЬШЕ 6');
+      assert.equal(payload.team_logo_url,undefined);
+    }else{
+      assert.equal(payload.team,'CAR');
+      assert.equal(payload.team_name,'КАРОЛИНА');
+      assert.equal(payload.headline_team_name,'КАРОЛИНА ХАРРИКЕЙНЗ');
+      assert.equal(payload.market,'ФОРА +1,5 ГОЛА');
+    }
     if(renderCalls===1){
       assert.equal(payload.odds,1.30);
       assert.equal(payload.fact,'КАРОЛИНА ЗАКРЫЛА ФОРУ +1,5 В 19 ИЗ 20 ПОСЛЕДНИХ МАТЧЕЙ');
@@ -186,6 +192,24 @@ for(let i=0;i<15;i++)assert.equal(cards.get('parallel-'+i).status,'shown','paral
 assert.equal(cards.get('insight-2026020001-fixture').status,'shown','existing game must remain ON AIR after 15 other rooms change');
 assert.equal(cards.get('other-card').status,'shown','second existing game must remain ON AIR after 15 other rooms change');
 assert.equal(renderCalls,17,'15 parallel cards render once each after the stale-price regression rerender');
+
+// Game totals must render as a match-level market, never as CAR/FLA individual total.
+cards.set('game-total-fixture',{
+  card_id:'game-total-fixture',game_pk:2026020001,
+  headline_ru:'КАРОЛИНА — ТОП-3 НХЛ ПО СОЗДАНИЮ МОМЕНТОВ',
+  stat_text_ru:'ТОТАЛ БОЛЬШЕ 6',source_note_ru:'fixture',
+  suggested_market_type:'game_total',suggested_market_subject:null,
+  manual_odds:1.93,odds_is_demo:0,
+  payload_json:JSON.stringify({
+    id:'game-total-fixture',
+    evidence:{team:'CAR'},
+    market:{type:'game_total',subject:null,side:'over',line:6,label:'ТОТАЛ БОЛЬШЕ 6',odds:1.93,odds_is_demo:false,odds_source:'provider_live'}
+  }),
+  status:'draft',shown_at:null,render_hash:null,render_png_base64:null,render_bytes:null,rendered_at:null,
+});
+r=await callCardStatus('game-total-fixture','shown',true);
+assert.equal(r.status,200);
+assert.equal(renderCalls,18,'game-total fixture should render once');
 
 console.log('BROADCAST_OPERATOR_ON_DEMAND_RENDER_OK');
 console.log('BROADCAST_15_GAME_CONCURRENCY_OK');
