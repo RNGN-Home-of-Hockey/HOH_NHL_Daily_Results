@@ -58,7 +58,7 @@ const h2hCard={
   market:{type:"moneyline",period:"REG",subject:"MIN",side:"MIN",label:"REG · ПОБЕДА MIN",odds:4.10,odds_is_demo:false}
 };
 const h2hAngles=buildBroadcastAngles(h2hCard,{team:"МИННЕСОТА УАЙЛД",opponent:"ДАЛЛАС СТАРС"});
-assert.ok(h2hAngles.some(x=>x.family==="h2h_matchup"&&/МИННЕСОТА ОБЫГРЫВАЛИ ДАЛЛАС В 6 ИЗ 10/.test(x.title)),"H2H headline must name both teams in compact on-air form");
+assert.ok(h2hAngles.some(x=>x.family==="h2h_matchup"&&/МИННЕСОТА: 6 ИЗ 10 ПОБЕД ПРОТИВ ДАЛЛАС/.test(x.title)),"H2H headline must name both teams in compact on-air form");
 assert.ok(!h2hAngles.some(x=>/ЕСТЬ\s+\d+\s+ПОДТВЕРЖДЕНИ/i.test(x.title)),"generic confirmation-count headline must not be generated");
 assert.ok(h2hAngles.some(x=>x.family==="supporting_fact"&&/МИННЕСОТА ЗАБИВАЛА/.test(x.title)),"first concrete support fact should be available instead of a confirmation count");
 assert.ok(h2hAngles.some(x=>/ЕЩЁ 2 ФАКТА В ОПИСАНИИ/.test(String(x.subtitle||""))),"support fact must carry the commentator hint");
