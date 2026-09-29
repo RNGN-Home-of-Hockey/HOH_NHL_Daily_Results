@@ -4,13 +4,17 @@ export async function buildH2HBroadcastInsights(db,game,providerMarkets=[]){
   if(!db||!game?.scheduled_start_utc||!game?.away_tri||!game?.home_tri)return[];
   const result=await db.prepare(`
     WITH recent AS (
-      SELECT game_pk,scheduled_start_utc,team_tri,opponent_tri,is_home,
-             final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,
-             regulation_goals_for,regulation_goals_against,regulation_result,regulation_goal_diff,
-             p1_goals_for,p1_goals_against,p2_goals_for,p2_goals_against,p3_goals_for,p3_goals_against
-      FROM team_game_features
-      WHERE team_tri=? AND opponent_tri=? AND scheduled_start_utc<?
-      ORDER BY scheduled_start_utc DESC,game_pk DESC
+      SELECT f.game_pk,f.scheduled_start_utc,f.team_tri,f.opponent_tri,f.is_home,
+             f.final_goals_for,f.final_goals_against,f.total_goals,f.final_goal_diff,f.final_win,
+             f.regulation_goals_for,f.regulation_goals_against,f.regulation_result,f.regulation_goal_diff,f.went_ot,f.went_so,
+             f.p1_goals_for,f.p1_goals_against,f.p2_goals_for,f.p2_goals_against,f.p3_goals_for,f.p3_goals_against,
+             g.home_tri AS official_home_tri,g.away_tri AS official_away_tri,g.home_score AS official_home_score,g.away_score AS official_away_score,
+             g.current_period AS official_current_period,g.period_type AS official_period_type,g.game_state AS official_game_state
+      FROM team_game_features f
+      JOIN games g ON g.game_pk=f.game_pk
+      WHERE f.team_tri=? AND f.opponent_tri=? AND f.game_type IN (2,3) AND f.scheduled_start_utc<?
+        AND UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF')
+      ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC
       LIMIT 10
     ),
     event_period AS (
@@ -66,36 +70,54 @@ function prepareH2HRow(raw){
   const regGf=num(raw?.regulation_goals_for),regGa=num(raw?.regulation_goals_against),regDiff=num(raw?.regulation_goal_diff);
   const sumGf=periods.reduce((s,x)=>s+x.gf,0),sumGa=periods.reduce((s,x)=>s+x.ga,0);
   if(regGf===null||regGa===null||regDiff===null||sumGf!==regGf||sumGa!==regGa||sumGf-sumGa!==regDiff)return {...raw,__period_verified:false,__period_validation:"period_regulation_mismatch"};
-  const out={...raw,__period_verified:true,__period_validation:"period_scores+goal_events+feature+regulation"};
+  const official=verifyH2HOfficial(raw,periods);
+  const out={...raw,__period_verified:true,__period_validation:"period_scores+goal_events+feature+regulation",__official_score_verified:official.ok,__official_score_validation:official.reason,__official_regulation_result:official.regulation_result||null};
   for(let p=1;p<=3;p++){out[`p${p}_goals_for`]=periods[p-1].gf;out[`p${p}_goals_against`]=periods[p-1].ga;}
   return out;
 }
 
+function verifyH2HOfficial(row,periods){
+  const home=String(row?.official_home_tri||"").toUpperCase(),away=String(row?.official_away_tri||"").toUpperCase(),team=String(row?.team_tri||"").toUpperCase(),opp=String(row?.opponent_tri||"").toUpperCase(),isHome=Number(row?.is_home)===1;
+  const hs=num(row?.official_home_score),as=num(row?.official_away_score);
+  if(!home||!away||!team||!opp||!Number.isInteger(hs)||!Number.isInteger(as)||hs<0||as<0)return {ok:false,reason:"missing_official_game_score"};
+  if((isHome&&(team!==home||opp!==away))||(!isHome&&(team!==away||opp!==home)))return {ok:false,reason:"official_team_orientation_mismatch"};
+  const gf=isHome?hs:as,ga=isHome?as:hs;
+  if(num(row.final_goals_for)!==gf||num(row.final_goals_against)!==ga||num(row.final_goal_diff)!==gf-ga||num(row.final_win)!==(gf>ga?1:0)||num(row.total_goals)!==gf+ga)return {ok:false,reason:"official_final_score_mismatch"};
+  const regGf=periods.reduce((s,x)=>s+x.gf,0),regGa=periods.reduce((s,x)=>s+x.ga,0),pt=String(row?.official_period_type||"").toUpperCase(),cp=num(row?.official_current_period);
+  const beyond=Number(row?.went_ot)===1||Number(row?.went_so)===1||(cp!==null&&cp>3)||pt==="OT"||pt==="SO";
+  if(beyond&&regGf!==regGa)return {ok:false,reason:"official_ot_requires_regulation_tie"};
+  if(!beyond&&(regGf!==gf||regGa!==ga))return {ok:false,reason:"official_regulation_final_mismatch"};
+  return {ok:true,reason:"official_game_score+periods",regulation_result:regGf>regGa?"W":regGf<regGa?"L":"T"};
+}
+function validH2HFinal(r){return r?.__official_score_verified===true}
+function validH2HReg(r){const rr=String(r?.regulation_result||"");return r?.__period_verified===true&&r?.__official_score_verified===true&&["W","L","T"].includes(rr)&&(!r.__official_regulation_result||rr===r.__official_regulation_result)}
+
 function evaluate(m,game,rows){
   const type=String(m.market_type||""),side=String(m.side||"").toLowerCase(),subject=String(m.subject||"").toUpperCase(),line=num(m.line),period=String(m.period||"GAME");
-  const periodBased=/^P[123]$/.test(period)||/^period_[123]_result$/.test(type);
-  if(periodBased&&!rows.every(r=>r.__period_verified===true))return null;
+  const periodBased=period==="REG"||/^P[123]$/.test(period)||/^period_[123]_result$/.test(type)||type==="double_chance";
+  if(periodBased&&!rows.every(r=>r.__period_verified===true&&r.__official_score_verified===true))return null;
+  if(!rows.every(r=>r.__official_score_verified===true))return null;
   let fn=null;
   if(type==="game_total"&&line!==null)fn=r=>settleTotal(periodTotal(r,period),side,line);
   else if(type==="team_total"&&line!==null&&(subject===game.away_tri||subject===game.home_tri)){
     fn=r=>settleTotal(teamGoals(r,period,subject===game.away_tri),side,line);
   }else if(type==="handicap"&&line!==null&&(subject===game.away_tri||subject===game.home_tri)){
-    fn=r=>settleHandicap((subject===game.away_tri?1:-1)*Number(r.final_goal_diff),line);
+    fn=r=>settleHandicap((subject===game.away_tri?1:-1)*periodGoalDiffH2H(r,period),line);
   }else if(type==="moneyline"&&(subject===game.away_tri||subject===game.home_tri)){
-    fn=r=>subject===game.away_tri?(Number(r.final_win)===1?"win":"loss"):(Number(r.final_win)===0?"win":"loss");
+    fn=r=>{if(period==="REG"){if(!validH2HReg(r))return null;const rr=String(r.regulation_result);return subject===game.away_tri?(rr==="W"?"win":"loss"):(rr==="L"?"win":"loss")}if(period==="GAME"){if(!validH2HFinal(r))return null;return subject===game.away_tri?(Number(r.final_win)===1?"win":"loss"):(Number(r.final_win)===0?"win":"loss")}return null};
   }else if(/^period_[123]_result$/.test(type)&&(subject===game.away_tri||subject===game.home_tri)){
     const p=Number(type.match(/^period_([123])_result$/)?.[1]);
     fn=r=>{const d=periodDiff(r,p)*(subject===game.away_tri?1:-1);return d>0?"win":"loss"};
   }else if(type==="double_chance"&&side==="team_or_draw"&&(subject===game.away_tri||subject===game.home_tri)){
-    fn=r=>{const rr=String(r.regulation_result||"");if(!rr)return null;return subject===game.away_tri?(rr!=="L"?"win":"loss"):(rr!=="W"?"win":"loss")};
+    fn=r=>{if(!validH2HReg(r))return null;const rr=String(r.regulation_result||"");return subject===game.away_tri?(rr!=="L"?"win":"loss"):(rr!=="W"?"win":"loss")};
   }else if(type==="both_teams_score"){
-    fn=r=>{const yes=Number(r.final_goals_for)>0&&Number(r.final_goals_against)>0;return side==="yes"?(yes?"win":"loss"):(yes?"loss":"win")};
+    fn=r=>{if(!validH2HFinal(r))return null;const yes=Number(r.final_goals_for)>0&&Number(r.final_goals_against)>0;return side==="yes"?(yes?"win":"loss"):(yes?"loss":"win")};
   }
   if(!fn)return null;
-  let hits=0,losses=0,pushes=0;
-  for(const row of rows){const s=fn(row);if(s==="win")hits++;else if(s==="push")pushes++;else if(s==="loss")losses++}
-  const decisions=hits+losses;if(decisions<3)return null;
-  return {hits,losses,pushes,decisions,rate:hits/decisions,period_data_verified:periodBased?true:null};
+  let hits=0,losses=0,pushes=0,invalid=0;
+  for(const row of rows){const s=fn(row);if(s==="win")hits++;else if(s==="push")pushes++;else if(s==="loss")losses++;else invalid++}
+  const decisions=hits+losses;if(invalid>0||decisions<3)return null;
+  return {hits,losses,pushes,decisions,rate:hits/decisions,period_data_verified:periodBased?true:null,official_score_verified:true};
 }
 
 function card(game,m,rows,s){
@@ -115,7 +137,7 @@ function card(game,m,rows,s){
     value:s.hits+"/"+s.decisions,
     title,
     explanation:"Последние "+window+" очных матчей "+teamName+" и "+opponentName+". Рассчитана именно текущая линия WINLINE, без подмены соседней линией.",
-    evidence:{split:"h2h",window,sample:window,hits:s.hits,decisions:s.decisions,pushes:s.pushes,hit_rate:s.rate,team,opponent,game_pks:rows.map(r=>Number(r.game_pk)),exact_provider_line:true,period_data_verified:s.period_data_verified,period_validation:s.period_data_verified?"period_scores+goal_events+feature+regulation":null,stats_validation:"exact_market_v5_goal_event_crosscheck",feature_layer:"h2h_current_winline_line_v2"},
+    evidence:{split:"h2h",window,sample:window,hits:s.hits,decisions:s.decisions,pushes:s.pushes,hit_rate:s.rate,team,opponent,game_pks:rows.map(r=>Number(r.game_pk)),exact_provider_line:true,official_score_verified:s.official_score_verified===true,official_score_validation:"games.final_score+team_orientation+regulation_period_crosscheck",period_data_verified:s.period_data_verified,period_validation:s.period_data_verified?"period_scores+goal_events+feature+regulation+official_score":null,stats_validation:"exact_market_v6_official_score_crosscheck",feature_layer:"h2h_current_winline_line_v2"},
     market:{type:m.market_type,period:m.period,subject:m.subject,side:m.side,line:m.line,label,odds:m.odds,provider:m.provider,odds_is_demo:false,odds_source:"provider_live",event_id:m.event_id,market_id:m.market_id,selection_id:m.selection_id,updated_at:m.updated_at,deeplink:m.deeplink}
   };
 }
@@ -127,9 +149,10 @@ function gameTeamName(game,tri){
 }
 function shortName(value){return String(value||"").trim().split(/\s+/)[0]||String(value||"").trim()}
 function fitTitle(full,compact){return String(full||"").length<=96?full:compact}
-function periodTotal(r,p){if(p==="GAME"||p==="REG")return Number(r.total_goals);const n=Number(String(p).replace("P",""));return Number(r["p"+n+"_goals_for"])+Number(r["p"+n+"_goals_against"])}
-function teamGoals(r,p,awayPerspective){if(p==="GAME"||p==="REG")return Number(awayPerspective?r.final_goals_for:r.final_goals_against);const n=Number(String(p).replace("P",""));return Number(r["p"+n+(awayPerspective?"_goals_for":"_goals_against")])}
-function periodDiff(r,p){return Number(r["p"+p+"_goals_for"])-Number(r["p"+p+"_goals_against"])}
+function periodTotal(r,p){if(p==="GAME")return validH2HFinal(r)?Number(r.total_goals):NaN;if(p==="REG")return validH2HReg(r)?Number(r.regulation_goals_for)+Number(r.regulation_goals_against):NaN;const n=Number(String(p).replace("P",""));return r?.__period_verified===true?Number(r["p"+n+"_goals_for"])+Number(r["p"+n+"_goals_against"]):NaN}
+function teamGoals(r,p,awayPerspective){if(p==="GAME")return validH2HFinal(r)?Number(awayPerspective?r.final_goals_for:r.final_goals_against):NaN;if(p==="REG")return validH2HReg(r)?Number(awayPerspective?r.regulation_goals_for:r.regulation_goals_against):NaN;const n=Number(String(p).replace("P",""));return r?.__period_verified===true?Number(r["p"+n+(awayPerspective?"_goals_for":"_goals_against")]):NaN}
+function periodGoalDiffH2H(r,p){if(p==="GAME")return validH2HFinal(r)?Number(r.final_goal_diff):NaN;if(p==="REG")return validH2HReg(r)?Number(r.regulation_goal_diff):NaN;const n=Number(String(p).replace("P",""));return r?.__period_verified===true?Number(r["p"+n+"_goals_for"])-Number(r["p"+n+"_goals_against"]):NaN}
+function periodDiff(r,p){return r?.__period_verified===true?Number(r["p"+p+"_goals_for"])-Number(r["p"+p+"_goals_against"]):NaN}
 function settleTotal(v,side,line){if(!Number.isFinite(v))return null;if(v===line)return"push";return side==="under"?(v<line?"win":"loss"):(v>line?"win":"loss")}
 function settleHandicap(diff,line){const x=Number(diff)+Number(line);if(x===0)return"push";return x>0?"win":"loss"}
 function marketLabel(m){const t=String(m.market_type||""),s=String(m.subject||""),side=String(m.side||"").toLowerCase(),l=num(m.line),p=String(m.period||"GAME");const pr=p==="P1"?"1-Й ПЕРИОД · ":p==="P2"?"2-Й ПЕРИОД · ":p==="P3"?"3-Й ПЕРИОД · ":"";if(t==="game_total")return pr+(side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+fmt(l);if(t==="team_total")return pr+s+" "+(side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+fmt(l);if(t==="handicap")return pr+s+" ФОРА "+signed(l);if(t==="moneyline")return "ПОБЕДА "+s;if(/^period_[123]_result$/.test(t))return pr+"ПОБЕДА "+s;if(t==="double_chance")return s+" ИЛИ НИЧЬЯ";if(t==="both_teams_score")return side==="yes"?"ОБЕ ЗАБЬЮТ — ДА":"ОБЕ ЗАБЬЮТ — НЕТ";return [pr,t,s,side].filter(Boolean).join(" ")}
