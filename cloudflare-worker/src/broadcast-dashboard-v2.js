@@ -5,6 +5,7 @@ import { archiveBroadcastInsightHistory } from "./broadcast-insight-history.js";
 import { summarizeMarketCoverage } from "./market-coverage-audit.js";
 import { selectBroadcastFour } from "./broadcast-four-card-selector.js";
 import { buildCommentatorBrief } from "./commentator-brief.js";
+import { fitBroadcastTitle } from "./broadcast-angle-engine.js";
 
 const BROADCAST_PATH = "/broadcast";
 const MIN_BROADCAST_ODDS = 1.50;
@@ -179,6 +180,10 @@ function isRealBroadcastPrice(card){
   const odds=Number(card?.market?.odds);
   return Number.isFinite(odds)&&odds>=MIN_BROADCAST_ODDS&&card?.market?.odds_is_demo===false&&card?.market?.odds_source==="provider_live";
 }
+function normalizeBroadcastCardHeadline(card){
+  const raw=card?.broadcast_title||card?.title||card?.value||card?.eyebrow||"HOH INSIGHT";
+  return {...card,broadcast_title:fitBroadcastTitle(raw,MAX_BROADCAST_HEADLINE_CHARS,true)};
+}
 async function persistBroadcastQueueSummary(db,gamePk,summary){
   try{
     await db.prepare(`
@@ -342,7 +347,7 @@ async function broadcastGameRoute(env, gamePk) {
     }
 
     routeStage="serialize_response";
-    const broadcastCards=(bettingInsights||[]).filter(isRealBroadcastPrice);
+    const broadcastCards=(bettingInsights||[]).filter(isRealBroadcastPrice).map(normalizeBroadcastCardHeadline);
     const eligibleProviderMarkets=(providerMarkets||[]).filter(m=>Number(m?.odds)>=MIN_BROADCAST_ODDS);
     return jsonResponse({
       ok:true,
