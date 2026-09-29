@@ -95,7 +95,8 @@ function attachRealMarket(card, offered) {
     updated_at: offered.updated_at,
     deeplink: offered.deeplink,
   };
-  copy.note = `${copy.market.label || marketLabel(copy.market)} · WINLINE · ${offered.odds.toFixed(2)}${offered.updated_at ? ` · линия ${offered.updated_at}` : ""}`;
+  copy.market.label=marketLabel(copy.market);
+  copy.note = `${copy.market.label} · WINLINE · ${offered.odds.toFixed(2)}${offered.updated_at ? ` · линия ${offered.updated_at}` : ""}`;
   copy.evidence = {
     ...(copy.evidence || {}),
     provider_market: {
