@@ -168,7 +168,7 @@ function resultTotalCards(game,team,rows){
         out.push(card(game,{
           id:`result-total:${team}:${side}:${line}:w${window}`,type:"result_total_combo",subject:team,side,line,
           score:score(window,rate,.42),eyebrow:"ПОБЕДА + ТОТАЛ",value:`${h}/${s.length}`,
-          title:`${team} ПОБЕДИЛ + ${side==="over"?"ТБ":"ТМ"} ${fmt(line)} В ${h} ИЗ ${s.length} МАТЧЕЙ`,
+          title:`${team} ПОБЕДИЛ + ${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${fmt(line)} В ${h} ИЗ ${s.length} МАТЧЕЙ`,
           explanation:"Комбинированный рынок появляется только по фактическому совместному исходу; один и тот же факт не дублируется дважды.",
           evidence:{window,sample:s.length,hits:h,hit_rate:rate,team,role:"result_total_combo",total_line:line,total_side:side,game_pks:s.map(x=>Number(x.game_pk))}
         }));
