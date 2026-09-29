@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { annotateAirUtility, broadcastCardSemanticsValid } from '../cloudflare-worker/src/betting-insight-engine.js';
+import { MAX_BROADCAST_FREQUENCY_SAMPLE, annotateAirUtility, broadcastCardSemanticsValid } from '../cloudflare-worker/src/betting-insight-engine.js';
 
 const bostonHome=annotateAirUtility({
   score:80,
@@ -27,11 +27,12 @@ const huge=annotateAirUtility({
 });
 
 assert.ok(bostonHome.air_score>safeHandicap.air_score,'good price + 14/20 must outrank low-price 59/80');
-assert.ok(safeHandicap.broadcast_title.includes('59 ИЗ 80'),'80-game sample must expose exact hit count');
+assert.equal(MAX_BROADCAST_FREQUENCY_SAMPLE,40);
+assert.equal(safeHandicap.broadcast_math_valid,false,'80-game frequency claims are context only, not broadcast plaques');
 assert.ok(safeHandicap.broadcast_title.startsWith('BOS НЕ ПРОИГРЫВАЛ В 2+ ШАЙБЫ'),'positive +1.5 handicap should be human-readable');
 assert.equal(splitTotal.broadcast_math_valid,false,'two venue splits must not become an exact market frequency');
 assert.equal(splitTotal.broadcast_detail,'NYR в гостях 17/20 · BOS дома 13/20','combined split keeps readable team-level detail');
-assert.ok(huge.broadcast_title.includes('147 ИЗ 216'),'large samples must expose exact numerator and denominator');
+assert.equal(huge.broadcast_math_valid,false,'216-game frequency claims must never enter the broadcast queue');
 assert.match(bostonHome.broadcast_title,/14 ИЗ 20/,'<=30 non-handicap samples must keep exact count');
 const shortHandicap=annotateAirUtility({
   score:82,
@@ -52,14 +53,14 @@ assert.equal(floridaMismatch.air_meta.stats_rate_corrected,true,'reported 69% mu
 assert.equal(floridaMismatch.air_meta.stats_hits,71);
 assert.equal(floridaMismatch.air_meta.sample_size,140);
 assert.equal(floridaMismatch.air_meta.historical_rate,0.507);
-assert.match(floridaMismatch.broadcast_title,/71.*140/,'71/140 must display the exact numerator and denominator');
 assert.ok(!floridaMismatch.broadcast_title.includes('69%'));
+assert.equal(floridaMismatch.broadcast_math_valid,false,'140-game Florida claim is banned even after correcting its arithmetic');
 const floridaTraceable=annotateAirUtility({
   score:96,title:'FLA победила 71 из 140',
   evidence:{sample:140,hits:71,hit_rate:71/140,game_pks:Array.from({length:140},(_,i)=>10000+i)},
   market:{type:'moneyline',subject:'FLA',side:'FLA',label:'Победа FLA',odds:2.00,odds_is_demo:false,odds_source:'provider_live'}
 });
-assert.equal(floridaTraceable.broadcast_math_valid,true,'large sample is allowed only when every game is traceable');
+assert.equal(floridaTraceable.broadcast_math_valid,false,'even a traceable 140-game frequency is too broad for an on-air plaque');
 assert.equal(floridaTraceable.air_meta.historical_rate,0.507);
 assert.equal(floridaMismatch.broadcast_math_valid,false,'140-game claim without 140 unique game ids must not enter the broadcast queue');
 
