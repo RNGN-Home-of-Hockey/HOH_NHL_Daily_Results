@@ -179,10 +179,20 @@ function isLineCompatible(type, line) {
 }
 
 function marketLabel(market) {
-  const subject = market.subject ? `${market.subject} ` : "";
-  const line = market.line === null || market.line === undefined ? "" : ` ${market.line}`;
-  return `${subject}${market.type} ${market.side}${line}`.trim();
+  const type=String(market?.type||"").toLowerCase(),subject=String(market?.subject||"").toUpperCase(),side=String(market?.side||"").toLowerCase();
+  const line=market?.line===null||market?.line===undefined?"":String(market.line).replace(".",",");
+  const p=humanPeriod(market?.period);
+  if(type==="moneyline")return (p+(side==="draw"?"НИЧЬЯ":"ПОБЕДА "+subject)).trim();
+  if(/^period_[123]_result$/.test(type))return (p+(side==="draw"?"НИЧЬЯ":"ПОБЕДА "+subject)).trim();
+  if(type==="handicap")return (p+subject+" · ФОРА "+signedLabel(market.line)).trim();
+  if(type==="game_total")return (p+(side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+line).trim();
+  if(type==="team_total")return (p+subject+" · "+(side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+line).trim();
+  if(type==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ — "+subject;
+  if(type==="first_goal_team")return "ПЕРВЫЙ ГОЛ — "+subject;
+  return [p,type,subject,side,line].filter(Boolean).join(" ").trim();
 }
+function humanPeriod(value){const p=String(value||"GAME").toUpperCase();return p==="P1"?"1-Й ПЕРИОД · ":p==="P2"?"2-Й ПЕРИОД · ":p==="P3"?"3-Й ПЕРИОД · ":p==="REG"?"60 МИНУТ · ":""}
+function signedLabel(value){const n=Number(value);if(!Number.isFinite(n))return"";return(n>0?"+":"")+String(n).replace(".",",")}
 
 function resolveNow(value) {
   if (value instanceof Date) return value.getTime();

@@ -42,6 +42,29 @@ const shortHandicap=annotateAirUtility({
 });
 assert.equal(shortHandicap.broadcast_title,'CAR ПОБЕЖДАЛ В 2+ ШАЙБЫ — 14 ИЗ 20 МАТЧЕЙ','short handicap sample should keep count but use plain language');
 assert.equal(bostonHome.air_meta.meaning,'editorial_broadcast_utility_not_probability');
+const floridaMismatch=annotateAirUtility({
+  score:96,
+  title:'FLA победила в 69% матчей · 140 игр',
+  evidence:{sample:140,hits:71,hit_rate:0.69},
+  market:{type:'moneyline',subject:'FLA',side:'FLA',label:'Победа FLA',odds:2.00,odds_is_demo:false,odds_source:'provider_live'}
+});
+assert.equal(floridaMismatch.air_meta.stats_verified,true);
+assert.equal(floridaMismatch.air_meta.stats_rate_corrected,true,'reported 69% must be corrected by exact 71/140');
+assert.equal(floridaMismatch.air_meta.stats_hits,71);
+assert.equal(floridaMismatch.air_meta.sample_size,140);
+assert.equal(floridaMismatch.air_meta.historical_rate,0.507);
+assert.ok(floridaMismatch.broadcast_title.includes('51%'),'71/140 must display as 51%, never 69%');
+assert.ok(!floridaMismatch.broadcast_title.includes('69%'));
+assert.equal(floridaMismatch.broadcast_math_valid,true);
+
+const unpairedPercent=annotateAirUtility({
+  score:96,
+  title:'ПОБЕДА — В 69% МАТЧЕЙ · 100+ ИГР',
+  evidence:{sample:140,hit_rate:0.69},
+  market:{type:'moneyline',subject:'FLA',side:'FLA',label:'Победа FLA',odds:2.00,odds_is_demo:false,odds_source:'provider_live'}
+});
+assert.equal(unpairedPercent.air_meta.stats_verified,false);
+assert.equal(unpairedPercent.broadcast_math_valid,false,'percentage copy without exact hits/sample must not enter broadcast queue');
 console.log('BROADCAST_AIR_SCORE_OK',JSON.stringify({
   bostonHome:bostonHome.air_score,
   safeHandicap:safeHandicap.air_score,

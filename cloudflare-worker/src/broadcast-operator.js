@@ -564,6 +564,7 @@ function renderHeadlineTeamName(row,tri,fallback){
 function renderDisplayText(value){
   let s=String(value??"");
   for(const [tri,meta] of Object.entries(TEAM_META))s=s.replace(new RegExp("\\b"+tri+"\\b","gi"),meta.name);
+  s=s.replace(/(^|[^A-Z0-9])P1(?=$|[^A-Z0-9])/gi,"$11-Й ПЕРИОД").replace(/(^|[^A-Z0-9])P2(?=$|[^A-Z0-9])/gi,"$12-Й ПЕРИОД").replace(/(^|[^A-Z0-9])P3(?=$|[^A-Z0-9])/gi,"$13-Й ПЕРИОД");
   return s.replace(/([+-]?\d+)\.(\d+)/g,"$1,$2").toUpperCase();
 }
 function renderLineText(value){
@@ -581,7 +582,7 @@ function renderMarketText(candidate,row,teamName){
     if(value===null){const found=String(m.label||row.stat_text_ru||"").match(/([+-]\d+(?:[.,]\d+)?)/);if(found)value=Number(found[1].replace(",","."))}
     return "ФОРА "+(value===null?"":renderLineText(value))+" ГОЛА";
   }
-  if(type==="team_total")return (side==="under"?"ИТМ ":"ИТБ ")+(Number.isFinite(line)?String(Math.abs(line)).replace(".",","):"")+" ГОЛА";
+  if(type==="team_total")return (side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+(Number.isFinite(line)?String(Math.abs(line)).replace(".",","):"")+" ГОЛА";
   if(type==="game_total")return (side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+(Number.isFinite(line)?String(line).replace(".",","):"");
   if(type==="moneyline")return"ПОБЕДА";
   if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";

@@ -308,6 +308,8 @@ async function broadcastLiveRoute(request, env, gamePk) {
         snapshot=attachLiveWinlineMarkets(snapshot,providerMarkets,{
           market_max_age_ms:90*1000,
         });
+        const quoteAt=Date.parse(String(snapshot.provider_live_updated_at||"")),quoteAge=Number.isFinite(quoteAt)?Math.max(0,Math.round((Date.now()-quoteAt)/1000)):null;
+        snapshot.monitoring={ui_poll_seconds:15,winline_sync_target_seconds:60,winline_feed_throttle_seconds:45,live_quote_max_age_seconds:90,live_quote_age_seconds:quoteAge,winline_status:quoteAge===null?"no_line":quoteAge<=90?"fresh":"stale"};
       }catch(error){
         console.error("broadcast live Winline enrichment failed",error);
         snapshot={...snapshot,provider_market_count:0,priced_live_cards:0};

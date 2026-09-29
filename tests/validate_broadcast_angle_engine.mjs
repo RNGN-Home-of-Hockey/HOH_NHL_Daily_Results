@@ -26,6 +26,12 @@ assert.match(longRank,/ФЛОРИДА/);
 assert.match(longRank,/№2/);
 assert.match(longRank,/№18/);
 assert.doesNotMatch(longRank,/ХАРРИКЕЙНЗ|ПАНТЕРЗ/);
+const shortUnder=fitBroadcastTitle('ТМ 5,5 — 8 ИЗ 10');
+assert.match(shortUnder,/ТОТАЛ МЕНЬШЕ 5,5/,'TM must expand when full wording fits');
+assert.doesNotMatch(shortUnder,/(^|\s)ТМ(\s|$)/);
+const p2Human=fitBroadcastTitle('P2 · CAR ПОБЕДИЛА В 7 ИЗ 10');
+assert.match(p2Human,/2-Й ПЕРИОД/);
+assert.doesNotMatch(p2Human,/(^|\s)P2(\s|$)/);
 
 const historyCard={
   title:"exact line",

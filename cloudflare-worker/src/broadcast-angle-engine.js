@@ -17,6 +17,7 @@ const FULL_TEAM_SHORT=[
 
 export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
   let s=String(value||"").replace(/\s+/g," ").trim().toUpperCase();
+  s=expandBroadcastTerms(s);
   for(const [full,short] of FULL_TEAM_SHORT)s=s.replaceAll(full,short);
   s=s
     .replace(/ПО РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ/g,"ПО ОПАСНЫМ МОМЕНТАМ")
@@ -27,16 +28,31 @@ export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
     .replace(/\s*—\s*/g," — ")
     .replace(/\s+/g," ").trim();
   if(s.length<=max)return s;
-  const compact=s
+  let compact=s
     .replace(/ — №/g," №")
     .replace(/,\s+/g,", ")
     .replace(/ ПО ОПАСНЫМ МОМЕНТАМ/g," ПО ОПАСНЫМ")
     .replace(/ ПО ЗАЩИТЕ ОПАСНЫХ МОМЕНТОВ/g," ПО ЗАЩИТЕ");
   if(compact.length<=max)return compact;
+  compact=compact
+    .replace(/ТОТАЛ КОМАНДЫ МЕНЬШЕ/g,"ИТМ")
+    .replace(/ТОТАЛ КОМАНДЫ БОЛЬШЕ/g,"ИТБ")
+    .replace(/ТОТАЛ МЕНЬШЕ/g,"ТМ")
+    .replace(/ТОТАЛ БОЛЬШЕ/g,"ТБ");
+  if(compact.length<=max)return compact;
   const cut=compact.slice(0,Math.max(1,max-1)).replace(/\s+\S*$/,"").replace(/[,:;—-]+\s*$/,"").trim();
   return (cut||compact.slice(0,max-1).trim())+"…";
 }
-function fitSourceBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
+function expandBroadcastTerms(value){
+  return String(value||"")
+    .replace(/(^|[^A-Z0-9])P1(?=$|[^A-Z0-9])/g,"$11-Й ПЕРИОД")
+    .replace(/(^|[^A-Z0-9])P2(?=$|[^A-Z0-9])/g,"$12-Й ПЕРИОД")
+    .replace(/(^|[^A-Z0-9])P3(?=$|[^A-Z0-9])/g,"$13-Й ПЕРИОД")
+    .replace(/(^|[\s·—:])ИТМ(?=\s|$)/g,"$1ТОТАЛ КОМАНДЫ МЕНЬШЕ")
+    .replace(/(^|[\s·—:])ИТБ(?=\s|$)/g,"$1ТОТАЛ КОМАНДЫ БОЛЬШЕ")
+    .replace(/(^|[\s·—:])ТМ(?=\s|$)/g,"$1ТОТАЛ МЕНЬШЕ")
+    .replace(/(^|[\s·—:])ТБ(?=\s|$)/g,"$1ТОТАЛ БОЛЬШЕ");
+}function fitSourceBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
   const s=String(value||"").replace(/\s+/g," ").trim();
   return s.length<=max?s:fitBroadcastTitle(s,max);
 }
@@ -215,8 +231,8 @@ function marketLabel(m){
   if(t==="period_2_result")return `2-Й ПЕРИОД: ПОБЕДА ${s}`.trim();
   if(t==="period_3_result")return `3-Й ПЕРИОД: ПОБЕДА ${s}`.trim();
   if(t==="handicap")return `${p}${s} ФОРА ${signed(l)}`.trim();
-  if(t==="game_total")return `${p}${side==="over"?"ТБ":"ТМ"} ${line(l)}`.trim();
-  if(t==="team_total")return `${p}${s} ${side==="over"?"ИТБ":"ИТМ"} ${line(l)}`.trim();
+  if(t==="game_total")return `${p}${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${line(l)}`.trim();
+  if(t==="team_total")return `${p}${s} ${side==="over"?"ТОТАЛ КОМАНДЫ БОЛЬШЕ":"ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${line(l)}`.trim();
   if(t==="double_chance")return side==="no_draw"?"12 — БЕЗ НИЧЬЕЙ":`${s} ИЛИ НИЧЬЯ`;
   if(t==="both_teams_score")return side==="yes"?"ОБЕ ЗАБЬЮТ — ДА":"ОБЕ ЗАБЬЮТ — НЕТ";
   if(t==="first_goal_team")return `ПЕРВЫЙ ГОЛ — ${s}`;
