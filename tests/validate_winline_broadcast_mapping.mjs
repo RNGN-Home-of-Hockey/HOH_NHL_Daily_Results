@@ -74,7 +74,7 @@ const totalUnderInsight=[{id:"under",market:{type:"game_total",period:"GAME",sub
 const totalUnderProvider=[{provider:"winline",market_type:"game_total",period:"GAME",subject:null,side:"under",line:5.5,odds:1.91,status:"open",is_live:false,updated_at:now}];
 const totalUnderPriced=applyWinlineMarkets(totalUnderInsight,totalUnderProvider,{now,max_age_ms:7*60*60*1000});
 assert.equal(totalUnderPriced.length,1);
-assert.equal(totalUnderPriced[0].market.label,"ТОТАЛ МЕНЬШЕ 5,5");
+assert.equal(totalUnderPriced[0].market.label,"ОБЩИЙ ТОТАЛ МЕНЬШЕ 5,5");
 
 const doubleChance=canonicalBroadcastWinlineMarket({
   winline_market_id:"16255255:doublechance:1x",
@@ -88,6 +88,12 @@ const doubleChance=canonicalBroadcastWinlineMarket({
 assert.equal(doubleChance.market_type,"double_chance");
 assert.equal(doubleChance.subject,"TOR");
 assert.equal(doubleChance.side,"team_or_draw");
+
+const doubleChanceInsight=[{id:"dc",market:{type:"double_chance",period:"GAME",subject:"TOR",side:"team_or_draw",line:null,label:"TOR ИЛИ НИЧЬЯ"}}];
+const doubleChancePriced=applyWinlineMarkets(doubleChanceInsight,[doubleChance],{now,max_age_ms:7*60*60*1000});
+assert.equal(doubleChancePriced.length,1);
+assert.equal(doubleChancePriced[0].market.label,"TOR НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ");
+assert.doesNotMatch(doubleChancePriced[0].market.label,/ИЛИ НИЧЬЯ/);
 
 const homeOrDraw=canonicalBroadcastWinlineMarket({
   winline_market_id:"16255255:doublechance:home-draw",
