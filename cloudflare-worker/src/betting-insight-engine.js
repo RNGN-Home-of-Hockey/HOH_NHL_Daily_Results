@@ -21,6 +21,8 @@ import { buildProviderMarketHistoryInsights } from "./provider-market-history-in
 import { summarizeMarketCoverage } from "./market-coverage-audit.js";
 import { buildH2HBroadcastInsights } from "./h2h-broadcast-insights.js";
 
+export const MAX_BROADCAST_FREQUENCY_SAMPLE=40;
+
 const EAST = new Set([
   "BOS","BUF","CAR","CBJ","DET","FLA","MTL","NJD","NYI","NYR","OTT","PHI","PIT","TBL","TOR","WSH",
 ]);
@@ -528,8 +530,8 @@ function pairedRateStats(rateValue,sampleValue,source){
 function frequencyStatsSemanticallyValid(card,stats){
   if(!stats?.verified)return false;
   const e=card?.evidence||{},m=card?.market||{},type=String(m.type||"").toLowerCase(),source=String(stats.source||"");
-  const sample=Number(stats.sample||0),gamePks=Array.isArray(e.game_pks)?e.game_pks.map(Number).filter(Number.isFinite):[];
-  if(sample>40&&new Set(gamePks).size<sample)return false;
+  const sample=Number(stats.sample||0);
+  if(sample>MAX_BROADCAST_FREQUENCY_SAMPLE)return false;
   if(source==="evidence"&&e.hits!==null&&e.hits!==undefined&&sample>0)return true;
   if(source==="wins"&&type==="moneyline"){
     const team=String(e.team||m.subject||"").toUpperCase(),subject=String(m.subject||"").toUpperCase();
@@ -570,6 +572,8 @@ export function broadcastCardSemanticsValid(card,game={}){
     if(sample>0&&new Set(pks).size<sample)return false;
   }
   if(/\b(?:P[123]|PERIOD_[123]_RESULT|DOUBLE_CHANCE|TEAM_OR_DRAW|NO_DRAW)\b/i.test(title+" "+String(m.label||"")))return false;
+  const frequencySample=Number(card?.air_meta?.sample_size||e.sample||e.decisions||0);
+  if(hasFrequencyClaim(card)&&Number.isFinite(frequencySample)&&frequencySample>MAX_BROADCAST_FREQUENCY_SAMPLE)return false;
   const tm=/([123])-Й ПЕРИОД/i.exec(title),titlePeriod=tm?"P"+tm[1]:null;
   const typePeriod=/^period_([123])_result$/.exec(type),expected=typePeriod?"P"+typePeriod[1]:/^(P[123])$/.test(mp)?mp:null;
   if(titlePeriod&&expected&&titlePeriod!==expected)return false;
