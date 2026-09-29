@@ -13,6 +13,20 @@ const WORD_FORMS = {
 };
 const FIRST_FORMS = { m:"первым", f:"первой", pl:"первыми" };
 
+// Russian city/team display names used after "против" in broadcast copy.
+// Keep indeclinable names unchanged; decline the geographic names viewers hear.
+const AGAINST_FORMS = [
+  ["ЛОС-АНДЖЕЛЕС","ЛОС-АНДЖЕЛЕСА"],["САН-ХОСЕ","САН-ХОСЕ"],["СЕНТ-ЛУИС","СЕНТ-ЛУИСА"],
+  ["НЬЮ-ДЖЕРСИ","НЬЮ-ДЖЕРСИ"],["ТАМПА-БЭЙ","ТАМПА-БЭЙ"],
+  ["КАРОЛИНА","КАРОЛИНЫ"],["ФЛОРИДА","ФЛОРИДЫ"],["МИННЕСОТА","МИННЕСОТЫ"],["ОТТАВА","ОТТАВЫ"],
+  ["ФИЛАДЕЛЬФИЯ","ФИЛАДЕЛЬФИИ"],["ЮТА","ЮТЫ"],["МОНРЕАЛЬ","МОНРЕАЛЯ"],["ПИТТСБУРГ","ПИТТСБУРГА"],
+  ["КОЛАМБУС","КОЛАМБУСА"],["БОСТОН","БОСТОНА"],["АНАХАЙМ","АНАХАЙМА"],["ДАЛЛАС","ДАЛЛАСА"],
+  ["ДЕТРОЙТ","ДЕТРОЙТА"],["ЭДМОНТОН","ЭДМОНТОНА"],["СИЭТЛ","СИЭТЛА"],["ВАНКУВЕР","ВАНКУВЕРА"],
+  ["ВЕГАС","ВЕГАСА"],["ВАШИНГТОН","ВАШИНГТОНА"],["ВИННИПЕГ","ВИННИПЕГА"],["НЭШВИЛЛ","НЭШВИЛЛА"],
+  ["КОЛОРАДО","КОЛОРАДО"],["ЧИКАГО","ЧИКАГО"],["КАЛГАРИ","КАЛГАРИ"],["БАФФАЛО","БАФФАЛО"],
+  ["ТОРОНТО","ТОРОНТО"],["РЕЙНДЖЕРС","РЕЙНДЖЕРС"],["АЙЛЕНДЕРС","АЙЛЕНДЕРС"]
+];
+
 export function teamGrammar(team){
   const tri=String(team||"").toUpperCase();
   if(PLURAL_TEAMS.has(tri)) return "pl";
@@ -37,6 +51,15 @@ export function applyTeamGrammar(text){
 
 export function applyDisplayTeamGrammar(text,team,displayName){
   return fixSubject(String(text??""),String(displayName||""),String(team||"").toUpperCase());
+}
+
+export function applyAgainstCase(text){
+  let out=String(text??"");
+  for(const [name,form] of AGAINST_FORMS){
+    const re=new RegExp("(ПРОТИВ\\s+)"+escapeRegExp(name)+"(?=\\s|$|[.,;:!?—-])","gi");
+    out=out.replace(re,(all,prefix,matched)=>prefix+caseLike(matched,form));
+  }
+  return out;
 }
 
 function fixSubject(text,subject,team){
