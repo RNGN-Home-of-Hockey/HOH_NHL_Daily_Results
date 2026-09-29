@@ -568,6 +568,8 @@ export function broadcastCardSemanticsValid(card,game={}){
   if(e.exact_provider_line===true){
     const sample=Number(e.sample||0),pks=Array.isArray(e.game_pks)?e.game_pks.map(Number).filter(Number.isFinite):[];
     if(sample>0&&new Set(pks).size<sample)return false;
+    if(e.official_score_verified!==true)return false;
+    if((mp==="REG"||type==="double_chance")&&e.period_data_verified!==true)return false;
   }
   if(/\b(?:P[123]|PERIOD_[123]_RESULT|DOUBLE_CHANCE|TEAM_OR_DRAW|NO_DRAW)\b/i.test(title+" "+String(m.label||"")))return false;
   const tm=/([123])-Й ПЕРИОД/i.exec(title),titlePeriod=tm?"P"+tm[1]:null;

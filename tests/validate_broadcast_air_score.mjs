@@ -181,3 +181,13 @@ assert.ok(!/\bCAR\b/.test(localizedAdvanced.broadcast_title),'TV headline must n
 assert.ok(localizedAdvanced.broadcast_angle_variants.every(x=>!/\bCAR\b|\bFLA\b/.test(String(x.title||''))),'all operator-selectable TV variants must localize team names');
 assert.equal(localizedAdvanced.operator_narrative.raw.team_code,'CAR','operator raw layer must keep machine team code');
 assert.match(localizedAdvanced.operator_narrative.details.join(' '),/КАРОЛИНА/,'commentator prose should use Russian display name');
+
+const providerWithoutOfficial={
+  broadcast_math_valid:true,broadcast_title:'ЧИКАГО — 38 ПОБЕД В 40 МАТЧАХ',
+  timing:'pregame',
+  evidence:{sample:40,hits:38,game_pks:Array.from({length:40},(_,i)=>30000+i),exact_provider_line:true,period_data_verified:true,official_score_verified:false},
+  market:{type:'moneyline',period:'REG',subject:'CHI',side:'CHI',label:'60 МИНУТ · ПОБЕДА CHI'}
+};
+assert.equal(broadcastCardSemanticsValid(providerWithoutOfficial,{home_tri:'VGK',away_tri:'CHI'}),false,'exact provider frequency must have an independent official-score crosscheck');
+const verifiedProvider={...providerWithoutOfficial,evidence:{...providerWithoutOfficial.evidence,official_score_verified:true}};
+assert.equal(broadcastCardSemanticsValid(verifiedProvider,{home_tri:'VGK',away_tri:'CHI'}),true,'official-score-verified exact provider history may pass semantic validation');
