@@ -387,7 +387,7 @@ async function broadcastGameRoute(env, gamePk) {
       provider_market_count:providerMarkets.length,
       eligible_provider_market_count:eligibleProviderMarkets.length,
       market_coverage:summarizeMarketCoverage(eligibleProviderMarkets,broadcastCards),
-      broadcast_card_policy:{min_odds:MIN_BROADCAST_ODDS,featured_target:4,portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,max_headline_chars:MAX_BROADCAST_HEADLINE_CHARS,stats_validation:"same_season_streak_v2",integrity_version:"exact_market_v3"},
+      broadcast_card_policy:{min_odds:MIN_BROADCAST_ODDS,featured_target:4,portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,max_headline_chars:MAX_BROADCAST_HEADLINE_CHARS,stats_validation:"same_season_streak_v2",integrity_version:"exact_market_v4_raw_periods"},
       generator_diagnostics:generatorDiagnostics,
       data_degraded_sections:dataDegradedSections,
       quick_cards:quickCards,

@@ -18,10 +18,12 @@ function row(pk,team,i){
     final_goals_for:car?(diff>0?4:2):(diff>0?4:2),
     final_goals_against:car?(diff>0?2:3):(diff>0?2:3),
     total_goals:total,final_goal_diff:diff,final_win:diff>0?1:0,
-    regulation_goals_for:diff>0?3:2,regulation_goals_against:diff>0?2:3,
-    regulation_goal_diff:diff>0?1:-1,regulation_result:i===7?"T":diff>0?"W":"L",
+    regulation_goals_for:p1gf+3,regulation_goals_against:p1ga+2,
+    regulation_goal_diff:(p1gf+3)-(p1ga+2),regulation_result:(p1gf+3)>(p1ga+2)?"W":(p1gf+3)<(p1ga+2)?"L":"T",
     p1_goals_for:p1gf,p1_goals_against:p1ga,
     p2_goals_for:2,p2_goals_against:1,p3_goals_for:1,p3_goals_against:1,
+    raw_p1_goals_for:p1gf,raw_p1_goals_against:p1ga,
+    raw_p2_goals_for:2,raw_p2_goals_against:1,raw_p3_goals_for:1,raw_p3_goals_against:1,
     score_after_p1_diff:p1diff,score_after_p2_diff:p1diff+1,first_goal_for:i<7?1:0,
   };
 }
@@ -57,6 +59,10 @@ assert.equal(handicap.evidence.pushes,1);
 assert.equal(handicap.evidence.decisions,9);
 
 assert.ok(cards.some(c=>c.market.type==="period_1_result"&&c.market.subject==="CAR"),"period 3-way selection should have exact history");
+assert.ok(cards.filter(c=>/^P[123]$/.test(String(c.market.period||""))||/^period_[123]_result$/.test(String(c.market.type||""))).every(c=>c.evidence.period_data_verified===true),"period cards require raw period verification");
+const corruptPeriodRows={...rowsByTeam,CAR:rowsByTeam.CAR.map((r,i)=>i===0?{...r,raw_p1_goals_for:Number(r.raw_p1_goals_for)+1}:r)};
+const corruptPeriodCards=evaluateProviderMarketHistoryRows(game,corruptPeriodRows,[m("period_1_result","P1","CAR","CAR",null,2.40)]);
+assert.equal(corruptPeriodCards.length,0,"one mismatched raw period row must suppress the period trend instead of changing the denominator");
 assert.ok(cards.some(c=>c.market.type==="game_total"&&c.market.period==="P2"&&c.market.line===1.5),"period total should use exact offered line");
 assert.ok(cards.some(c=>c.market.type==="double_chance"&&c.market.subject==="CAR"),"double chance should use regulation non-loss history");
 assert.ok(cards.some(c=>c.market.type==="both_teams_score"&&c.market.side==="yes"),"BTTS should be evaluated from scoring distribution");
@@ -75,7 +81,7 @@ const sea=seaCards.find(x=>x.market.type==="moneyline"&&x.market.subject==="SEA"
 assert.ok(sea,"SEA exact moneyline history should remain available as historical rate");
 assert.equal(sea.evidence.current_streak,0,"previous-season wins must not be called a current streak");
 assert.equal(sea.evidence.streak_verified,false);
-assert.equal(sea.evidence.stats_validation,"dedupe+result_consistency+same_season_streak_v2");
+assert.equal(sea.evidence.stats_validation,"exact_market_v4_raw_period_crosscheck");
 
 const corrupt=Array.from({length:10},(_,i)=>({...seaRows[i],season_id:"20262027"}));
 corrupt[0]={...corrupt[0],regulation_goal_diff:-1,regulation_result:"W"};

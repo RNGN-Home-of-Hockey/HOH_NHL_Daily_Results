@@ -75,10 +75,10 @@ export function evaluateVenueMarketSplits(game, rowsByTeam) {
           score: venueConfluenceScore(a, h, window) + utilityBonus("game_total", line),
           eyebrow: `ДОМА/В ГОСТЯХ · ТОТАЛ ${line}`,
           value: `${a.hits}/${window} + ${h.hits}/${window}`,
-          title: `${game.away_tri} в гостях и ${game.home_tri} дома: ${side === "over" ? "ТБ" : "ТМ"} ${line} — ${a.hits}/${window} и ${h.hits}/${window}`,
+          title: `${game.away_tri} в гостях и ${game.home_tri} дома: ${side === "over" ? "ТОТАЛ БОЛЬШЕ" : "ТОТАЛ МЕНЬШЕ"} ${line} — ${a.hits}/${window} и ${h.hits}/${window}`,
           explanation: `Сравниваются только матчи в той же роли, что и сегодня: ${game.away_tri} — только в гостях, ${game.home_tri} — только дома.`,
           evidence: { window, split: "current_venue", away: evidenceStats(a, away), home: evidenceStats(h, home), average_rate: avg },
-          market: { type: "game_total", subject: null, side, line, label: `${side === "over" ? "ТБ" : "ТМ"} ${line}` },
+          market: { type: "game_total", subject: null, side, line, label: `${side === "over" ? "ТОТАЛ БОЛЬШЕ" : "ТОТАЛ МЕНЬШЕ"} ${line}` },
         }));
       }
     }
@@ -110,10 +110,10 @@ export function evaluateH2HMarketSplits(game, awayPerspectiveRows) {
           score: h2hScore(stat, window) + utilityBonus("game_total", line),
           eyebrow: `ЛИЧНЫЕ ВСТРЕЧИ · ${window}`,
           value: `${stat.hits}/${window}`,
-          title: `${game.away_tri} — ${game.home_tri}: ${side === "over" ? "ТБ" : "ТМ"} ${line} прошёл ${stat.hits} из последних ${window}`,
+          title: `${game.away_tri} — ${game.home_tri}: ${side === "over" ? "ТОТАЛ БОЛЬШЕ" : "ТОТАЛ МЕНЬШЕ"} ${line} прошёл ${stat.hits} из последних ${window}`,
           explanation: `Оценивается точная рыночная линия только по предыдущим очным матчам этих команд. H2H получает меньший базовый вес, чем общекомандные rolling-тренды.`,
           evidence: { window, split: "h2h", ...evidenceStats(stat, sample) },
-          market: { type: "game_total", subject: null, side, line, label: `${side === "over" ? "ТБ" : "ТМ"} ${line}` },
+          market: { type: "game_total", subject: null, side, line, label: `${side === "over" ? "ТОТАЛ БОЛЬШЕ" : "ТОТАЛ МЕНЬШЕ"} ${line}` },
         }));
       }
     }
@@ -130,10 +130,10 @@ export function evaluateH2HMarketSplits(game, awayPerspectiveRows) {
             score: h2hScore(stat, window) + utilityBonus("team_total", line),
             eyebrow: `H2H · ${team} · ИТ ${line}`,
             value: `${stat.hits}/${window}`,
-            title: `${team}: ${side === "over" ? "ИТБ" : "ИТМ"} ${line} в ${stat.hits} из последних ${window} очных матчей`,
+            title: `${team}: ${side === "over" ? "ТОТАЛ КОМАНДЫ БОЛЬШЕ" : "ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${line} в ${stat.hits} из последних ${window} очных матчей`,
             explanation: `Точная линия командного тотала в очных встречах ${game.away_tri} и ${game.home_tri}.`,
             evidence: { window, split: "h2h", team, ...evidenceStats(stat, sample) },
-            market: { type: "team_total", subject: team, side, line, label: `${team} ${side === "over" ? "ИТБ" : "ИТМ"} ${line}` },
+            market: { type: "team_total", subject: team, side, line, label: `${team} ${side === "over" ? "ТОТАЛ КОМАНДЫ БОЛЬШЕ" : "ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${line}` },
           }));
         }
       }
@@ -198,10 +198,10 @@ function venueTeamCandidates(game, team, sample, window, threshold, roleLabel) {
         score: venueSingleScore(stat, window) + utilityBonus("team_total", line),
         eyebrow: `${team} · ${roleLabel.toUpperCase()}`,
         value: `${stat.hits}/${window}`,
-        title: `${team} ${roleLabel}: ${side === "over" ? "ИТБ" : "ИТМ"} ${line} — ${stat.hits}/${window}`,
+        title: `${team} ${roleLabel}: ${side === "over" ? "ТОТАЛ КОМАНДЫ БОЛЬШЕ" : "ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${line} — ${stat.hits}/${window}`,
         explanation: `Используются только последние ${window} матчей ${team} в текущей роли площадки.`,
         evidence: { window, split: "current_venue", role: roleLabel, team, ...evidenceStats(stat, sample) },
-        market: { type: "team_total", subject: team, side, line, label: `${team} ${side === "over" ? "ИТБ" : "ИТМ"} ${line}` },
+        market: { type: "team_total", subject: team, side, line, label: `${team} ${side === "over" ? "ТОТАЛ КОМАНДЫ БОЛЬШЕ" : "ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${line}` },
       }));
     }
   }

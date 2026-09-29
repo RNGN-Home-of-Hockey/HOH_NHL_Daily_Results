@@ -36,6 +36,7 @@ export function evaluateProviderMarketHistoryRows(game,rowsByTeam,providerMarket
     for(const window of WINDOWS){
       const result=evaluateMarket(market,game,preparedRows,window);
       if(!result)continue;
+      if(marketNeedsVerifiedPeriods(market))result.period_data_verified=true;
       const threshold=displayThreshold(market);
       if(result.rate<threshold||result.decisions<minimumDecisions(window))continue;
       out.push(makeCard(game,market,result,window));
@@ -46,14 +47,23 @@ export function evaluateProviderMarketHistoryRows(game,rowsByTeam,providerMarket
 
 function history(db,team,before){
   return db.prepare(`
-    SELECT game_pk,season_id,game_type,scheduled_start_utc,team_tri,opponent_tri,is_home,
-           final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,
-           regulation_goals_for,regulation_goals_against,regulation_goal_diff,regulation_result,
-           p1_goals_for,p1_goals_against,p2_goals_for,p2_goals_against,p3_goals_for,p3_goals_against,
-           score_after_p1_diff,score_after_p2_diff,first_goal_for
-    FROM team_game_features
-    WHERE team_tri=? AND game_type IN (2,3) AND scheduled_start_utc<?
-    ORDER BY scheduled_start_utc DESC,game_pk DESC
+    SELECT f.game_pk,f.season_id,f.game_type,f.scheduled_start_utc,f.team_tri,f.opponent_tri,f.is_home,
+           f.final_goals_for,f.final_goals_against,f.total_goals,f.final_goal_diff,f.final_win,
+           f.regulation_goals_for,f.regulation_goals_against,f.regulation_goal_diff,f.regulation_result,
+           f.p1_goals_for,f.p1_goals_against,f.p2_goals_for,f.p2_goals_against,f.p3_goals_for,f.p3_goals_against,
+           f.score_after_p1_diff,f.score_after_p2_diff,f.first_goal_for,
+           CASE WHEN f.is_home=1 THEN p1.home_goals ELSE p1.away_goals END AS raw_p1_goals_for,
+           CASE WHEN f.is_home=1 THEN p1.away_goals ELSE p1.home_goals END AS raw_p1_goals_against,
+           CASE WHEN f.is_home=1 THEN p2.home_goals ELSE p2.away_goals END AS raw_p2_goals_for,
+           CASE WHEN f.is_home=1 THEN p2.away_goals ELSE p2.home_goals END AS raw_p2_goals_against,
+           CASE WHEN f.is_home=1 THEN p3.home_goals ELSE p3.away_goals END AS raw_p3_goals_for,
+           CASE WHEN f.is_home=1 THEN p3.away_goals ELSE p3.home_goals END AS raw_p3_goals_against
+    FROM team_game_features f
+    LEFT JOIN period_scores p1 ON p1.game_pk=f.game_pk AND p1.period_number=1 AND p1.period_type='REG'
+    LEFT JOIN period_scores p2 ON p2.game_pk=f.game_pk AND p2.period_number=2 AND p2.period_type='REG'
+    LEFT JOIN period_scores p3 ON p3.game_pk=f.game_pk AND p3.period_number=3 AND p3.period_type='REG'
+    WHERE f.team_tri=? AND f.game_type IN (2,3) AND f.scheduled_start_utc<?
+    ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC
     LIMIT ${MAX_HISTORY};
   `).bind(team,before);
 }
@@ -65,9 +75,43 @@ function prepareHistoryRows(rows,team,game){
     if(!Number.isSafeInteger(pk)||pk<=0||seen.has(pk))continue;
     if(raw?.team_tri&&String(raw.team_tri).toUpperCase()!==String(team||"").toUpperCase())continue;
     seen.add(pk);
-    out.push({...raw,__streak_eligible:!game?.season_id||!raw?.season_id||String(raw.season_id)===String(game.season_id)});
+    const periodCheck=verifyRawPeriods(raw);
+    const prepared={...raw,__streak_eligible:!game?.season_id||!raw?.season_id||String(raw.season_id)===String(game.season_id),__period_verified:periodCheck.ok,__period_validation:periodCheck.reason};
+    if(periodCheck.ok){
+      for(let p=1;p<=3;p++){
+        prepared[`p${p}_goals_for`]=periodCheck.periods[p-1].gf;
+        prepared[`p${p}_goals_against`]=periodCheck.periods[p-1].ga;
+      }
+    }
+    out.push(prepared);
   }
   return out.sort((a,b)=>String(b.scheduled_start_utc||"").localeCompare(String(a.scheduled_start_utc||""))||Number(b.game_pk)-Number(a.game_pk));
+}
+function verifyRawPeriods(row){
+  const periods=[];
+  for(let p=1;p<=3;p++){
+    const gf=finite(row?.[`raw_p${p}_goals_for`]),ga=finite(row?.[`raw_p${p}_goals_against`]);
+    const featureGf=finite(row?.[`p${p}_goals_for`]),featureGa=finite(row?.[`p${p}_goals_against`]);
+    if(!Number.isInteger(gf)||!Number.isInteger(ga)||gf<0||ga<0)return {ok:false,reason:"missing_raw_period_scores",periods:[]};
+    if(featureGf!==gf||featureGa!==ga)return {ok:false,reason:"feature_period_mismatch",periods:[]};
+    periods.push({gf,ga});
+  }
+  const regGf=finite(row?.regulation_goals_for),regGa=finite(row?.regulation_goals_against),regDiff=finite(row?.regulation_goal_diff);
+  const sumGf=periods.reduce((s,x)=>s+x.gf,0),sumGa=periods.reduce((s,x)=>s+x.ga,0);
+  if(regGf===null||regGa===null||regDiff===null||sumGf!==regGf||sumGa!==regGa||sumGf-sumGa!==regDiff)return {ok:false,reason:"period_regulation_mismatch",periods:[]};
+  return {ok:true,reason:"period_scores+feature+regulation",periods};
+}
+function marketNeedsVerifiedPeriods(m){
+  const type=String(m?.market_type||""),period=String(m?.period||"GAME").toUpperCase();
+  return /^P[123]$/.test(period)||/^period_[123]_result$/.test(type)||type==="highest_scoring_period"||type==="win_all_periods";
+}
+function verifiedPeriodWindow(m,game,rowsByTeam,window){
+  if(!marketNeedsVerifiedPeriods(m))return true;
+  const subject=String(m?.subject||"").toUpperCase();
+  const sets=subject&&rowsByTeam?.[subject]
+    ?[(rowsByTeam[subject]||[]).slice(0,window)]
+    :[(rowsByTeam?.[game.away_tri]||[]).slice(0,window),(rowsByTeam?.[game.home_tri]||[]).slice(0,window)];
+  return sets.length>0&&sets.every(sample=>sample.length>=Math.min(8,window)&&sample.every(row=>row.__period_verified===true));
 }
 function validRegulationRow(row){
   const gf=finite(row?.regulation_goals_for),ga=finite(row?.regulation_goals_against),diff=finite(row?.regulation_goal_diff),res=String(row?.regulation_result||"");
@@ -81,6 +125,7 @@ function validFinalRow(row){
 
 function evaluateMarket(m,game,rowsByTeam,window){
   const type=String(m.market_type||"");
+  if(!verifiedPeriodWindow(m,game,rowsByTeam,window))return null;
   const period=String(m.period||"GAME");
   const side=String(m.side||"").toLowerCase();
   const subject=String(m.subject||"").toUpperCase()||null;
@@ -286,7 +331,8 @@ function makeCard(game,m,r,window){
       current_streak:r.current_streak||0,
       streak_verified:r.streak_verified===true,
       streak_game_pks:r.streak_game_pks||[],
-      stats_validation:"dedupe+result_consistency+same_season_streak_v2",
+      stats_validation:"exact_market_v4_raw_period_crosscheck",
+      period_data_verified:marketNeedsVerifiedPeriods(m)?r.period_data_verified===true:null,
       history_scope:"official_nhl_games_regular_plus_playoffs",
       away:r.away||null,
       home:r.home||null,
@@ -363,7 +409,7 @@ function marketHistoryTitle(m,r,window){
   if(t==="team_goal_bucket")return `${s}: ${side==="0_1"?"0–1 ШАЙБА":side==="2"?"РОВНО 2 ШАЙБЫ":"3+ ШАЙБЫ"} — ${count} МАТЧЕЙ`;
   if(t==="highest_scoring_period")return `${s||"КОМАНДА"}: ${side.replace("P","")}-Й ПЕРИОД БЫЛ САМЫМ РЕЗУЛЬТАТИВНЫМ В ${count} МАТЧЕЙ`;
   if(t==="win_all_periods")return `${s} ВЫИГРАЛ ВСЕ 3 ПЕРИОДА В ${count} МАТЧЕЙ`;
-  if(t==="result_total_combo")return `${s} ПОБЕДИЛ + ${side==="over"?"ТБ":"ТМ"} ${fmt(line)} В ${count} МАТЧЕЙ`;
+  if(t==="result_total_combo")return `${s} ПОБЕДИЛ + ${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${fmt(line)} В ${count} МАТЧЕЙ`;
   return `${marketLabel(m)} — ${count}`;
 }
 function operatorExplanation(m,r,game){

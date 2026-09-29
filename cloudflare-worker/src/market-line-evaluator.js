@@ -52,7 +52,7 @@ function gameTotals(game,home,away) {
     const chosen=side==='over'?p:1-p;
     return market({
       game,type:'game_total',subject:null,line,side,
-      label:`${side==='over'?'ТБ':'ТМ'} ${line}`,
+      label:`${side==='over'?'ТОТАЛ БОЛЬШЕ':'ТОТАЛ МЕНЬШЕ'} ${line}`,
       combinedRate:chosen,
       components:{
         [`${game.home_tri}_games_${side}`]:side==='over'?homeRate:1-homeRate,
@@ -72,7 +72,7 @@ function teamTotals(game,team,opponent,teamRows,opponentRows) {
     const chosen=side==='over'?p:1-p;
     return market({
       game,type:'team_total',subject:team,line,side,
-      label:`${team} ${side==='over'?'ТБ':'ТМ'} ${line}`,
+      label:`${team} ${side==='over'?'ТОТАЛ КОМАНДЫ БОЛЬШЕ':'ТОТАЛ КОМАНДЫ МЕНЬШЕ'} ${line}`,
       combinedRate:chosen,
       components:{
         [`${team}_scoring_${side}`]:side==='over'?scoring:1-scoring,

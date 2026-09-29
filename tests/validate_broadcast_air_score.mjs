@@ -54,7 +54,14 @@ assert.equal(floridaMismatch.air_meta.sample_size,140);
 assert.equal(floridaMismatch.air_meta.historical_rate,0.507);
 assert.match(floridaMismatch.broadcast_title,/71.*140/,'71/140 must display the exact numerator and denominator');
 assert.ok(!floridaMismatch.broadcast_title.includes('69%'));
-assert.equal(floridaMismatch.broadcast_math_valid,true);
+const floridaTraceable=annotateAirUtility({
+  score:96,title:'FLA победила 71 из 140',
+  evidence:{sample:140,hits:71,hit_rate:71/140,game_pks:Array.from({length:140},(_,i)=>10000+i)},
+  market:{type:'moneyline',subject:'FLA',side:'FLA',label:'Победа FLA',odds:2.00,odds_is_demo:false,odds_source:'provider_live'}
+});
+assert.equal(floridaTraceable.broadcast_math_valid,true,'large sample is allowed only when every game is traceable');
+assert.equal(floridaTraceable.air_meta.historical_rate,0.507);
+assert.equal(floridaMismatch.broadcast_math_valid,false,'140-game claim without 140 unique game ids must not enter the broadcast queue');
 
 const unpairedPercent=annotateAirUtility({
   score:96,
@@ -81,6 +88,11 @@ assert.equal(broadcastCardSemanticsValid({
   broadcast_math_valid:true,broadcast_title:'3-Й ПЕРИОД: ФЛОРИДА — 7 ИЗ 10',
   evidence:{team:'FLA'},market:{type:'period_1_result',period:'P1',subject:'FLA',label:'1-Й ПЕРИОД · ПОБЕДА FLA'}
 },{home_tri:'CAR',away_tri:'FLA'}),false,'TV period must match the actual Winline market period');
+assert.equal(broadcastCardSemanticsValid({
+  broadcast_math_valid:true,broadcast_title:'2-Й ПЕРИОД: ФЛОРИДА — 7 ИЗ 10',
+  evidence:{sample:10,hits:7,game_pks:Array.from({length:10},(_,i)=>20000+i),exact_provider_line:true,period_data_verified:false},
+  market:{type:'period_2_result',period:'P2',subject:'FLA',label:'2-Й ПЕРИОД · ПОБЕДА FLA'}
+},{home_tri:'CAR',away_tri:'FLA'}),false,'historical period trend must have an independent period_scores cross-check');
 console.log('BROADCAST_AIR_SCORE_OK',JSON.stringify({
   bostonHome:bostonHome.air_score,
   safeHandicap:safeHandicap.air_score,

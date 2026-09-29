@@ -2,12 +2,17 @@ import { strict as assert } from "node:assert";
 import { buildH2HBroadcastInsights } from "../cloudflare-worker/src/h2h-broadcast-insights.js";
 
 const game={game_pk:77,scheduled_start_utc:"2026-10-01T00:00:00Z",away_tri:"FLA",home_tri:"CAR",away_name_ru:"Флорида Пантерз",home_name_ru:"Каролина Харрикейнз"};
-const rows=Array.from({length:6},(_,i)=>({
-  game_pk:100+i,
-  final_goals_for:i<4?4:2,final_goals_against:i<4?2:3,total_goals:i<5?6:4,final_goal_diff:i<4?2:-1,final_win:i<4?1:0,
-  regulation_result:i<4?"W":"L",regulation_goal_diff:i<4?1:-1,
-  p1_goals_for:i<4?1:0,p1_goals_against:i<4?0:1,p2_goals_for:2,p2_goals_against:1,p3_goals_for:1,p3_goals_against:1
-}));
+const rows=Array.from({length:6},(_,i)=>{
+  const p1gf=i<4?1:0,p1ga=i<4?0:1,p2gf=2,p2ga=1,p3gf=1,p3ga=1;
+  const regGf=p1gf+p2gf+p3gf,regGa=p1ga+p2ga+p3ga;
+  return {
+    game_pk:100+i,
+    final_goals_for:i<4?4:2,final_goals_against:i<4?2:3,total_goals:i<5?6:4,final_goal_diff:i<4?2:-1,final_win:i<4?1:0,
+    regulation_goals_for:regGf,regulation_goals_against:regGa,regulation_result:regGf>regGa?"W":regGf<regGa?"L":"T",regulation_goal_diff:regGf-regGa,
+    p1_goals_for:p1gf,p1_goals_against:p1ga,p2_goals_for:p2gf,p2_goals_against:p2ga,p3_goals_for:p3gf,p3_goals_against:p3ga,
+    raw_p1_goals_for:p1gf,raw_p1_goals_against:p1ga,raw_p2_goals_for:p2gf,raw_p2_goals_against:p2ga,raw_p3_goals_for:p3gf,raw_p3_goals_against:p3ga
+  };
+});
 const db={prepare(){return{bind(){return{all:async()=>({results:rows})}}}}};
 const now="2026-09-23T10:45:00Z";
 const real={provider:"winline",status:"open",updated_at:now,event_id:"e",is_live:false};
@@ -15,6 +20,7 @@ const markets=[
   {...real,market_type:"moneyline",period:"GAME",subject:"FLA",side:"FLA",line:null,odds:2.10},
   {...real,market_type:"game_total",period:"GAME",subject:null,side:"over",line:5.5,odds:1.85},
   {...real,market_type:"handicap",period:"GAME",subject:"CAR",side:"CAR",line:1.5,odds:1.60},
+  {...real,market_type:"period_2_result",period:"P2",subject:"FLA",side:"FLA",line:null,odds:2.55},
   {...real,market_type:"game_total",period:"GAME",subject:null,side:"under",line:7.5,odds:1.25,is_live:true}
 ];
 const cards=await buildH2HBroadcastInsights(db,game,markets);
@@ -28,6 +34,10 @@ assert.equal(ml.evidence.decisions,6);
 assert.match(ml.title,/ФЛОРИДА ПАНТЕРЗ ОБЫГРЫВАЛИ КАРОЛИНА ХАРРИКЕЙНЗ В 4 ИЗ 6 ПОСЛЕДНИХ МАТЧЕЙ/);
 assert.equal(ml.evidence.team,"FLA");
 assert.equal(ml.evidence.opponent,"CAR");
+const p2=cards.find(c=>c.market.type==="period_2_result"&&c.market.subject==="FLA");
+assert.ok(p2,"verified period line should survive H2H evaluation");
+assert.equal(p2.evidence.period_data_verified,true);
+assert.equal(p2.evidence.stats_validation,"exact_market_v4_raw_period_crosscheck");
 const total=cards.find(c=>c.market.type==="game_total"&&c.market.line===5.5);
 assert.ok(total);
 assert.equal(total.evidence.hits,5);
