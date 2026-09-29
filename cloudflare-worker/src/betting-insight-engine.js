@@ -528,11 +528,7 @@ function pairedRateStats(rateValue,sampleValue,source){
 function frequencyStatsSemanticallyValid(card,stats){
   if(!stats?.verified)return false;
   const e=card?.evidence||{},m=card?.market||{},type=String(m.type||"").toLowerCase(),source=String(stats.source||"");
-  if(source==="evidence"){
-    if(e.exact_provider_line===true)return true;
-    if(e.hits!==null&&e.hits!==undefined&&/market|regulation|expanded|h2h|provider|team_game_features/i.test(String(e.feature_layer||"")))return true;
-    if(Number(stats.sample)<=40&&e.hits!==null&&e.hits!==undefined)return true;
-  }
+  if(source==="evidence"&&e.hits!==null&&e.hits!==undefined&&Number(stats.sample)>0)return true;
   if(source==="wins"&&type==="moneyline"){
     const team=String(e.team||m.subject||"").toUpperCase(),subject=String(m.subject||"").toUpperCase();
     return Boolean(subject)&&team===subject;
