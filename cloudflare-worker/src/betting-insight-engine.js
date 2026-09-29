@@ -601,6 +601,9 @@ export function broadcastCardSemanticsValid(card,game={}){
   const typePeriod=/^period_([123])_result$/.exec(type),expected=typePeriod?"P"+typePeriod[1]:/^(P[123])$/.test(mp)?mp:null;
   if(titlePeriod&&expected&&titlePeriod!==expected)return false;
   const team=String(e.team||m.subject||"").toUpperCase(),opponent=String(e.opponent||"").toUpperCase();
+  const subject=String(m.subject||"").toUpperCase();
+  const directionalTeamMarket=["moneyline","handicap","period_1_result","period_2_result","period_3_result","double_chance"].includes(type);
+  if(e.market_combination===true&&directionalTeamMarket&&team&&subject&&team!==subject)return false;
   if(String(e.split||"").toLowerCase()==="h2h"&&team&&opponent){
     if(team===opponent)return false;
     const home=String(game.home_tri||"").toUpperCase(),away=String(game.away_tri||"").toUpperCase(),wanted=team===home?away:team===away?home:"";
