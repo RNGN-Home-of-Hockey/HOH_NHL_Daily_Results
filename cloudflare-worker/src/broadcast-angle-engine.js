@@ -20,6 +20,8 @@ export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
   let s=String(value||"").replace(/\s+/g," ").trim().toUpperCase();
   s=expandBroadcastTerms(s);
   for(const [full,short] of FULL_TEAM_SHORT)s=s.replaceAll(full,short);
+  for(const [,short] of FULL_TEAM_SHORT)s=s.replaceAll(short+" ИЛИ НИЧЬЯ",short+" НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ");
+  s=s.replace(/\b([A-Z]{3}) ИЛИ НИЧЬЯ\b/g,"$1 НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ");
   s=s
     .replace(/ПО РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ/g,"ПО БАЛАНСУ МОМЕНТОВ")
     .replace(/ПО СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ/g,"ПО СОЗДАНИЮ МОМЕНТОВ")
@@ -56,7 +58,7 @@ function expandBroadcastTerms(value){
     .replace(/(^|[\s·—:])ТМ(?=\s|$)/g,"$1ТОТАЛ МЕНЬШЕ")
     .replace(/(^|[\s·—:])ТБ(?=\s|$)/g,"$1ТОТАЛ БОЛЬШЕ")
     .replace(/\bDOUBLE_CHANCE\b/gi,"ДВОЙНОЙ ШАНС")
-    .replace(/\bTEAM_OR_DRAW\b/gi,"КОМАНДА ИЛИ НИЧЬЯ")
+    .replace(/\bTEAM_OR_DRAW\b/gi,"КОМАНДА НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ")
     .replace(/\bNO_DRAW\b/gi,"БЕЗ НИЧЬЕЙ")
     .replace(/\bPERIOD_1_RESULT\b/gi,"ПОБЕДА В 1-М ПЕРИОДЕ")
     .replace(/\bPERIOD_2_RESULT\b/gi,"ПОБЕДА В 2-М ПЕРИОДЕ")
