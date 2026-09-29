@@ -259,6 +259,7 @@ jobs:
           node tests/validate_market_combination_engine.mjs
           node tests/validate_market_coverage_audit.mjs
           node tests/validate_provider_market_history.mjs
+          node tests/validate_expanded_market_integrity.mjs
           node tests/validate_broadcast_angle_engine.mjs
           node tests/validate_broadcast_four_cards.mjs
           node tests/validate_h2h_current_line_broadcast.mjs
