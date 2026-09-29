@@ -32,6 +32,7 @@ const insights=[
 const markets=[
   {provider:"winline",market_type:"moneyline",period:"GAME",subject:"CAR",side:"CAR",line:null,odds:1.79,status:"open",updated_at:now},
   {provider:"winline",market_type:"handicap",period:"GAME",subject:"CAR",side:"CAR",line:-1.5,odds:2.65,status:"open",updated_at:now},
+  {provider:"winline",market_type:"handicap",period:"GAME",subject:"FLA",side:"FLA",line:-1.0,odds:3.05,status:"open",updated_at:now},
   {provider:"winline",market_type:"team_total",period:"GAME",subject:"CAR",side:"over",line:3.5,odds:2.08,status:"open",updated_at:now},
   {provider:"winline",market_type:"both_teams_score",period:"GAME",subject:null,side:"no",line:null,odds:7.00,status:"open",updated_at:now}
 ];
@@ -44,6 +45,10 @@ const tt35=cards.filter(c=>c.market.type==="team_total"&&c.market.line===3.5);
 assert.ok(tt35.some(c=>(c.evidence?.source_insight_ids||[]).includes("attack-car")),"line-independent attack context may support the actual 3.5 market");
 assert.equal(tt35.some(c=>(c.evidence?.source_insight_ids||[]).includes("tt-car")),false,"2.5 historical hit-rate must never be relabeled as 3.5");
 assert.ok(cards.some(c=>c.evidence?.combination_support_count===2),"independent evidence pairs should be created");
+const flaMinusOne=cards.filter(c=>c.market.type==="handicap"&&c.market.subject==="FLA"&&c.market.line===-1);
+assert.equal(flaMinusOne.some(c=>(c.evidence?.source_insight_ids||[]).includes("advanced-car")),false,"CAR dominance/rank evidence must never be reused to sell the opposite FLA side");
+const carMoneylinePair=cards.find(c=>c.market.type==="moneyline"&&c.market.subject==="CAR"&&c.evidence?.combination_support_count===2);
+assert.equal(carMoneylinePair?.title,"CAR strong home form","direct 8/10 home-form evidence should be the primary story over generic advanced context");
 assert.ok(cards.every(c=>c.market.odds_is_demo===false&&c.market.odds_source==="provider_live"));
 const contextualTt35=tt35.find(c=>(c.evidence?.source_insight_ids||[]).includes("attack-car"));
 assert.equal(contextualTt35?.evidence?.target_market_frequency_verified,false,"contextual source must not be marked as exact 3.5 history");
