@@ -26,14 +26,22 @@ export async function buildExpandedMarketInsights(db,game){
 
 function recent(db,team,before){
   return db.prepare(`
-    SELECT game_pk,team_tri,opponent_tri,is_home,
-           final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,
-           regulation_result,regulation_goal_diff,
-           p1_goals_for,p1_goals_against,p2_goals_for,p2_goals_against,p3_goals_for,p3_goals_against,
-           score_after_p1_diff,score_after_p2_diff,first_goal_for
-    FROM team_game_features
-    WHERE team_tri=? AND scheduled_start_utc<?
-    ORDER BY scheduled_start_utc DESC,game_pk DESC
+    SELECT f.game_pk,f.team_tri,f.opponent_tri,f.is_home,
+           f.final_goals_for,f.final_goals_against,f.total_goals,f.final_goal_diff,f.final_win,
+           f.regulation_result,f.regulation_goal_diff,
+           f.p1_goals_for,f.p1_goals_against,f.p2_goals_for,f.p2_goals_against,f.p3_goals_for,f.p3_goals_against,
+           f.score_after_p1_diff,f.score_after_p2_diff,f.first_goal_for
+    FROM team_game_features f
+    JOIN games g ON g.game_pk=f.game_pk
+    JOIN team_game_stats own ON own.game_pk=f.game_pk AND own.team_tri=f.team_tri
+    JOIN team_game_stats opp ON opp.game_pk=f.game_pk AND opp.team_tri=f.opponent_tri
+    WHERE f.team_tri=? AND f.scheduled_start_utc<?
+      AND UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF')
+      AND f.final_goals_for=CASE WHEN f.is_home=1 THEN g.home_score ELSE g.away_score END
+      AND f.final_goals_against=CASE WHEN f.is_home=1 THEN g.away_score ELSE g.home_score END
+      AND own.goals=f.final_goals_for
+      AND opp.goals=f.final_goals_against
+    ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC
     LIMIT 20;
   `).bind(team,before);
 }
@@ -192,16 +200,16 @@ function contextCard(game,team,opponent,kind,rate,hits,sample){
 function card(game,x){
   return {id:`${game.game_pk}:expanded:${x.id}`,insight_type:x.type,category:"expanded_market",kind:"history",timing:"pregame",
     score:Math.round(x.score),eyebrow:x.eyebrow,value:x.value,title:x.title,explanation:x.explanation,
-    evidence:{...x.evidence,feature_layer:"team_game_features_expanded_markets_v1"},
+    evidence:{...x.evidence,feature_layer:"team_game_features_expanded_markets_v2",stats_validation:"final_feature_v2_games_team_stats",final_data_verified:true},
     market:{type:x.type,period:"GAME",subject:x.subject,side:x.side,line:x.line,label:marketLabel(x)}};
 }
 function marketLabel(x){
   if(x.type==="both_teams_score")return x.side==="yes"?"Обе команды забьют":"Обе команды забьют — нет";
   if(x.type==="team_goal_bucket")return `${x.subject}: ${x.side==="0_1"?"0–1":x.side==="2"?"ровно 2":"3+"} шайбы`;
-  if(x.type==="highest_scoring_period")return `${x.subject}: самый результативный ${x.side}`;
+  if(x.type==="highest_scoring_period"){const p=String(x.side||"").replace(/^P([123])$/,"$1-Й ПЕРИОД");return `${x.subject}: самый результативный ${p}`;}
   if(x.type==="win_all_periods")return `${x.subject}: выиграет все периоды`;
   if(x.type==="double_chance")return `${x.subject} не проиграет в основное время`;
-  if(x.type==="result_total_combo")return `Победа ${x.subject} + ${x.side==="over"?"ТБ":"ТМ"} ${fmt(x.line)}`;
+  if(x.type==="result_total_combo")return `Победа ${x.subject} + ${x.side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${fmt(x.line)}`;
   return x.type;
 }
 function score(window,rate,floor){return Math.min(96,72+(window===20?7:4)+Math.round(Math.max(0,rate-floor)*35))}
