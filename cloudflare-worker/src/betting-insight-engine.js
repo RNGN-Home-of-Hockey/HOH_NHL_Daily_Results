@@ -181,6 +181,13 @@ export function annotateAirUtility(input, game=null) {
   const adjustedRate=Number.isFinite(hitRate)?0.5+(hitRate-0.5)*credibility:null;
   const adjustedGap=realPrice&&Number.isFinite(adjustedRate)?adjustedRate-implied:null;
   const rawGap=realPrice&&Number.isFinite(hitRate)?hitRate-implied:null;
+  // A huge gap between a verified historical frequency and a long current price
+  // is more likely to signal a mapping/data problem than a broadcast-worthy edge.
+  // Fail closed until the evidence chain can be inspected.
+  const priceHistorySuspicious=Boolean(
+    realPrice&&stats.verified===true&&sample>=10&&Number.isFinite(rawGap)&&
+    hitRate>=0.75&&odds>=3.0&&rawGap>=0.50
+  );
   const analyticalNarrative=isAnalyticalNarrative(card);
   const reasons=[];
 
@@ -191,6 +198,10 @@ export function annotateAirUtility(input, game=null) {
 
   if(card?.evidence?.requires_start_confirmation===true){
     score-=14;reasons.push(["вратарь не подтверждён",-14]);
+  }
+
+  if(priceHistorySuspicious){
+    score-=28;reasons.push(["цена противоречит истории",-28]);
   }
 
   if(realPrice){
@@ -328,12 +339,15 @@ export function annotateAirUtility(input, game=null) {
     stats_reported_rate:stats.reported_rate,
     stats_hits:stats.hits,
     stats_consistent:stats.consistent,
+    target_market_frequency_verified:card?.evidence?.market_combination===true?card?.evidence?.target_market_frequency_verified===true:null,
+    price_history_suspicious:priceHistorySuspicious,
   };
   const frequencyClaim=hasFrequencyClaim(card);
   const frequencyCapable=Number.isFinite(hitRate)&&sample>0;
   const semanticStatsOk=frequencyStatsSemanticallyValid(card,stats);
-  card.broadcast_math_valid=stats.consistent!==false&&(isAnalyticalNarrative(card)||!frequencyCapable||(stats.verified===true&&semanticStatsOk));
+  card.broadcast_math_valid=stats.consistent!==false&&!priceHistorySuspicious&&(isAnalyticalNarrative(card)||!frequencyCapable||(stats.verified===true&&semanticStatsOk));
   if(frequencyClaim&&(!semanticStatsOk||stats.verified!==true)&&!isAnalyticalNarrative(card))card.broadcast_math_valid=false;
+  if(priceHistorySuspicious)card.broadcast_math_valid=false;
   const formatted=formatBroadcastTitle(card,{sample,hitRate,hits:stats.hits,stats,game});
   const narrative=buildNarrative(
     {...card,broadcast_title:formatted.title,broadcast_detail:formatted.detail},
@@ -494,6 +508,12 @@ function formatAdvancedBroadcastTitle(card,original){
 
 function editorialStats(card){
   const e=card?.evidence||{};
+  // A market-combination card may carry the source atom's hits/sample, but those
+  // numbers describe the source fact unless the atom is the exact same market.
+  // Never reinterpret contextual evidence as the target Winline line's history.
+  if(e.market_combination===true&&e.target_market_frequency_verified!==true){
+    return {hits:null,sample:0,rate:null,verified:false,consistent:true,source:"context_only",rate_corrected:false,reported_rate:null};
+  }
   const direct=exactStats(e.hits,firstAirPositiveNumber(e.decisions,e.sample,e.sample_size,e.games,e.window),e.hit_rate,"evidence");
   if(direct)return direct;
   for(const [name,obj] of [["cover",e.cover],["attack",e.attack],["opponent_defense",e.opponent_defense]]){
@@ -530,6 +550,7 @@ function pairedRateStats(rateValue,sampleValue,source){
 function frequencyStatsSemanticallyValid(card,stats){
   if(!stats?.verified)return false;
   const e=card?.evidence||{},m=card?.market||{},type=String(m.type||"").toLowerCase(),source=String(stats.source||"");
+  if(e.market_combination===true&&e.target_market_frequency_verified!==true)return false;
   const sample=Number(stats.sample||0);
   if(sample>MAX_BROADCAST_FREQUENCY_SAMPLE)return false;
   if(source==="evidence"&&e.hits!==null&&e.hits!==undefined&&sample>0)return true;
@@ -573,6 +594,8 @@ export function broadcastCardSemanticsValid(card,game={}){
   }
   if(/\b(?:P[123]|PERIOD_[123]_RESULT|DOUBLE_CHANCE|TEAM_OR_DRAW|NO_DRAW)\b/i.test(title+" "+String(m.label||"")))return false;
   const frequencySample=Number(card?.air_meta?.sample_size||e.sample||e.decisions||0);
+  if(e.market_combination===true&&hasFrequencyClaim(card)&&e.target_market_frequency_verified!==true&&!isAnalyticalNarrative(card))return false;
+  if(card?.air_meta?.price_history_suspicious===true)return false;
   if(hasFrequencyClaim(card)&&Number.isFinite(frequencySample)&&frequencySample>MAX_BROADCAST_FREQUENCY_SAMPLE)return false;
   const tm=/([123])-Й ПЕРИОД/i.exec(title),titlePeriod=tm?"P"+tm[1]:null;
   const typePeriod=/^period_([123])_result$/.exec(type),expected=typePeriod?"P"+typePeriod[1]:/^(P[123])$/.test(mp)?mp:null;
@@ -623,8 +646,18 @@ function roundAir3(value){return Math.round(Number(value)*1000)/1000}
 
 export function resolveContradictoryAdvice(cards=[]){
   const sorted=[...(cards||[])].sort((a,b)=>Number(b?.air_score||0)-Number(a?.air_score||0));
-  const accepted=[],winners=new Map();
+  const accepted=[],winners=new Map(),rankWinners=new Map();
   for(const card of sorted){
+    const rankConflict=analyticalRankIdentity(card);
+    if(rankConflict){
+      const priorRank=rankWinners.get(rankConflict.key);
+      if(priorRank&&priorRank.signature!==rankConflict.signature){
+        card.suppressed_reason="contradictory_rank_evidence";
+        continue;
+      }
+      if(!priorRank)rankWinners.set(rankConflict.key,rankConflict);
+    }
+
     const conflict=hardConflictIdentity(card);
     if(!conflict){accepted.push(card);continue}
     const prior=winners.get(conflict.key);
@@ -642,6 +675,24 @@ export function resolveContradictoryAdvice(cards=[]){
     card.suppressed_reason="opposite_market_direction";
   }
   return accepted;
+}
+
+function analyticalRankIdentity(card){
+  const e=card?.evidence||{};
+  const metric=String(e.metric||"").toLowerCase();
+  const opponentMetric=String(e.opponent_metric||metric).toLowerCase();
+  const team=String(e.team||card?.market?.subject||"").toUpperCase();
+  const opponent=String(e.opponent||"").toUpperCase();
+  const teamRank=finiteAirNumber(e.team_rank??e.rank);
+  const opponentRank=finiteAirNumber(e.opponent_rank);
+  if(!metric||metric!==opponentMetric||!team||!opponent||team===opponent||teamRank===null||opponentRank===null)return null;
+  const teams=[team,opponent].sort();
+  const rankByTeam={[team]:Math.round(teamRank),[opponent]:Math.round(opponentRank)};
+  const scope=String(e.rank_scope||e.season||"season").toLowerCase();
+  return {
+    key:["rank",metric,scope,teams.join("|")].join("|"),
+    signature:teams.map(t=>t+":"+rankByTeam[t]).join("|")
+  };
 }
 
 function hardConflictIdentity(card){
