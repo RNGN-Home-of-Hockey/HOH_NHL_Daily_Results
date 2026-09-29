@@ -9,6 +9,9 @@ on:
       - 'cloudflare-worker/src/broadcast-angle-engine.js'
       - 'cloudflare-worker/src/narrative-engine.js'
       - 'cloudflare-worker/src/betting-insight-engine.js'
+      - 'cloudflare-worker/src/broadcast-dashboard-v2.js'
+      - 'cloudflare-worker/src/broadcast-four-card-selector.js'
+      - 'cloudflare-worker/src/winline-feed-maintenance.js'
       - 'cloudflare-worker/src/market-coverage-audit.js'
       - 'cloudflare-worker/src/provider-market-history-insights.js'
 
@@ -34,7 +37,10 @@ jobs:
           set -euo pipefail
           RAW="$(npx wrangler d1 execute hoh-data-core --remote --json --command "
             SELECT e.game_pk,e.starts_at AS scheduled_start_utc,g.away_tri,g.home_tri,
-                   COUNT(m.winline_market_id) AS active_selections
+                   COUNT(m.winline_market_id) AS active_selections,
+                   SUM(CASE WHEN m.odds>=1.50 THEN 1 ELSE 0 END) AS eligible_150,
+                   SUM(CASE WHEN m.odds<1.50 THEN 1 ELSE 0 END) AS low_under_150,
+                   MAX(m.updated_at) AS latest_market_update
             FROM winline_events e
             JOIN games g ON g.game_pk=e.game_pk
             JOIN winline_markets m ON m.winline_event_id=e.winline_event_id
@@ -45,13 +51,160 @@ jobs:
             GROUP BY e.game_pk,e.starts_at,g.away_tri,g.home_tri
             HAVING active_selections>0
             ORDER BY datetime(e.starts_at) ASC
-            LIMIT 12;
+            LIMIT 5;
           ")"
           echo "$RAW" | jq .
           mapfile -t GAMES < <(echo "$RAW" | jq -r '.[0].results[]?.game_pk')
           if [ "${#GAMES[@]}" -eq 0 ]; then
             echo "No near-term games found"
             exit 0
+          fi
+          echo "Waiting for production broadcast policy 1.50 / 4 / 58..."
+          first_pk="${GAMES[0]}"
+          ready=0
+          for attempt in {1..60}; do
+            probe="$(curl -fsSL --retry 2 --retry-delay 1 "$HOH_WORKER/api/broadcast/games/$first_pk" || true)"
+            policy="$(echo "$probe" | jq -r '[.broadcast_card_policy.min_odds,.broadcast_card_policy.featured_target,.broadcast_card_policy.max_headline_chars] | @tsv' 2>/dev/null || true)"
+            echo "POLICY_WAIT $attempt $policy"
+            if [ "$policy" = 
+          total_markets=0
+          covered_markets=0
+          multi_markets=0
+          priced_cards=0
+          variants=0
+          structured_angles=0
+          numeric_headlines=0
+          final_cards=0
+          featured_cards=0
+          featured_form=0
+          featured_h2h=0
+          brief_points=0
+          score_100=0
+          score_95_plus=0
+          score_85_plus=0
+          pre_raw=0
+          pre_combos=0
+          pre_matched=0
+          pre_covered=0
+          pre_markets=0
+          games_ok=0
+          for pk in "${GAMES[@]}"; do
+            echo "=== GAME $pk ==="
+            JSON="$(curl -fsSL --retry 3 --retry-delay 2 "$HOH_WORKER/api/broadcast/games/$pk")"
+            echo "$JSON" | jq '{game:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,state:.game.game_state,start:.game.scheduled_start_utc},provider_market_count,eligible_provider_market_count,broadcast_card_policy,queue_summary,market_coverage,generator_diagnostics}'
+            card_count="$(echo "$JSON" | jq -r '.cards | length // 0')"
+            eligible="$(echo "$JSON" | jq -r '.eligible_provider_market_count // 0')"
+            low_cards="$(echo "$JSON" | jq -r '[.cards[]? | select((.market.odds // 0) < 1.5)] | length')"
+            featured_low="$(echo "$JSON" | jq -r '[.featured_cards[]? | select((.market.odds // 0) < 1.5)] | length')"
+            max_title="$(echo "$JSON" | jq -r '[.cards[]? | (.broadcast_title // .title // "") | length] | max // 0')"
+            ftotal_now="$(echo "$JSON" | jq -r '.featured_cards | length // 0')"
+            min_odds="$(echo "$JSON" | jq -r '[.cards[]?.market.odds] | min // null')"
+            echo "$JSON" | jq -c '{FIRST_FIVE_BROADCAST_BASE:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,start:.game.scheduled_start_utc,provider_markets:.provider_market_count,eligible_150:.eligible_provider_market_count,cards:(.cards|length),featured:(.featured_cards|length),min_odds:([.cards[]?.market.odds]|min//null),max_title_chars:([.cards[]?|(.broadcast_title//.title//"")|length]|max//0),featured_titles:[.featured_cards[]?|{title:(.broadcast_title//.title),odds:.market.odds,market:.market.label}]}}'
+            if [ "$low_cards" -ne 0 ] || [ "$featured_low" -ne 0 ]; then echo "LOW_ODDS_CARD_LEAK game=$pk cards=$low_cards featured=$featured_low"; exit 1; fi
+            if [ "$max_title" -gt 58 ]; then echo "HEADLINE_TOO_LONG game=$pk max=$max_title"; exit 1; fi
+            if [ "$eligible" -ge 4 ] && { [ "$card_count" -lt 4 ] || [ "$ftotal_now" -lt 4 ]; }; then
+              echo "NOT_ENOUGH_COMMENTATOR_CHOICES game=$pk eligible_markets=$eligible cards=$card_count featured=$ftotal_now"
+              exit 1
+            fi
+            p="$(echo "$JSON" | jq -r '.market_coverage.provider_exact_market_count // 0')"
+            c="$(echo "$JSON" | jq -r '.market_coverage.covered_exact_market_count // 0')"
+            m="$(echo "$JSON" | jq -r '.market_coverage.multi_signal_market_count // 0')"
+            pc="$(echo "$JSON" | jq -r '.market_coverage.priced_card_count // 0')"
+            v="$(echo "$JSON" | jq -r '.market_coverage.broadcast_variant_count // 0')"
+            sa="$(echo "$JSON" | jq -r '.market_coverage.structured_angle_count // 0')"
+            nh="$(echo "$JSON" | jq -r '.market_coverage.numeric_headline_count // 0')"
+            fc="$(echo "$JSON" | jq -r '.market_coverage.card_count // 0')"
+            ff="$(echo "$JSON" | jq -r '[.featured_cards[]? | select(.broadcast_group=="team_form")] | length')"
+            fh="$(echo "$JSON" | jq -r '[.featured_cards[]? | select(.broadcast_group=="h2h")] | length')"
+            ftotal="$(echo "$JSON" | jq -r '.featured_cards | length // 0')"
+            bp="$(echo "$JSON" | jq -r '[.featured_cards[]?.commentator_brief.points[]?] | length')"
+            s100="$(echo "$JSON" | jq -r '[.cards[]? | select((.air_score // 0) == 100)] | length')"
+            s95="$(echo "$JSON" | jq -r '[.cards[]? | select((.air_score // 0) >= 95)] | length')"
+            s85="$(echo "$JSON" | jq -r '[.cards[]? | select((.air_score // 0) >= 85)] | length')"
+            gr="$(echo "$JSON" | jq -r '.generator_diagnostics.raw_candidate_count // 0')"
+            gc="$(echo "$JSON" | jq -r '.generator_diagnostics.combination_candidate_count // 0')"
+            gm="$(echo "$JSON" | jq -r '.generator_diagnostics.matched_candidate_count // 0')"
+            gp="$(echo "$JSON" | jq -r '.generator_diagnostics.pre_prune_market_coverage.provider_exact_market_count // 0')"
+            gpc="$(echo "$JSON" | jq -r '.generator_diagnostics.pre_prune_market_coverage.covered_exact_market_count // 0')"
+            total_markets=$((total_markets+p))
+            pre_raw=$((pre_raw+gr))
+            pre_combos=$((pre_combos+gc))
+            pre_matched=$((pre_matched+gm))
+            pre_markets=$((pre_markets+gp))
+            pre_covered=$((pre_covered+gpc))
+            covered_markets=$((covered_markets+c))
+            multi_markets=$((multi_markets+m))
+            priced_cards=$((priced_cards+pc))
+            variants=$((variants+v))
+            structured_angles=$((structured_angles+sa))
+            numeric_headlines=$((numeric_headlines+nh))
+            final_cards=$((final_cards+fc))
+            featured_cards=$((featured_cards+ftotal))
+            featured_form=$((featured_form+ff))
+            featured_h2h=$((featured_h2h+fh))
+            brief_points=$((brief_points+bp))
+            score_100=$((score_100+s100))
+            score_95_plus=$((score_95_plus+s95))
+            score_85_plus=$((score_85_plus+s85))
+            games_ok=$((games_ok+1))
+          done
+          if [ "$total_markets" -gt 0 ]; then
+            coverage="$(awk -v c="$covered_markets" -v t="$total_markets" 'BEGIN{printf "%.1f",100*c/t}')"
+            multi="$(awk -v c="$multi_markets" -v t="$total_markets" 'BEGIN{printf "%.1f",100*c/t}')"
+          else
+            coverage="0.0"
+            multi="0.0"
+          fi
+          echo "=== AGGREGATE ==="
+          echo "games=$games_ok"
+          echo "exact_markets=$total_markets"
+          echo "covered_markets=$covered_markets"
+          echo "coverage_pct=$coverage"
+          echo "multi_signal_markets=$multi_markets"
+          echo "multi_signal_pct=$multi"
+          echo "priced_cards=$priced_cards"
+          echo "broadcast_variants=$variants"
+          echo "structured_angles=$structured_angles"
+          echo "final_cards=$final_cards"
+          echo "numeric_headlines=$numeric_headlines"
+          if [ "$final_cards" -gt 0 ]; then
+            numeric_pct="$(awk -v c="$numeric_headlines" -v t="$final_cards" 'BEGIN{printf "%.1f",100*c/t}')"
+            angle_avg="$(awk -v c="$structured_angles" -v t="$final_cards" 'BEGIN{printf "%.1f",c/t}')"
+          else
+            numeric_pct="0.0"
+            angle_avg="0.0"
+          fi
+          echo "numeric_headline_pct=$numeric_pct"
+          echo "avg_structured_angles_per_card=$angle_avg"
+          echo "featured_cards=$featured_cards"
+          echo "featured_team_form=$featured_form"
+          echo "featured_h2h=$featured_h2h"
+          echo "commentator_brief_points=$brief_points"
+          echo "air_score_100=$score_100"
+          echo "air_score_95_plus=$score_95_plus"
+          echo "air_score_85_plus=$score_85_plus"
+          if [ "$games_ok" -gt 0 ]; then
+            echo "avg_featured_cards_per_game=$(awk -v c="$featured_cards" -v t="$games_ok" 'BEGIN{printf "%.2f",c/t}')"
+            echo "avg_team_form_per_game=$(awk -v c="$featured_form" -v t="$games_ok" 'BEGIN{printf "%.2f",c/t}')"
+            echo "avg_h2h_per_game=$(awk -v c="$featured_h2h" -v t="$games_ok" 'BEGIN{printf "%.2f",c/t}')"
+          fi
+          echo "pre_prune_raw_candidates=$pre_raw"
+          echo "pre_prune_combination_candidates=$pre_combos"
+          echo "pre_prune_matched_candidates=$pre_matched"
+          echo "pre_prune_provider_markets=$pre_markets"
+          echo "pre_prune_covered_markets=$pre_covered"
+          if [ "$pre_markets" -gt 0 ]; then
+            pre_cov="$(awk -v c="$pre_covered" -v t="$pre_markets" 'BEGIN{printf "%.1f",100*c/t}')"
+          else
+            pre_cov="0.0"
+          fi
+          echo "pre_prune_coverage_pct=$pre_cov"
+1.5\t4\t58' ]; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "V24 broadcast policy did not reach production"
+            exit 1
           fi
           total_markets=0
           covered_markets=0

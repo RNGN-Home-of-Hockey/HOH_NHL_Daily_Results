@@ -1,19 +1,32 @@
-// Select exactly four primary broadcast cards:
-// 2 current-team/matchup stories + 2 head-to-head stories.
-// This is a presentation selector only. It does not change the underlying candidate pool.
+// Select four primary broadcast cards from real, broadcast-worthy Winline prices.
+// Prefer 2 current-team/matchup stories + 2 head-to-head stories, but never leave
+// empty commentator slots just because H2H evidence is unavailable.
+export const MIN_BROADCAST_ODDS=1.50;
 
 export function selectBroadcastFour(cards=[],game={}){
-  const all=(cards||[]).filter(Boolean);
+  const all=(cards||[]).filter(c=>c&&isTeamLevel(c)&&isFeaturedQuality(c));
   const h2h=all.filter(isTeamH2H);
-  const general=all.filter(c=>!isTeamH2H(c)&&isTeamLevel(c));
+  const general=all.filter(c=>!isTeamH2H(c));
 
   const pickedGeneral=pickGeneral(general,game,2);
   const pickedH2H=pickH2H(h2h,2);
+  const picked=[...pickedGeneral,...pickedH2H];
+  const used=new Set(picked.map(key));
 
-  return [
-    ...pickedGeneral.map((c,i)=>tag(c,"team_form",i)),
-    ...pickedH2H.map((c,i)=>tag(c,"h2h",i)),
-  ];
+  // First backfill with a different editorial shape when possible.
+  for(const card of [...all].sort(compare)){
+    if(picked.length>=4)break;
+    if(used.has(key(card))||tooSimilar(card,picked))continue;
+    picked.push(card);used.add(key(card));
+  }
+  // If diversity is the only blocker, four useful choices are still better than two.
+  for(const card of [...all].sort(compare)){
+    if(picked.length>=4)break;
+    if(used.has(key(card)))continue;
+    picked.push(card);used.add(key(card));
+  }
+
+  return picked.slice(0,4).map((card,i)=>tag(card,isTeamH2H(card)?"h2h":"team_form",i));
 }
 
 export function isTeamH2H(card){
@@ -88,12 +101,12 @@ function compare(a,b){
   if(bw)return bw;
   return String(a.id||"").localeCompare(String(b.id||""));
 }
-function hasRealPrice(c){const o=Number(c?.market?.odds);return Number.isFinite(o)&&o>1&&c?.market?.odds_is_demo===false&&c?.market?.odds_source==="provider_live"}
+function hasRealPrice(c){const o=Number(c?.market?.odds);return Number.isFinite(o)&&o>=MIN_BROADCAST_ODDS&&c?.market?.odds_is_demo===false&&c?.market?.odds_source==="provider_live"}
 function score(c){const n=Number(c?.air_score??c?.portfolio_score??c?.score);return Number.isFinite(n)?n:0}
 function hasUsefulNumber(c){return /\d/.test(String(c?.broadcast_title||c?.title||c?.value||""))||Number.isFinite(Number(c?.evidence?.hits))||Number.isFinite(Number(c?.evidence?.team_rank))}
 function isConcreteStory(c){const s=String(c?.broadcast_title||c?.title||"").toUpperCase();return !/НЕЗАВИСИМ.*СИГНАЛ|ПОДТВЕРЖДАЮТ.*СИГНАЛ|РАЗНЫЕ СТАТИСТИЧЕСКИЕ СЛОИ|DATA CORE/.test(s)}
 function isFeaturedQuality(c){
-  if(score(c)<55)return false;
+  if(!hasRealPrice(c)||score(c)<55)return false;
   const e=c?.evidence||{},sample=Number(e.decisions??e.sample??e.games??e.window),rate=Number(e.hit_rate),odds=Number(c?.market?.odds);
   if(Number.isFinite(sample)&&sample<=8&&Number.isFinite(rate)&&rate<=0.5){
     if(!Number.isFinite(odds)||odds<2.5)return false;

@@ -2,8 +2,10 @@ const FEED_URL="https://back.winline.ru/banners/prematch_mainsports_eng";
 const META_KEY="winline_feed_sync_state";
 const MARKET_TYPE="main_1x2_regular";
 const MAX_MATCH_DRIFT_MS=90*60*1000;
+const THIRTY_HOURS_MS=30*60*60*1000;
 const SIX_HOURS_MS=6*60*60*1000;
 const ONE_HOUR_MS=60*60*1000;
+const THIRTY_MIN_MS=30*60*1000;
 const FIFTEEN_MIN_MS=15*60*1000;
 
 const TEAM_ALIASES={
@@ -90,9 +92,9 @@ function cadenceFor(startRaw,nowMs){
   const start=Date.parse(String(startRaw||""));
   if(!Number.isFinite(start))return SIX_HOURS_MS;
   const left=start-nowMs;
-  if(left>SIX_HOURS_MS)return SIX_HOURS_MS;
-  if(left>ONE_HOUR_MS)return ONE_HOUR_MS;
-  if(left>0)return FIFTEEN_MIN_MS;
+  if(left>THIRTY_HOURS_MS)return SIX_HOURS_MS;
+  if(left>SIX_HOURS_MS)return ONE_HOUR_MS;
+  if(left>ONE_HOUR_MS)return THIRTY_MIN_MS;
   return FIFTEEN_MIN_MS;
 }
 

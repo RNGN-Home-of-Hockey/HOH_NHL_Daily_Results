@@ -1,6 +1,6 @@
 
 import { strict as assert } from "node:assert";
-import { buildBroadcastAngles, diversifyBroadcastAngles } from "../cloudflare-worker/src/broadcast-angle-engine.js";
+import { MAX_BROADCAST_TITLE_CHARS, buildBroadcastAngles, diversifyBroadcastAngles, fitBroadcastTitle } from "../cloudflare-worker/src/broadcast-angle-engine.js";
 
 const rankCard={
   title:"CAR advanced xG",
@@ -17,6 +17,15 @@ assert.ok(rankAngles[0].title.includes("2"),"primary rank angle must keep a numb
 assert.ok(rankAngles.some(x=>x.family==="rank_contrast"&&/18/.test(x.title)),"opponent rank contrast must exist");
 assert.ok(!/xgf|xga|corsi|fenwick|gsax/i.test(String(rankAngles[0].subtitle||"")),"raw advanced jargon must stay out of the default TV subtitle");
 assert.ok(rankAngles.filter(x=>x.family!=="source_fact").every(x=>x.title===x.title.toUpperCase()),"generated TV titles should be uppercase");
+
+assert.ok(rankAngles.every(x=>x.title.length<=MAX_BROADCAST_TITLE_CHARS),"every generated broadcast title must fit the fixed top line");
+const longRank=fitBroadcastTitle("КАРОЛИНА ХАРРИКЕЙНЗ — №2, ФЛОРИДА ПАНТЕРЗ — №18 ПО РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ");
+assert.ok(longRank.length<=58);
+assert.match(longRank,/КАРОЛИНА/);
+assert.match(longRank,/ФЛОРИДА/);
+assert.match(longRank,/№2/);
+assert.match(longRank,/№18/);
+assert.doesNotMatch(longRank,/ХАРРИКЕЙНЗ|ПАНТЕРЗ/);
 
 const historyCard={
   title:"exact line",
@@ -49,7 +58,7 @@ const h2hCard={
   market:{type:"moneyline",period:"REG",subject:"MIN",side:"MIN",label:"REG · ПОБЕДА MIN",odds:4.10,odds_is_demo:false}
 };
 const h2hAngles=buildBroadcastAngles(h2hCard,{team:"МИННЕСОТА УАЙЛД",opponent:"ДАЛЛАС СТАРС"});
-assert.ok(h2hAngles.some(x=>x.family==="h2h_matchup"&&/МИННЕСОТА УАЙЛД ОБЫГРЫВАЛИ ДАЛЛАС СТАРС В 6 ИЗ 10/.test(x.title)),"H2H headline must name both teams");
+assert.ok(h2hAngles.some(x=>x.family==="h2h_matchup"&&/МИННЕСОТА: 6 ИЗ 10 ПОБЕД ПРОТИВ ДАЛЛАС/.test(x.title)),"H2H headline must name both teams in compact on-air form");
 assert.ok(!h2hAngles.some(x=>/ЕСТЬ\s+\d+\s+ПОДТВЕРЖДЕНИ/i.test(x.title)),"generic confirmation-count headline must not be generated");
 assert.ok(h2hAngles.some(x=>x.family==="supporting_fact"&&/МИННЕСОТА ЗАБИВАЛА/.test(x.title)),"first concrete support fact should be available instead of a confirmation count");
 assert.ok(h2hAngles.some(x=>/ЕЩЁ 2 ФАКТА В ОПИСАНИИ/.test(String(x.subtitle||""))),"support fact must carry the commentator hint");

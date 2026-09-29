@@ -7,6 +7,9 @@ import { selectBroadcastFour } from "./broadcast-four-card-selector.js";
 import { buildCommentatorBrief } from "./commentator-brief.js";
 
 const BROADCAST_PATH = "/broadcast";
+const MIN_BROADCAST_ODDS = 1.50;
+const BROADCAST_PORTFOLIO_LIMIT = 48;
+const MAX_BROADCAST_HEADLINE_CHARS = 58;
 
 export async function handleBroadcastRequest(request, env, path) {
   if (path === "/broadcast/winline-logo.png") {
@@ -148,6 +151,9 @@ async function computeBroadcastQueueSummary(db,game){
     const pricedInsights=await buildBettingInsights(db,game,{
       provider_markets:providerMarkets,
       market_max_age_ms:broadcastWinlineMaxAgeMs(game),
+      portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,
+      require_provider_price:true,
+      min_provider_odds:MIN_BROADCAST_ODDS,
     });
     cards=mergeBroadcastInsights(statisticalInsights,pricedInsights);
   }else{
@@ -158,7 +164,7 @@ async function computeBroadcastQueueSummary(db,game){
 }
 
 export function summarizeBroadcastQueueCards(cards){
-  const list=Array.isArray(cards)?cards:[];
+  const list=(Array.isArray(cards)?cards:[]).filter(isRealBroadcastPrice);
   const priced=list.filter(isRealBroadcastPrice);
   const strong=priced.filter(c=>Number(c?.air_score)>=55);
   const top=strong.reduce((m,c)=>Math.max(m,Number(c?.air_score)||0),0);
@@ -171,7 +177,7 @@ export function summarizeBroadcastQueueCards(cards){
 }
 function isRealBroadcastPrice(card){
   const odds=Number(card?.market?.odds);
-  return Number.isFinite(odds)&&odds>1&&card?.market?.odds_is_demo===false&&card?.market?.odds_source==="provider_live";
+  return Number.isFinite(odds)&&odds>=MIN_BROADCAST_ODDS&&card?.market?.odds_is_demo===false&&card?.market?.odds_source==="provider_live";
 }
 async function persistBroadcastQueueSummary(db,gamePk,summary){
   try{
@@ -311,6 +317,9 @@ async function broadcastGameRoute(env, gamePk) {
         const pricedInsights=await buildBettingInsights(env.DB,game,{
           provider_markets:providerMarkets,
           market_max_age_ms:broadcastWinlineMaxAgeMs(game),
+          portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,
+          require_provider_price:true,
+          min_provider_odds:MIN_BROADCAST_ODDS,
           generator_diagnostics:generatorDiagnostics,
         });
         bettingInsights=mergeBroadcastInsights(statisticalInsights,pricedInsights);
@@ -333,6 +342,8 @@ async function broadcastGameRoute(env, gamePk) {
     }
 
     routeStage="serialize_response";
+    const broadcastCards=(bettingInsights||[]).filter(isRealBroadcastPrice);
+    const eligibleProviderMarkets=(providerMarkets||[]).filter(m=>Number(m?.odds)>=MIN_BROADCAST_ODDS);
     return jsonResponse({
       ok:true,
       game,
@@ -340,18 +351,20 @@ async function broadcastGameRoute(env, gamePk) {
       team_stats:teamStats,
       top_players:playerStats,
       events,
-      cards:(bettingInsights||[]).map(card=>({
+      cards:broadcastCards.map(card=>({
         ...card,
         commentator_brief:buildCommentatorBrief(card,game),
       })),
-      featured_cards:selectBroadcastFour(bettingInsights,game).map(card=>({
+      featured_cards:selectBroadcastFour(broadcastCards,game).map(card=>({
         ...card,
         commentator_brief:buildCommentatorBrief(card,game),
       })),
-      queue_summary:summarizeBroadcastQueueCards(bettingInsights),
+      queue_summary:summarizeBroadcastQueueCards(broadcastCards),
       betting_insights_degraded:bettingInsightsDegraded,
       provider_market_count:providerMarkets.length,
-      market_coverage:summarizeMarketCoverage(providerMarkets,bettingInsights),
+      eligible_provider_market_count:eligibleProviderMarkets.length,
+      market_coverage:summarizeMarketCoverage(eligibleProviderMarkets,broadcastCards),
+      broadcast_card_policy:{min_odds:MIN_BROADCAST_ODDS,featured_target:4,portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,max_headline_chars:MAX_BROADCAST_HEADLINE_CHARS},
       generator_diagnostics:generatorDiagnostics,
       data_degraded_sections:dataDegradedSections,
       quick_cards:quickCards,
@@ -382,6 +395,9 @@ export async function archiveUpcomingBroadcastAnalytics(env,{limit=12}={}){
       const priced=await buildBettingInsights(env.DB,game,{
         provider_markets:providerMarkets,
         market_max_age_ms:broadcastWinlineMaxAgeMs(game),
+        portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,
+        require_provider_price:true,
+        min_provider_odds:MIN_BROADCAST_ODDS,
       });
       const saved=await archiveBroadcastInsightHistory(env.DB,game,priced);
       games++;cards+=Number(saved?.written||0);
@@ -545,7 +561,7 @@ function triFromWinlineName(v){return WINLINE_TEAM_NAMES[normalizeWinlineText(v)
 function finiteMarketLine(...values){for(const v of values){if(v===null||v===undefined||v==="")continue;const n=Number(String(v).replace(",",".").replace(/[^0-9+.-]/g,""));if(Number.isFinite(n))return n}return null}
 function marketLineFromType(v){const m=String(v||"").match(/:([+-]?\d+(?:\.\d+)?)$/);return m?m[1]:null}
 function isoOrNull(v){const raw=String(v||"").trim();const t=Date.parse(raw.includes("T")?raw:raw.replace(" ","T")+"Z");return Number.isFinite(t)?new Date(t).toISOString():null}
-function broadcastWinlineMaxAgeMs(game){const left=Date.parse(String(game?.scheduled_start_utc||""))-Date.now();if(!Number.isFinite(left))return 7*60*60*1000;if(left>6*60*60*1000)return 7*60*60*1000;if(left>60*60*1000)return 75*60*1000;return 25*60*1000}
+function broadcastWinlineMaxAgeMs(game){const left=Date.parse(String(game?.scheduled_start_utc||""))-Date.now();if(!Number.isFinite(left))return 90*60*1000;if(left>30*60*60*1000)return 7*60*60*1000;if(left>6*60*60*1000)return 90*60*1000;if(left>60*60*1000)return 45*60*1000;return 20*60*1000}
 export function mergeBroadcastInsights(statisticalInsights,pricedInsights){
   const out=[],seenIds=new Set(),pricedMarkets=new Set();
   for(const card of pricedInsights||[]){
@@ -712,12 +728,14 @@ function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)==
 function renderCombinedCards(){
   const featured=[],seen=new Set();
   for(const c of featuredCards||[]){
+    if(!hasRealWinlinePrice(c))continue;
     const k=cardKey(c);if(seen.has(k))continue;seen.add(k);
     featured.push({...c,__featured:true});
     if(featured.length>=4)break;
   }
   const extras=[];
   for(const c of [...(liveCards||[]),...(historicalCards||[])]){
+    if(!hasRealWinlinePrice(c))continue;
     const k=cardKey(c);if(seen.has(k))continue;seen.add(k);
     extras.push({...c,__featured:false});
   }
@@ -726,7 +744,7 @@ function renderCombinedCards(){
     if(live)return live;
     return airScore(b)-airScore(a);
   });
-  const visible=[...featured,...extras.slice(0,20)];
+  const visible=[...featured,...extras.slice(0,32)];
   renderCards(visible);
   syncQueueSummaryFromCards(selected,visible);
   const priced=visible.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');
@@ -735,7 +753,7 @@ function renderCombinedCards(){
 function cardKey(c){
   return String(c?.id||[c?.insight_type,c?.market?.type,c?.market?.period,c?.market?.subject,c?.market?.side,c?.market?.line].join(':'));
 }
-async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds)));renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);const nhlAt=l.fetched_at?new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';const winAt=l.provider_live_updated_at?new Date(l.provider_live_updated_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'нет live-линии';c.textContent=parts.join(' · ')+' · NHL '+nhlAt+' · WINLINE '+winAt}if(['LIVE','CRIT','INTERMISSION'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
+async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds))&&Number(x.market.odds)>=1.50);renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);const nhlAt=l.fetched_at?new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';const winAt=l.provider_live_updated_at?new Date(l.provider_live_updated_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'нет live-линии';c.textContent=parts.join(' · ')+' · NHL '+nhlAt+' · WINLINE '+winAt}if(['LIVE','CRIT','INTERMISSION'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
 const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
   CGY:{name:"КАЛГАРИ",color:"#D2001C"},CAR:{name:"КАРОЛИНА",color:"#CE1126"},CHI:{name:"ЧИКАГО",color:"#CF0A2C"},
@@ -815,7 +833,7 @@ function profitParts(odds){
   return{amount:"+"+profit.toLocaleString("ru-RU")+" РУБ",suffix:"(ПРИ СТАВКЕ 1000 РУБ.)"};
 }
 
-function hasRealWinlinePrice(c){const o=Number(c?.market?.odds);return Number.isFinite(o)&&o>1&&c?.market?.odds_is_demo===false&&c?.market?.odds_source==="provider_live"}
+function hasRealWinlinePrice(c){const o=Number(c?.market?.odds);return Number.isFinite(o)&&o>=1.50&&c?.market?.odds_is_demo===false&&c?.market?.odds_source==="provider_live"}
 function candidateCardId(c){
   const raw="insight-"+String(selected)+"-"+String(c?.id||c?.insight_type||c?.type||"insight");
   return raw.replace(/[^a-zA-Z0-9_.:-]+/g,"-").slice(0,180);
@@ -877,7 +895,7 @@ function supportNote(c){
   return "ЕЩЁ "+n+" "+(n===1?"ФАКТ":n>=2&&n<=4?"ФАКТА":"ФАКТОВ")+" В ОПИСАНИИ";
 }
 function cardSummaryHtml(c){
-  const team=cardTeam(c),odds=Number(c?.market?.odds),priced=Number.isFinite(odds)&&odds>1,profit=profitParts(odds),score=airScore(c),tone=airTone(score);
+  const team=cardTeam(c),odds=Number(c?.market?.odds),priced=hasRealWinlinePrice(c),profit=profitParts(odds),score=airScore(c),tone=airTone(score);
   const group=c?.broadcast_group==='h2h'?'ЛИЧНЫЕ ВСТРЕЧИ':'ФОРМА КОМАНД';
   const subtitle=simpleSubtitle(c),more=supportNote(c);
   return `<div class="signal">
@@ -903,12 +921,12 @@ function renderCards(cards){
   currentCards=cards;
   if(!cards.length){$('#cards').innerHTML='<div class="empty">Пока нет статистических карточек для этого матча</div>';return}
   const entries=cards.map((c,i)=>({c,i}));
-  const featured=entries.filter(x=>x.c?.__featured).slice(0,4);
-  const form=featured.filter(x=>x.c?.broadcast_group!=='h2h').slice(0,2);
-  const h2h=featured.filter(x=>x.c?.broadcast_group==='h2h').slice(0,2);
+  const featured=entries.filter(x=>x.c?.__featured&&hasRealWinlinePrice(x.c)).slice(0,4);
+  const form=featured.filter(x=>x.c?.broadcast_group!=='h2h');
+  const h2h=featured.filter(x=>x.c?.broadcast_group==='h2h');
   const featuredIds=new Set(featured.map(x=>x.i));
   const rest=entries.filter(x=>!featuredIds.has(x.i));
-  const section=(title,items,empty)=>`<section class="queueblock"><div class="queuehead"><span>${title}</span><b>${items.length}/2</b></div>${items.length?`<div class="cardgrid">${items.map(x=>cardArticleHtml(x.c,x.i,true)).join('')}</div>`:`<div class="empty">${empty}</div>`}</section>`;
+  const section=(title,items,empty)=>`<section class="queueblock"><div class="queuehead"><span>${title}</span><b>${items.length}</b></div>${items.length?`<div class="cardgrid">${items.map(x=>cardArticleHtml(x.c,x.i,true)).join('')}</div>`:`<div class="empty">${empty}</div>`}</section>`;
   const more=rest.length
     ?`<details class="queueblock queue-more"><summary><span>ЕЩЁ ${rest.length} ВАРИАНТОВ</span><small>показать</small></summary><div class="cardgrid">${rest.map(x=>cardArticleHtml(x.c,x.i,false)).join('')}</div></details>`
     :'';

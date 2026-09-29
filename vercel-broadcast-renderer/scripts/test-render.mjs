@@ -14,6 +14,8 @@ const sample={
 
 const normalized=normalizePayload(sample);
 if(normalized.headlineTeamName!=="КАРОЛИНА ХАРРИКЕЙНЗ")throw new Error("Full headline team name was not preserved for accent");
+if(normalized.fact.length>58)throw new Error("Top fact exceeds fixed 58-character line: "+normalized.fact);
+if(!normalized.fact.endsWith("…"))throw new Error("Long top fact should be word-trimmed instead of shrinking the font");
 const png=await renderCard(sample);
 const meta=await sharp(png).metadata();
 if(meta.width!==820||meta.height!==211||meta.format!=="png"){

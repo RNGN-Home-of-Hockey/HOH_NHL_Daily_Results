@@ -41,14 +41,14 @@ function normalizeDecimalText(value){
   return upper(value).replace(/([+-]?\d+)\.(\d+)/g,"$1,$2");
 }
 
-function fontSizeForFact(text){
-  const n=String(text||"").length;
-  if(n<=58)return 29;
-  if(n<=70)return 27;
-  if(n<=82)return 25;
-  if(n<=94)return 23;
-  return 21;
+const MAX_FACT_CHARS=58;
+function limitFact(text){
+  const s=String(text||"").replace(/\s+/g," ").trim();
+  if(s.length<=MAX_FACT_CHARS)return s;
+  const cut=s.slice(0,MAX_FACT_CHARS-1).replace(/\s+\S*$/,"").replace(/[,:;—-]+\s*$/,"").trim();
+  return (cut||s.slice(0,MAX_FACT_CHARS-1).trim())+"…";
 }
+function fontSizeForFact(){return 29}
 
 function fontSizeForTeam(text){
   const n=String(text||"").length;
@@ -101,7 +101,7 @@ export function normalizePayload(input={}){
   const teamName=upper(input.team_name)||meta[0];
   const headlineTeamName=upper(input.headline_team_name||input.fact_team_name||teamName);
   const teamColor=String((TEAM[team]&&TEAM[team][1])||input.team_color||meta[1]||"#00E6C3");
-  const fact=normalizeDecimalText(input.fact||input.headline||"");
+  const fact=limitFact(normalizeDecimalText(input.fact||input.headline||""));
   const market=normalizeDecimalText(input.market||input.bet||"");
   const odds=Number(input.odds);
   const stake=clamp(Number(input.stake)||STAKE_DEFAULT,1,1000000);
@@ -193,4 +193,4 @@ export async function renderCard(input={}){
 }
 
 export const RENDER_SIZE={width:WIDTH,height:HEIGHT};
-export const RENDER_VERSION="2026-09-23-layout-v12-full-team-accent";
+export const RENDER_VERSION="2026-09-29-layout-v13-fixed-headline";

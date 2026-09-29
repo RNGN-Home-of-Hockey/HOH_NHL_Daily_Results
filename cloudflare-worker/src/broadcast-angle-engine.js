@@ -1,6 +1,46 @@
 // Structured TV-angle generator.
 // One source card -> several numerical, human-readable broadcast stories.
 
+export const MAX_BROADCAST_TITLE_CHARS=58;
+const FULL_TEAM_SHORT=[
+  ["КАРОЛИНА ХАРРИКЕЙНЗ","КАРОЛИНА"],["ФЛОРИДА ПАНТЕРЗ","ФЛОРИДА"],["ЛОС-АНДЖЕЛЕС КИНГЗ","ЛОС-АНДЖЕЛЕС"],
+  ["НЬЮ-ЙОРК РЕЙНДЖЕРС","РЕЙНДЖЕРС"],["НЬЮ-ЙОРК АЙЛЕНДЕРС","АЙЛЕНДЕРС"],["НЬЮ-ДЖЕРСИ ДЕВИЛЗ","НЬЮ-ДЖЕРСИ"],
+  ["ВАШИНГТОН КЭПИТАЛЗ","ВАШИНГТОН"],["ТАМПА-БЭЙ ЛАЙТНИНГ","ТАМПА-БЭЙ"],["ТОРОНТО МЭЙПЛ ЛИФС","ТОРОНТО"],
+  ["КОЛАМБУС БЛЮ ДЖЕКЕТС","КОЛАМБУС"],["ВЕГАС ГОЛДЕН НАЙТС","ВЕГАС"],["МОНРЕАЛЬ КАНАДИЕНС","МОНРЕАЛЬ"],
+  ["НЭШВИЛЛ ПРЕДАТОРЗ","НЭШВИЛЛ"],["ПИТТСБУРГ ПИНГВИНЗ","ПИТТСБУРГ"],["САН-ХОСЕ ШАРКС","САН-ХОСЕ"],
+  ["СЕНТ-ЛУИС БЛЮЗ","СЕНТ-ЛУИС"],["ВАНКУВЕР КЭНАКС","ВАНКУВЕР"],["ВИННИПЕГ ДЖЕТС","ВИННИПЕГ"],
+  ["КОЛОРАДО ЭВЕЛАНШ","КОЛОРАДО"],["ЭДМОНТОН ОЙЛЕРЗ","ЭДМОНТОН"],["ДЕТРОЙТ РЕД УИНГЗ","ДЕТРОЙТ"],
+  ["ЧИКАГО БЛЭКХОКС","ЧИКАГО"],["КАЛГАРИ ФЛЭЙМЗ","КАЛГАРИ"],["БАФФАЛО СЭЙБРЗ","БАФФАЛО"],
+  ["БОСТОН БРЮИНЗ","БОСТОН"],["АНАХАЙМ ДАКС","АНАХАЙМ"],["МИННЕСОТА УАЙЛД","МИННЕСОТА"],
+  ["ОТТАВА СЕНАТОРЗ","ОТТАВА"],["ФИЛАДЕЛЬФИЯ ФЛАЙЕРЗ","ФИЛАДЕЛЬФИЯ"],["СИЭТЛ КРАКЕН","СИЭТЛ"],["ЮТА МАММОТ","ЮТА"]
+];
+
+export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
+  let s=String(value||"").replace(/\s+/g," ").trim().toUpperCase();
+  for(const [full,short] of FULL_TEAM_SHORT)s=s.replaceAll(full,short);
+  s=s
+    .replace(/ПО РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ/g,"ПО ОПАСНЫМ МОМЕНТАМ")
+    .replace(/ПО СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ/g,"ПО ОПАСНЫМ МОМЕНТАМ")
+    .replace(/ПО МИНИМУМУ ДОПУЩЕННЫХ ОПАСНЫХ МОМЕНТОВ/g,"ПО ЗАЩИТЕ ОПАСНЫХ МОМЕНТОВ")
+    .replace(/ПОСЛЕДНИХ МАТЧЕЙ/g,"МАТЧЕЙ")
+    .replace(/В ОСНОВНОЕ ВРЕМЯ/g,"ЗА 60 МИН")
+    .replace(/\s*—\s*/g," — ")
+    .replace(/\s+/g," ").trim();
+  if(s.length<=max)return s;
+  const compact=s
+    .replace(/ — №/g," №")
+    .replace(/,\s+/g,", ")
+    .replace(/ ПО ОПАСНЫМ МОМЕНТАМ/g," ПО ОПАСНЫМ")
+    .replace(/ ПО ЗАЩИТЕ ОПАСНЫХ МОМЕНТОВ/g," ПО ЗАЩИТЕ");
+  if(compact.length<=max)return compact;
+  const cut=compact.slice(0,Math.max(1,max-1)).replace(/\s+\S*$/,"").replace(/[,:;—-]+\s*$/,"").trim();
+  return (cut||compact.slice(0,max-1).trim())+"…";
+}
+function fitSourceBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
+  const s=String(value||"").replace(/\s+/g," ").trim();
+  return s.length<=max?s:fitBroadcastTitle(s,max);
+}
+
 export function buildBroadcastAngles(card={},profile={}){
   const e=card.evidence||{},m=card.market||{},out=[];
   addHistory(out,e,m,profile);
@@ -24,8 +64,8 @@ export function buildBroadcastAngles(card={},profile={}){
   }
 
   return unique(out)
-    .map(x=>({...x,title:x.family==="source_fact"?cleanSource(x.title):clean(x.title),score:score(x,card)}))
-    .filter(x=>x.title&&x.title.length<=118)
+    .map(x=>({...x,title:x.family==="source_fact"?fitSourceBroadcastTitle(cleanSource(x.title)):fitBroadcastTitle(clean(x.title)),score:score(x,card)}))
+    .filter(x=>x.title&&x.title.length<=MAX_BROADCAST_TITLE_CHARS)
     .sort((a,b)=>b.score-a.score||a.title.length-b.title.length)
     .slice(0,24);
 }
@@ -156,7 +196,7 @@ function moreFactsText(count){
   return `ЕЩЁ ${n} ${n===1?"ФАКТ":n>=2&&n<=4?"ФАКТА":"ФАКТОВ"} В ОПИСАНИИ`;
 }
 function shortTeamName(value){return String(value||"").trim().split(/\s+/)[0]||String(value||"").trim()}
-function fitH2HTitle(full,compact){return String(full||"").length<=96?full:compact}
+function fitH2HTitle(full,compact){return fitBroadcastTitle(String(full||"").length<=MAX_BROADCAST_TITLE_CHARS?full:compact)}
 function ensureNumber(title,card,p){
   if(/\d/.test(title))return title;
   const e=card.evidence||{},m=card.market||{};
