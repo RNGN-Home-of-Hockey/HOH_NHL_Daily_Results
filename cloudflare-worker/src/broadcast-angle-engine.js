@@ -36,6 +36,10 @@ export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
   const cut=compact.slice(0,Math.max(1,max-1)).replace(/\s+\S*$/,"").replace(/[,:;—-]+\s*$/,"").trim();
   return (cut||compact.slice(0,max-1).trim())+"…";
 }
+function fitSourceBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
+  const s=String(value||"").replace(/\s+/g," ").trim();
+  return s.length<=max?s:fitBroadcastTitle(s,max);
+}
 
 export function buildBroadcastAngles(card={},profile={}){
   const e=card.evidence||{},m=card.market||{},out=[];
@@ -60,7 +64,7 @@ export function buildBroadcastAngles(card={},profile={}){
   }
 
   return unique(out)
-    .map(x=>({...x,title:fitBroadcastTitle(x.family==="source_fact"?cleanSource(x.title):clean(x.title)),score:score(x,card)}))
+    .map(x=>({...x,title:x.family==="source_fact"?fitSourceBroadcastTitle(cleanSource(x.title)):fitBroadcastTitle(clean(x.title)),score:score(x,card)}))
     .filter(x=>x.title&&x.title.length<=MAX_BROADCAST_TITLE_CHARS)
     .sort((a,b)=>b.score-a.score||a.title.length-b.title.length)
     .slice(0,24);
