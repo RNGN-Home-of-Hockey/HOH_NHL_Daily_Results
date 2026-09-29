@@ -24,6 +24,8 @@ function row(pk,team,i){
     p2_goals_for:2,p2_goals_against:1,p3_goals_for:1,p3_goals_against:1,
     raw_p1_goals_for:p1gf,raw_p1_goals_against:p1ga,
     raw_p2_goals_for:2,raw_p2_goals_against:1,raw_p3_goals_for:1,raw_p3_goals_against:1,
+    event_p1_goals_for:p1gf,event_p1_goals_against:p1ga,
+    event_p2_goals_for:2,event_p2_goals_against:1,event_p3_goals_for:1,event_p3_goals_against:1,
     score_after_p1_diff:p1diff,score_after_p2_diff:p1diff+1,first_goal_for:i<7?1:0,
   };
 }
@@ -63,6 +65,9 @@ assert.ok(cards.filter(c=>/^P[123]$/.test(String(c.market.period||""))||/^period
 const corruptPeriodRows={...rowsByTeam,CAR:rowsByTeam.CAR.map((r,i)=>i===0?{...r,raw_p1_goals_for:Number(r.raw_p1_goals_for)+1}:r)};
 const corruptPeriodCards=evaluateProviderMarketHistoryRows(game,corruptPeriodRows,[m("period_1_result","P1","CAR","CAR",null,2.40)]);
 assert.equal(corruptPeriodCards.length,0,"one mismatched raw period row must suppress the period trend instead of changing the denominator");
+const corruptEvents={...rowsByTeam,CAR:rowsByTeam.CAR.map((r,i)=>i===0?{...r,event_p2_goals_for:Number(r.event_p2_goals_for)+1}:r)};
+const corruptEventCards=evaluateProviderMarketHistoryRows(game,corruptEvents,[m("period_2_result","P2","CAR","CAR",null,2.55)]);
+assert.equal(corruptEventCards.length,0,"goal-event mismatch must suppress the period trend even when period_scores and feature rows agree");
 assert.ok(cards.some(c=>c.market.type==="game_total"&&c.market.period==="P2"&&c.market.line===1.5),"period total should use exact offered line");
 assert.ok(cards.some(c=>c.market.type==="double_chance"&&c.market.subject==="CAR"),"double chance should use regulation non-loss history");
 assert.ok(cards.some(c=>c.market.type==="both_teams_score"&&c.market.side==="yes"),"BTTS should be evaluated from scoring distribution");
@@ -81,7 +86,7 @@ const sea=seaCards.find(x=>x.market.type==="moneyline"&&x.market.subject==="SEA"
 assert.ok(sea,"SEA exact moneyline history should remain available as historical rate");
 assert.equal(sea.evidence.current_streak,0,"previous-season wins must not be called a current streak");
 assert.equal(sea.evidence.streak_verified,false);
-assert.equal(sea.evidence.stats_validation,"exact_market_v4_raw_period_crosscheck");
+assert.equal(sea.evidence.stats_validation,"exact_market_v5_goal_event_crosscheck");
 
 const corrupt=Array.from({length:10},(_,i)=>({...seaRows[i],season_id:"20262027"}));
 corrupt[0]={...corrupt[0],regulation_goal_diff:-1,regulation_result:"W"};

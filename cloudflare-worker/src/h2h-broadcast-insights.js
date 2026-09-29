@@ -3,22 +3,43 @@ import { normalizeWinlineMarket } from "./winline-market-adapter.js";
 export async function buildH2HBroadcastInsights(db,game,providerMarkets=[]){
   if(!db||!game?.scheduled_start_utc||!game?.away_tri||!game?.home_tri)return[];
   const result=await db.prepare(`
-    SELECT f.game_pk,f.final_goals_for,f.final_goals_against,f.total_goals,f.final_goal_diff,f.final_win,
-           f.regulation_goals_for,f.regulation_goals_against,f.regulation_result,f.regulation_goal_diff,
-           f.p1_goals_for,f.p1_goals_against,f.p2_goals_for,f.p2_goals_against,f.p3_goals_for,f.p3_goals_against,
+    WITH recent AS (
+      SELECT game_pk,scheduled_start_utc,team_tri,opponent_tri,is_home,
+             final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,
+             regulation_goals_for,regulation_goals_against,regulation_result,regulation_goal_diff,
+             p1_goals_for,p1_goals_against,p2_goals_for,p2_goals_against,p3_goals_for,p3_goals_against
+      FROM team_game_features
+      WHERE team_tri=? AND opponent_tri=? AND scheduled_start_utc<?
+      ORDER BY scheduled_start_utc DESC,game_pk DESC
+      LIMIT 10
+    ),
+    event_period AS (
+      SELECT ge.game_pk,ge.period_number,ge.team_tri,COUNT(*) AS goals
+      FROM game_events ge JOIN recent r ON r.game_pk=ge.game_pk
+      WHERE ge.event_type='goal' AND ge.period_number BETWEEN 1 AND 3 AND ge.team_tri IS NOT NULL
+      GROUP BY ge.game_pk,ge.period_number,ge.team_tri
+    )
+    SELECT f.*,
            CASE WHEN f.is_home=1 THEN p1.home_goals ELSE p1.away_goals END AS raw_p1_goals_for,
            CASE WHEN f.is_home=1 THEN p1.away_goals ELSE p1.home_goals END AS raw_p1_goals_against,
            CASE WHEN f.is_home=1 THEN p2.home_goals ELSE p2.away_goals END AS raw_p2_goals_for,
            CASE WHEN f.is_home=1 THEN p2.away_goals ELSE p2.home_goals END AS raw_p2_goals_against,
            CASE WHEN f.is_home=1 THEN p3.home_goals ELSE p3.away_goals END AS raw_p3_goals_for,
-           CASE WHEN f.is_home=1 THEN p3.away_goals ELSE p3.home_goals END AS raw_p3_goals_against
-    FROM team_game_features f
+           CASE WHEN f.is_home=1 THEN p3.away_goals ELSE p3.home_goals END AS raw_p3_goals_against,
+           COALESCE(e1f.goals,0) AS event_p1_goals_for,COALESCE(e1a.goals,0) AS event_p1_goals_against,
+           COALESCE(e2f.goals,0) AS event_p2_goals_for,COALESCE(e2a.goals,0) AS event_p2_goals_against,
+           COALESCE(e3f.goals,0) AS event_p3_goals_for,COALESCE(e3a.goals,0) AS event_p3_goals_against
+    FROM recent f
     LEFT JOIN period_scores p1 ON p1.game_pk=f.game_pk AND p1.period_number=1 AND p1.period_type='REG'
     LEFT JOIN period_scores p2 ON p2.game_pk=f.game_pk AND p2.period_number=2 AND p2.period_type='REG'
     LEFT JOIN period_scores p3 ON p3.game_pk=f.game_pk AND p3.period_number=3 AND p3.period_type='REG'
-    WHERE f.team_tri=? AND f.opponent_tri=? AND f.scheduled_start_utc<?
-    ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC
-    LIMIT 10;
+    LEFT JOIN event_period e1f ON e1f.game_pk=f.game_pk AND e1f.period_number=1 AND e1f.team_tri=f.team_tri
+    LEFT JOIN event_period e1a ON e1a.game_pk=f.game_pk AND e1a.period_number=1 AND e1a.team_tri=f.opponent_tri
+    LEFT JOIN event_period e2f ON e2f.game_pk=f.game_pk AND e2f.period_number=2 AND e2f.team_tri=f.team_tri
+    LEFT JOIN event_period e2a ON e2a.game_pk=f.game_pk AND e2a.period_number=2 AND e2a.team_tri=f.opponent_tri
+    LEFT JOIN event_period e3f ON e3f.game_pk=f.game_pk AND e3f.period_number=3 AND e3f.team_tri=f.team_tri
+    LEFT JOIN event_period e3a ON e3a.game_pk=f.game_pk AND e3a.period_number=3 AND e3a.team_tri=f.opponent_tri
+    ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC;
   `).bind(game.away_tri,game.home_tri,game.scheduled_start_utc).all();
   const rows=(result?.results||[]).map(prepareH2HRow);
   if(rows.length<3)return[];
@@ -36,14 +57,16 @@ function prepareH2HRow(raw){
   const periods=[];
   for(let p=1;p<=3;p++){
     const gf=num(raw?.[`raw_p${p}_goals_for`]),ga=num(raw?.[`raw_p${p}_goals_against`]);
+    const eventGf=num(raw?.[`event_p${p}_goals_for`]),eventGa=num(raw?.[`event_p${p}_goals_against`]);
     const fGf=num(raw?.[`p${p}_goals_for`]),fGa=num(raw?.[`p${p}_goals_against`]);
-    if(!Number.isInteger(gf)||!Number.isInteger(ga)||gf<0||ga<0||fGf!==gf||fGa!==ga)return {...raw,__period_verified:false};
+    if(!Number.isInteger(gf)||!Number.isInteger(ga)||gf<0||ga<0||!Number.isInteger(eventGf)||!Number.isInteger(eventGa)||eventGf<0||eventGa<0)return {...raw,__period_verified:false,__period_validation:"missing_period_source"};
+    if(fGf!==gf||fGa!==ga||eventGf!==gf||eventGa!==ga)return {...raw,__period_verified:false,__period_validation:"period_source_mismatch"};
     periods.push({gf,ga});
   }
   const regGf=num(raw?.regulation_goals_for),regGa=num(raw?.regulation_goals_against),regDiff=num(raw?.regulation_goal_diff);
   const sumGf=periods.reduce((s,x)=>s+x.gf,0),sumGa=periods.reduce((s,x)=>s+x.ga,0);
-  if(regGf===null||regGa===null||regDiff===null||sumGf!==regGf||sumGa!==regGa||sumGf-sumGa!==regDiff)return {...raw,__period_verified:false};
-  const out={...raw,__period_verified:true};
+  if(regGf===null||regGa===null||regDiff===null||sumGf!==regGf||sumGa!==regGa||sumGf-sumGa!==regDiff)return {...raw,__period_verified:false,__period_validation:"period_regulation_mismatch"};
+  const out={...raw,__period_verified:true,__period_validation:"period_scores+goal_events+feature+regulation"};
   for(let p=1;p<=3;p++){out[`p${p}_goals_for`]=periods[p-1].gf;out[`p${p}_goals_against`]=periods[p-1].ga;}
   return out;
 }
@@ -92,7 +115,7 @@ function card(game,m,rows,s){
     value:s.hits+"/"+s.decisions,
     title,
     explanation:"Последние "+window+" очных матчей "+teamName+" и "+opponentName+". Рассчитана именно текущая линия WINLINE, без подмены соседней линией.",
-    evidence:{split:"h2h",window,sample:window,hits:s.hits,decisions:s.decisions,pushes:s.pushes,hit_rate:s.rate,team,opponent,game_pks:rows.map(r=>Number(r.game_pk)),exact_provider_line:true,period_data_verified:s.period_data_verified,stats_validation:"exact_market_v4_raw_period_crosscheck",feature_layer:"h2h_current_winline_line_v2"},
+    evidence:{split:"h2h",window,sample:window,hits:s.hits,decisions:s.decisions,pushes:s.pushes,hit_rate:s.rate,team,opponent,game_pks:rows.map(r=>Number(r.game_pk)),exact_provider_line:true,period_data_verified:s.period_data_verified,period_validation:s.period_data_verified?"period_scores+goal_events+feature+regulation":null,stats_validation:"exact_market_v5_goal_event_crosscheck",feature_layer:"h2h_current_winline_line_v2"},
     market:{type:m.market_type,period:m.period,subject:m.subject,side:m.side,line:m.line,label,odds:m.odds,provider:m.provider,odds_is_demo:false,odds_source:"provider_live",event_id:m.event_id,market_id:m.market_id,selection_id:m.selection_id,updated_at:m.updated_at,deeplink:m.deeplink}
   };
 }

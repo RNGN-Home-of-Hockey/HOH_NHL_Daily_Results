@@ -47,24 +47,45 @@ export function evaluateProviderMarketHistoryRows(game,rowsByTeam,providerMarket
 
 function history(db,team,before){
   return db.prepare(`
-    SELECT f.game_pk,f.season_id,f.game_type,f.scheduled_start_utc,f.team_tri,f.opponent_tri,f.is_home,
-           f.final_goals_for,f.final_goals_against,f.total_goals,f.final_goal_diff,f.final_win,
-           f.regulation_goals_for,f.regulation_goals_against,f.regulation_goal_diff,f.regulation_result,
-           f.p1_goals_for,f.p1_goals_against,f.p2_goals_for,f.p2_goals_against,f.p3_goals_for,f.p3_goals_against,
-           f.score_after_p1_diff,f.score_after_p2_diff,f.first_goal_for,
+    WITH recent AS (
+      SELECT game_pk,season_id,game_type,scheduled_start_utc,team_tri,opponent_tri,is_home,
+             final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,
+             regulation_goals_for,regulation_goals_against,regulation_goal_diff,regulation_result,
+             p1_goals_for,p1_goals_against,p2_goals_for,p2_goals_against,p3_goals_for,p3_goals_against,
+             score_after_p1_diff,score_after_p2_diff,first_goal_for
+      FROM team_game_features
+      WHERE team_tri=? AND game_type IN (2,3) AND scheduled_start_utc<?
+      ORDER BY scheduled_start_utc DESC,game_pk DESC
+      LIMIT ${MAX_HISTORY}
+    ),
+    event_period AS (
+      SELECT ge.game_pk,ge.period_number,ge.team_tri,COUNT(*) AS goals
+      FROM game_events ge
+      JOIN recent r ON r.game_pk=ge.game_pk
+      WHERE ge.event_type='goal' AND ge.period_number BETWEEN 1 AND 3 AND ge.team_tri IS NOT NULL
+      GROUP BY ge.game_pk,ge.period_number,ge.team_tri
+    )
+    SELECT f.*,
            CASE WHEN f.is_home=1 THEN p1.home_goals ELSE p1.away_goals END AS raw_p1_goals_for,
            CASE WHEN f.is_home=1 THEN p1.away_goals ELSE p1.home_goals END AS raw_p1_goals_against,
            CASE WHEN f.is_home=1 THEN p2.home_goals ELSE p2.away_goals END AS raw_p2_goals_for,
            CASE WHEN f.is_home=1 THEN p2.away_goals ELSE p2.home_goals END AS raw_p2_goals_against,
            CASE WHEN f.is_home=1 THEN p3.home_goals ELSE p3.away_goals END AS raw_p3_goals_for,
-           CASE WHEN f.is_home=1 THEN p3.away_goals ELSE p3.home_goals END AS raw_p3_goals_against
-    FROM team_game_features f
+           CASE WHEN f.is_home=1 THEN p3.away_goals ELSE p3.home_goals END AS raw_p3_goals_against,
+           COALESCE(e1f.goals,0) AS event_p1_goals_for,COALESCE(e1a.goals,0) AS event_p1_goals_against,
+           COALESCE(e2f.goals,0) AS event_p2_goals_for,COALESCE(e2a.goals,0) AS event_p2_goals_against,
+           COALESCE(e3f.goals,0) AS event_p3_goals_for,COALESCE(e3a.goals,0) AS event_p3_goals_against
+    FROM recent f
     LEFT JOIN period_scores p1 ON p1.game_pk=f.game_pk AND p1.period_number=1 AND p1.period_type='REG'
     LEFT JOIN period_scores p2 ON p2.game_pk=f.game_pk AND p2.period_number=2 AND p2.period_type='REG'
     LEFT JOIN period_scores p3 ON p3.game_pk=f.game_pk AND p3.period_number=3 AND p3.period_type='REG'
-    WHERE f.team_tri=? AND f.game_type IN (2,3) AND f.scheduled_start_utc<?
-    ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC
-    LIMIT ${MAX_HISTORY};
+    LEFT JOIN event_period e1f ON e1f.game_pk=f.game_pk AND e1f.period_number=1 AND e1f.team_tri=f.team_tri
+    LEFT JOIN event_period e1a ON e1a.game_pk=f.game_pk AND e1a.period_number=1 AND e1a.team_tri=f.opponent_tri
+    LEFT JOIN event_period e2f ON e2f.game_pk=f.game_pk AND e2f.period_number=2 AND e2f.team_tri=f.team_tri
+    LEFT JOIN event_period e2a ON e2a.game_pk=f.game_pk AND e2a.period_number=2 AND e2a.team_tri=f.opponent_tri
+    LEFT JOIN event_period e3f ON e3f.game_pk=f.game_pk AND e3f.period_number=3 AND e3f.team_tri=f.team_tri
+    LEFT JOIN event_period e3a ON e3a.game_pk=f.game_pk AND e3a.period_number=3 AND e3a.team_tri=f.opponent_tri
+    ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC;
   `).bind(team,before);
 }
 
@@ -91,15 +112,18 @@ function verifyRawPeriods(row){
   const periods=[];
   for(let p=1;p<=3;p++){
     const gf=finite(row?.[`raw_p${p}_goals_for`]),ga=finite(row?.[`raw_p${p}_goals_against`]);
+    const eventGf=finite(row?.[`event_p${p}_goals_for`]),eventGa=finite(row?.[`event_p${p}_goals_against`]);
     const featureGf=finite(row?.[`p${p}_goals_for`]),featureGa=finite(row?.[`p${p}_goals_against`]);
     if(!Number.isInteger(gf)||!Number.isInteger(ga)||gf<0||ga<0)return {ok:false,reason:"missing_raw_period_scores",periods:[]};
+    if(!Number.isInteger(eventGf)||!Number.isInteger(eventGa)||eventGf<0||eventGa<0)return {ok:false,reason:"missing_goal_event_counts",periods:[]};
     if(featureGf!==gf||featureGa!==ga)return {ok:false,reason:"feature_period_mismatch",periods:[]};
+    if(eventGf!==gf||eventGa!==ga)return {ok:false,reason:"goal_event_period_mismatch",periods:[]};
     periods.push({gf,ga});
   }
   const regGf=finite(row?.regulation_goals_for),regGa=finite(row?.regulation_goals_against),regDiff=finite(row?.regulation_goal_diff);
   const sumGf=periods.reduce((s,x)=>s+x.gf,0),sumGa=periods.reduce((s,x)=>s+x.ga,0);
   if(regGf===null||regGa===null||regDiff===null||sumGf!==regGf||sumGa!==regGa||sumGf-sumGa!==regDiff)return {ok:false,reason:"period_regulation_mismatch",periods:[]};
-  return {ok:true,reason:"period_scores+feature+regulation",periods};
+  return {ok:true,reason:"period_scores+goal_events+feature+regulation",periods};
 }
 function marketNeedsVerifiedPeriods(m){
   const type=String(m?.market_type||""),period=String(m?.period||"GAME").toUpperCase();
@@ -331,8 +355,9 @@ function makeCard(game,m,r,window){
       current_streak:r.current_streak||0,
       streak_verified:r.streak_verified===true,
       streak_game_pks:r.streak_game_pks||[],
-      stats_validation:"exact_market_v4_raw_period_crosscheck",
+      stats_validation:"exact_market_v5_goal_event_crosscheck",
       period_data_verified:marketNeedsVerifiedPeriods(m)?r.period_data_verified===true:null,
+      period_validation:marketNeedsVerifiedPeriods(m)?"period_scores+goal_events+feature+regulation":null,
       history_scope:"official_nhl_games_regular_plus_playoffs",
       away:r.away||null,
       home:r.home||null,
