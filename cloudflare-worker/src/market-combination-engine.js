@@ -81,8 +81,8 @@ function pair(game,m,ar,br,i){
   const targetFrequencyVerified=exactAtomMarket(primary,m);
   return {
     id:String(game.game_pk)+":combo:p:"+key(m)+":"+safe(a.id)+":"+safe(b.id)+":"+i,insight_type:"market_combination_pair",category:"market_combination",
-    kind:"history",timing:"pregame",score,eyebrow:"2 НЕЗАВИСИМЫХ СИГНАЛА",value:primary.value||label,title:primary.title||label,
-    explanation:join(primary.explanation,"Дополнительное независимое подтверждение: "+(support.title||support.category)+".","Оба сигнала связаны с текущей линией WINLINE: "+label+"."),
+    kind:"history",timing:"pregame",score,eyebrow:"WINLINE × DATA CORE",value:primary.value||label,title:primary.title||label,
+    explanation:join(primary.explanation,"Дополнительный факт: "+(support.title||support.category)+".","Оба факта связаны с текущей линией WINLINE: "+label+"."),
     evidence:{...clone(primary.evidence),market_combination:true,market_first:true,primary_source_category:primary.category,combination_support_count:2,
       combination_compatibility:Math.round((ar.n+br.n)/2),source_insight_ids:[a.id,b.id],provider_market_key:key(m),source_market_key:atomMarketKey(primary),target_market_frequency_verified:targetFrequencyVerified,
       supporting_signals:[{category:support.category,insight_type:support.source?.insight_type||null,score:support.score,title:support.title,value:support.value,evidence:clone(support.evidence)}]},
@@ -162,7 +162,7 @@ function labelFor(m){
   if(t==="moneyline")return (p+"ПОБЕДА "+(s||String(m.side||"").toUpperCase())).trim();
   if(t==="handicap")return (p+s+" ФОРА "+x).trim();
   if(t==="team_total")return (p+s+" "+(m.side==="over"?"ТОТАЛ КОМАНДЫ БОЛЬШЕ":"ТОТАЛ КОМАНДЫ МЕНЬШЕ")+" "+x).trim();
-  if(t==="game_total")return (p+(m.side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ")+" "+x).trim();
+  if(t==="game_total")return (p+(m.side==="over"?"ОБЩИЙ ТОТАЛ БОЛЬШЕ":"ОБЩИЙ ТОТАЛ МЕНЬШЕ")+" "+x).trim();
   if(t==="first_goal_team")return "ПЕРВЫЙ ГОЛ — "+s;
   if(t==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ — "+s;
   if(t==="double_chance")return s+" НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ";
