@@ -894,11 +894,24 @@ function cardTeam(card){
   const meta=TEAM_META[tri]||{name:tri||"КОМАНДА",color:"#00E6C3"};
   return {tri,name:meta.name,color:meta.color,logo:g[side+"_logo"]||""};
 }
+const AGAINST_UI={
+  "ЛОС-АНДЖЕЛЕС":"ЛОС-АНДЖЕЛЕСА","СЕНТ-ЛУИС":"СЕНТ-ЛУИСА","КАРОЛИНА":"КАРОЛИНЫ","ФЛОРИДА":"ФЛОРИДЫ",
+  "МИННЕСОТА":"МИННЕСОТЫ","ОТТАВА":"ОТТАВЫ","ФИЛАДЕЛЬФИЯ":"ФИЛАДЕЛЬФИИ","ЮТА":"ЮТЫ","МОНРЕАЛЬ":"МОНРЕАЛЯ",
+  "ПИТТСБУРГ":"ПИТТСБУРГА","КОЛАМБУС":"КОЛАМБУСА","БОСТОН":"БОСТОНА","АНАХАЙМ":"АНАХАЙМА","ДАЛЛАС":"ДАЛЛАСА",
+  "ДЕТРОЙТ":"ДЕТРОЙТА","ЭДМОНТОН":"ЭДМОНТОНА","СИЭТЛ":"СИЭТЛА","ВАНКУВЕР":"ВАНКУВЕРА","ВЕГАС":"ВЕГАСА",
+  "ВАШИНГТОН":"ВАШИНГТОНА","ВИННИПЕГ":"ВИННИПЕГА","НЭШВИЛЛ":"НЭШВИЛЛА"
+};
+function applyAgainstUi(value){
+  let s=String(value??"");
+  for(const [name,form] of Object.entries(AGAINST_UI))s=s.replace(new RegExp("(ПРОТИВ\\\\s+)"+name+"(?=\\\\s|$|[.,;:!?—-])","gi"),"$1"+form);
+  return s;
+}
 function displayText(value){
   let s=String(value??"");
   for(const [tri,meta] of Object.entries(TEAM_META))s=s.replace(new RegExp("\\b"+tri+"\\b","gi"),meta.name);
   s=s.replace(/(^|[^A-Z0-9])P1(?=$|[^A-Z0-9])/gi,'$11-Й ПЕРИОД').replace(/(^|[^A-Z0-9])P2(?=$|[^A-Z0-9])/gi,'$12-Й ПЕРИОД').replace(/(^|[^A-Z0-9])P3(?=$|[^A-Z0-9])/gi,'$13-Й ПЕРИОД');
-  return s.replace(/([+-]?\\d+)\\.(\\d+)/g,"$1,$2").toUpperCase();
+  s=s.replace(/([+-]?\\d+)\\.(\\d+)/g,"$1,$2").toUpperCase();
+  return applyAgainstUi(s);
 }
 function lineText(value){
   const n=Number(value);if(!Number.isFinite(n))return"";
