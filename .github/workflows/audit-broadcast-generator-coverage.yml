@@ -67,8 +67,9 @@ jobs:
             min_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.min_odds // empty' 2>/dev/null || true)"
             target_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.featured_target // empty' 2>/dev/null || true)"
             chars_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.max_headline_chars // empty' 2>/dev/null || true)"
-            echo "POLICY_WAIT $attempt min=$min_policy target=$target_policy chars=$chars_policy"
-            if [ "$min_policy" = "1.5" ] && [ "$target_policy" = "4" ] && [ "$chars_policy" = "58" ]; then ready=1; break; fi
+            stats_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.stats_validation // empty' 2>/dev/null || true)"
+            echo "POLICY_WAIT $attempt min=$min_policy target=$target_policy chars=$chars_policy stats=$stats_policy"
+            if [ "$min_policy" = "1.5" ] && [ "$target_policy" = "4" ] && [ "$chars_policy" = "58" ] && [ "$stats_policy" = "same_season_streak_v2" ]; then ready=1; break; fi
             sleep 2
           done
           if [ "$ready" -ne 1 ]; then
@@ -105,14 +106,21 @@ jobs:
             low_cards="$(echo "$JSON" | jq -r '[.cards[]? | select((.market.odds // 0) < 1.5)] | length')"
             featured_low="$(echo "$JSON" | jq -r '[.featured_cards[]? | select((.market.odds // 0) < 1.5)] | length')"
             max_title="$(echo "$JSON" | jq -r '[.cards[]? | (.broadcast_title // .title // "") | length] | max // 0')"
+            unverified_streaks="$(echo "$JSON" | jq -r '[.cards[]? | select((.evidence.current_streak // 0) >= 3 and (.evidence.streak_verified != true))] | length')"
+            bogus_streak_copy="$(echo "$JSON" | jq -r '[.cards[]? | select(((.broadcast_title // .title // "") | test("[0-9]+ МАТЧ(А|ЕЙ)? ПОДРЯД";"i")) and (.evidence.streak_verified != true))] | length')"
             ftotal_now="$(echo "$JSON" | jq -r '.featured_cards | length // 0')"
-            echo "$JSON" | jq -c '{FIRST_FIVE_BROADCAST_BASE:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,start:.game.scheduled_start_utc,provider_markets:.provider_market_count,eligible_150:.eligible_provider_market_count,cards:(.cards|length),featured:(.featured_cards|length),min_odds:([.cards[]?.market.odds]|min//null),max_title_chars:([.cards[]?|(.broadcast_title//.title//"")|length]|max//0),featured_titles:[.featured_cards[]?|{title:(.broadcast_title//.title),odds:.market.odds,market:.market.label}]}}'
+            echo "$JSON" | jq -c '{FIRST_FIVE_BROADCAST_BASE:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,start:.game.scheduled_start_utc,provider_markets:.provider_market_count,eligible_150:.eligible_provider_market_count,cards:(.cards|length),featured:(.featured_cards|length),min_odds:([.cards[]?.market.odds]|min//null),max_title_chars:([.cards[]?|(.broadcast_title//.title//"")|length]|max//0),stats_validation:.broadcast_card_policy.stats_validation,featured_titles:[.featured_cards[]?|{title:(.broadcast_title//.title),odds:.market.odds,market:.market.label,streak_verified:.evidence.streak_verified,current_streak:.evidence.current_streak}]}}'
             if [ "$low_cards" -ne 0 ] || [ "$featured_low" -ne 0 ]; then
               echo "LOW_ODDS_CARD_LEAK game=$pk cards=$low_cards featured=$featured_low"
               exit 1
             fi
             if [ "$max_title" -gt 58 ]; then
               echo "HEADLINE_TOO_LONG game=$pk max=$max_title"
+              exit 1
+            fi
+            if [ "$unverified_streaks" -ne 0 ] || [ "$bogus_streak_copy" -ne 0 ]; then
+              echo "UNVERIFIED_STREAK_LEAK game=$pk evidence=$unverified_streaks copy=$bogus_streak_copy"
+              echo "$JSON" | jq -c '[.cards[]? | select((.evidence.current_streak // 0) >= 3 or ((.broadcast_title // .title // "") | test("[0-9]+ МАТЧ(А|ЕЙ)? ПОДРЯД";"i"))) | {id,broadcast_title,title,market,evidence:{current_streak:.evidence.current_streak,streak_verified:.evidence.streak_verified,streak_game_pks:.evidence.streak_game_pks,stats_validation:.evidence.stats_validation}}]'
               exit 1
             fi
             if [ "$eligible" -ge 4 ] && { [ "$card_count" -lt 4 ] || [ "$ftotal_now" -lt 4 ]; }; then
