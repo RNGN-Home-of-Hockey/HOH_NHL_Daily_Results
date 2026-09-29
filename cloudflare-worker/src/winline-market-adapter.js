@@ -190,6 +190,7 @@ function marketLabel(market) {
   if(type==="team_total")return (p+subject+" · "+(side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+line).trim();
   if(type==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ — "+subject;
   if(type==="first_goal_team")return "ПЕРВЫЙ ГОЛ — "+subject;
+  if(type==="double_chance")return side==="no_draw"?(p+"БЕЗ НИЧЬЕЙ").trim():(subject+" НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ").trim();
   return [p,type,subject,side,line].filter(Boolean).join(" ").trim();
 }
 function humanPeriod(value){const p=String(value||"GAME").toUpperCase();return p==="P1"?"1-Й ПЕРИОД · ":p==="P2"?"2-Й ПЕРИОД · ":p==="P3"?"3-Й ПЕРИОД · ":p==="REG"?"60 МИНУТ · ":""}
