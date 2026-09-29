@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { annotateAirUtility } from '../cloudflare-worker/src/betting-insight-engine.js';
+import { annotateAirUtility, broadcastCardSemanticsValid } from '../cloudflare-worker/src/betting-insight-engine.js';
 
 const bostonHome=annotateAirUtility({
   score:80,
@@ -72,6 +72,15 @@ const syntheticFlorida=annotateAirUtility({
 assert.equal(syntheticFlorida.air_meta.stats_source,'away+home');
 assert.equal(syntheticFlorida.broadcast_math_valid,false,'combined venue samples cannot become Florida win-rate copy');
 assert.doesNotMatch(String(floridaMismatch.broadcast_title),/100\+ ИГР|69%/);
+assert.equal(broadcastCardSemanticsValid({
+  broadcast_math_valid:true,broadcast_title:'ВАНКУВЕР — 5 ИЗ 7 ПРОТИВ ВАНКУВЕР',
+  evidence:{split:'h2h',team:'VAN',opponent:'VAN'},
+  market:{type:'handicap',period:'P1',subject:'VAN',side:'VAN',line:0,label:'1-Й ПЕРИОД · ВАНКУВЕР · ФОРА 0'}
+},{home_tri:'EDM',away_tri:'VAN'}),false,'team cannot be its own H2H opponent');
+assert.equal(broadcastCardSemanticsValid({
+  broadcast_math_valid:true,broadcast_title:'3-Й ПЕРИОД: ФЛОРИДА — 7 ИЗ 10',
+  evidence:{team:'FLA'},market:{type:'period_1_result',period:'P1',subject:'FLA',label:'1-Й ПЕРИОД · ПОБЕДА FLA'}
+},{home_tri:'CAR',away_tri:'FLA'}),false,'TV period must match the actual Winline market period');
 console.log('BROADCAST_AIR_SCORE_OK',JSON.stringify({
   bostonHome:bostonHome.air_score,
   safeHandicap:safeHandicap.air_score,
