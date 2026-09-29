@@ -1,3 +1,4 @@
+import { applyAgainstCase } from "./team-russian-grammar.js";
 // Structured TV-angle generator.
 // One source card -> several numerical, human-readable broadcast stories.
 
@@ -25,9 +26,9 @@ export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
     .replace(/ПО МИНИМУМУ ДОПУЩЕННЫХ ОПАСНЫХ МОМЕНТОВ/g,"ПО ЗАЩИТЕ ОТ МОМЕНТОВ")
     .replace(/ПО ЗАЩИТЕ ОТ ОПАСНЫХ МОМЕНТОВ/g,"ПО ЗАЩИТЕ ОТ МОМЕНТОВ")
     .replace(/ПОСЛЕДНИХ МАТЧЕЙ/g,"МАТЧЕЙ")
-    .replace(/В ОСНОВНОЕ ВРЕМЯ/g,"ЗА 60 МИН")
     .replace(/\s*—\s*/g," — ")
     .replace(/\s+/g," ").trim();
+  s=applyAgainstCase(s);
   if(s.length<=max)return s;
   let compact=s
     .replace(/ — №/g," №")
@@ -145,8 +146,13 @@ function addHistory(out,e,m,p={}){
       const compact=`${shortTeamName(team)}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОБЕД ПРОТИВ ${shortTeamName(opponent)}`;
       put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ`,108,"очный результат с явным соперником");
     }else{
-      const full=`${label} ПРОТИВ ${opponent} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`;
-      const compact=`${label}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${shortTeamName(opponent)}`;
+      const isDoubleChance=String(m.type||"").toLowerCase()==="double_chance"&&String(m.side||"").toLowerCase()==="team_or_draw";
+      const full=isDoubleChance
+        ?`${team} — БЕЗ ПОРАЖЕНИЯ В ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${opponent}`
+        :`${label} ПРОТИВ ${opponent} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`;
+      const compact=isDoubleChance
+        ?`${shortTeamName(team)}: БЕЗ ПОРАЖЕНИЯ ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${shortTeamName(opponent)}`
+        :`${label}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${shortTeamName(opponent)}`;
       put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ`,104,"очная статистика с явным соперником");
     }
   }
@@ -239,7 +245,7 @@ function marketLabel(m){
   if(t==="handicap")return `${p}${s} ФОРА ${signed(l)}`.trim();
   if(t==="game_total")return `${p}${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${line(l)}`.trim();
   if(t==="team_total")return `${p}${s} ${side==="over"?"ТОТАЛ КОМАНДЫ БОЛЬШЕ":"ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${line(l)}`.trim();
-  if(t==="double_chance")return side==="no_draw"?"12 — БЕЗ НИЧЬЕЙ":`${s} ИЛИ НИЧЬЯ`;
+  if(t==="double_chance")return side==="no_draw"?"12 — БЕЗ НИЧЬЕЙ":`${s} НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ`;
   if(t==="both_teams_score")return side==="yes"?"ОБЕ ЗАБЬЮТ — ДА":"ОБЕ ЗАБЬЮТ — НЕТ";
   if(t==="first_goal_team")return `ПЕРВЫЙ ГОЛ — ${s}`;
   if(t==="next_goal_team")return `СЛЕДУЮЩИЙ ГОЛ — ${s}`;
