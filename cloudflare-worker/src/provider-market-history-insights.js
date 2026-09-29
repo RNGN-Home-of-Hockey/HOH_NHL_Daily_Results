@@ -12,8 +12,8 @@ export async function buildProviderMarketHistoryInsights(db,game,providerMarkets
     history(db,game.home_tri,game.scheduled_start_utc),
   ]);
   const rowsByTeam={
-    [game.away_tri]:awayR.results||[],
-    [game.home_tri]:homeR.results||[],
+    [game.away_tri]:prepareHistoryRows(awayR.results||[],game.away_tri,game),
+    [game.home_tri]:prepareHistoryRows(homeR.results||[],game.home_tri,game),
   };
 
   return evaluateProviderMarketHistoryRows(game,rowsByTeam,providerMarkets);
@@ -27,10 +27,14 @@ export function evaluateProviderMarketHistoryRows(game,rowsByTeam,providerMarket
       .filter(Boolean)
   );
 
+  const preparedRows={
+    [game.away_tri]:prepareHistoryRows(rowsByTeam?.[game.away_tri]||[],game.away_tri,game),
+    [game.home_tri]:prepareHistoryRows(rowsByTeam?.[game.home_tri]||[],game.home_tri,game),
+  };
   const out=[];
   for(const market of markets){
     for(const window of WINDOWS){
-      const result=evaluateMarket(market,game,rowsByTeam||{},window);
+      const result=evaluateMarket(market,game,preparedRows,window);
       if(!result)continue;
       const threshold=displayThreshold(market);
       if(result.rate<threshold||result.decisions<minimumDecisions(window))continue;
@@ -42,7 +46,7 @@ export function evaluateProviderMarketHistoryRows(game,rowsByTeam,providerMarket
 
 function history(db,team,before){
   return db.prepare(`
-    SELECT game_pk,scheduled_start_utc,team_tri,opponent_tri,is_home,
+    SELECT game_pk,season_id,game_type,scheduled_start_utc,team_tri,opponent_tri,is_home,
            final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,
            regulation_goals_for,regulation_goals_against,regulation_goal_diff,regulation_result,
            p1_goals_for,p1_goals_against,p2_goals_for,p2_goals_against,p3_goals_for,p3_goals_against,
@@ -52,6 +56,27 @@ function history(db,team,before){
     ORDER BY scheduled_start_utc DESC,game_pk DESC
     LIMIT ${MAX_HISTORY};
   `).bind(team,before);
+}
+
+function prepareHistoryRows(rows,team,game){
+  const seen=new Set(),out=[];
+  for(const raw of rows||[]){
+    const pk=Number(raw?.game_pk);
+    if(!Number.isSafeInteger(pk)||pk<=0||seen.has(pk))continue;
+    if(raw?.team_tri&&String(raw.team_tri).toUpperCase()!==String(team||"").toUpperCase())continue;
+    seen.add(pk);
+    out.push({...raw,__streak_eligible:!game?.season_id||!raw?.season_id||String(raw.season_id)===String(game.season_id)});
+  }
+  return out.sort((a,b)=>String(b.scheduled_start_utc||"").localeCompare(String(a.scheduled_start_utc||""))||Number(b.game_pk)-Number(a.game_pk));
+}
+function validRegulationRow(row){
+  const gf=finite(row?.regulation_goals_for),ga=finite(row?.regulation_goals_against),diff=finite(row?.regulation_goal_diff),res=String(row?.regulation_result||"");
+  if(gf===null||ga===null||diff===null||gf<0||ga<0||diff!==gf-ga||!["W","L","T"].includes(res))return false;
+  return res===(diff>0?"W":diff<0?"L":"T");
+}
+function validFinalRow(row){
+  const gf=finite(row?.final_goals_for),ga=finite(row?.final_goals_against),diff=finite(row?.final_goal_diff),win=finite(row?.final_win);
+  return gf!==null&&ga!==null&&diff!==null&&win!==null&&gf>=0&&ga>=0&&diff===gf-ga&&win===(gf>ga?1:0);
 }
 
 function evaluateMarket(m,game,rowsByTeam,window){
@@ -94,8 +119,8 @@ function evaluateMarket(m,game,rowsByTeam,window){
     }
     if(!rowsByTeam[subject])return null;
     return oneTeamSlice(rowsByTeam[subject],window,row=>{
-      if(period==="REG")return String(row.regulation_result)==="W"?"win":"loss";
-      if(period==="GAME")return Number(row.final_win)===1?"win":"loss";
+      if(period==="REG"){if(!validRegulationRow(row))return null;return String(row.regulation_result)==="W"?"win":"loss";}
+      if(period==="GAME"){if(!validFinalRow(row))return null;return Number(row.final_win)===1?"win":"loss";}
       return null;
     });
   }
@@ -214,14 +239,15 @@ function combinedTeamSlices(game,rowsByTeam,window,settler){
 
 function aggregate(rows,settler,extra={}){
   let hits=0,losses=0,pushes=0,current_streak=0,streakOpen=true;
-  const game_pks=[];
+  const game_pks=[],streak_game_pks=[];
   for(const row of rows){
     const result=settler(row);
-    if(result===null||result===undefined)continue;
+    if(result===null||result===undefined){if(streakOpen)streakOpen=false;continue;}
     game_pks.push(Number(row.game_pk));
     if(result==="win"){
       hits++;
-      if(streakOpen)current_streak++;
+      if(streakOpen&&row.__streak_eligible===true){current_streak++;streak_game_pks.push(Number(row.game_pk));}
+      else if(streakOpen)streakOpen=false;
     }else if(result==="push"){
       pushes++;
       streakOpen=false;
@@ -232,7 +258,7 @@ function aggregate(rows,settler,extra={}){
   }
   const decisions=hits+losses,sample=hits+losses+pushes;
   if(!sample||!decisions)return null;
-  return {hits,losses,pushes,decisions,sample,rate:hits/decisions,current_streak,game_pks,...extra};
+  return {hits,losses,pushes,decisions,sample,rate:hits/decisions,current_streak,streak_verified:current_streak>0&&streak_game_pks.length===current_streak,streak_game_pks,game_pks,...extra};
 }
 
 function makeCard(game,m,r,window){
@@ -258,6 +284,9 @@ function makeCard(game,m,r,window){
       pushes:r.pushes,
       hit_rate:r.rate,
       current_streak:r.current_streak||0,
+      streak_verified:r.streak_verified===true,
+      streak_game_pks:r.streak_game_pks||[],
+      stats_validation:"dedupe+result_consistency+same_season_streak_v2",
       away:r.away||null,
       home:r.home||null,
       exact_provider_line:true,

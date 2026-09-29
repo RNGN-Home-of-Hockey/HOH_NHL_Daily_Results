@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { evaluateProviderMarketHistoryRows } from "../cloudflare-worker/src/provider-market-history-insights.js";
 
 const now="2026-09-23T06:20:00.000Z";
-const game={game_pk:2026020999,away_tri:"FLA",home_tri:"CAR"};
+const game={game_pk:2026020999,season_id:"20262027",away_tri:"FLA",home_tri:"CAR"};
 
 function row(pk,team,i){
   const car=team==="CAR";
@@ -61,4 +61,24 @@ assert.ok(cards.some(c=>c.market.type==="game_total"&&c.market.period==="P2"&&c.
 assert.ok(cards.some(c=>c.market.type==="double_chance"&&c.market.subject==="CAR"),"double chance should use regulation non-loss history");
 assert.ok(cards.some(c=>c.market.type==="both_teams_score"&&c.market.side==="yes"),"BTTS should be evaluated from scoring distribution");
 assert.ok(cards.every(c=>c.evidence?.exact_provider_line===true),"every card must be marked exact provider line");
+const seaRows=Array.from({length:40},(_,i)=>({
+  game_pk:9000+i,season_id:"20252026",game_type:2,scheduled_start_utc:new Date(Date.UTC(2026,3,30-i)).toISOString(),
+  team_tri:"SEA",opponent_tri:"VAN",is_home:i%2,final_goals_for:4,final_goals_against:2,total_goals:6,final_goal_diff:2,final_win:1,
+  regulation_goals_for:3,regulation_goals_against:2,regulation_goal_diff:1,regulation_result:"W",
+  p1_goals_for:1,p1_goals_against:0,p2_goals_for:1,p2_goals_against:1,p3_goals_for:1,p3_goals_against:1,
+  score_after_p1_diff:1,score_after_p2_diff:1,first_goal_for:1,
+}));
+const seaGame={game_pk:2026021000,season_id:"20262027",away_tri:"SEA",home_tri:"VAN"};
+const seaMarket=[m("moneyline","REG","SEA","SEA",null,2.55)];
+const seaCards=evaluateProviderMarketHistoryRows(seaGame,{SEA:seaRows,VAN:[]},seaMarket);
+const sea=seaCards.find(x=>x.market.type==="moneyline"&&x.market.subject==="SEA");
+assert.ok(sea,"SEA exact moneyline history should remain available as historical rate");
+assert.equal(sea.evidence.current_streak,0,"previous-season wins must not be called a current streak");
+assert.equal(sea.evidence.streak_verified,false);
+assert.equal(sea.evidence.stats_validation,"dedupe+result_consistency+same_season_streak_v2");
+
+const corrupt=Array.from({length:10},(_,i)=>({...seaRows[i],season_id:"20262027"}));
+corrupt[0]={...corrupt[0],regulation_goal_diff:-1,regulation_result:"W"};
+const corruptCards=evaluateProviderMarketHistoryRows(seaGame,{SEA:corrupt,VAN:[]},seaMarket);
+assert.ok(!corruptCards.some(x=>x.evidence?.current_streak>=3),"inconsistent regulation result must break the current streak");
 console.log("PROVIDER_MARKET_HISTORY_OK");

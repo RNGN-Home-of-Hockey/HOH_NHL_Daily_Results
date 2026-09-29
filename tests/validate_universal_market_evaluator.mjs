@@ -8,7 +8,8 @@ const handicap=cards.find(c=>c.market?.type==="handicap"&&c.market?.subject==="C
 assert.ok(handicap,"CAR +1.5 handicap card missing");
 assert.equal(Number(handicap.evidence?.window),83);
 assert.equal(Number(handicap.evidence?.cover?.current_streak),83);
-assert.match(handicap.title,/CAR закрыла фору \+1\.5 в 83 матчах подряд/i);
+assert.match(handicap.title,/CAR закрыла фору \+1\.5 в 83 из последних 83 матчей/i);
+assert.doesNotMatch(handicap.title,/подряд/i);
 assert.equal(applyTeamGrammar("CAR закрыл фору +1.5"),"CAR закрыла фору +1.5");
 assert.equal(applyTeamGrammar("NYR закрыл фору +1.5"),"NYR закрыли фору +1.5");
 assert.equal(applyTeamGrammar("BOS закрыл фору +1.5"),"BOS закрыл фору +1.5");
