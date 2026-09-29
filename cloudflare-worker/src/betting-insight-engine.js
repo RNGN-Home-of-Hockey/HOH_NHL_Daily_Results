@@ -569,7 +569,7 @@ function broadcastMarketLabel(m={}){
   if(type==="handicap")return (period+subject+" · ФОРА "+signed).trim();
   if(type==="game_total")return (period+(side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+num).trim();
   if(type==="team_total")return (period+subject+" · "+(side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+num).trim();
-  if(type==="double_chance")return (period+(side==="no_draw"?"БЕЗ НИЧЬЕЙ":subject+" ИЛИ НИЧЬЯ")).trim();
+  if(type==="double_chance")return side==="no_draw"?(period+"БЕЗ НИЧЬЕЙ").trim():(subject+" НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ").trim();
   if(type==="both_teams_score")return side==="yes"?"ОБЕ КОМАНДЫ ЗАБЬЮТ":"ОБЕ КОМАНДЫ НЕ ЗАБЬЮТ";
   if(type==="first_goal_team")return "ПЕРВЫЙ ГОЛ · "+subject;
   if(type==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ · "+subject;
