@@ -325,7 +325,9 @@ export function annotateAirUtility(input, game=null) {
     stats_consistent:stats.consistent,
   };
   const frequencyClaim=hasFrequencyClaim(card);
-  card.broadcast_math_valid=stats.consistent!==false&&(!frequencyClaim||stats.verified===true||isAnalyticalNarrative(card));
+  const frequencyCapable=Number.isFinite(hitRate)&&sample>0;
+  card.broadcast_math_valid=stats.consistent!==false&&(isAnalyticalNarrative(card)||!frequencyCapable||stats.verified===true);
+  if(frequencyClaim&&stats.verified!==true&&!isAnalyticalNarrative(card))card.broadcast_math_valid=false;
   const formatted=formatBroadcastTitle(card,{sample,hitRate,hits:stats.hits,stats,game});
   const narrative=buildNarrative(
     {...card,broadcast_title:formatted.title,broadcast_detail:formatted.detail},
