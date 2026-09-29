@@ -89,7 +89,7 @@ async function broadcastGamesRoute(env) {
         LEFT JOIN broadcast_operator_leases bol ON bol.game_pk=g.game_pk AND datetime(bol.expires_at)>datetime('now')
         LEFT JOIN broadcast_cards onair ON onair.game_pk=g.game_pk AND onair.status='shown'
         LEFT JOIN broadcast_queue_summaries bqs ON bqs.game_pk=g.game_pk
-        WHERE g.game_type IN (1,2,3)
+        WHERE g.game_type IN (2,3)
           AND (
             UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
             OR datetime(g.scheduled_start_utc) >= datetime('now')
@@ -105,7 +105,7 @@ async function broadcastGamesRoute(env) {
       env.DB.prepare(`
         SELECT
           (SELECT COUNT(*) FROM games
-            WHERE game_type IN (1,2,3)
+            WHERE game_type IN (2,3)
               AND (
                 UPPER(COALESCE(game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
                 OR datetime(scheduled_start_utc) >= datetime('now')
@@ -816,7 +816,7 @@ async function warmQueueSummaries(){
 function renderGames(){
   const selectedGame=games.find(g=>Number(g.game_pk)===Number(selected));
   if(selectedGame)groupOpen[Number(selectedGame.game_type)]=true;
-  const groups=[{type:1,label:'Предсезонка'},{type:2,label:'Регулярка'},{type:3,label:'Плей-офф'}];
+  const groups=[{type:2,label:'Регулярка'},{type:3,label:'Плей-офф'}];
   const row=g=>{const room=[g.on_air_card_id?'<b class="pill">ON AIR</b>':'',g.operator_name?`<span class="roomop">${esc(g.operator_name)}</span>`:''].filter(Boolean).join(' ');const q=queueBadge(g);return `<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span class="roomstate">${room}</span></div><div class="gqueue">${q}</div></button>`};
   $('#games').innerHTML=groups.map(group=>{
     const rows=games.filter(g=>Number(g.game_type)===group.type);
@@ -886,7 +886,11 @@ function teamCodeFromCard(card){
   return away||home||"";
 }
 function cardTeam(card){
-  const g=currentData?.game||{},tri=teamCodeFromCard(card),side=tri===String(g.home_tri||"").toUpperCase()?"home":"away";
+  const g=currentData?.game||{},type=String(card?.market?.type||"").toLowerCase();
+  if(type==="game_total"){
+    return {tri:"",name:"МАТЧ",color:"#00E6C3",logo:""};
+  }
+  const tri=teamCodeFromCard(card),side=tri===String(g.home_tri||"").toUpperCase()?"home":"away";
   const meta=TEAM_META[tri]||{name:tri||"КОМАНДА",color:"#00E6C3"};
   return {tri,name:meta.name,color:meta.color,logo:g[side+"_logo"]||""};
 }
@@ -906,12 +910,13 @@ function marketDescription(card,team){
   const line=Number(m.line);
   if(type==="handicap"){let v=Number.isFinite(line)?line:null;if(v===null){const mm=String(m.label||"").match(/([+-]\\d+(?:[.,]\\d+)?)/);if(mm)v=Number(mm[1].replace(",","."))}return "ФОРА "+(v===null?"":lineText(v))+" ГОЛА"}
   if(type==="team_total"){const dir=side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?lineText(Math.abs(line)).replace("+",""):"")+" ГОЛА"}
-  if(type==="game_total"){const dir=side==="under"?"ТОТАЛ МЕНЬШЕ":"ТОТАЛ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?String(line).replace(".",","):"")}
+  if(type==="game_total"){const dir=side==="under"?"ОБЩИЙ ТОТАЛ МЕНЬШЕ":"ОБЩИЙ ТОТАЛ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?String(line).replace(".",","):"")}
   if(type==="moneyline")return"ПОБЕДА";
   if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";
   if(type==="period_1_result")return"1-Й ПЕРИОД · ПОБЕДА";
   if(type==="period_2_result")return"2-Й ПЕРИОД · ПОБЕДА";
   if(type==="period_3_result")return"3-Й ПЕРИОД · ПОБЕДА";
+  if(type==="double_chance")return side==="no_draw"?"БЕЗ НИЧЬЕЙ":"НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ";
   const fallback=displayText(m.label||"СТАВКА WINLINE").replace(team.name,"").replace(/^\\s*[·—-]+\\s*/,"").trim();
   return fallback||"СТАВКА WINLINE";
 }
