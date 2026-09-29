@@ -3,7 +3,7 @@ import { WINLINE_LOGO_PNG_BASE64 } from "./winline-logo.js";
 import { BROADCAST_CARD_CSS } from "./broadcast-card-theme.js";
 import { archiveBroadcastInsightHistory, loadBroadcastPregameArchive } from "./broadcast-insight-history.js";
 import { summarizeMarketCoverage } from "./market-coverage-audit.js";
-import { selectBroadcastFour } from "./broadcast-four-card-selector.js";
+import { isFeaturedQuality, selectBroadcastFour } from "./broadcast-four-card-selector.js";
 import { buildCommentatorBrief } from "./commentator-brief.js";
 
 const BROADCAST_PATH = "/broadcast";
@@ -189,7 +189,7 @@ async function computeBroadcastQueueSummary(db,game){
 export function summarizeBroadcastQueueCards(cards){
   const list=(Array.isArray(cards)?cards:[]).filter(isRealBroadcastPrice);
   const priced=list.filter(isRealBroadcastPrice);
-  const strong=priced.filter(c=>Number(c?.air_score)>=55);
+  const strong=priced.filter(isFeaturedQuality);
   const top=strong.reduce((m,c)=>Math.max(m,Number(c?.air_score)||0),0);
   return {
     strong_count:strong.length,

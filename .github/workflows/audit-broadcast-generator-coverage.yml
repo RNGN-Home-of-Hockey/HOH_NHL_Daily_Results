@@ -129,6 +129,7 @@ jobs:
             unverified_expanded_history="$(echo "$JSON" | jq -r '[.cards[]? | select((.category // "")=="expanded_market" and (((.evidence.stats_validation // "")!="final_feature_v3_games_team_stats_goal_events") or (.evidence.final_data_verified != true)))] | length')"
             needless_total_abbr="$(echo "$JSON" | jq -r '[.cards[]? | (.broadcast_title // "") as $t | select(($t|test("(^|[ ·—:])(ТМ|ТБ)([ ·—:]|$)")) and (($t|gsub("ТМ";"ТОТАЛ МЕНЬШЕ")|gsub("ТБ";"ТОТАЛ БОЛЬШЕ")|length)<=58))] | length')"
             ftotal_now="$(echo "$JSON" | jq -r '.featured_cards | length // 0')"
+            strong_now="$(echo "$JSON" | jq -r '.queue_summary.strong_count // 0')"
             echo "$JSON" | jq -c '{FIRST_FIVE_BROADCAST_BASE:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,start:.game.scheduled_start_utc,provider_markets:.provider_market_count,eligible_150:.eligible_provider_market_count,cards:(.cards|length),featured:(.featured_cards|length),min_odds:([.cards[]?.market.odds]|min//null),max_title_chars:([.cards[]?|(.broadcast_title//.title//"")|length]|max//0),stats_validation:.broadcast_card_policy.stats_validation,featured_titles:[.featured_cards[]?|{title:(.broadcast_title//.title),odds:.market.odds,market:.market.label,stats_source:.air_meta.stats_source,stats_hits:.air_meta.stats_hits,sample:.air_meta.sample_size,period_verified:.evidence.period_data_verified,period_validation:.evidence.period_validation,stats_validation:.evidence.stats_validation,streak_verified:.evidence.streak_verified,current_streak:.evidence.current_streak}]}}'
             if [ "$low_cards" -ne 0 ] || [ "$featured_low" -ne 0 ]; then
               echo "LOW_ODDS_CARD_LEAK game=$pk cards=$low_cards featured=$featured_low"
@@ -148,8 +149,8 @@ jobs:
               echo "$JSON" | jq -c '[.cards[]? | {id,broadcast_title,market,evidence:{team:.evidence.team,opponent:.evidence.opponent,split:.evidence.split},air_meta}]'
               exit 1
             fi
-            if [ "$eligible" -ge 4 ] && { [ "$card_count" -lt 4 ] || [ "$ftotal_now" -lt 4 ]; }; then
-              echo "NOT_ENOUGH_COMMENTATOR_CHOICES game=$pk eligible_markets=$eligible cards=$card_count featured=$ftotal_now"
+            if [ "$strong_now" -ge 4 ] && [ "$ftotal_now" -lt 4 ]; then
+              echo "NOT_ENOUGH_COMMENTATOR_CHOICES game=$pk featured_eligible=$strong_now cards=$card_count featured=$ftotal_now provider_markets=$eligible"
               exit 1
             fi
             p="$(echo "$JSON" | jq -r '.market_coverage.provider_exact_market_count // 0')"

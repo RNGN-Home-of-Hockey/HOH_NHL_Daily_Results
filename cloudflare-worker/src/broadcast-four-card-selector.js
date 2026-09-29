@@ -105,7 +105,7 @@ function hasRealPrice(c){const o=Number(c?.market?.odds);return Number.isFinite(
 function score(c){const n=Number(c?.air_score??c?.portfolio_score??c?.score);return Number.isFinite(n)?n:0}
 function hasUsefulNumber(c){return /\d/.test(String(c?.broadcast_title||c?.title||c?.value||""))||Number.isFinite(Number(c?.evidence?.hits))||Number.isFinite(Number(c?.evidence?.team_rank))}
 function isConcreteStory(c){const s=String(c?.broadcast_title||c?.title||"").toUpperCase();return !/НЕЗАВИСИМ.*СИГНАЛ|ПОДТВЕРЖДАЮТ.*СИГНАЛ|РАЗНЫЕ СТАТИСТИЧЕСКИЕ СЛОИ|DATA CORE/.test(s)}
-function isFeaturedQuality(c){
+export function isFeaturedQuality(c){
   if(!hasRealPrice(c)||score(c)<55)return false;
   const e=c?.evidence||{},sample=Number(e.decisions??e.sample??e.games??e.window),rate=Number(e.hit_rate),odds=Number(c?.market?.odds);
   if(Number.isFinite(sample)&&sample<=8&&Number.isFinite(rate)&&rate<=0.5){
