@@ -2,6 +2,13 @@
 // One source card -> several numerical, human-readable broadcast stories.
 
 export const MAX_BROADCAST_TITLE_CHARS=58;
+const SHORT_TEAM_NAMES={
+  ANA:"АНАХАЙМ",BOS:"БОСТОН",BUF:"БАФФАЛО",CAR:"КАРОЛИНА",CBJ:"КОЛАМБУС",CGY:"КАЛГАРИ",CHI:"ЧИКАГО",COL:"КОЛОРАДО",
+  DAL:"ДАЛЛАС",DET:"ДЕТРОЙТ",EDM:"ЭДМОНТОН",FLA:"ФЛОРИДА",LAK:"ЛОС-АНДЖЕЛЕС",MIN:"МИННЕСОТА",MTL:"МОНРЕАЛЬ",
+  NJD:"НЬЮ-ДЖЕРСИ",NSH:"НЭШВИЛЛ",NYI:"АЙЛЕНДЕРС",NYR:"РЕЙНДЖЕРС",OTT:"ОТТАВА",PHI:"ФИЛАДЕЛЬФИЯ",PIT:"ПИТТСБУРГ",
+  SEA:"СИЭТЛ",SJS:"САН-ХОСЕ",STL:"СЕНТ-ЛУИС",TBL:"ТАМПА-БЭЙ",TOR:"ТОРОНТО",UTA:"ЮТА",VAN:"ВАНКУВЕР",
+  VGK:"ВЕГАС",WPG:"ВИННИПЕГ",WSH:"ВАШИНГТОН"
+};
 const FULL_TEAM_SHORT=[
   ["КАРОЛИНА ХАРРИКЕЙНЗ","КАРОЛИНА"],["ФЛОРИДА ПАНТЕРЗ","ФЛОРИДА"],["ЛОС-АНДЖЕЛЕС КИНГЗ","ЛОС-АНДЖЕЛЕС"],
   ["НЬЮ-ЙОРК РЕЙНДЖЕРС","РЕЙНДЖЕРС"],["НЬЮ-ЙОРК АЙЛЕНДЕРС","АЙЛЕНДЕРС"],["НЬЮ-ДЖЕРСИ ДЕВИЛЗ","НЬЮ-ДЖЕРСИ"],
@@ -15,10 +22,26 @@ const FULL_TEAM_SHORT=[
   ["ОТТАВА СЕНАТОРЗ","ОТТАВА"],["ФИЛАДЕЛЬФИЯ ФЛАЙЕРЗ","ФИЛАДЕЛЬФИЯ"],["СИЭТЛ КРАКЕН","СИЭТЛ"],["ЮТА МАММОТ","ЮТА"]
 ];
 
-export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
+export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS,expandTeamCodes=false){
   let s=String(value||"").replace(/\s+/g," ").trim().toUpperCase();
   for(const [full,short] of FULL_TEAM_SHORT)s=s.replaceAll(full,short);
+  if(expandTeamCodes)for(const [tri,short] of Object.entries(SHORT_TEAM_NAMES))s=s.replace(new RegExp("\\b"+tri+"\\b","g"),short);
+  for(const short of new Set(FULL_TEAM_SHORT.map(([,name])=>name)))s=s.replace(new RegExp("("+short+")\\s+\\1","g"),"$1");
+  s=s.replace(/\b([A-Z]{2,3})\s+\1\b/g,"$1");
   s=s
+    .replace(/\bP1\s*·\s*PERIOD_1_RESULT\b/g,"1-Й ПЕРИОД ·")
+    .replace(/\bP2\s*·\s*PERIOD_2_RESULT\b/g,"2-Й ПЕРИОД ·")
+    .replace(/\bP3\s*·\s*PERIOD_3_RESULT\b/g,"3-Й ПЕРИОД ·")
+    .replace(/\bPERIOD_1_RESULT\b/g,"1-Й ПЕРИОД")
+    .replace(/\bPERIOD_2_RESULT\b/g,"2-Й ПЕРИОД")
+    .replace(/\bPERIOD_3_RESULT\b/g,"3-Й ПЕРИОД")
+    .replace(/\bP1\b/g,"1-Й ПЕРИОД")
+    .replace(/\bP2\b/g,"2-Й ПЕРИОД")
+    .replace(/\bP3\b/g,"3-Й ПЕРИОД")
+    .replace(/\bMONEYLINE\b/g,"ПОБЕДА")
+    .replace(/\bHANDICAP\b/g,"ФОРА")
+    .replace(/\bTEAM_TOTAL\b/g,"ТОТАЛ КОМАНДЫ")
+    .replace(/\bGAME_TOTAL\b/g,"ТОТАЛ МАТЧА")
     .replace(/ПО РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ/g,"ПО ОПАСНЫМ МОМЕНТАМ")
     .replace(/ПО СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ/g,"ПО ОПАСНЫМ МОМЕНТАМ")
     .replace(/ПО МИНИМУМУ ДОПУЩЕННЫХ ОПАСНЫХ МОМЕНТОВ/g,"ПО ЗАЩИТЕ ОПАСНЫХ МОМЕНТОВ")
