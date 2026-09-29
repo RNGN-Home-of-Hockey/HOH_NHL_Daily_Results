@@ -41,6 +41,14 @@ function recent(db,team,before){
       AND f.final_goals_against=CASE WHEN f.is_home=1 THEN g.away_score ELSE g.home_score END
       AND own.goals=f.final_goals_for
       AND opp.goals=f.final_goals_against
+      AND (
+        UPPER(COALESCE(g.period_type,''))='SO'
+        OR (
+          UPPER(COALESCE(g.period_type,'')) IN ('REG','OT')
+          AND (SELECT COUNT(*) FROM game_events ge WHERE ge.game_pk=f.game_pk AND ge.event_type='goal' AND ge.team_tri=f.team_tri)=f.final_goals_for
+          AND (SELECT COUNT(*) FROM game_events ge WHERE ge.game_pk=f.game_pk AND ge.event_type='goal' AND ge.team_tri=f.opponent_tri)=f.final_goals_against
+        )
+      )
     ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC
     LIMIT 20;
   `).bind(team,before);
@@ -200,7 +208,7 @@ function contextCard(game,team,opponent,kind,rate,hits,sample){
 function card(game,x){
   return {id:`${game.game_pk}:expanded:${x.id}`,insight_type:x.type,category:"expanded_market",kind:"history",timing:"pregame",
     score:Math.round(x.score),eyebrow:x.eyebrow,value:x.value,title:x.title,explanation:x.explanation,
-    evidence:{...x.evidence,feature_layer:"team_game_features_expanded_markets_v2",stats_validation:"final_feature_v2_games_team_stats",final_data_verified:true},
+    evidence:{...x.evidence,feature_layer:"team_game_features_expanded_markets_v2",stats_validation:"final_feature_v3_games_team_stats_goal_events",final_data_verified:true},
     market:{type:x.type,period:"GAME",subject:x.subject,side:x.side,line:x.line,label:marketLabel(x)}};
 }
 function marketLabel(x){
