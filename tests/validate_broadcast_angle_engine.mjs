@@ -45,6 +45,8 @@ const rawEnumSafe=diversifyBroadcastAngles([{id:'dc',broadcast_angle_variants:[
   {id:'humandc',family:'hit_rate',title:'60 МИНУТ · NYR ИЛИ НИЧЬЯ — 12 ИЗ 20',score:80}
 ]}])[0];
 assert.equal(rawEnumSafe.broadcast_angle_id,'humandc');
+assert.match(rawEnumSafe.broadcast_title,/НЕ ПРОИГРАЕТ/,'double chance should be phrased as not losing in regulation');
+assert.doesNotMatch(rawEnumSafe.broadcast_title,/ИЛИ НИЧЬЯ/);
 
 const historyCard={
   title:"exact line",
@@ -82,10 +84,24 @@ const h2hCard={
   market:{type:"moneyline",period:"REG",subject:"MIN",side:"MIN",label:"REG · ПОБЕДА MIN",odds:4.10,odds_is_demo:false}
 };
 const h2hAngles=buildBroadcastAngles(h2hCard,{team:"МИННЕСОТА УАЙЛД",opponent:"ДАЛЛАС СТАРС"});
-assert.ok(h2hAngles.some(x=>x.family==="h2h_matchup"&&/МИННЕСОТА: 6 ИЗ 10 ПОБЕД ПРОТИВ ДАЛЛАС/.test(x.title)),"H2H headline must name both teams in compact on-air form");
+assert.ok(h2hAngles.some(x=>x.family==="h2h_matchup"&&/МИННЕСОТА: 6 ИЗ 10 ПОБЕД ПРОТИВ ДАЛЛАСА/.test(x.title)),"H2H headline must name both teams in compact on-air form and decline the opponent");
 assert.ok(!h2hAngles.some(x=>/ЕСТЬ\s+\d+\s+ПОДТВЕРЖДЕНИ/i.test(x.title)),"generic confirmation-count headline must not be generated");
 assert.ok(h2hAngles.some(x=>x.family==="supporting_fact"&&/МИННЕСОТА ЗАБИВАЛА/.test(x.title)),"first concrete support fact should be available instead of a confirmation count");
 assert.ok(h2hAngles.some(x=>/ЕЩЁ 2 ФАКТА В ОПИСАНИИ/.test(String(x.subtitle||""))),"support fact must carry the commentator hint");
+const declinedMontreal=fitBroadcastTitle("ТОРОНТО: 4 ИЗ 8 ПОБЕД ПРОТИВ МОНРЕАЛЬ");
+assert.match(declinedMontreal,/ПРОТИВ МОНРЕАЛЯ/);
+const declinedLa=fitBroadcastTitle("ВЕГАС: 5 ИЗ 8 ПОБЕД ПРОТИВ ЛОС-АНДЖЕЛЕС");
+assert.match(declinedLa,/ПРОТИВ ЛОС-АНДЖЕЛЕСА/);
+
+const doubleChanceH2H={
+  title:"FLA double chance H2H",
+  evidence:{split:"h2h",team:"FLA",opponent:"CAR",hits:7,decisions:10,hit_rate:.7,window:10},
+  market:{type:"double_chance",period:"REG",subject:"FLA",side:"team_or_draw",line:null,label:"FLA ИЛИ НИЧЬЯ",odds:1.60,odds_is_demo:false}
+};
+const dcAngles=buildBroadcastAngles(doubleChanceH2H,{team:"ФЛОРИДА",opponent:"КАРОЛИНА"});
+assert.ok(dcAngles.some(x=>x.family==="h2h_matchup"&&/БЕЗ ПОРАЖЕНИЯ/.test(x.title)&&/ПРОТИВ КАРОЛИНЫ/.test(x.title)));
+assert.ok(dcAngles.every(x=>!/ИЛИ НИЧЬЯ/.test(x.title)),"operator variants should not use awkward 'или ничья' copy");
+
 const specialCard={
   title:"special teams",
   evidence:{team:"CAR",opponent:"FLA",pp_pct:.27,opponent_pk_pct:.74,sample:10},
