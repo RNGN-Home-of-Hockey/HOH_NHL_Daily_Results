@@ -8,15 +8,19 @@ const game={game_pk:2026020999,season_id:"20262027",away_tri:"FLA",home_tri:"CAR
 function row(pk,team,i){
   const car=team==="CAR";
   const strong=i<8;
-  const total=i===8?6:(strong?7:4); // over 6: 8 wins, 1 push, 1 loss
-  const diff=car?(i===8?1:(strong?2:-1)):(i===8?-1:(strong?-2:1));
+  const total=i===8?6:(strong?8:4); // over 6: 8 wins, 1 push, 1 loss
+  const diff=car?(i===8?0:(strong?2:-2)):(i===8?0:(strong?-2:2));
+  const finalGf=(total+diff)/2,finalGa=(total-diff)/2;
   const p1diff=car?(i<7?1:i===7?0:-1):(i<7?-1:i===7?0:1);
   const p1gf=p1diff>0?2:p1diff===0?1:0;
   const p1ga=p1diff>0?0:p1diff===0?1:2;
   return {
-    game_pk:pk,team_tri:team,opponent_tri:car?"FLA":"CAR",is_home:car?1:0,
-    final_goals_for:car?(diff>0?4:2):(diff>0?4:2),
-    final_goals_against:car?(diff>0?2:3):(diff>0?2:3),
+    game_pk:pk,season_id:"20252026",game_type:2,scheduled_start_utc:new Date(Date.UTC(2026,3,30-i)).toISOString(),
+    team_tri:team,opponent_tri:car?"FLA":"CAR",is_home:car?1:0,
+    raw_game_state:"FINAL",raw_game_period_type:"OT",
+    raw_final_goals_for:finalGf,raw_final_goals_against:finalGa,
+    event_final_goals_for:finalGf,event_final_goals_against:finalGa,
+    final_goals_for:finalGf,final_goals_against:finalGa,
     total_goals:total,final_goal_diff:diff,final_win:diff>0?1:0,
     regulation_goals_for:p1gf+3,regulation_goals_against:p1ga+2,
     regulation_goal_diff:(p1gf+3)-(p1ga+2),regulation_result:(p1gf+3)>(p1ga+2)?"W":(p1gf+3)<(p1ga+2)?"L":"T",
@@ -57,8 +61,10 @@ assert.match(total.title,/ВОЗВР/);
 const handicap=cards.find(c=>c.market.type==="handicap"&&c.market.subject==="CAR"&&c.market.line===-1&&c.evidence.window===10);
 assert.ok(handicap,"integer handicap must be evaluated directly");
 assert.equal(handicap.evidence.hits,8);
-assert.equal(handicap.evidence.pushes,1);
-assert.equal(handicap.evidence.decisions,9);
+assert.equal(handicap.evidence.pushes,0);
+assert.equal(handicap.evidence.decisions,10);
+assert.equal(handicap.evidence.final_data_verified,true);
+assert.equal(handicap.evidence.final_validation,"games+goal_events+feature_final");
 
 assert.ok(cards.some(c=>c.market.type==="period_1_result"&&c.market.subject==="CAR"),"period 3-way selection should have exact history");
 assert.ok(cards.filter(c=>/^P[123]$/.test(String(c.market.period||""))||/^period_[123]_result$/.test(String(c.market.type||""))).every(c=>c.evidence.period_data_verified===true),"period cards require raw period verification");
@@ -77,6 +83,9 @@ const seaRows=Array.from({length:40},(_,i)=>({
   team_tri:"SEA",opponent_tri:"VAN",is_home:i%2,final_goals_for:4,final_goals_against:2,total_goals:6,final_goal_diff:2,final_win:1,
   regulation_goals_for:3,regulation_goals_against:2,regulation_goal_diff:1,regulation_result:"W",
   p1_goals_for:1,p1_goals_against:0,p2_goals_for:1,p2_goals_against:1,p3_goals_for:1,p3_goals_against:1,
+  raw_p1_goals_for:1,raw_p1_goals_against:0,raw_p2_goals_for:1,raw_p2_goals_against:1,raw_p3_goals_for:1,raw_p3_goals_against:1,
+  event_p1_goals_for:1,event_p1_goals_against:0,event_p2_goals_for:1,event_p2_goals_against:1,event_p3_goals_for:1,event_p3_goals_against:1,
+  raw_game_state:"FINAL",raw_game_period_type:"OT",raw_final_goals_for:4,raw_final_goals_against:2,event_final_goals_for:4,event_final_goals_against:2,
   score_after_p1_diff:1,score_after_p2_diff:1,first_goal_for:1,
 }));
 const seaGame={game_pk:2026021000,season_id:"20262027",away_tri:"SEA",home_tri:"VAN"};
@@ -86,10 +95,21 @@ const sea=seaCards.find(x=>x.market.type==="moneyline"&&x.market.subject==="SEA"
 assert.ok(sea,"SEA exact moneyline history should remain available as historical rate");
 assert.equal(sea.evidence.current_streak,0,"previous-season wins must not be called a current streak");
 assert.equal(sea.evidence.streak_verified,false);
-assert.equal(sea.evidence.stats_validation,"exact_market_v5_goal_event_crosscheck");
+assert.equal(sea.evidence.stats_validation,"exact_market_v6_final_goal_events");
 
 const corrupt=Array.from({length:10},(_,i)=>({...seaRows[i],season_id:"20262027"}));
 corrupt[0]={...corrupt[0],regulation_goal_diff:-1,regulation_result:"W"};
 const corruptCards=evaluateProviderMarketHistoryRows(seaGame,{SEA:corrupt,VAN:[]},seaMarket);
 assert.ok(!corruptCards.some(x=>x.evidence?.current_streak>=3),"inconsistent regulation result must break the current streak");
+
+const gameMoneyline=[m("moneyline","GAME","SEA","SEA",null,2.55)];
+const finalRows=Array.from({length:10},(_,i)=>({...seaRows[i],season_id:"20262027"}));
+const verifiedFinal=evaluateProviderMarketHistoryRows(seaGame,{SEA:finalRows,VAN:[]},gameMoneyline);
+assert.ok(verifiedFinal.some(x=>x.evidence?.final_data_verified===true),"GAME result history requires canonical final verification");
+
+const nonFinalRows=finalRows.map((r,i)=>i===0?{...r,raw_game_state:"LIVE"}:r);
+assert.equal(evaluateProviderMarketHistoryRows(seaGame,{SEA:nonFinalRows,VAN:[]},gameMoneyline).length,0,"one non-final placeholder row must suppress the GAME trend");
+
+const finalMismatchRows=finalRows.map((r,i)=>i===0?{...r,event_final_goals_for:3}:r);
+assert.equal(evaluateProviderMarketHistoryRows(seaGame,{SEA:finalMismatchRows,VAN:[]},gameMoneyline).length,0,"goal-event final mismatch must suppress the GAME trend");
 console.log("PROVIDER_MARKET_HISTORY_OK");

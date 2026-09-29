@@ -7,7 +7,7 @@ SQL=(ROOT/"tools"/"refresh_team_current_snapshots.sql").read_text(encoding="utf-
 db=sqlite3.connect(":memory:")
 db.executescript("""
 CREATE TABLE teams(tri_code TEXT PRIMARY KEY);
-CREATE TABLE games(game_pk INTEGER PRIMARY KEY,game_type INTEGER,scheduled_start_utc TEXT);
+CREATE TABLE games(game_pk INTEGER PRIMARY KEY,game_type INTEGER,scheduled_start_utc TEXT,game_state TEXT);
 CREATE TABLE team_game_features(
   game_pk INTEGER,team_tri TEXT,game_type INTEGER,scheduled_start_utc TEXT,
   final_goals_for REAL,final_goals_against REAL,final_goal_diff REAL,total_goals REAL,
@@ -41,7 +41,7 @@ for ti in range(32):
         when=f"2026-04-{(n%28)+1:02d}T{n%24:02d}:00:00Z"
         gf=2.0+ti*0.03+(n%3)*0.1
         ga=3.2-ti*0.02+(n%2)*0.1
-        db.execute("INSERT INTO games VALUES(?,?,?)",(game_pk,2,when))
+        db.execute("INSERT INTO games VALUES(?,?,?,?)",(game_pk,2,when,"LIVE" if n==24 else "FINAL"))
         db.execute(
           "INSERT INTO team_game_features VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
           (game_pk,team,2,when,gf,ga,gf-ga,gf+ga,48+ti*0.1,49+ti*0.1,n%3,(n+1)%2),
@@ -56,6 +56,7 @@ rows=db.execute("SELECT COUNT(*) FROM team_current_snapshots").fetchone()[0]
 teams=db.execute("SELECT COUNT(DISTINCT team_tri) FROM team_current_snapshots").fetchone()[0]
 assert rows==96,(rows,teams)
 assert teams==32
+assert db.execute("SELECT COUNT(*) FROM games WHERE game_state='LIVE'").fetchone()[0]==32
 for window in (5,10,20):
     row=db.execute("""
       SELECT COUNT(*),MIN(league_teams),MAX(league_teams),
