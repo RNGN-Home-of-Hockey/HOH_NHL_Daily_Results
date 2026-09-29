@@ -51,10 +51,15 @@ function expandBroadcastTerms(value){
     .replace(/(^|[\s·—:])ИТМ(?=\s|$)/g,"$1ТОТАЛ КОМАНДЫ МЕНЬШЕ")
     .replace(/(^|[\s·—:])ИТБ(?=\s|$)/g,"$1ТОТАЛ КОМАНДЫ БОЛЬШЕ")
     .replace(/(^|[\s·—:])ТМ(?=\s|$)/g,"$1ТОТАЛ МЕНЬШЕ")
-    .replace(/(^|[\s·—:])ТБ(?=\s|$)/g,"$1ТОТАЛ БОЛЬШЕ");
+    .replace(/(^|[\s·—:])ТБ(?=\s|$)/g,"$1ТОТАЛ БОЛЬШЕ")
+    .replace(/\bDOUBLE_CHANCE\b/gi,"ДВОЙНОЙ ШАНС")
+    .replace(/\bTEAM_OR_DRAW\b/gi,"КОМАНДА ИЛИ НИЧЬЯ")
+    .replace(/\bNO_DRAW\b/gi,"БЕЗ НИЧЬЕЙ")
+    .replace(/\bPERIOD_1_RESULT\b/gi,"ПОБЕДА В 1-М ПЕРИОДЕ")
+    .replace(/\bPERIOD_2_RESULT\b/gi,"ПОБЕДА В 2-М ПЕРИОДЕ")
+    .replace(/\bPERIOD_3_RESULT\b/gi,"ПОБЕДА В 3-М ПЕРИОДЕ");
 }function fitSourceBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
-  const s=String(value||"").replace(/\s+/g," ").trim();
-  return s.length<=max?s:fitBroadcastTitle(s,max);
+  return fitBroadcastTitle(value,max);
 }
 
 export function buildBroadcastAngles(card={},profile={}){
@@ -71,7 +76,7 @@ export function buildBroadcastAngles(card={},profile={}){
   if(fallback){
     const numeric=/\d/.test(fallback);
     const advancedRank=profile?.team&&n(profile?.teamRank)!==null;
-    const jargon=/\b(?:xg|xgf|xga|corsi|fenwick|gsax|pdo)\b/i.test(fallback);
+    const jargon=/\b(?:xg|xgf|xga|corsi|fenwick|gsax|pdo|moneyline|team_total|game_total|handicap|period_[123]_result|double_chance|team_or_draw|no_draw|P[123])\b/i.test(fallback);
     const awkward=/РЕШЁНН|ПОДТВЕРЖДАЮТ.*СИГНАЛ|НЕЗАВИСИМ.*СИГНАЛ|ЕСТЬ\s+\d+\s+ПОДТВЕРЖД|\d+\/\d+.*ЗА.*\d+\/\d+.*ЗА/i.test(fallback);
     const clearLargeSample=/%.*(?:ИГР|МАТЧ)/i.test(fallback)&&!jargon&&!awkward;
     const naturalSource=/ВЫИГР|ПОБЕЖД|ЗАБИВ|ПРОШ[ЕЁ]Л|ЗАКРЫЛ|НЕ ПРОИГРЫВАЛ|ДОМА|В ГОСТЯХ/i.test(fallback)&&!jargon&&!awkward;
@@ -112,7 +117,7 @@ export function diversifyBroadcastAngles(cards=[],options={}){
 }
 
 function hasRawTvJargon(v){
-  return /\b(?:xg|xgf|xga|xgd|corsi|fenwick|gsax|pdo|moneyline|team_total|game_total|handicap|period_[123]_result)(?:\b|\/)/i.test(String(v||""));
+  return /\b(?:xg|xgf|xga|xgd|corsi|fenwick|gsax|pdo|moneyline|team_total|game_total|handicap|period_[123]_result|double_chance|team_or_draw|no_draw|P[123])(?:\b|\/)/i.test(String(v||""));
 }
 function syncOperatorAngle(operator,best){
   if(!operator||typeof operator!=="object")return operator||null;
@@ -132,7 +137,7 @@ function addHistory(out,e,m,p={}){
   const h2h=String(e.split||"").toLowerCase()==="h2h";
   const team=String(p?.team||e.team||m.subject||"").trim().toUpperCase();
   const opponent=String(p?.opponent||e.opponent||"").trim().toUpperCase();
-  if(h2h&&team&&opponent){
+  if(h2h&&team&&opponent&&team!==opponent){
     if(String(m.type||"").toLowerCase()==="moneyline"){
       const full=`${team} ОБЫГРЫВАЛИ ${opponent} В ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`;
       const compact=`${shortTeamName(team)}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОБЕД ПРОТИВ ${shortTeamName(opponent)}`;
@@ -224,8 +229,7 @@ function ensureNumber(title,card,p){
   return title;
 }
 function marketLabel(m){
-  if(m?.label)return String(m.label).toUpperCase();
-  const t=String(m?.type||""),s=String(m?.subject||"").toUpperCase(),side=String(m?.side||"").toLowerCase(),l=n(m?.line),p=period(m?.period);
+  const t=String(m?.type||"").toLowerCase(),s=String(m?.subject||"").toUpperCase(),side=String(m?.side||"").toLowerCase(),l=n(m?.line),p=period(m?.period);
   if(t==="moneyline")return `${p}ПОБЕДА ${s}`.trim();
   if(t==="period_1_result")return `1-Й ПЕРИОД: ПОБЕДА ${s}`.trim();
   if(t==="period_2_result")return `2-Й ПЕРИОД: ПОБЕДА ${s}`.trim();
@@ -238,7 +242,8 @@ function marketLabel(m){
   if(t==="first_goal_team")return `ПЕРВЫЙ ГОЛ — ${s}`;
   if(t==="next_goal_team")return `СЛЕДУЮЩИЙ ГОЛ — ${s}`;
   if(t.startsWith("player_"))return `${playerStat(t)} ${line(l)}`;
-  return [p,t,s,side,l===null?"":line(l)].filter(Boolean).join(" ").toUpperCase();
+  const raw=expandBroadcastTerms(String(m?.label||"")).toUpperCase();
+  return raw||[p,t,s,side,l===null?"":line(l)].filter(Boolean).join(" ").toUpperCase();
 }
 function marketSub(m){const o=n(m?.odds);return o!==null&&m?.odds_is_demo!==true?`${marketLabel(m)} · ${o.toFixed(2)}`:marketLabel(m)}
 function playerStat(t){return t==="player_shots"?"БРОСКИ":t==="player_assists"?"ПЕРЕДАЧИ":t==="player_points"?"ОЧКИ":t==="player_goals"?"ГОЛЫ":t==="player_hits"?"ХИТЫ":t==="player_blocks"?"БЛОКИ":"ЛИНИЯ ИГРОКА"}
