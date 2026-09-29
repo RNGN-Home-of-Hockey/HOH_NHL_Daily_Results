@@ -36,8 +36,8 @@ export async function archiveBroadcastInsightHistory(db,game,cards){
       String(market.type||"unknown"),String(market.period||"GAME"),
       nullable(market.subject),nullable(market.side),finiteNumber(market.line),
       Number(market.odds),Number(market.odds),air,air,rank,rank,
-      air!==null&&air>=55&&rank<=3?1:0,
-      JSON.stringify(card.evidence||{}).slice(0,12000)
+      air!==null&&air>=55&&rank<=4?1:0,
+      JSON.stringify({...card.evidence,__pregame:{queue_rank:rank,air_score:air,archived_at:new Date().toISOString()}}).slice(0,12000)
     ));
   }
   for(let i=0;i<stmts.length;i+=40)await db.batch(stmts.slice(i,i+40));
@@ -104,6 +104,79 @@ export function evaluateBroadcastInsightOutcome(row,game,periodRows=[]){
   return "void";
 }
 
+export async function loadBroadcastPregameArchive(db,gamePk){
+  const id=Number(gamePk);
+  if(!db||!Number.isSafeInteger(id)||id<=0)return {game_pk:id||null,snapshot_at:null,cards:[],summary:{cards:0,settled:0,wins:0,losses:0,pushes:0,profit_units:0}};
+  const result=await db.prepare(`
+    SELECT snapshot_key,game_pk,insight_id,category,feature_layer,headline_ru,
+           market_type,period,subject,side,line,first_odds,latest_odds,
+           first_air_score,max_air_score,first_queue_rank,best_queue_rank,top_for_air_seen,
+           evidence_json,first_seen_at,last_seen_at,seen_count,outcome_status,profit_units,settled_at
+    FROM broadcast_insight_history
+    WHERE game_pk=?
+    ORDER BY datetime(last_seen_at) DESC,best_queue_rank ASC,max_air_score DESC,snapshot_key ASC
+    LIMIT 200;
+  `).bind(id).all();
+  const rows=result?.results||[];
+  if(!rows.length)return {game_pk:id,snapshot_at:null,cards:[],summary:{cards:0,settled:0,wins:0,losses:0,pushes:0,profit_units:0}};
+  const snapshotAt=String(rows[0].last_seen_at||"");
+  const closing=rows.filter(r=>String(r.last_seen_at||"")===snapshotAt);
+  const source=closing.length?closing:rows.slice(0,32);
+  const cards=source.map(row=>{
+    const evidence=parseJson(row.evidence_json)||{};
+    return {
+      id:String(row.insight_id||row.snapshot_key||"pregame"),
+      category:String(row.category||"pregame"),
+      broadcast_title:String(row.headline_ru||""),
+      air_score:finiteInt(row.max_air_score??row.first_air_score),
+      evidence,
+      market:{
+        type:String(row.market_type||"unknown"),
+        period:String(row.period||"GAME"),
+        subject:row.subject||null,
+        side:row.side||null,
+        line:finiteNumber(row.line),
+        odds:Number(row.latest_odds),
+        odds_is_demo:false,
+        odds_source:"pregame_archive",
+      },
+      archive:{
+        phase:"pregame",
+        snapshot_key:String(row.snapshot_key||""),
+        snapshot_at:snapshotAt,
+        first_odds:finiteNumber(row.first_odds),
+        closing_odds:finiteNumber(row.latest_odds),
+        first_queue_rank:finiteInt(row.first_queue_rank),
+        best_queue_rank:finiteInt(row.best_queue_rank),
+        closing_queue_rank:finiteInt(evidence?.__pregame?.queue_rank),
+        top_for_air_seen:Number(row.top_for_air_seen||0)===1,
+        first_seen_at:row.first_seen_at||null,
+        last_seen_at:row.last_seen_at||null,
+        seen_count:finiteInt(row.seen_count)||0,
+        outcome_status:String(row.outcome_status||"pending"),
+        profit_units:finiteNumber(row.profit_units),
+        settled_at:row.settled_at||null,
+      }
+    };
+  }).sort((a,b)=>(a.archive.closing_queue_rank??999)-(b.archive.closing_queue_rank??999)||Number(b.air_score||0)-Number(a.air_score||0));
+  const settled=cards.filter(x=>["win","loss","push","void"].includes(x.archive.outcome_status));
+  return {
+    game_pk:id,
+    phase:"pregame",
+    snapshot_at:snapshotAt,
+    cards,
+    summary:{
+      cards:cards.length,
+      settled:settled.length,
+      wins:settled.filter(x=>x.archive.outcome_status==="win").length,
+      losses:settled.filter(x=>x.archive.outcome_status==="loss").length,
+      pushes:settled.filter(x=>x.archive.outcome_status==="push").length,
+      voids:settled.filter(x=>x.archive.outcome_status==="void").length,
+      profit_units:Math.round(settled.reduce((s,x)=>s+Number(x.archive.profit_units||0),0)*1000)/1000,
+    }
+  };
+}
+
 export async function broadcastInsightAnalyticsSummary(db){
   const r=await db.prepare(`
     SELECT category,COALESCE(NULLIF(feature_layer,''),category) AS layer,
@@ -140,12 +213,13 @@ function totalOutcome(value,line,side){
   return "void";
 }
 function compare(a,b){if(Math.abs(a-b)<1e-9)return"push";return a>b?"win":"loss"}
-function hasRealPrice(card){const o=Number(card?.market?.odds);return Number.isFinite(o)&&o>1&&card?.market?.odds_is_demo===false&&card?.market?.odds_source==="provider_live"}
+function hasRealPrice(card){const o=Number(card?.market?.odds);return Number.isFinite(o)&&o>=1.50&&card?.market?.odds_is_demo===false&&card?.market?.odds_source==="provider_live"}
 function historyKey(gamePk,card){
   const m=card?.market||{};
   const line=m.line===null||m.line===undefined||m.line===""?"none":Number(m.line).toFixed(2);
   return [gamePk,String(card?.id||card?.insight_type||"insight"),m.type||"unknown",m.period||"GAME",m.subject||"all",m.side||"none",line].join("|").slice(0,700);
 }
+function parseJson(v){try{return JSON.parse(String(v||"{}"))}catch{return null}}
 function finiteNumber(v){if(v===null||v===undefined||v==="")return null;const n=Number(v);return Number.isFinite(n)?n:null}
 function finiteInt(v){const n=finiteNumber(v);return n===null?null:Math.round(n)}
 function nullable(v){const s=String(v??"").trim();return s||null}

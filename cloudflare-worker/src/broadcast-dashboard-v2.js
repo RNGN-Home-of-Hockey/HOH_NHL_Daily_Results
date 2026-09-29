@@ -1,7 +1,7 @@
 import { buildBettingInsights } from "./betting-insight-engine.js";
 import { WINLINE_LOGO_PNG_BASE64 } from "./winline-logo.js";
 import { BROADCAST_CARD_CSS } from "./broadcast-card-theme.js";
-import { archiveBroadcastInsightHistory } from "./broadcast-insight-history.js";
+import { archiveBroadcastInsightHistory, loadBroadcastPregameArchive } from "./broadcast-insight-history.js";
 import { summarizeMarketCoverage } from "./market-coverage-audit.js";
 import { selectBroadcastFour } from "./broadcast-four-card-selector.js";
 import { buildCommentatorBrief } from "./commentator-brief.js";
@@ -48,6 +48,12 @@ export async function handleBroadcastRequest(request, env, path) {
     return broadcastQueueSummaryRoute(env,Number(summaryMatch[1]));
   }
 
+  const pregameMatch = /^\/api\/broadcast\/pregame\/(\d+)$/.exec(path);
+  if (pregameMatch) {
+    if (request.method !== "GET") return jsonResponse({ ok:false,error:"method_not_allowed" },405);
+    return broadcastPregameArchiveRoute(env,Number(pregameMatch[1]));
+  }
+
   const gameMatch = /^\/api\/broadcast\/games\/(\d+)$/.exec(path);
   if (gameMatch) {
     if (request.method !== "GET") return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
@@ -55,6 +61,13 @@ export async function handleBroadcastRequest(request, env, path) {
   }
 
   return null;
+}
+
+async function broadcastPregameArchiveRoute(env,gamePk){
+  if(!env?.DB)return jsonResponse({ok:false,error:"missing_d1_binding"},503);
+  if(!Number.isSafeInteger(gamePk)||gamePk<=0)return jsonResponse({ok:false,error:"invalid_game_pk"},400);
+  try{return jsonResponse({ok:true,...await loadBroadcastPregameArchive(env.DB,gamePk)})}
+  catch(error){console.error("broadcast pregame archive failed",error);return jsonResponse({ok:false,error:"broadcast_pregame_archive_failed"},500)}
 }
 
 async function broadcastGamesRoute(env) {
@@ -78,8 +91,13 @@ async function broadcastGamesRoute(env) {
         LEFT JOIN broadcast_queue_summaries bqs ON bqs.game_pk=g.game_pk
         WHERE g.game_type IN (1,2,3)
           AND (
-            UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT')
+            UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
             OR datetime(g.scheduled_start_utc) >= datetime('now')
+            OR (
+              UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF')
+              AND datetime(g.scheduled_start_utc) >= datetime('now','-7 days')
+              AND EXISTS (SELECT 1 FROM broadcast_insight_history bih WHERE bih.game_pk=g.game_pk)
+            )
           )
         ORDER BY datetime(g.scheduled_start_utc) ASC, g.game_pk ASC
         LIMIT 100;
@@ -89,8 +107,13 @@ async function broadcastGamesRoute(env) {
           (SELECT COUNT(*) FROM games
             WHERE game_type IN (1,2,3)
               AND (
-                UPPER(COALESCE(game_state,'')) IN ('LIVE','CRIT')
+                UPPER(COALESCE(game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
                 OR datetime(scheduled_start_utc) >= datetime('now')
+                OR (
+                  UPPER(COALESCE(game_state,'')) IN ('FINAL','OFF')
+                  AND datetime(scheduled_start_utc) >= datetime('now','-7 days')
+                  AND EXISTS (SELECT 1 FROM broadcast_insight_history bih WHERE bih.game_pk=games.game_pk)
+                )
               )
           ) AS games,
           (SELECT COUNT(*) FROM players) AS players,
@@ -627,7 +650,7 @@ function jsResponse(js){return new Response(js,{status:200,headers:{"Content-Typ
 function pngResponse(base64){const raw=atob(base64);const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i+=1)bytes[i]=raw.charCodeAt(i);return new Response(bytes,{status:200,headers:{"Content-Type":"image/png","Cache-Control":"public, max-age=31536000, immutable","X-Content-Type-Options":"nosniff"}})}
 
 function browserApp(){
-const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],featuredCards=[],liveCards=[],liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null,queueWarmRunning=false;
+const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],featuredCards=[],liveCards=[],pregameArchive=null,liveMonitoring=null,liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null,queueWarmRunning=false;
 const operatorId=(()=>{let v=localStorage.getItem('hohBroadcastOperatorId')||'';if(!v){v='op-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));localStorage.setItem('hohBroadcastOperatorId',v)}return v})();
 let operatorName=localStorage.getItem('hohBroadcastOperatorName')||'';
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -652,7 +675,7 @@ function absoluteOverlayUrl(gamePk){
 function fmtDate(v){if(!v)return'';const d=new Date(v);return d.toLocaleString('ru-RU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).replace(',',' ·')}
 function typeLabel(t){const n=Number(t);return n===1?'Предсезонка':n===3?'Плей-офф':'Регулярка'}
 async function api(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
-async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} ближайших игр · предсезонка + регулярка + плей-офф`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null);await refreshActions();void warmQueueSummaries();if(!actionTimer)actionTimer=setInterval(refreshActions,15000)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
+async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} матчей · ближайшие + live + предматчевый архив за 7 дней`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null);await refreshActions();void warmQueueSummaries();if(!actionTimer)actionTimer=setInterval(refreshActions,15000)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
 function renderAir(card){const air=$('#air'),text=$('#airtext');if(card){air.classList.add('live');text.textContent=`${card.headline_ru}: ${card.stat_text_ru}`}else{air.classList.remove('live');text.textContent='Сейчас ничего не показано'}}
 function queueSummaryFresh(g){
   const raw=String(g?.queue_summary_generated_at||'').trim();
@@ -721,20 +744,24 @@ function renderGames(){
   document.querySelectorAll('.gamegroup').forEach(d=>d.addEventListener('toggle',()=>{groupOpen[Number(d.dataset.type)]=d.open}));
   document.querySelectorAll('.game').forEach(b=>b.onclick=()=>selectGame(Number(b.dataset.id)));
 }
-async function selectGame(id){const previous=selected;if(previous&&Number(previous)!==Number(id))await releaseLease(previous);selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));syncOverlayLinks(id);renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];featuredCards=[];$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s,owned]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id)),acquireLease(id)]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];featuredCards=(d.featured_cards||[]).slice(0,4);syncQueueSummary(id,d.queue_summary);renderAir(s.on_air);renderGame(d);if(!owned){const sub=document.querySelector('.psub');if(sub)sub.textContent='Режим просмотра · матч ведёт '+(currentLease?.operator_name||'другой оператор')}await refreshLive(id,true)}
+async function selectGame(id){const previous=selected;if(previous&&Number(previous)!==Number(id))await releaseLease(previous);selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));syncOverlayLinks(id);renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];featuredCards=[];pregameArchive=null;liveMonitoring=null;$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s,owned,pre]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id)),acquireLease(id),api('/api/broadcast/pregame/'+id).catch(()=>({cards:[],summary:{}}))]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];featuredCards=(d.featured_cards||[]).slice(0,4);pregameArchive=pre||{cards:[],summary:{}};syncQueueSummary(id,d.queue_summary);renderAir(s.on_air);renderGame(d);if(!owned){const sub=document.querySelector('.psub');if(sub)sub.textContent='Режим просмотра · матч ведёт '+(currentLease?.operator_name||'другой оператор')}await refreshLive(id,true)}
 function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[side+'_name']||tri,logo=g[side+'_logo'];return `<div class="team ${side==='home'?'home':''}">${side==='home'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}<div class="logo">${logo?`<img src="${esc(logo)}" alt="">`:`<span class="fallback">${esc(tri)}</span>`}</div>${side==='away'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}</div>`}
-function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>'P'+p.period_number+' '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
+function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>p.period_number+'-Й ПЕРИОД '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game;const rows=[['Броски в створ',a.shots,h.shots],['Хиты',a.hits,h.hits],['Штрафные минуты',a.pim,h.pim],['Вбрасывания',a.faceoff_pct==null||!Number.isFinite(Number(a.faceoff_pct))?null:Math.round(Number(a.faceoff_pct)*100)+'%',h.faceoff_pct==null||!Number.isFinite(Number(h.faceoff_pct))?null:Math.round(Number(h.faceoff_pct)*100)+'%']];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
+function isLiveGame(){return ['LIVE','CRIT','INTERMISSION'].includes(String(currentData?.game?.game_state||'').toUpperCase())}
+function isStartedGame(){const s=String(currentData?.game?.game_state||'').toUpperCase();return isLiveGame()||['FINAL','OFF'].includes(s)||Date.now()>=Date.parse(String(currentData?.game?.scheduled_start_utc||''))}
 function renderCombinedCards(){
-  const featured=[],seen=new Set();
-  for(const c of featuredCards||[]){
+  const liveMode=isLiveGame(),featured=[],seen=new Set();
+  const primary=liveMode?[...(liveCards||[])].sort((a,b)=>airScore(b)-airScore(a)):featuredCards||[];
+  for(const c of primary){
     if(!hasRealWinlinePrice(c))continue;
     const k=cardKey(c);if(seen.has(k))continue;seen.add(k);
     featured.push({...c,__featured:true});
     if(featured.length>=4)break;
   }
   const extras=[];
-  for(const c of [...(liveCards||[]),...(historicalCards||[])]){
+  const pool=liveMode?(liveCards||[]):[...(liveCards||[]),...(historicalCards||[])];
+  for(const c of pool){
     if(!hasRealWinlinePrice(c))continue;
     const k=cardKey(c);if(seen.has(k))continue;seen.add(k);
     extras.push({...c,__featured:false});
@@ -753,7 +780,7 @@ function renderCombinedCards(){
 function cardKey(c){
   return String(c?.id||[c?.insight_type,c?.market?.type,c?.market?.period,c?.market?.subject,c?.market?.side,c?.market?.line].join(':'));
 }
-async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds))&&Number(x.market.odds)>=1.50);renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?'P'+l.game.period_number:null,l.game.time_remaining].filter(Boolean);const nhlAt=l.fetched_at?new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';const winAt=l.provider_live_updated_at?new Date(l.provider_live_updated_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'нет live-линии';c.textContent=parts.join(' · ')+' · NHL '+nhlAt+' · WINLINE '+winAt}if(['LIVE','CRIT','INTERMISSION'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`История ${historicalCards.length} · NHL live feed временно недоступен`}}}
+async function refreshLive(id,initial=false){try{const l=await api('/api/broadcast/live/'+id);if(Number(id)!==Number(selected))return;if(currentData?.game&&l.game)currentData.game={...currentData.game,...l.game};liveMonitoring=l.monitoring||null;liveCards=(l.cards||[]).filter(x=>x?.market?.odds_is_demo===false&&Number.isFinite(Number(x?.market?.odds))&&Number(x.market.odds)>=1.50);renderCombinedCards();const c=$('#liveclock');if(c&&l.game){const parts=[l.game.game_state,l.game.period_number?l.game.period_number+'-Й ПЕРИОД':null,l.game.time_remaining].filter(Boolean);const nhlAt=l.fetched_at?new Date(l.fetched_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';const winAt=l.provider_live_updated_at?new Date(l.provider_live_updated_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'нет live-линии';const freshness=liveMonitoring?.winline_status==='fresh'?'свежая':liveMonitoring?.winline_status==='stale'?'УСТАРЕЛА':'нет';c.textContent=parts.join(' · ')+' · NHL '+nhlAt+' · WINLINE '+winAt+' · '+freshness}if(['LIVE','CRIT','INTERMISSION'].includes(String(l.game?.game_state||'').toUpperCase())&&!liveTimer){liveTimer=setInterval(()=>refreshLive(id,false),15000)}}catch(e){if(initial){const sub=document.querySelector('.psub');if(sub)sub.textContent=`Предматчевых ${historicalCards.length} · NHL live feed временно недоступен`}}}
 const TEAM_META={
   ANA:{name:"АНАХАЙМ",color:"#FC4C02"},BOS:{name:"БОСТОН",color:"#FFB81C"},BUF:{name:"БАФФАЛО",color:"#003087"},
   CGY:{name:"КАЛГАРИ",color:"#D2001C"},CAR:{name:"КАРОЛИНА",color:"#CE1126"},CHI:{name:"ЧИКАГО",color:"#CF0A2C"},
@@ -784,6 +811,7 @@ function cardTeam(card){
 function displayText(value){
   let s=String(value??"");
   for(const [tri,meta] of Object.entries(TEAM_META))s=s.replace(new RegExp("\\b"+tri+"\\b","gi"),meta.name);
+  s=s.replace(/(^|[^A-Z0-9])P1(?=$|[^A-Z0-9])/gi,'$11-Й ПЕРИОД').replace(/(^|[^A-Z0-9])P2(?=$|[^A-Z0-9])/gi,'$12-Й ПЕРИОД').replace(/(^|[^A-Z0-9])P3(?=$|[^A-Z0-9])/gi,'$13-Й ПЕРИОД');
   return s.replace(/([+-]?\\d+)\\.(\\d+)/g,"$1,$2").toUpperCase();
 }
 function lineText(value){
@@ -795,7 +823,7 @@ function marketDescription(card,team){
   const m=card?.market||{},type=String(m.type||"").toLowerCase(),side=String(m.side||"").toLowerCase();
   const line=Number(m.line);
   if(type==="handicap"){let v=Number.isFinite(line)?line:null;if(v===null){const mm=String(m.label||"").match(/([+-]\\d+(?:[.,]\\d+)?)/);if(mm)v=Number(mm[1].replace(",","."))}return "ФОРА "+(v===null?"":lineText(v))+" ГОЛА"}
-  if(type==="team_total"){const dir=side==="under"?"ИТМ":"ИТБ";return dir+" "+(Number.isFinite(line)?lineText(Math.abs(line)).replace("+",""):"")+" ГОЛА"}
+  if(type==="team_total"){const dir=side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?lineText(Math.abs(line)).replace("+",""):"")+" ГОЛА"}
   if(type==="game_total"){const dir=side==="under"?"ТОТАЛ МЕНЬШЕ":"ТОТАЛ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?String(line).replace(".",","):"")}
   if(type==="moneyline")return"ПОБЕДА";
   if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";
@@ -916,10 +944,21 @@ function cardArticleHtml(c,i,featured=false){
   const label=locked?'МАТЧ ЗАНЯТ':shown?'УБРАТЬ':priced?'ДАТЬ ПЛАШКУ':'НЕТ ЛИНИИ WINLINE';
   return `<article class="card ${featured?'featured':''} ${weak?'weak':''}">${cardSummaryHtml(c)}<div class="actions"><button class="act detailbtn" data-detail="${i}">ДЕТАЛИ</button><button class="act ${shown?'hide':priced?'show':'noln'} showbtn" data-i="${i}" ${locked||(!shown&&!priced)?'disabled':''}>${label}</button></div></article>`;
 }
+function archiveOutcomeLabel(v){const x=String(v||'pending');return x==='win'?'✅ выиграла':x==='loss'?'❌ проиграла':x==='push'?'↔ возврат':x==='void'?'— отменена':'ожидает результата'}
+function archiveCardHtml(c){
+  const display={...c,market:{...(c.market||{}),odds_source:'provider_live',odds_is_demo:false}},a=c.archive||{},profit=finiteUiNumber(a.profit_units);
+  return `<article class="card archive-card">${cardSummaryHtml(display)}<div class="archive-meta"><b>${esc(archiveOutcomeLabel(a.outcome_status))}</b><span>предматчевый кэф ${Number.isFinite(Number(a.closing_odds))?Number(a.closing_odds).toFixed(2):'—'}${profit!==null?' · итог '+(profit>0?'+':'')+profit.toFixed(2)+' u':''}</span></div></article>`;
+}
+function pregameArchiveHtml(){
+  const cards=Array.isArray(pregameArchive?.cards)?pregameArchive.cards:[];if(!isStartedGame()||!cards.length)return'';
+  const s=pregameArchive?.summary||{},stamp=pregameArchive?.snapshot_at?new Date(pregameArchive.snapshot_at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+  return `<details class="queueblock queue-more pregame-archive"><summary><span>ПРЕДМАТЧЕВЫЙ СРЕЗ · ${cards.length}</span><small>${esc(stamp)} · результат ${Number(s.settled||0)}/${cards.length}</small></summary><div class="cardgrid">${cards.map(archiveCardHtml).join('')}</div></details>`;
+}
 function renderCards(cards){
   applyPersistedState(cards);
   currentCards=cards;
-  if(!cards.length){$('#cards').innerHTML='<div class="empty">Пока нет статистических карточек для этого матча</div>';return}
+  const archive=pregameArchiveHtml();
+  if(!cards.length){$('#cards').innerHTML='<div class="empty">'+(isLiveGame()?'Жду свежую live-линию WINLINE и новые игровые сигналы':'Пока нет статистических карточек для этого матча')+'</div>'+archive;return}
   const entries=cards.map((c,i)=>({c,i}));
   const featured=entries.filter(x=>x.c?.__featured&&hasRealWinlinePrice(x.c)).slice(0,4);
   const form=featured.filter(x=>x.c?.broadcast_group!=='h2h');
@@ -931,9 +970,9 @@ function renderCards(cards){
     ?`<details class="queueblock queue-more"><summary><span>ЕЩЁ ${rest.length} ВАРИАНТОВ</span><small>показать</small></summary><div class="cardgrid">${rest.map(x=>cardArticleHtml(x.c,x.i,false)).join('')}</div></details>`
     :'';
   $('#cards').innerHTML=
-    section('ФОРМА КОМАНД',form,'Не нашлось двух понятных карточек по текущей форме')+
-    section('ЛИЧНЫЕ ВСТРЕЧИ',h2h,'Недостаточно очных матчей для двух сильных карточек')+
-    more;
+    section(isLiveGame()?'LIVE-СИГНАЛЫ':'ФОРМА КОМАНД',form,isLiveGame()?'Жду live-сигналы с актуальной линией':'Не нашлось двух понятных карточек по текущей форме')+
+    section(isLiveGame()?'ЕЩЁ LIVE':'ЛИЧНЫЕ ВСТРЕЧИ',h2h,isLiveGame()?'Пока нет дополнительных live-сигналов':'Недостаточно очных матчей для двух сильных карточек')+
+    more+archive;
   document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b));
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>openCardDetails(Number(b.dataset.detail)));
 }

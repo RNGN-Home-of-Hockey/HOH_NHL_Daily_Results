@@ -67,6 +67,14 @@ const p1Insight=[{id:"p1",market:{type:"period_1_result",period:"P1",subject:"TO
 const p1Priced=applyWinlineMarkets(p1Insight,[p1Result],{now,max_age_ms:7*60*60*1000});
 assert.equal(p1Priced.length,1);
 assert.equal(p1Priced[0].market.odds,2.75);
+assert.match(p1Priced[0].market.label,/1-Й ПЕРИОД/);
+assert.doesNotMatch(p1Priced[0].market.label,/\bP1\b/);
+
+const totalUnderInsight=[{id:"under",market:{type:"game_total",period:"GAME",subject:null,side:"under",line:5.5,label:"ТМ 5.5"}}];
+const totalUnderProvider=[{provider:"winline",market_type:"game_total",period:"GAME",subject:null,side:"under",line:5.5,odds:1.91,status:"open",is_live:false,updated_at:now}];
+const totalUnderPriced=applyWinlineMarkets(totalUnderInsight,totalUnderProvider,{now,max_age_ms:7*60*60*1000});
+assert.equal(totalUnderPriced.length,1);
+assert.equal(totalUnderPriced[0].market.label,"ТОТАЛ МЕНЬШЕ 5,5");
 
 const doubleChance=canonicalBroadcastWinlineMarket({
   winline_market_id:"16255255:doublechance:1x",

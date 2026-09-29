@@ -132,18 +132,18 @@ function cross(a,t){
 function opponentUseful(a,t){return t==="team_total"?/defen|goalie|xga|sa60|opponent/.test(a.category+" "+a.metric+" "+a.evidence?.role):["moneyline","handicap","game_total"].includes(t)}
 function asMarket(m){return {type:m.market_type,period:m.period,subject:m.subject,side:m.side,line:m.line,label:labelFor(m),odds:m.odds,provider:m.provider,odds_is_demo:false,odds_source:"provider_live",event_id:m.event_id,market_id:m.market_id,selection_id:m.selection_id,updated_at:m.updated_at,deeplink:m.deeplink}}
 function labelFor(m){
-  const t=String(m.market_type||""),s=m.subject?String(m.subject):"",l=num(m.line),x=l===null?"":lineText(l),p=m.period&&m.period!=="GAME"?String(m.period)+" · ":"";
+  const t=String(m.market_type||""),s=m.subject?String(m.subject):"",l=num(m.line),x=l===null?"":lineText(l),period=String(m.period||"GAME").toUpperCase(),p=period==="P1"?"1-Й ПЕРИОД · ":period==="P2"?"2-Й ПЕРИОД · ":period==="P3"?"3-Й ПЕРИОД · ":period==="REG"?"60 МИНУТ · ":"";
   if(t==="moneyline")return (p+"ПОБЕДА "+(s||String(m.side||"").toUpperCase())).trim();
   if(t==="handicap")return (p+s+" ФОРА "+x).trim();
-  if(t==="team_total")return (p+s+" "+(m.side==="over"?"ИТБ":"ИТМ")+" "+x).trim();
-  if(t==="game_total")return (p+(m.side==="over"?"ТБ":"ТМ")+" "+x).trim();
+  if(t==="team_total")return (p+s+" "+(m.side==="over"?"ТОТАЛ КОМАНДЫ БОЛЬШЕ":"ТОТАЛ КОМАНДЫ МЕНЬШЕ")+" "+x).trim();
+  if(t==="game_total")return (p+(m.side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ")+" "+x).trim();
   if(t==="first_goal_team")return "ПЕРВЫЙ ГОЛ — "+s;
   if(t==="next_goal_team")return "СЛЕДУЮЩИЙ ГОЛ — "+s;
   if(t==="double_chance")return s+" НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ";
   if(t==="team_goal_bucket")return s+" · "+String(m.side||"").replace("0_1","0–1").replace("3_plus","3+")+" ШАЙБЫ";
   if(t==="highest_scoring_period")return s+" · САМЫЙ РЕЗУЛЬТАТИВНЫЙ "+String(m.side||"");
   if(t==="win_all_periods")return s+" · ВЫИГРАЕТ ВСЕ ПЕРИОДЫ";
-  if(t==="result_total_combo")return "ПОБЕДА "+s+" + "+(m.side==="over"?"ТБ":"ТМ")+" "+x;
+  if(t==="result_total_combo")return "ПОБЕДА "+s+" + "+(m.side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ")+" "+x;
   return [p,t,s,m.side,x].filter(Boolean).join(" ").trim();
 }
 function key(m){return [m.market_type||"unknown",m.period||"GAME",m.subject||"all",m.side||"none",num(m.line)===null?"none":Number(m.line).toFixed(2)].join(":")}

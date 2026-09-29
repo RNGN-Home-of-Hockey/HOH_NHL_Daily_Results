@@ -52,7 +52,7 @@ function history(db,team,before){
            p1_goals_for,p1_goals_against,p2_goals_for,p2_goals_against,p3_goals_for,p3_goals_against,
            score_after_p1_diff,score_after_p2_diff,first_goal_for
     FROM team_game_features
-    WHERE team_tri=? AND scheduled_start_utc<?
+    WHERE team_tri=? AND game_type IN (2,3) AND scheduled_start_utc<?
     ORDER BY scheduled_start_utc DESC,game_pk DESC
     LIMIT ${MAX_HISTORY};
   `).bind(team,before);
@@ -287,6 +287,7 @@ function makeCard(game,m,r,window){
       streak_verified:r.streak_verified===true,
       streak_game_pks:r.streak_game_pks||[],
       stats_validation:"dedupe+result_consistency+same_season_streak_v2",
+      history_scope:"official_nhl_games_regular_plus_playoffs",
       away:r.away||null,
       home:r.home||null,
       exact_provider_line:true,
@@ -348,8 +349,8 @@ function marketHistoryTitle(m,r,window){
   const count=`${r.hits} ИЗ ${r.decisions}`;
   const suffix=r.pushes?` · ${r.pushes} ВОЗВР.`:"";
   const per=periodRu(p);
-  if(t==="game_total")return `${per}${side==="over"?"ТБ":"ТМ"} ${fmt(line)} — ${count} РЕШЁННЫХ МАТЧЕЙ${suffix}`;
-  if(t==="team_total")return `${s} · ${per}${side==="over"?"ИТБ":"ИТМ"} ${fmt(line)} — ${count}${suffix}`;
+  if(t==="game_total")return `${per}${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${fmt(line)} — ${count} РЕШЁННЫХ МАТЧЕЙ${suffix}`;
+  if(t==="team_total")return `${s} · ${per}${side==="over"?"ТОТАЛ КОМАНДЫ БОЛЬШЕ":"ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${fmt(line)} — ${count}${suffix}`;
   if(t==="handicap")return `${s} · ${per}ФОРА ${signed(line)} — ${count}${suffix}`;
   if(t==="moneyline")return side==="draw"?`НИЧЬЯ В ОСНОВНОЕ ВРЕМЯ — ${count} РЕЛЕВАНТНЫХ МАТЧЕЙ`:`${s} ПОБЕДИЛ ${count} МАТЧЕЙ`;
   if(/^period_[123]_result$/.test(t)){
@@ -375,8 +376,8 @@ function operatorExplanation(m,r,game){
 
 function marketLabel(m){
   const t=String(m.market_type||""),s=String(m.subject||""),side=String(m.side||"").toLowerCase(),line=finite(m.line),p=periodRu(m.period);
-  if(t==="game_total")return `${p}${side==="over"?"ТБ":"ТМ"} ${fmt(line)}`;
-  if(t==="team_total")return `${s} · ${p}${side==="over"?"ИТБ":"ИТМ"} ${fmt(line)}`;
+  if(t==="game_total")return `${p}${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${fmt(line)}`;
+  if(t==="team_total")return `${s} · ${p}${side==="over"?"ТОТАЛ КОМАНДЫ БОЛЬШЕ":"ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${fmt(line)}`;
   if(t==="handicap")return `${s} · ${p}ФОРА ${signed(line)}`;
   if(t==="moneyline")return side==="draw"?"НИЧЬЯ В ОСНОВНОЕ ВРЕМЯ":`ПОБЕДА ${s}`;
   if(/^period_[123]_result$/.test(t))return side==="draw"?`${p}НИЧЬЯ`:`${p}ПОБЕДА ${s}`;
@@ -386,7 +387,7 @@ function marketLabel(m){
   if(t==="team_goal_bucket")return `${s} · ${side==="0_1"?"0–1":side==="2"?"РОВНО 2":"3+"} ШАЙБЫ`;
   if(t==="highest_scoring_period")return `${s} · САМЫЙ РЕЗУЛЬТАТИВНЫЙ ${side}`;
   if(t==="win_all_periods")return `${s} · ВЫИГРАЕТ ВСЕ ПЕРИОДЫ`;
-  if(t==="result_total_combo")return `ПОБЕДА ${s} + ${side==="over"?"ТБ":"ТМ"} ${fmt(line)}`;
+  if(t==="result_total_combo")return `ПОБЕДА ${s} + ${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${fmt(line)}`;
   return [p,t,s,side,line===null?"":fmt(line)].filter(Boolean).join(" ");
 }
 
