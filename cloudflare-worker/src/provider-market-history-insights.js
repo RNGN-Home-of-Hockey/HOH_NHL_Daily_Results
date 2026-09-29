@@ -498,7 +498,7 @@ function operatorExplanation(m,r,game){
 
 function marketLabel(m){
   const t=String(m.market_type||""),s=String(m.subject||""),side=String(m.side||"").toLowerCase(),line=finite(m.line),p=periodRu(m.period);
-  if(t==="game_total")return `${p}${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${fmt(line)}`;
+  if(t==="game_total")return `${p}${side==="over"?"ОБЩИЙ ТОТАЛ БОЛЬШЕ":"ОБЩИЙ ТОТАЛ МЕНЬШЕ"} ${fmt(line)}`;
   if(t==="team_total")return `${s} · ${p}${side==="over"?"ТОТАЛ КОМАНДЫ БОЛЬШЕ":"ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${fmt(line)}`;
   if(t==="handicap")return `${s} · ${p}ФОРА ${signed(line)}`;
   if(t==="moneyline")return side==="draw"?"НИЧЬЯ В ОСНОВНОЕ ВРЕМЯ":`ПОБЕДА ${s}`;
