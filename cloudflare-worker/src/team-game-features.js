@@ -1,9 +1,9 @@
-const FEATURE_VERSION = 1;
+const FEATURE_VERSION = 2;
 
 const UPSERT_GAME_FEATURES_SQL = `
 WITH
 target AS (
-  SELECT * FROM games WHERE game_pk = ? AND game_type IN (2,3)
+  SELECT * FROM games WHERE game_pk = ? AND game_type IN (2,3) AND UPPER(COALESCE(game_state,'')) IN ('FINAL','OFF')
 ),
 period_agg AS (
   SELECT
