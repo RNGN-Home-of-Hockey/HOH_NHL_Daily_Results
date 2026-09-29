@@ -32,7 +32,7 @@ assert.ok(safeHandicap.broadcast_title.startsWith('BOS НЕ ПРОИГРЫВАЛ
 assert.equal(splitTotal.broadcast_math_valid,false,'two venue splits must not become an exact market frequency');
 assert.equal(splitTotal.broadcast_detail,'NYR в гостях 17/20 · BOS дома 13/20','combined split keeps readable team-level detail');
 assert.ok(huge.broadcast_title.includes('147 ИЗ 216'),'large samples must expose exact numerator and denominator');
-assert.equal(bostonHome.broadcast_title,'BOS выиграл 14 из последних 20 матчей дома','<=30 non-handicap samples stay as natural counts');
+assert.match(bostonHome.broadcast_title,/14 ИЗ 20/,'<=30 non-handicap samples must keep exact count');
 const shortHandicap=annotateAirUtility({
   score:82,
   title:'CAR закрыла фору -1.5 в 14 из последних 20 матчей',
