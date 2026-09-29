@@ -562,11 +562,24 @@ function renderHeadlineTeamName(row,tri,fallback){
   if(t===String(row.away_tri||"").toUpperCase())return String(row.away_name_ru||row.away_name||fallback||t).trim().toUpperCase();
   return String(fallback||t).trim().toUpperCase();
 }
+const AGAINST_RENDER={
+  "ЛОС-АНДЖЕЛЕС":"ЛОС-АНДЖЕЛЕСА","СЕНТ-ЛУИС":"СЕНТ-ЛУИСА","КАРОЛИНА":"КАРОЛИНЫ","ФЛОРИДА":"ФЛОРИДЫ",
+  "МИННЕСОТА":"МИННЕСОТЫ","ОТТАВА":"ОТТАВЫ","ФИЛАДЕЛЬФИЯ":"ФИЛАДЕЛЬФИИ","ЮТА":"ЮТЫ","МОНРЕАЛЬ":"МОНРЕАЛЯ",
+  "ПИТТСБУРГ":"ПИТТСБУРГА","КОЛАМБУС":"КОЛАМБУСА","БОСТОН":"БОСТОНА","АНАХАЙМ":"АНАХАЙМА","ДАЛЛАС":"ДАЛЛАСА",
+  "ДЕТРОЙТ":"ДЕТРОЙТА","ЭДМОНТОН":"ЭДМОНТОНА","СИЭТЛ":"СИЭТЛА","ВАНКУВЕР":"ВАНКУВЕРА","ВЕГАС":"ВЕГАСА",
+  "ВАШИНГТОН":"ВАШИНГТОНА","ВИННИПЕГ":"ВИННИПЕГА","НЭШВИЛЛ":"НЭШВИЛЛА"
+};
+function renderAgainstCase(value){
+  let s=String(value??"");
+  for(const [name,form] of Object.entries(AGAINST_RENDER))s=s.replace(new RegExp("(ПРОТИВ\\s+)"+name+"(?=\\s|$|[.,;:!?—-])","gi"),"$1"+form);
+  return s;
+}
 function renderDisplayText(value){
   let s=String(value??"");
   for(const [tri,meta] of Object.entries(TEAM_META))s=s.replace(new RegExp("\\b"+tri+"\\b","gi"),meta.name);
   s=s.replace(/(^|[^A-Z0-9])P1(?=$|[^A-Z0-9])/gi,"$11-Й ПЕРИОД").replace(/(^|[^A-Z0-9])P2(?=$|[^A-Z0-9])/gi,"$12-Й ПЕРИОД").replace(/(^|[^A-Z0-9])P3(?=$|[^A-Z0-9])/gi,"$13-Й ПЕРИОД");
-  return s.replace(/([+-]?\d+)\.(\d+)/g,"$1,$2").toUpperCase();
+  s=s.replace(/([+-]?\d+)\.(\d+)/g,"$1,$2").toUpperCase();
+  return renderAgainstCase(s);
 }
 function renderLineText(value){
   const n=Number(value);if(!Number.isFinite(n))return"";
