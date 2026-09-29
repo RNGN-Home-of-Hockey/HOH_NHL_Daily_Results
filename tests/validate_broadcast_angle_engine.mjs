@@ -32,6 +32,15 @@ assert.doesNotMatch(shortUnder,/(^|\s)ТМ(\s|$)/);
 const p2Human=fitBroadcastTitle('P2 · CAR ПОБЕДИЛА В 7 ИЗ 10');
 assert.match(p2Human,/2-Й ПЕРИОД/);
 assert.doesNotMatch(p2Human,/(^|\s)P2(\s|$)/);
+const sourceHuman=diversifyBroadcastAngles([{id:'raw-source',broadcast_title:'P2 · ТМ 1,5: 7 ИЗ 10',broadcast_angle_variants:[]}])[0];
+assert.match(sourceHuman.broadcast_title,/2-Й ПЕРИОД/);
+assert.match(sourceHuman.broadcast_title,/ТОТАЛ МЕНЬШЕ/);
+assert.doesNotMatch(sourceHuman.broadcast_title,/\bP2\b|\bТМ\b/);
+const rawEnumSafe=diversifyBroadcastAngles([{id:'dc',broadcast_angle_variants:[
+  {id:'rawdc',family:'source_fact',title:'60 МИНУТ · DOUBLE_CHANCE NYR TEAM_OR_DRAW — 12 ИЗ 20',score:999},
+  {id:'humandc',family:'hit_rate',title:'60 МИНУТ · NYR ИЛИ НИЧЬЯ — 12 ИЗ 20',score:80}
+]}])[0];
+assert.equal(rawEnumSafe.broadcast_angle_id,'humandc');
 
 const historyCard={
   title:"exact line",
