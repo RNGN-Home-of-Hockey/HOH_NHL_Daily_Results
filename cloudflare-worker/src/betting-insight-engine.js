@@ -102,18 +102,30 @@ export async function buildBettingInsights(db, game, options = {}) {
     console.error("winline market adapter failed", error);
   }
 
+  const requireProviderPrice=options.require_provider_price===true;
+  const requestedMinOdds=Number(options.min_provider_odds);
+  const minProviderOdds=Number.isFinite(requestedMinOdds)?Math.max(1.01,requestedMinOdds):1.01;
+  if(requireProviderPrice){
+    marketMatchedCandidates=(marketMatchedCandidates||[]).filter(card=>{
+      const market=card?.market||{},odds=Number(market.odds);
+      return Number.isFinite(odds)&&odds>=minProviderOdds&&market.odds_is_demo===false&&market.odds_source==="provider_live";
+    });
+  }
+
   const generatorDiagnostics={
     base_candidate_count:basePortfolio.length,
     combination_candidate_count:combinationInsights.length,
     raw_candidate_count:rawPortfolio.length,
     matched_candidate_count:(marketMatchedCandidates||[]).length,
     pre_prune_market_coverage:summarizeMarketCoverage(options.provider_markets||[],marketMatchedCandidates||[]),
+    require_provider_price:requireProviderPrice,
+    min_provider_odds:requireProviderPrice?minProviderOdds:null,
   };
 
   let portfolio;
   try {
     const requestedLimit=Number(options.portfolio_limit||24);
-    const portfolioLimit=Math.max(12,Math.min(40,Number.isFinite(requestedLimit)?requestedLimit:24));
+    const portfolioLimit=Math.max(12,Math.min(64,Number.isFinite(requestedLimit)?requestedLimit:24));
     portfolio = selectInsightPortfolio(marketMatchedCandidates, portfolioLimit);
   } catch (error) {
     console.error("betting insight portfolio failed", error);
