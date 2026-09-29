@@ -82,9 +82,10 @@ function marketLabel(m){
   if(t==="period_1_result")return "1-й период: победа "+team;
   if(t==="period_2_result")return "2-й период: победа "+team;
   if(t==="period_3_result")return "3-й период: победа "+team;
-  if(t==="game_total")return (side==="under"?"ТМ":"ТБ")+" "+fmt(line);
+  if(t==="game_total")return "Общий тотал "+(side==="under"?"меньше ":"больше ")+fmt(line);
   if(t==="team_total")return team+" "+(side==="under"?"ИТМ":"ИТБ")+" "+fmt(line);
   if(t==="handicap")return team+" фора "+signed(line);
+  if(t==="double_chance")return side==="no_draw"?"Без ничьей":team+" не проиграет в основное время";
   return "";
 }
 function teamName(code,game){
