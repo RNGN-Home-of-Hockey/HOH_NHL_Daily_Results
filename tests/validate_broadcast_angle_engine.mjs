@@ -27,6 +27,12 @@ assert.match(longRank,/№2/);
 assert.match(longRank,/№18/);
 assert.doesNotMatch(longRank,/ХАРРИКЕЙНЗ|ПАНТЕРЗ/);
 
+const providerPeriod=fitBroadcastTitle("P2 · PERIOD_2_RESULT CAR CAR КАРОЛИНА ХАРРИКЕЙНЗ ПРОХОДИТ В 83% МАТЧЕЙ",58,true);
+assert.ok(providerPeriod.length<=58);
+assert.doesNotMatch(providerPeriod,/PERIOD_2_RESULT|\bCAR\b|ХАРРИКЕЙНЗ/);
+assert.match(providerPeriod,/2-Й ПЕРИОД/);
+assert.match(providerPeriod,/КАРОЛИНА/);
+
 const historyCard={
   title:"exact line",
   evidence:{
