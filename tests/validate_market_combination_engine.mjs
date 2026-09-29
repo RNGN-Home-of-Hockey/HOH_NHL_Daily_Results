@@ -32,7 +32,8 @@ const insights=[
 const markets=[
   {provider:"winline",market_type:"moneyline",period:"GAME",subject:"CAR",side:"CAR",line:null,odds:1.79,status:"open",updated_at:now},
   {provider:"winline",market_type:"handicap",period:"GAME",subject:"CAR",side:"CAR",line:-1.5,odds:2.65,status:"open",updated_at:now},
-  {provider:"winline",market_type:"team_total",period:"GAME",subject:"CAR",side:"over",line:3.5,odds:2.08,status:"open",updated_at:now}
+  {provider:"winline",market_type:"team_total",period:"GAME",subject:"CAR",side:"over",line:3.5,odds:2.08,status:"open",updated_at:now},
+  {provider:"winline",market_type:"both_teams_score",period:"GAME",subject:null,side:"no",line:null,odds:7.00,status:"open",updated_at:now}
 ];
 const cards=buildMarketCombinationInsights(insights,markets,game,{now,market_max_age_ms:3600000});
 assert.ok(cards.length>=5,"market-first engine should create multiple candidates");
@@ -44,6 +45,12 @@ assert.ok(tt35.some(c=>(c.evidence?.source_insight_ids||[]).includes("attack-car
 assert.equal(tt35.some(c=>(c.evidence?.source_insight_ids||[]).includes("tt-car")),false,"2.5 historical hit-rate must never be relabeled as 3.5");
 assert.ok(cards.some(c=>c.evidence?.combination_support_count===2),"independent evidence pairs should be created");
 assert.ok(cards.every(c=>c.market.odds_is_demo===false&&c.market.odds_source==="provider_live"));
+const contextualTt35=tt35.find(c=>(c.evidence?.source_insight_ids||[]).includes("attack-car"));
+assert.equal(contextualTt35?.evidence?.target_market_frequency_verified,false,"contextual source must not be marked as exact 3.5 history");
+const bttsNo=cards.filter(c=>c.market.type==="both_teams_score"&&c.market.side==="no");
+assert.ok(bttsNo.length>0,"related scoring context may still be offered as context for BTTS");
+assert.ok(bttsNo.every(c=>c.evidence?.target_market_frequency_verified===false),"BTTS context must never inherit source hit-rate as exact BTTS history");
+assert.ok(bttsNo.every(c=>c.evidence?.source_market_key!==c.evidence?.provider_market_key),"source and target keys should expose why the evidence is contextual");
 
 const first=normalizeWinlineMarket({provider:"winline",market_type:"first_goal_team",period:"GAME",subject:"CAR",side:"CAR",line:null,odds:1.92,status:"open",updated_at:now});
 assert.equal(first.market_type,"first_goal_team");
