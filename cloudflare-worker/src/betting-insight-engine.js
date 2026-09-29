@@ -528,7 +528,9 @@ function pairedRateStats(rateValue,sampleValue,source){
 function frequencyStatsSemanticallyValid(card,stats){
   if(!stats?.verified)return false;
   const e=card?.evidence||{},m=card?.market||{},type=String(m.type||"").toLowerCase(),source=String(stats.source||"");
-  if(source==="evidence"&&e.hits!==null&&e.hits!==undefined&&Number(stats.sample)>0)return true;
+  const sample=Number(stats.sample||0),gamePks=Array.isArray(e.game_pks)?e.game_pks.map(Number).filter(Number.isFinite):[];
+  if(sample>40&&new Set(gamePks).size<sample)return false;
+  if(source==="evidence"&&e.hits!==null&&e.hits!==undefined&&sample>0)return true;
   if(source==="wins"&&type==="moneyline"){
     const team=String(e.team||m.subject||"").toUpperCase(),subject=String(m.subject||"").toUpperCase();
     return Boolean(subject)&&team===subject;
@@ -559,8 +561,15 @@ function humanizeBroadcastText(value){
 export function broadcastCardSemanticsValid(card,game={}){
   if(!card||card.broadcast_math_valid===false)return false;
   const m=card.market||{},e=card.evidence||{},title=String(card.broadcast_title||card.title||"");
-  if(/\b(?:P[123]|PERIOD_[123]_RESULT|DOUBLE_CHANCE|TEAM_OR_DRAW|NO_DRAW)\b/i.test(title+" "+String(m.label||"")))return false;
   const type=String(m.type||"").toLowerCase(),mp=String(m.period||"GAME").toUpperCase();
+  const periodBased=/^period_[123]_result$/.test(type)||/^P[123]$/.test(mp)||type==="highest_scoring_period"||type==="win_all_periods";
+  const historical=String(card.timing||"pregame").toLowerCase()!=="live"&&String(card.kind||"history").toLowerCase()!=="live";
+  if(periodBased&&historical&&e.period_data_verified!==true)return false;
+  if(e.exact_provider_line===true){
+    const sample=Number(e.sample||0),pks=Array.isArray(e.game_pks)?e.game_pks.map(Number).filter(Number.isFinite):[];
+    if(sample>0&&new Set(pks).size<sample)return false;
+  }
+  if(/\b(?:P[123]|PERIOD_[123]_RESULT|DOUBLE_CHANCE|TEAM_OR_DRAW|NO_DRAW)\b/i.test(title+" "+String(m.label||"")))return false;
   const tm=/([123])-Й ПЕРИОД/i.exec(title),titlePeriod=tm?"P"+tm[1]:null;
   const typePeriod=/^period_([123])_result$/.exec(type),expected=typePeriod?"P"+typePeriod[1]:/^(P[123])$/.test(mp)?mp:null;
   if(titlePeriod&&expected&&titlePeriod!==expected)return false;

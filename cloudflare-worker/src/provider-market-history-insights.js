@@ -409,7 +409,7 @@ function marketHistoryTitle(m,r,window){
   if(t==="team_goal_bucket")return `${s}: ${side==="0_1"?"0–1 ШАЙБА":side==="2"?"РОВНО 2 ШАЙБЫ":"3+ ШАЙБЫ"} — ${count} МАТЧЕЙ`;
   if(t==="highest_scoring_period")return `${s||"КОМАНДА"}: ${side.replace("P","")}-Й ПЕРИОД БЫЛ САМЫМ РЕЗУЛЬТАТИВНЫМ В ${count} МАТЧЕЙ`;
   if(t==="win_all_periods")return `${s} ВЫИГРАЛ ВСЕ 3 ПЕРИОДА В ${count} МАТЧЕЙ`;
-  if(t==="result_total_combo")return `${s} ПОБЕДИЛ + ${side==="over"?"ТБ":"ТМ"} ${fmt(line)} В ${count} МАТЧЕЙ`;
+  if(t==="result_total_combo")return `${s} ПОБЕДИЛ + ${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${fmt(line)} В ${count} МАТЧЕЙ`;
   return `${marketLabel(m)} — ${count}`;
 }
 function operatorExplanation(m,r,game){

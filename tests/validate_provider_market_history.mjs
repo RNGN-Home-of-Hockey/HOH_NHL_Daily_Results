@@ -18,12 +18,12 @@ function row(pk,team,i){
     final_goals_for:car?(diff>0?4:2):(diff>0?4:2),
     final_goals_against:car?(diff>0?2:3):(diff>0?2:3),
     total_goals:total,final_goal_diff:diff,final_win:diff>0?1:0,
-    regulation_goals_for:p1gf+2,regulation_goals_against:p1ga+2,
-    regulation_goal_diff:(p1gf+2)-(p1ga+2),regulation_result:(p1gf+2)>(p1ga+2)?"W":(p1gf+2)<(p1ga+2)?"L":"T",
+    regulation_goals_for:p1gf+3,regulation_goals_against:p1ga+2,
+    regulation_goal_diff:(p1gf+3)-(p1ga+2),regulation_result:(p1gf+3)>(p1ga+2)?"W":(p1gf+3)<(p1ga+2)?"L":"T",
     p1_goals_for:p1gf,p1_goals_against:p1ga,
     p2_goals_for:2,p2_goals_against:1,p3_goals_for:1,p3_goals_against:1,
     raw_p1_goals_for:p1gf,raw_p1_goals_against:p1ga,
-    raw_p2_goals_for:2,raw_p2_goals_against:1,raw_p3_goals_for:0,raw_p3_goals_against:1,
+    raw_p2_goals_for:2,raw_p2_goals_against:1,raw_p3_goals_for:1,raw_p3_goals_against:1,
     score_after_p1_diff:p1diff,score_after_p2_diff:p1diff+1,first_goal_for:i<7?1:0,
   };
 }
