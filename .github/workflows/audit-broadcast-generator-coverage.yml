@@ -70,7 +70,7 @@ jobs:
             stats_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.stats_validation // empty' 2>/dev/null || true)"
             integrity_policy="$(echo "$probe" | jq -r '.broadcast_card_policy.integrity_version // empty' 2>/dev/null || true)"
             echo "POLICY_WAIT $attempt min=$min_policy target=$target_policy chars=$chars_policy stats=$stats_policy integrity=$integrity_policy"
-            if [ "$min_policy" = "1.5" ] && [ "$target_policy" = "4" ] && [ "$chars_policy" = "58" ] && [ "$stats_policy" = "same_season_streak_v2" ] && [ "$integrity_policy" = "exact_market_v4_raw_periods" ]; then ready=1; break; fi
+            if [ "$min_policy" = "1.5" ] && [ "$target_policy" = "4" ] && [ "$chars_policy" = "58" ] && [ "$stats_policy" = "same_season_streak_v2" ] && [ "$integrity_policy" = "exact_market_v5_goal_events" ]; then ready=1; break; fi
             sleep 2
           done
           if [ "$ready" -ne 1 ]; then
@@ -118,7 +118,7 @@ jobs:
             untraceable_large_sample="$(echo "$JSON" | jq -r '[.cards[]? | select((.air_meta.sample_size // 0)>40 and (((.evidence.game_pks // [])|unique|length)<(.air_meta.sample_size // 0)))] | length')"
             needless_total_abbr="$(echo "$JSON" | jq -r '[.cards[]? | (.broadcast_title // "") as $t | select(($t|test("(^|[ ·—:])(ТМ|ТБ)([ ·—:]|$)")) and (($t|gsub("ТМ";"ТОТАЛ МЕНЬШЕ")|gsub("ТБ";"ТОТАЛ БОЛЬШЕ")|length)<=58))] | length')"
             ftotal_now="$(echo "$JSON" | jq -r '.featured_cards | length // 0')"
-            echo "$JSON" | jq -c '{FIRST_FIVE_BROADCAST_BASE:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,start:.game.scheduled_start_utc,provider_markets:.provider_market_count,eligible_150:.eligible_provider_market_count,cards:(.cards|length),featured:(.featured_cards|length),min_odds:([.cards[]?.market.odds]|min//null),max_title_chars:([.cards[]?|(.broadcast_title//.title//"")|length]|max//0),stats_validation:.broadcast_card_policy.stats_validation,featured_titles:[.featured_cards[]?|{title:(.broadcast_title//.title),odds:.market.odds,market:.market.label,stats_source:.air_meta.stats_source,stats_hits:.air_meta.stats_hits,sample:.air_meta.sample_size,period_verified:.evidence.period_data_verified,stats_validation:.evidence.stats_validation,streak_verified:.evidence.streak_verified,current_streak:.evidence.current_streak}]}}'
+            echo "$JSON" | jq -c '{FIRST_FIVE_BROADCAST_BASE:{game_pk:.game.game_pk,away:.game.away_tri,home:.game.home_tri,start:.game.scheduled_start_utc,provider_markets:.provider_market_count,eligible_150:.eligible_provider_market_count,cards:(.cards|length),featured:(.featured_cards|length),min_odds:([.cards[]?.market.odds]|min//null),max_title_chars:([.cards[]?|(.broadcast_title//.title//"")|length]|max//0),stats_validation:.broadcast_card_policy.stats_validation,featured_titles:[.featured_cards[]?|{title:(.broadcast_title//.title),odds:.market.odds,market:.market.label,stats_source:.air_meta.stats_source,stats_hits:.air_meta.stats_hits,sample:.air_meta.sample_size,period_verified:.evidence.period_data_verified,period_validation:.evidence.period_validation,stats_validation:.evidence.stats_validation,streak_verified:.evidence.streak_verified,current_streak:.evidence.current_streak}]}}'
             if [ "$low_cards" -ne 0 ] || [ "$featured_low" -ne 0 ]; then
               echo "LOW_ODDS_CARD_LEAK game=$pk cards=$low_cards featured=$featured_low"
               exit 1

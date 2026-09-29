@@ -10,7 +10,8 @@ const rows=Array.from({length:6},(_,i)=>{
     final_goals_for:i<4?4:2,final_goals_against:i<4?2:3,total_goals:i<5?6:4,final_goal_diff:i<4?2:-1,final_win:i<4?1:0,
     regulation_goals_for:regGf,regulation_goals_against:regGa,regulation_result:regGf>regGa?"W":regGf<regGa?"L":"T",regulation_goal_diff:regGf-regGa,
     p1_goals_for:p1gf,p1_goals_against:p1ga,p2_goals_for:p2gf,p2_goals_against:p2ga,p3_goals_for:p3gf,p3_goals_against:p3ga,
-    raw_p1_goals_for:p1gf,raw_p1_goals_against:p1ga,raw_p2_goals_for:p2gf,raw_p2_goals_against:p2ga,raw_p3_goals_for:p3gf,raw_p3_goals_against:p3ga
+    raw_p1_goals_for:p1gf,raw_p1_goals_against:p1ga,raw_p2_goals_for:p2gf,raw_p2_goals_against:p2ga,raw_p3_goals_for:p3gf,raw_p3_goals_against:p3ga,
+    event_p1_goals_for:p1gf,event_p1_goals_against:p1ga,event_p2_goals_for:p2gf,event_p2_goals_against:p2ga,event_p3_goals_for:p3gf,event_p3_goals_against:p3ga
   };
 });
 const db={prepare(){return{bind(){return{all:async()=>({results:rows})}}}}};
@@ -37,7 +38,7 @@ assert.equal(ml.evidence.opponent,"CAR");
 const p2=cards.find(c=>c.market.type==="period_2_result"&&c.market.subject==="FLA");
 assert.ok(p2,"verified period line should survive H2H evaluation");
 assert.equal(p2.evidence.period_data_verified,true);
-assert.equal(p2.evidence.stats_validation,"exact_market_v4_raw_period_crosscheck");
+assert.equal(p2.evidence.stats_validation,"exact_market_v5_goal_event_crosscheck");
 const total=cards.find(c=>c.market.type==="game_total"&&c.market.line===5.5);
 assert.ok(total);
 assert.equal(total.evidence.hits,5);
