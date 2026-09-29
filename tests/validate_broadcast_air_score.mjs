@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { MAX_BROADCAST_FREQUENCY_SAMPLE, annotateAirUtility, broadcastCardSemanticsValid } from '../cloudflare-worker/src/betting-insight-engine.js';
+import { MAX_BROADCAST_FREQUENCY_SAMPLE, annotateAirUtility, broadcastCardSemanticsValid, resolveContradictoryAdvice } from '../cloudflare-worker/src/betting-insight-engine.js';
 
 const bostonHome=annotateAirUtility({
   score:80,
@@ -182,3 +182,41 @@ assert.ok(!/\bCAR\b/.test(localizedAdvanced.broadcast_title),'TV headline must n
 assert.ok(localizedAdvanced.broadcast_angle_variants.every(x=>!/\bCAR\b|\bFLA\b/.test(String(x.title||''))),'all operator-selectable TV variants must localize team names');
 assert.equal(localizedAdvanced.operator_narrative.raw.team_code,'CAR','operator raw layer must keep machine team code');
 assert.match(localizedAdvanced.operator_narrative.details.join(' '),/КАРОЛИНА/,'commentator prose should use Russian display name');
+
+
+const relabeledBtts=annotateAirUtility({
+  score:99,
+  title:'КАРОЛИНА ЗАБИВАЛА 3+ ШАЙБЫ В 19 ИЗ 20',
+  evidence:{
+    sample:20,hits:19,hit_rate:.95,
+    market_combination:true,
+    target_market_frequency_verified:false,
+    source_market_key:'team_total:GAME:CAR:over:2.50',
+    provider_market_key:'both_teams_score:GAME:all:no:none'
+  },
+  market:{type:'both_teams_score',period:'GAME',subject:null,side:'no',odds:7.00,odds_is_demo:false,odds_source:'provider_live'}
+});
+assert.equal(relabeledBtts.air_meta.historical_rate,null,'contextual 19/20 must not be treated as BTTS-no history');
+assert.equal(relabeledBtts.broadcast_math_valid,false,'frequency copy from a different source market must be blocked');
+assert.doesNotMatch(relabeledBtts.broadcast_title,/ОБЕ.*19 ИЗ 20/,'contextual source frequency must never be rewritten as the target market frequency');
+
+const absurdExactPrice=annotateAirUtility({
+  score:99,
+  title:'ОБЕ КОМАНДЫ НЕ ЗАБЬЮТ — 19 ИЗ 20',
+  evidence:{sample:20,decisions:20,hits:19,hit_rate:.95,exact_provider_line:true,game_pks:Array.from({length:20},(_,i)=>30000+i)},
+  market:{type:'both_teams_score',period:'GAME',subject:null,side:'no',odds:7.00,odds_is_demo:false,odds_source:'provider_live'}
+});
+assert.equal(absurdExactPrice.air_meta.price_history_suspicious,true,'95% history at odds 7.00 must be quarantined for evidence review');
+assert.equal(absurdExactPrice.broadcast_math_valid,false,'an extreme history/price contradiction must fail closed');
+assert.equal(broadcastCardSemanticsValid(absurdExactPrice,{home_tri:'CAR',away_tri:'FLA'}),false);
+
+const rankA={air_score:88,broadcast_math_valid:true,broadcast_title:'FLA №2, CAR №18 ПО БАЛАНСУ МОМЕНТОВ',
+  evidence:{team:'FLA',opponent:'CAR',metric:'xgd60',opponent_metric:'xgd60',team_rank:2,opponent_rank:18},
+  market:{type:'moneyline',period:'GAME',subject:'FLA',side:'FLA'}};
+const rankB={air_score:80,broadcast_math_valid:true,broadcast_title:'CAR НА 16 МЕСТ ВЫШЕ FLA ПО БАЛАНСУ МОМЕНТОВ',
+  evidence:{team:'CAR',opponent:'FLA',metric:'xgd60',opponent_metric:'xgd60',team_rank:2,opponent_rank:18},
+  market:{type:'moneyline',period:'GAME',subject:'CAR',side:'CAR'}};
+const rankResolved=resolveContradictoryAdvice([rankA,rankB]);
+assert.equal(rankResolved.length,1,'two incompatible rankings for the same metric/scope must not coexist');
+assert.equal(rankResolved[0],rankA,'stronger internally consistent ranking should survive');
+console.log('BROADCAST_TARGET_EVIDENCE_INTEGRITY_OK');
