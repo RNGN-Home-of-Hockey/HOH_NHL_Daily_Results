@@ -60,7 +60,7 @@ const floridaTraceable=annotateAirUtility({
   market:{type:'moneyline',subject:'FLA',side:'FLA',label:'Победа FLA',odds:2.00,odds_is_demo:false,odds_source:'provider_live'}
 });
 assert.equal(floridaTraceable.broadcast_math_valid,true,'large sample is allowed only when every game is traceable');
-assert.equal(floridaTraceable.air_meta.historical_rate,71/140);
+assert.equal(floridaTraceable.air_meta.historical_rate,0.507);
 assert.equal(floridaMismatch.broadcast_math_valid,false,'140-game claim without 140 unique game ids must not enter the broadcast queue');
 
 const unpairedPercent=annotateAirUtility({
