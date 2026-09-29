@@ -39,6 +39,11 @@ function atom(card,game){
 
 function compat(a,m){
   const t=String(m.market_type||""),sub=up(m.subject||""),p=period(m.period),target=marketDirection(m);let s=0;
+  // Directional team evidence is not "context" for the opposite side.
+  // Example: CAR ranks #2 and FLA #18 cannot be used to sell FLA -1.
+  // Reject it before scoring instead of letting generic family/sample bonuses
+  // overpower the direction mismatch.
+  if(target&&a.direction&&String(target).startsWith("team:")&&String(a.direction).startsWith("team:")&&target!==a.direction)return -100;
   if(a.type===t)s+=34;else if(family(a.type,t))s+=22;else if(cross(a,t))s+=14;
   if(a.period===p)s+=18;else if(a.period==="GAME"&&p==="REG")s+=7;else if(!["GAME","REG"].includes(p))s-=12;
   if(sub){if(a.team===sub||a.subject===sub)s+=22;else if(a.opponent===sub&&opponentUseful(a,t))s+=10;else if(a.subject&&a.subject!==sub)s-=18}else if(t==="game_total")s+=8;
