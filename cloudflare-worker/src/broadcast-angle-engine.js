@@ -2,13 +2,6 @@
 // One source card -> several numerical, human-readable broadcast stories.
 
 export const MAX_BROADCAST_TITLE_CHARS=58;
-const SHORT_TEAM_NAMES={
-  ANA:"АНАХАЙМ",BOS:"БОСТОН",BUF:"БАФФАЛО",CAR:"КАРОЛИНА",CBJ:"КОЛАМБУС",CGY:"КАЛГАРИ",CHI:"ЧИКАГО",COL:"КОЛОРАДО",
-  DAL:"ДАЛЛАС",DET:"ДЕТРОЙТ",EDM:"ЭДМОНТОН",FLA:"ФЛОРИДА",LAK:"ЛОС-АНДЖЕЛЕС",MIN:"МИННЕСОТА",MTL:"МОНРЕАЛЬ",
-  NJD:"НЬЮ-ДЖЕРСИ",NSH:"НЭШВИЛЛ",NYI:"АЙЛЕНДЕРС",NYR:"РЕЙНДЖЕРС",OTT:"ОТТАВА",PHI:"ФИЛАДЕЛЬФИЯ",PIT:"ПИТТСБУРГ",
-  SEA:"СИЭТЛ",SJS:"САН-ХОСЕ",STL:"СЕНТ-ЛУИС",TBL:"ТАМПА-БЭЙ",TOR:"ТОРОНТО",UTA:"ЮТА",VAN:"ВАНКУВЕР",
-  VGK:"ВЕГАС",WPG:"ВИННИПЕГ",WSH:"ВАШИНГТОН"
-};
 const FULL_TEAM_SHORT=[
   ["КАРОЛИНА ХАРРИКЕЙНЗ","КАРОЛИНА"],["ФЛОРИДА ПАНТЕРЗ","ФЛОРИДА"],["ЛОС-АНДЖЕЛЕС КИНГЗ","ЛОС-АНДЖЕЛЕС"],
   ["НЬЮ-ЙОРК РЕЙНДЖЕРС","РЕЙНДЖЕРС"],["НЬЮ-ЙОРК АЙЛЕНДЕРС","АЙЛЕНДЕРС"],["НЬЮ-ДЖЕРСИ ДЕВИЛЗ","НЬЮ-ДЖЕРСИ"],
@@ -25,7 +18,6 @@ const FULL_TEAM_SHORT=[
 export function fitBroadcastTitle(value,max=MAX_BROADCAST_TITLE_CHARS){
   let s=String(value||"").replace(/\s+/g," ").trim().toUpperCase();
   for(const [full,short] of FULL_TEAM_SHORT)s=s.replaceAll(full,short);
-  for(const [tri,short] of Object.entries(SHORT_TEAM_NAMES))s=s.replace(new RegExp("\\b"+tri+"\\b","g"),short);
   s=s
     .replace(/ПО РАЗНИЦЕ ОПАСНЫХ МОМЕНТОВ/g,"ПО ОПАСНЫМ МОМЕНТАМ")
     .replace(/ПО СОЗДАННЫМ ОПАСНЫМ МОМЕНТАМ/g,"ПО ОПАСНЫМ МОМЕНТАМ")
