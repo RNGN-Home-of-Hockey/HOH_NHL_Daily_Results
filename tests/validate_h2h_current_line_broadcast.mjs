@@ -3,11 +3,17 @@ import { buildH2HBroadcastInsights } from "../cloudflare-worker/src/h2h-broadcas
 
 const game={game_pk:77,scheduled_start_utc:"2026-10-01T00:00:00Z",away_tri:"FLA",home_tri:"CAR",away_name_ru:"Флорида Пантерз",home_name_ru:"Каролина Харрикейнз"};
 const rows=Array.from({length:6},(_,i)=>{
-  const p1gf=i<4?1:0,p1ga=i<4?0:1,p2gf=2,p2ga=1,p3gf=1,p3ga=1;
+  const win=i<4;
+  const finalFor=win?4:2,finalAgainst=win?2:(i===4?4:3);
+  const p1gf=win?1:0,p1ga=win?0:1;
+  const p2gf=win?2:1,p2ga=win?1:(i===4?2:1);
+  const p3gf=finalFor-p1gf-p2gf,p3ga=finalAgainst-p1ga-p2ga;
   const regGf=p1gf+p2gf+p3gf,regGa=p1ga+p2ga+p3ga;
   return {
-    game_pk:100+i,
-    final_goals_for:i<4?4:2,final_goals_against:i<4?2:3,total_goals:i<5?6:4,final_goal_diff:i<4?2:-1,final_win:i<4?1:0,
+    game_pk:100+i,team_tri:"FLA",opponent_tri:"CAR",is_home:0,
+    official_home_tri:"CAR",official_away_tri:"FLA",official_home_score:finalAgainst,official_away_score:finalFor,
+    official_current_period:3,official_period_type:"REG",official_game_state:"FINAL",went_ot:0,went_so:0,
+    final_goals_for:finalFor,final_goals_against:finalAgainst,total_goals:finalFor+finalAgainst,final_goal_diff:finalFor-finalAgainst,final_win:finalFor>finalAgainst?1:0,
     regulation_goals_for:regGf,regulation_goals_against:regGa,regulation_result:regGf>regGa?"W":regGf<regGa?"L":"T",regulation_goal_diff:regGf-regGa,
     p1_goals_for:p1gf,p1_goals_against:p1ga,p2_goals_for:p2gf,p2_goals_against:p2ga,p3_goals_for:p3gf,p3_goals_against:p3ga,
     raw_p1_goals_for:p1gf,raw_p1_goals_against:p1ga,raw_p2_goals_for:p2gf,raw_p2_goals_against:p2ga,raw_p3_goals_for:p3gf,raw_p3_goals_against:p3ga,
@@ -38,7 +44,8 @@ assert.equal(ml.evidence.opponent,"CAR");
 const p2=cards.find(c=>c.market.type==="period_2_result"&&c.market.subject==="FLA");
 assert.ok(p2,"verified period line should survive H2H evaluation");
 assert.equal(p2.evidence.period_data_verified,true);
-assert.equal(p2.evidence.stats_validation,"exact_market_v5_goal_event_crosscheck");
+assert.equal(p2.evidence.stats_validation,"exact_market_v6_official_score_crosscheck");
+assert.equal(p2.evidence.official_score_verified,true);
 const total=cards.find(c=>c.market.type==="game_total"&&c.market.line===5.5);
 assert.ok(total);
 assert.equal(total.evidence.hits,5);
