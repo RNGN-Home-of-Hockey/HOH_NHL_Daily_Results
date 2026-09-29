@@ -903,7 +903,7 @@ const AGAINST_UI={
 };
 function applyAgainstUi(value){
   let s=String(value??"");
-  for(const [name,form] of Object.entries(AGAINST_UI))s=s.replace(new RegExp("(ПРОТИВ\\\\s+)"+name+"(?=\\\\s|$|[.,;:!?—-])","gi"),"$1"+form);
+  for(const [name,form] of Object.entries(AGAINST_UI))s=s.replace(new RegExp("(ПРОТИВ\\s+)"+name+"(?=\\s|$|[.,;:!?—-])","gi"),"$1"+form);
   return s;
 }
 function displayText(value){
