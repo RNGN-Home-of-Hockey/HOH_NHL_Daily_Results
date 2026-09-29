@@ -567,7 +567,7 @@ function broadcastMarketLabel(m={}){
   if(type==="moneyline")return (period+"ПОБЕДА "+subject).trim();
   const pm=/^period_([123])_result$/.exec(type);if(pm)return pm[1]+"-Й ПЕРИОД · ПОБЕДА "+subject;
   if(type==="handicap")return (period+subject+" · ФОРА "+signed).trim();
-  if(type==="game_total")return (period+(side==="under"?"ТОТАЛ МЕНЬШЕ ":"ТОТАЛ БОЛЬШЕ ")+num).trim();
+  if(type==="game_total")return (period+(side==="under"?"ОБЩИЙ ТОТАЛ МЕНЬШЕ ":"ОБЩИЙ ТОТАЛ БОЛЬШЕ ")+num).trim();
   if(type==="team_total")return (period+subject+" · "+(side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+num).trim();
   if(type==="double_chance")return side==="no_draw"?(period+"БЕЗ НИЧЬЕЙ").trim():(subject+" НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ").trim();
   if(type==="both_teams_score")return side==="yes"?"ОБЕ КОМАНДЫ ЗАБЬЮТ":"ОБЕ КОМАНДЫ НЕ ЗАБЬЮТ";
@@ -578,7 +578,7 @@ function broadcastMarketLabel(m={}){
 function humanizeBroadcastText(value){
   return String(value||"").replace(/\bP1\b/gi,"1-Й ПЕРИОД").replace(/\bP2\b/gi,"2-Й ПЕРИОД").replace(/\bP3\b/gi,"3-Й ПЕРИОД")
     .replace(/\bPERIOD_1_RESULT\b/gi,"ПОБЕДА В 1-М ПЕРИОДЕ").replace(/\bPERIOD_2_RESULT\b/gi,"ПОБЕДА В 2-М ПЕРИОДЕ").replace(/\bPERIOD_3_RESULT\b/gi,"ПОБЕДА В 3-М ПЕРИОДЕ")
-    .replace(/\bDOUBLE_CHANCE\b/gi,"ДВОЙНОЙ ШАНС").replace(/\bTEAM_OR_DRAW\b/gi,"КОМАНДА ИЛИ НИЧЬЯ").replace(/\bNO_DRAW\b/gi,"БЕЗ НИЧЬЕЙ")
+    .replace(/\bDOUBLE_CHANCE\b/gi,"ДВОЙНОЙ ШАНС").replace(/\bTEAM_OR_DRAW\b/gi,"НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ").replace(/\bNO_DRAW\b/gi,"БЕЗ НИЧЬЕЙ")
     .replace(/(^|[\s·—:])ТМ(?=\s|$)/gi,"$1ТОТАЛ МЕНЬШЕ").replace(/(^|[\s·—:])ТБ(?=\s|$)/gi,"$1ТОТАЛ БОЛЬШЕ").replace(/\s+/g," ").trim().toUpperCase();
 }
 export function broadcastCardSemanticsValid(card,game={}){

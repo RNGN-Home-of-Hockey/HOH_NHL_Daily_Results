@@ -162,7 +162,6 @@ function buildVariants(p,card,fallback){
   for(const item of support.slice(0,4)){
     const t=String(item?.title||item?.eyebrow||"").trim();
     if(t)out.push(t);
-    if(p.team&&t)out.push(p.team+" — СИГНАЛ ПОДТВЕРЖДАЮТ 2 НЕЗАВИСИМЫХ ПОКАЗАТЕЛЯ");
   }
 
   const odds=finite(market.odds);
@@ -231,11 +230,13 @@ function buildOperator(p,card,context,selectedAngle=null,angles=[]){
   }
   const supporting=Array.isArray(e.supporting_signals)?e.supporting_signals:[];
   if(supporting.length){
-    details.push("Независимых подтверждений: "+supporting.length+".");
-    for(const item of supporting.slice(0,4)){
-      const title=String(item?.title||item?.eyebrow||item?.category||"").trim();
-      if(title)details.push("Подтверждение: "+title+".");
-    }
+    const concrete=supporting
+      .map(item=>String(item?.title||item?.eyebrow||item?.category||"").trim())
+      .filter(Boolean);
+    if(concrete[0])details.push("Дополнительный факт: "+concrete[0]+".");
+    const rest=Math.max(0,concrete.length-1);
+    if(rest)details.push("Ещё "+rest+" "+(rest===1?"факт":rest>=2&&rest<=4?"факта":"фактов")+" в описании.");
+    for(const title of concrete.slice(1,4))details.push("Ещё факт: "+title+".");
   }
   if(e.market_combination===true){
     details.push("Карточка собрана market-first: сначала взята реальная линия WINLINE, затем к ней подобраны совместимые статистические сигналы.");

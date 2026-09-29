@@ -1,4 +1,4 @@
-import { applyAgainstCase } from "./team-russian-grammar.js";
+import { applyAgainstCase, applyDisplayTeamGrammar } from "./team-russian-grammar.js";
 // Structured TV-angle generator.
 // One source card -> several numerical, human-readable broadcast stories.
 
@@ -158,9 +158,31 @@ function addHistory(out,e,m,p={}){
       put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ`,104,"очная статистика с явным соперником");
     }
   }
+  const type=String(m.type||"").toLowerCase(),split=String(e.split||"").toLowerCase(),role=String(e.role||"").toLowerCase();
   const historyAngleScore=dec<8?(pct<=50?62:pct<67?72:82):pct<=50?68:pct<60?78:92;
-  put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",h2h?historyAngleScore-12:historyAngleScore,"точная частота линии");
-  put(out,"history_pct","hit_rate_pct",`${label} ПРОХОДИТ В ${pct}% МАТЧЕЙ`,`ПОСЛЕДНИЕ ${Math.round(dec)} МАТЧЕЙ`,h2h?70:(dec<8?Math.min(78,historyAngleScore+2):90),"процент прохода линии");
+
+  // Concrete venue form should read like a sports fact, not a betting-system sentence.
+  // "Каролина выиграла 16 из 20 матчей дома" is both clearer and more persuasive
+  // than "Победа Каролина проходит в 80% матчей".
+  if(split==="current_venue"&&type==="moneyline"&&team){
+    const place=role.includes("гост")?"В ГОСТЯХ":"ДОМА";
+    const raw=`${team} выиграл ${Math.round(hits)} из ${Math.round(dec)} матчей ${place.toLowerCase()}`;
+    const natural=applyDisplayTeamGrammar(raw,String(e.team||m.subject||""),team).toUpperCase();
+    put(out,"venue_win_count","venue_form",natural,`ПОСЛЕДНИЕ ${Math.round(dec)} В ЭТОЙ РОЛИ`,116,"конкретная форма дома/в гостях");
+  }
+
+  if(type==="moneyline"&&team){
+    const raw=`${team} выиграл ${Math.round(hits)} из ${Math.round(dec)} матчей`;
+    const natural=applyDisplayTeamGrammar(raw,String(e.team||m.subject||""),team).toUpperCase();
+    put(out,"history_count","hit_rate",natural,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",h2h?historyAngleScore-12:historyAngleScore,"точное число побед");
+  }else if(type==="double_chance"&&team&&String(m.side||"").toLowerCase()!=="no_draw"){
+    put(out,"history_count","hit_rate",`${team} — БЕЗ ПОРАЖЕНИЯ В ${Math.round(hits)} ИЗ ${Math.round(dec)} МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",h2h?historyAngleScore-12:historyAngleScore,"точное число матчей без поражения");
+  }else{
+    put(out,"history_count","hit_rate",`${label} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`,window?`ОКНО: ${Math.round(window)} МАТЧЕЙ`:"",h2h?historyAngleScore-12:historyAngleScore,"точная частота линии");
+  }
+  if(type!=="moneyline"&&type!=="double_chance"){
+    put(out,"history_pct","hit_rate_pct",`${label} ПРОХОДИТ В ${pct}% МАТЧЕЙ`,`ПОСЛЕДНИЕ ${Math.round(dec)} МАТЧЕЙ`,h2h?70:(dec<8?Math.min(78,historyAngleScore+2):90),"процент прохода линии");
+  }
   if(push>0)put(out,"history_push","integer_line",`${label} — ${Math.round(hits)} ПОБЕД И ${Math.round(push)} ВОЗВРАТА`,`${Math.round(dec)} РЕШЁННЫХ ИСХОДОВ`,h2h?72:89,"целая линия с возвратами");
   const streak=n(e.current_streak);
   if(streak>=3&&e.streak_verified===true)put(out,"streak","streak",`${label} ПРОХОДИТ ${Math.round(streak)} МАТЧА ПОДРЯД`,"ТЕКУЩАЯ СЕРИЯ",h2h?76:97,"проверенная серия по той же линии");
@@ -245,7 +267,7 @@ function marketLabel(m){
   if(t==="period_2_result")return `2-Й ПЕРИОД: ПОБЕДА ${s}`.trim();
   if(t==="period_3_result")return `3-Й ПЕРИОД: ПОБЕДА ${s}`.trim();
   if(t==="handicap")return `${p}${s} ФОРА ${signed(l)}`.trim();
-  if(t==="game_total")return `${p}${side==="over"?"ТОТАЛ БОЛЬШЕ":"ТОТАЛ МЕНЬШЕ"} ${line(l)}`.trim();
+  if(t==="game_total")return `${p}${side==="over"?"ОБЩИЙ ТОТАЛ БОЛЬШЕ":"ОБЩИЙ ТОТАЛ МЕНЬШЕ"} ${line(l)}`.trim();
   if(t==="team_total")return `${p}${s} ${side==="over"?"ТОТАЛ КОМАНДЫ БОЛЬШЕ":"ТОТАЛ КОМАНДЫ МЕНЬШЕ"} ${line(l)}`.trim();
   if(t==="double_chance")return side==="no_draw"?"12 — БЕЗ НИЧЬЕЙ":`${s} НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ`;
   if(t==="both_teams_score")return side==="yes"?"ОБЕ ЗАБЬЮТ — ДА":"ОБЕ ЗАБЬЮТ — НЕТ";

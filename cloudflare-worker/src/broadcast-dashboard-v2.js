@@ -388,7 +388,7 @@ async function broadcastGameRoute(env, gamePk) {
       provider_market_count:providerMarkets.length,
       eligible_provider_market_count:eligibleProviderMarkets.length,
       market_coverage:summarizeMarketCoverage(eligibleProviderMarkets,broadcastCardsWithEvidence),
-      broadcast_card_policy:{min_odds:MIN_BROADCAST_ODDS,featured_target:4,portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,max_headline_chars:MAX_BROADCAST_HEADLINE_CHARS,max_frequency_sample:40,stats_validation:"same_season_streak_v2",integrity_version:"exact_market_v11_direct_fact_priority",live_monitoring:{ui_poll_seconds:15,winline_sync_target_seconds:60,winline_feed_throttle_seconds:45,live_quote_max_age_seconds:90},pregame_archive:{closing_window_minutes:10,freeze_at_puck_drop:true,postgame_settlement:true}},
+      broadcast_card_policy:{min_odds:MIN_BROADCAST_ODDS,featured_target:4,portfolio_limit:BROADCAST_PORTFOLIO_LIMIT,max_headline_chars:MAX_BROADCAST_HEADLINE_CHARS,max_frequency_sample:40,stats_validation:"same_season_streak_v2",integrity_version:"exact_market_v12_editorial_copy",live_monitoring:{ui_poll_seconds:15,winline_sync_target_seconds:60,winline_feed_throttle_seconds:45,live_quote_max_age_seconds:90},pregame_archive:{closing_window_minutes:10,freeze_at_puck_drop:true,postgame_settlement:true}},
       generator_diagnostics:generatorDiagnostics,
       data_degraded_sections:dataDegradedSections,
       quick_cards:quickCards,

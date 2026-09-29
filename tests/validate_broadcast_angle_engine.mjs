@@ -62,6 +62,7 @@ const historyCard={
 };
 const historyAngles=buildBroadcastAngles(historyCard,{});
 assert.ok(historyAngles.some(x=>x.family==="hit_rate"&&/8 ИЗ 10/.test(x.title)));
+assert.ok(historyAngles.some(x=>/ОБЩИЙ ТОТАЛ БОЛЬШЕ 5,5/.test(x.title)),"game total must be explicitly labeled as the match total");
 assert.ok(historyAngles.some(x=>x.family==="streak"&&/4 МАТЧА ПОДРЯД/.test(x.title)));
 const unverifiedAngles=buildBroadcastAngles({...historyCard,evidence:{...historyCard.evidence,current_streak:40,streak_verified:false}},{});
 assert.ok(!unverifiedAngles.some(x=>x.family==="streak"),"unverified 40-game streak must be suppressed");
@@ -70,6 +71,25 @@ assert.ok(noVariant.broadcast_title.length<=58,"cards without angle variants mus
 assert.doesNotMatch(noVariant.broadcast_title,/ХАРРИКЕЙНЗ/);
 assert.ok(historyAngles.some(x=>x.family==="multi_window"&&/8 ИЗ 10/.test(x.title)&&/15 ИЗ 20/.test(x.title)));
 assert.ok(historyAngles.every(x=>/\d/.test(x.title)),"numeric evidence must stay numeric on TV");
+
+const venueMoneyline={
+  title:"CAR выиграла 16 из последних 20 матчей дома",
+  evidence:{team:"CAR",split:"current_venue",role:"дома",window:20,sample:20,decisions:20,hits:16,hit_rate:.8},
+  market:{type:"moneyline",period:"GAME",subject:"CAR",side:"CAR",line:null,label:"Победа CAR",odds:1.78,odds_is_demo:false}
+};
+const venueAngles=buildBroadcastAngles(venueMoneyline,{team:"КАРОЛИНА"});
+assert.equal(venueAngles[0].family,"venue_form","concrete home/away record should be the first on-air angle");
+assert.match(venueAngles[0].title,/КАРОЛИНА ВЫИГРАЛА 16 ИЗ 20 МАТЧЕЙ ДОМА/);
+assert.ok(venueAngles.every(x=>!/ПОБЕДА КАРОЛИНА ПРОХОДИТ/i.test(x.title)),"moneyline copy must not sound like a machine-translated market label");
+
+const awayVenueMoneyline={
+  ...venueMoneyline,
+  title:"FLA выиграла 14 из последних 20 матчей в гостях",
+  evidence:{team:"FLA",split:"current_venue",role:"в гостях",window:20,sample:20,decisions:20,hits:14,hit_rate:.7},
+  market:{...venueMoneyline.market,subject:"FLA",side:"FLA",label:"Победа FLA"}
+};
+const awayVenueAngles=buildBroadcastAngles(awayVenueMoneyline,{team:"ФЛОРИДА"});
+assert.match(awayVenueAngles[0].title,/ФЛОРИДА ВЫИГРАЛА 14 ИЗ 20 МАТЧЕЙ В ГОСТЯХ/);
 
 const h2hCard={
   title:"ПОБЕДА MIN — 6 ИЗ 10 В ОЧНЫХ МАТЧАХ",
