@@ -89,7 +89,7 @@ assert.equal(doubleChance.market_type,"double_chance");
 assert.equal(doubleChance.subject,"TOR");
 assert.equal(doubleChance.side,"team_or_draw");
 
-const doubleChanceInsight=[{id:"dc",market:{type:"double_chance",period:"GAME",subject:"TOR",side:"team_or_draw",line:null,label:"TOR ИЛИ НИЧЬЯ"}}];
+const doubleChanceInsight=[{id:"dc",market:{type:"double_chance",period:"REG",subject:"TOR",side:"team_or_draw",line:null,label:"TOR ИЛИ НИЧЬЯ"}}];
 const doubleChancePriced=applyWinlineMarkets(doubleChanceInsight,[doubleChance],{now,max_age_ms:7*60*60*1000});
 assert.equal(doubleChancePriced.length,1);
 assert.equal(doubleChancePriced[0].market.label,"TOR НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ");
