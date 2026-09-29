@@ -184,6 +184,26 @@ assert.equal(localizedAdvanced.operator_narrative.raw.team_code,'CAR','operator 
 assert.match(localizedAdvanced.operator_narrative.details.join(' '),/КАРОЛИНА/,'commentator prose should use Russian display name');
 
 
+const concreteSupportCopy=annotateAirUtility({
+  score:90,
+  category:'venue_split',
+  title:'CAR выиграла 16 из последних 20 матчей дома',
+  evidence:{
+    team:'CAR',split:'current_venue',role:'дома',window:20,sample:20,decisions:20,hits:16,hit_rate:.8,
+    supporting_signals:[
+      {title:'CAR — №2 НХЛ ПО БАЛАНСУ МОМЕНТОВ'},
+      {title:'FLA — №18 НХЛ ПО БАЛАНСУ МОМЕНТОВ'}
+    ]
+  },
+  market:{type:'moneyline',period:'GAME',subject:'CAR',side:'CAR',odds:1.78,odds_is_demo:false,odds_source:'provider_live'}
+},{
+  home_tri:'CAR',away_tri:'FLA',home_name_ru:'Каролина',away_name_ru:'Флорида'
+});
+const supportText=concreteSupportCopy.operator_narrative.details.join(' ');
+assert.doesNotMatch(supportText,/НЕЗАВИСИМЫХ ПОДТВЕРЖДЕНИЙ|ПОДТВЕРЖДЕНИЕ:/i,'commentator narrative must not lead with generic confirmation counts');
+assert.match(supportText,/Дополнительный факт:/,'commentator narrative should expose a concrete support fact');
+assert.match(supportText,/Ещё 1 факт в описании/i,'commentator narrative should tell the operator more facts are available');
+
 const swappedRankContext=annotateAirUtility({
   score:94,
   category:'market_combination',
