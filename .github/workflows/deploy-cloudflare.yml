@@ -202,15 +202,22 @@ jobs:
           }
           if(!r?.ok||!d?.ok)throw new Error('player notification status unhealthy '+JSON.stringify(d));
           if(d.engine!=='center-v2'||d.enabled!==true||d.center_token_configured!==true)throw new Error('player notification engine not enabled '+JSON.stringify(d));
-          for(const asset of ['/telegram-app/game-follow.js?build=25.0.1','/telegram-app/preferences.js?build=25.0.1']){
-            const ar=await fetch(base+asset,{cache:'no-store'}),js=await ar.text();
-            if(!ar.ok)throw new Error('notification UI asset HTTP '+ar.status+' '+asset);
-            new Function(js);
-            if(asset.includes('game-follow')&&(!js.includes('Напомнить за 15 минут')||!js.includes('reminder_only:true')))throw new Error('15-minute reminder UI marker missing');
-            if(asset.includes('preferences')&&!js.includes('resolvedOptions().timeZone'))throw new Error('timezone sync UI marker missing');
+          async function waitText(path,check,label){
+            let last='';
+            for(let i=0;i<15;i++){
+              const ar=await fetch(base+path,{cache:'no-store',headers:{'cache-control':'no-cache'}});
+              last=await ar.text();
+              console.log('PLAYER_NOTIFICATION_ASSET_WAIT',label,i+1,ar.status,last.slice(0,120).replace(/\s+/g,' '));
+              if(ar.ok&&check(last))return last;
+              await new Promise(res=>setTimeout(res,2000));
+            }
+            throw new Error(label+' did not reach production');
           }
-          const shell=await fetch(base+'/telegram-app-v24?build=24.8.0',{cache:'no-store'}).then(r=>r.text());
-          if(!shell.includes('/telegram-app/game-follow.js?build=25.0.1')||!shell.includes('/telegram-app/preferences.js?build=25.0.1'))throw new Error('notification enhancers missing from canonical Mini App shell');
+          const gameFollowJs=await waitText('/telegram-app/game-follow.js?build=25.0.1',js=>js.includes('Напомнить за 15 минут')&&js.includes('reminder_only:true'),'15-minute reminder UI');
+          new Function(gameFollowJs);
+          const preferencesJs=await waitText('/telegram-app/preferences.js?build=25.0.1',js=>js.includes('resolvedOptions().timeZone'),'timezone sync UI');
+          new Function(preferencesJs);
+          const shell=await waitText('/telegram-app-v24?build=24.8.0',html=>html.includes('/telegram-app/game-follow.js?build=25.0.1')&&html.includes('/telegram-app/preferences.js?build=25.0.1'),'canonical notification shell');
           console.log('PLAYER_NOTIFICATION_WAVE_PRODUCTION_OK',JSON.stringify({player_subscriptions:d.player_subscriptions,game_reminders:d.game_reminders,timezone_users:d.timezone_users,digests_24h:d.digests_24h,player_reports_24h:d.player_reports_24h,reminders_24h:d.reminders_24h}));
           JS
 
