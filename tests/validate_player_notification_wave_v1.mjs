@@ -64,7 +64,7 @@ try{
     TELEGRAM_CENTER_EVENT_STREAM_ENABLED:"0",
   },{dryRun:true,now:"2026-10-10T20:00:00Z"});
 
-  assert.equal(result.ok,true);
+  assert.equal(result.ok,true,JSON.stringify(result));
   assert.equal(result.daily_digests,1,"one local 20:00 digest expected");
   assert.equal(result.game_reminders,1,"one explicit 15-minute game reminder expected");
   assert.equal(result.player_reports,1,"one postgame followed-player report expected");
