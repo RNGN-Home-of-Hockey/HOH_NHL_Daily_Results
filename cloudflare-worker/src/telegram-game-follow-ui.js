@@ -24,7 +24,8 @@ function gameFollowEnhancer(){
   async function refreshFollows(){
     try{const d=await api('/api/me/subscriptions');follows=d.subscriptions||[]}catch{follows=[]}
   }
-  function gameFollow(gamePk){return follows.find(f=>f.subject_type==='game'&&String(f.subject_key)===String(gamePk))||null}\n  function isReminded(gamePk){const f=gameFollow(gamePk);return Boolean(f&&Number(f.notify_pregame)===1)}
+  function gameFollow(gamePk){return follows.find(f=>f.subject_type==='game'&&String(f.subject_key)===String(gamePk))||null}
+  function isReminded(gamePk){const f=gameFollow(gamePk);return Boolean(f&&Number(f.notify_pregame)===1)}
 
   async function toggle(gamePk,button){
     if(!initData){tg?.showAlert?.('Откройте приложение из Telegram-бота, чтобы подписываться на матч.');return}
