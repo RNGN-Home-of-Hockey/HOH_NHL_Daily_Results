@@ -199,10 +199,10 @@ async function processDailyPlayerDigests(env,games,subs,ctx,userPrefs,now,dryRun
     const timezoneNote=timezoneFallback?"\n\n🕗 Часовой пояс ещё не сохранён — временно используем московское время. Откройте Live Center, и дальше время будет локальным.":"";
     const text=`🏒 Сегодня / этой ночью играют ваши игроки\n\n${lines.join("\n")}\n\nОткройте матч в Live Center, чтобы включить напоминание за 15 минут.${timezoneNote}`;
     summary.planned++;
-    if(dryRun){summary.daily_digests++;summary.events.push({user_id:userId,type:"daily_player_digest",local_date:localDate,timezone:tz,timezone_fallback:Boolean(timezoneFallback),players:blocks.length,text});continue}
+    if(dryRun){summary.daily_digests++;summary.events.push({user_id:userId,type:"daily_player_digest",local_date:localDate,timezone:tz,timezone_fallback:Boolean(timezoneFallback),players:lines.length,text});continue}
     const cap=Math.max(1,Math.min(...playerSubs.map(x=>Number(x.max_pushes_per_day)||12)));
     if(!canSendNow(summary,userId,cap))continue;
-    if(!(await reserve(env.DB,key,userId,"daily_player_digest",null,JSON.stringify({timezone:tz,local_date:localDate,players:blocks.length})))){summary.skipped_duplicate++;continue}
+    if(!(await reserve(env.DB,key,userId,"daily_player_digest",null,JSON.stringify({timezone:tz,local_date:localDate,players:lines.length})))){summary.skipped_duplicate++;continue}
     try{await sendCenter(env,userId,text);markSent(summary,userId);summary.sent++;summary.daily_digests++}
     catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(key,userId).run().catch(()=>{});summary.events.push({user_id:userId,type:"daily_player_digest",error:errorText(error)})}
   }
