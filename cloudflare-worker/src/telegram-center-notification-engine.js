@@ -3,6 +3,7 @@ const ESPN_INJURIES = "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/
 const LIVE = new Set(["LIVE","CRIT","INTERMISSION"]);
 const FINAL = new Set(["FINAL","OFF"]);
 const DELIVERY_SHARDS = 5;
+const MAX_SENDS_PER_TICK = 30;
 
 export async function getCenterNotificationStatus(env){
   if(!env.DB)return {ok:false,error:"missing_d1_binding"};
@@ -21,7 +22,7 @@ export async function getCenterNotificationStatus(env){
         (SELECT COUNT(*) FROM notification_log WHERE notification_type='reminder_15m' AND sent_at>=datetime('now','-24 hours')) reminders_24h,
         (SELECT MAX(sent_at) FROM notification_log) last_sent_at;
     `).first();
-    return {ok:true,engine:"center-v2",enabled:envFlag(env.TELEGRAM_LIVE_NOTIFICATIONS_ENABLED,false),center_token_configured:Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim()),delivery_shards:DELIVERY_SHARDS,...row};
+    return {ok:true,engine:"center-v2",enabled:envFlag(env.TELEGRAM_LIVE_NOTIFICATIONS_ENABLED,false),center_token_configured:Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim()),delivery_shards:DELIVERY_SHARDS,max_sends_per_tick:MAX_SENDS_PER_TICK,...row};
   }catch(error){return {ok:false,error:"center_notification_status_failed",detail:errorText(error)}}
 }
 
@@ -35,9 +36,12 @@ export async function runCenterNotificationTick(env,{dryRun=true,now=null}={}){
   const userPrefs=await loadUserNotificationPreferences(env.DB,subscriptions);
   const games=await loadSchedule(clock);
   const relevant=games.filter(g=>subscriptions.some(s=>touches(s,g,context)));
-  const summary={ok:true,dry_run:dryRun,subscriptions:subscriptions.length,schedule_games:games.length,relevant_games:relevant.length,delivery_shards:DELIVERY_SHARDS,planned:0,sent:0,daily_digests:0,player_reports:0,game_reminders:0,injury_feed_records:0,timezone_missing:0,skipped_limit:0,skipped_duplicate:0,failed:0,events:[]};
+  const summary={ok:true,dry_run:dryRun,subscriptions:subscriptions.length,schedule_games:games.length,relevant_games:relevant.length,delivery_shards:DELIVERY_SHARDS,max_sends_per_tick:MAX_SENDS_PER_TICK,planned:0,sent:0,daily_digests:0,player_reports:0,game_reminders:0,injury_feed_records:0,timezone_missing:0,deferred_budget:0,skipped_limit:0,skipped_duplicate:0,failed:0,events:[]};
+  Object.defineProperty(summary,"_delivery",{value:{used:0,sentToday:dryRun?new Map():await loadSentTodayCounts(env.DB)},enumerable:false});
+  const active=relevant.filter(g=>!FINAL.has(upper(g.state))),finals=relevant.filter(g=>FINAL.has(upper(g.state)));
+  for(const game of active){try{await processGame(env,game,subscriptions,context,userPrefs,clock,dryRun,summary)}catch(error){summary.failed++;summary.events.push({game_pk:game.game_pk,error:errorText(error)})}}
+  for(const game of finals){try{await processGame(env,game,subscriptions,context,userPrefs,clock,dryRun,summary)}catch(error){summary.failed++;summary.events.push({game_pk:game.game_pk,error:errorText(error)})}}
   await processDailyPlayerDigests(env,games,subscriptions,context,userPrefs,clock,dryRun,summary);
-  for(const game of relevant){try{await processGame(env,game,subscriptions,context,userPrefs,clock,dryRun,summary)}catch(error){summary.failed++;summary.events.push({game_pk:game.game_pk,error:errorText(error)})}}
   summary.ok=summary.failed===0;return summary;
 }
 
@@ -77,11 +81,11 @@ async function dispatch(env,game,relevant,ctx,event,dryRun,summary){
     if(event.sharded&&!inDeliveryShard(userId,event.now||new Date()))continue;
     summary.planned++;
     const cap=Math.max(1,Math.min(...matchesList.map(s=>Number(s.max_pushes_per_day)||12)));
-    if(!dryRun&&await sentToday(env.DB,userId)>=cap){summary.skipped_limit++;continue}
+    if(!dryRun&&!canSendNow(summary,userId,cap)){continue}
     if(dryRun){summary.events.push({game_pk:game.game_pk,user_id:userId,type:event.type,text:event.text,subscriptions:matchesList.map(minSub),cap});if(event.type==="reminder_15m")summary.game_reminders++;continue}
     const payload=JSON.stringify({engine:"center-v2",game_pk:game.game_pk,type:event.type,subscriptions:matchesList.map(minSub)});
     if(!(await reserve(env.DB,event.key,userId,event.type,game.game_pk,payload))){summary.skipped_duplicate++;continue}
-    try{await sendCenter(env,userId,event.text);summary.sent++;if(event.type==="reminder_15m")summary.game_reminders++}
+    try{await sendCenter(env,userId,event.text);markSent(summary,userId);summary.sent++;if(event.type==="reminder_15m")summary.game_reminders++}
     catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(event.key,userId).run().catch(()=>{});summary.events.push({game_pk:game.game_pk,user_id:userId,type:event.type,error:errorText(error)})}
   }
 }
@@ -166,7 +170,7 @@ async function processDailyPlayerDigests(env,games,subs,ctx,userPrefs,now,dryRun
     const tz=String(pref.timezone_name||"").trim();if(!tz){summary.timezone_missing++;continue}
     const parts=localParts(now,tz);if(!parts)continue;
     const hour=Number(pref.daily_digest_hour??20);
-    if(parts.hour!==hour||parts.minute!==deliveryShard(userId))continue;
+    if(parts.hour!==hour||parts.minute>=30||(parts.minute%DELIVERY_SHARDS)!==deliveryShard(userId))continue;
     due.push({userId,playerSubs,tz,parts});
   }
   if(!due.length)return;
@@ -187,8 +191,10 @@ async function processDailyPlayerDigests(env,games,subs,ctx,userPrefs,now,dryRun
     const text=`🏒 Сегодня / этой ночью играют ваши игроки\n\n${lines.join("\n")}\n\nОткройте матч в Live Center, чтобы включить напоминание за 15 минут.`;
     summary.planned++;
     if(dryRun){summary.daily_digests++;summary.events.push({user_id:userId,type:"daily_player_digest",local_date:localDate,timezone:tz,players:lines.length,text});continue}
+    const cap=Math.max(1,Math.min(...playerSubs.map(x=>Number(x.max_pushes_per_day)||12)));
+    if(!canSendNow(summary,userId,cap))continue;
     if(!(await reserve(env.DB,key,userId,"daily_player_digest",null,JSON.stringify({timezone:tz,local_date:localDate,players:lines.length})))){summary.skipped_duplicate++;continue}
-    try{await sendCenter(env,userId,text);summary.sent++;summary.daily_digests++}
+    try{await sendCenter(env,userId,text);markSent(summary,userId);summary.sent++;summary.daily_digests++}
     catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(key,userId).run().catch(()=>{});summary.events.push({user_id:userId,type:"daily_player_digest",error:errorText(error)})}
   }
 }
@@ -274,8 +280,10 @@ async function processPlayerPostgameReports(env,game,relevant,ctx,userPrefs,now,
     const key=`center:player-report:${game.game_pk}`,text=`📊 Матч завершён: статистика ваших игроков\n${game.away.tri} ${score(game.away.score)}:${score(game.home.score)} ${game.home.tri}\n\n${lines.join("\n")}`;
     summary.planned++;
     if(dryRun){summary.player_reports++;summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",players:lines.length,text});continue}
+    const cap=Math.max(1,Math.min(...list.map(x=>Number(x.max_pushes_per_day)||12)));
+    if(!canSendNow(summary,userId,cap))continue;
     if(!(await reserve(env.DB,key,userId,"player_postgame_report",game.game_pk,JSON.stringify({players:lines.length})))){summary.skipped_duplicate++;continue}
-    try{await sendCenter(env,userId,text);summary.sent++;summary.player_reports++}catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(key,userId).run().catch(()=>{});summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",error:errorText(error)})}
+    try{await sendCenter(env,userId,text);markSent(summary,userId);summary.sent++;summary.player_reports++}catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(key,userId).run().catch(()=>{});summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",error:errorText(error)})}
   }
 }
 function boxscorePlayerMap(box){const out=new Map(),root=box?.playerByGameStats||box?.playerByGameStats?.playerByGameStats||{};for(const side of ["awayTeam","homeTeam"]){const team=root?.[side]||{};for(const section of ["forwards","defense","defensemen","goalies"]){for(const p of team?.[section]||[]){const id=positive(p.playerId||p.id);if(id)out.set(String(id),{...p,__goalie:section==="goalies"})}}}return out}
@@ -292,7 +300,14 @@ function normalizeSchedule(d,date){if(!d)return[];let games=Array.isArray(d.game
 function eventFromPlay(game,p,roster,teamIds){const type=String(p?.typeDescKey||"").toLowerCase(),sort=sortOrder(p);if(!sort)return null;if(type==="goal"){const d=p.details||{},scorer=positive(d.scoringPlayerId),assists=[positive(d.assist1PlayerId),positive(d.assist2PlayerId)].filter(Boolean),tri=teamIds.get(Number(d.eventOwnerTeamId))||"",name=roster.get(scorer)||`NHL ${scorer||""}`;return {key:`center:goal:${game.game_pk}:${sort}`,type:"goal",flag:"notify_goal",scoring_team_tri:tri,scorer_id:scorer,assist_ids:assists,text:`🚨 ГОЛ ${tri||"NHL"}\n${game.away.tri} ${score(d.awayScore??game.away.score)}:${score(d.homeScore??game.home.score)} ${game.home.tri}\n${name}`}}if(type==="period-end"){const period=positive(p?.periodDescriptor?.number)||0;return {key:`center:period:${game.game_pk}:${period||sort}`,type:"period_end",flag:"notify_period_end",text:`⏸ Конец ${period||"—"}-го периода\n${game.away.tri} ${score(game.away.score)}:${score(game.home.score)} ${game.home.tri}`}}return null}
 function rosterMap(pbp){const m=new Map();for(const p of pbp?.rosterSpots||[]){const id=positive(p.playerId);if(id)m.set(id,[localized(p.firstName),localized(p.lastName)].filter(Boolean).join(" ")||`NHL ${id}`)}return m}
 function teamIdMap(game,pbp){const m=new Map();if(game.home.id)m.set(game.home.id,game.home.tri);if(game.away.id)m.set(game.away.id,game.away.tri);const h=positive(pbp?.homeTeam?.id),a=positive(pbp?.awayTeam?.id);if(h)m.set(h,game.home.tri);if(a)m.set(a,game.away.tri);return m}
-async function sentToday(db,user){const r=await db.prepare(`SELECT COUNT(*) count FROM notification_log WHERE telegram_user_id=? AND sent_at>=datetime('now','-24 hours');`).bind(user).first();return Number(r?.count||0)}
+async function loadSentTodayCounts(db){const map=new Map();try{const r=await db.prepare(`SELECT telegram_user_id,COUNT(*) count FROM notification_log WHERE sent_at>=datetime('now','-24 hours') GROUP BY telegram_user_id;`).all();for(const x of r.results||[])map.set(Number(x.telegram_user_id),Number(x.count||0))}catch{}return map}
+function canSendNow(summary,userId,cap){
+  const d=summary?._delivery;if(!d)return true;
+  if(Number(d.used||0)>=MAX_SENDS_PER_TICK){summary.deferred_budget++;return false}
+  if(Number(d.sentToday.get(Number(userId))||0)>=cap){summary.skipped_limit++;return false}
+  return true;
+}
+function markSent(summary,userId){const d=summary?._delivery;if(!d)return;d.used=Number(d.used||0)+1;d.sentToday.set(Number(userId),Number(d.sentToday.get(Number(userId))||0)+1)}
 async function reserve(db,key,user,type,game,payload){const r=await db.prepare(`INSERT OR IGNORE INTO notification_log (notification_key,telegram_user_id,notification_type,subject_type,subject_key,game_pk,payload_json) VALUES (?,?,?,?,?,?,?);`).bind(key,user,type,"game",String(game),game,payload).run();return Number(r?.meta?.changes??r?.changes??0)>0}
 async function sendCenter(env,user,text){const token=String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim();if(!token)throw new Error("missing_telegram_center_token");const r=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:user,text,disable_web_page_preview:true})}),d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.description||`Telegram ${r.status}`)}
 async function fetchJson(url){const r=await fetch(url,{headers:{Accept:"application/json"}});if(!r.ok)throw new Error(`NHL HTTP ${r.status}`);return r.json()}
