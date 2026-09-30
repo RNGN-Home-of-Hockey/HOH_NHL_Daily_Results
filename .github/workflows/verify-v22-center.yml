@@ -157,7 +157,8 @@ jobs:
           const featured=await json('/api/telegram-center-v19/featured?date=2026-09-23');
           if(featured.ok!==true||!Object.prototype.hasOwnProperty.call(featured,'featured'))throw new Error('featured game API failed '+JSON.stringify(featured));
           const v20home=await text('/telegram-app/v20.js');
-          for(const x of ['v25HomeStable','v25FeaturedGame','Смотреть матч в VK Видео','#gameList{display:none'])if(!v20home.includes(x))throw new Error('home feed contract missing '+x);
+          for(const x of ['v25HomeStable','v25FeaturedGame','v25FeaturedLabel','box.dataset.v25FeaturedGame','Смотреть матч в VK Видео','#gameList{display:grid'])if(!v20home.includes(x))throw new Error('home feed contract missing '+x);
+          if(v20home.includes('#gameList{display:none'))throw new Error('home feed hides today match cards');
           const v9=await text('/telegram-app/v9.js');
           if(!v9.includes("badge=b.querySelector('.orangeText')"))throw new Error('V9 player localizer does not preserve country badge');
           for(const x of ['homeMediaAllowed','purgeMediaOffHome','document.getElementById(\'view\')!==view'])if(!v9.includes(x))throw new Error('V9 home-only media guard missing '+x);
