@@ -109,6 +109,13 @@ export default {
           console.error("scheduled Telegram Center polling failed", error);
         }),
       );
+      if (env.DB && envFlag(env.TELEGRAM_LIVE_NOTIFICATIONS_ENABLED, false)) {
+        ctx.waitUntil(
+          runCenterNotificationTick(env, { dryRun:false }).catch((error) => {
+            console.error("scheduled Telegram Center notification tick failed", error);
+          }),
+        );
+      }
       if (env.DB && envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
         ctx.waitUntil(
           runWinlineLiveFeedMaintenance(env).catch((error) => {
@@ -196,14 +203,6 @@ export default {
       ctx.waitUntil(
         runSportsRuNewsMaintenance(env).catch((error) => {
           console.error("scheduled Sports.ru NHL news maintenance failed", error);
-        }),
-      );
-    }
-
-    if (liveNotificationsEnabled && env.DB) {
-      ctx.waitUntil(
-        runCenterNotificationTick(env, { dryRun:false }).catch((error) => {
-          console.error("scheduled Telegram Center notification tick failed", error);
         }),
       );
     }
