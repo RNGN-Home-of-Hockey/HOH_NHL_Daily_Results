@@ -94,8 +94,8 @@ function cadenceFor(startRaw,nowMs){
   const left=start-nowMs;
   if(left>THIRTY_HOURS_MS)return SIX_HOURS_MS;
   if(left>SIX_HOURS_MS)return ONE_HOUR_MS;
-  if(left>ONE_HOUR_MS)return THIRTY_MIN_MS;
-  return FIFTEEN_MIN_MS;
+  if(left>ONE_HOUR_MS)return FIFTEEN_MIN_MS;
+  return 5*60*1000;
 }
 
 async function nextUpcomingGame(db,nowIso){
