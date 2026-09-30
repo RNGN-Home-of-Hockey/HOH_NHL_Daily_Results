@@ -368,9 +368,10 @@ jobs:
           const logoHex=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await logoRes.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');
           if(logoHex!=='6dd279b36ec6d5e3dd2c6a7fa84965a216c5cea4c6462f68e07f0518f58fe57f')throw new Error('Winline logo bytes mismatch '+logoHex);
           const v20home=await fetch(base+'/telegram-app/v20.js?build=24.8.0',{cache:'no-store'}).then(r=>r.text());
-          for(const x of ['v25HomeStable','v25FeaturedGame','v25FeaturedLabel','aspect-ratio:16/9','box.dataset.v25FeaturedGame','(cover||teams)','Смотреть матч в VK Видео','#gameList{display:none','font-size:11px'])if(!v20home.includes(x))throw new Error('V20 production home contract missing '+x);
+          for(const x of ['v25HomeStable','v25FeaturedGame','v25FeaturedLabel','aspect-ratio:16/9','box.dataset.v25FeaturedGame','(cover||teams)','Смотреть матч в VK Видео','#gameList{display:grid','font-size:11px'])if(!v20home.includes(x))throw new Error('V20 production home contract missing '+x);
           const featuredFn=v20home.slice(v20home.indexOf('function featuredHtml(g){'),v20home.indexOf('function stabilizeHome'));
           if(featuredFn.indexOf('v25FeaturedLabel')<0||featuredFn.indexOf('v25FeaturedLabel')>featuredFn.indexOf('(cover||teams)'))throw new Error('production match-of-day label is not above its cover');
+          if(v20home.includes('#gameList{display:none'))throw new Error('production Home hides today match cards');
           const shellPlayers=await fetch(base+'/telegram-app-v24?build=24.8.0',{cache:'no-store'}).then(r=>r.text());
           for(const x of ['playerLimit:10','playerSortPop','playerSortDivider','class="bio ','Сортировка:','data-country','Math.min(50'])if(!shellPlayers.includes(x))throw new Error('production player controls missing '+x);
           const v9players=await fetch(base+'/telegram-app/v9.js?build=24.8.0',{cache:'no-store'}).then(r=>r.text());
