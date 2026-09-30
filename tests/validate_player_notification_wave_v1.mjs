@@ -21,14 +21,14 @@ class FakeStatement{
       ]};
     }
     if(this.sql.includes("FROM telegram_users u")&&this.sql.includes("notification_user_preferences")){
-      return {results:[{telegram_user_id:USER,timezone_name:"UTC",daily_player_digest:1,daily_digest_hour:20,player_postgame_reports:1}]};
+      return {results:[{telegram_user_id:USER,timezone_name:this.db.timezone,daily_player_digest:1,daily_digest_hour:20,player_postgame_reports:1}]};
     }
     throw new Error("Unexpected all SQL: "+this.sql);
   }
   async first(){throw new Error("dry-run fixture must not call first(): "+this.sql)}
   async run(){throw new Error("dry-run fixture must not write D1: "+this.sql)}
 }
-class FakeDB{prepare(sql){return new FakeStatement(this,sql)}}
+class FakeDB{constructor(timezone="UTC"){this.timezone=timezone}prepare(sql){return new FakeStatement(this,sql)}}
 
 const finalGame={
   id:FINAL_GAME,gameDate:"2026-10-10",startTimeUTC:"2026-10-10T18:00:00Z",gameState:"FINAL",
@@ -88,10 +88,28 @@ try{
   const report=result.events.find(x=>x.type==="player_postgame_report");
   assert.ok(report);
   assert.match(report.text,/Александр Тестов/);
-  assert.match(report.text,/1\+2=3/);
-  assert.match(report.text,/5 брос/);
-  assert.match(report.text,/TOI 18:41/);
+  assert.match(report.text,/СТАТИСТИКА ВАШИХ ИГРОКОВ/);
+  assert.match(report.text,/Голы: <b>1<\/b>/);
+  assert.match(report.text,/Передачи: <b>2<\/b>/);
+  assert.match(report.text,/Очки: <b>3<\/b>/);
+  assert.match(report.text,/Броски: <b>5<\/b>/);
+  assert.match(report.text,/Хиты: <b>2<\/b>/);
+  assert.match(report.text,/Блоки: <b>1<\/b>/);
+  assert.match(report.text,/TOI: <b>18:41<\/b>/);
 
   assert.ok(!result.events.some(x=>["goal","start","period_end","final","pregame"].includes(x.type)),"first-wave mode must not enable the legacy event firehose");
-  console.log("TELEGRAM_PLAYER_REMINDERS_V1_OK", {daily:result.daily_digests,reminders:result.game_reminders,reports:result.player_reports});
+
+  const fallback=await runCenterNotificationTick({
+    DB:new FakeDB(null),
+    TELEGRAM_CENTER_BOT_TOKEN:"fixture",
+    TELEGRAM_CENTER_EVENT_STREAM_ENABLED:"0",
+  },{dryRun:true,now:"2026-10-10T19:00:00Z"});
+  assert.equal(fallback.daily_digests,1,"missing timezone must not silently suppress the evening digest");
+  assert.equal(fallback.timezone_fallback,1);
+  const fallbackDigest=fallback.events.find(x=>x.type==="daily_player_digest");
+  assert.equal(fallbackDigest.timezone,"Europe/Moscow");
+  assert.equal(fallbackDigest.timezone_fallback,true);
+  assert.match(fallbackDigest.text,/временно используем московское время/);
+
+  console.log("TELEGRAM_PLAYER_REMINDERS_V1_OK", {daily:result.daily_digests,reminders:result.game_reminders,reports:result.player_reports,fallback: fallback.daily_digests});
 }finally{globalThis.fetch=realFetch}
