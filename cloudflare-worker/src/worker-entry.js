@@ -13,7 +13,7 @@ import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js"
 import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
 import { runSportsRuNewsMaintenance } from "./telegram-center-v20-news.js";
 import { runWinlineFeedMaintenance } from "./winline-feed-maintenance.js";
-import { runWinlineLiveFeedMaintenance } from "./winline-live-feed-maintenance.js";
+import { getWinlineLiveFeedMaintenanceStatus, runWinlineLiveFeedMaintenance } from "./winline-live-feed-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
@@ -63,6 +63,11 @@ export default {
     const controlResponse = await handleControlCenterRequest(request, env, path);
     if (controlResponse) {
       return controlResponse;
+    }
+
+    if (path === "/api/winline/live/status") {
+      if (request.method !== "GET") return jsonResponse({ok:false,error:"method_not_allowed"},405);
+      return jsonResponse(await getWinlineLiveFeedMaintenanceStatus(env));
     }
 
     const liveMatch = /^\/api\/broadcast\/live\/(\d+)$/.exec(path);
