@@ -51,6 +51,9 @@ globalThis.fetch=async url=>{
   if(u.includes("/schedule/2026-10-10"))return new Response(JSON.stringify({games:[finalGame,upcomingGame]}),{status:200});
   if(u.includes("/schedule/2026-10-09")||u.includes("/schedule/2026-10-11"))return new Response(JSON.stringify({games:[]}),{status:200});
   if(u.includes("/gamecenter/"+FINAL_GAME+"/boxscore"))return new Response(JSON.stringify(boxscore),{status:200});
+  if(u.includes("site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries"))return new Response(JSON.stringify({
+    injuries:[{team:{abbreviation:"TOR"},athlete:{displayName:"Ivan Check"},status:"Out",details:{detail:"Lower Body"}}]
+  }),{status:200});
   throw new Error("Unexpected fetch "+u);
 };
 
@@ -65,12 +68,15 @@ try{
   assert.equal(result.daily_digests,1,"one local 20:00 digest expected");
   assert.equal(result.game_reminders,1,"one explicit 15-minute game reminder expected");
   assert.equal(result.player_reports,1,"one postgame followed-player report expected");
+  assert.ok(result.injury_feed_records>=1,"injury feed should be loaded for the local digest");
 
   const digest=result.events.find(x=>x.type==="daily_player_digest");
   assert.ok(digest);
   assert.match(digest.text,/Иван Проверкин/);
   assert.match(digest.text,/TOR vs MTL/);
-  assert.match(digest.text,/вне активного состава/);
+  assert.match(digest.text,/травмирован, не сыграет/);
+  assert.match(digest.text,/Lower Body/);
+  assert.doesNotMatch(digest.text,/вне активного состава/);
   assert.doesNotMatch(digest.text,/Александр Тестов/,"completed game must not be repeated in evening digest");
 
   const reminder=result.events.find(x=>x.type==="reminder_15m");

@@ -85,7 +85,8 @@ async function nhlGameExists(gamePk) {
 async function telegramAuth(request,env) {
   const initData=String(request.headers.get("x-telegram-init-data")||"").trim();
   if (!initData) return {ok:false,error:"missing_telegram_init_data"};
-  if (!env.TELEGRAM_BOT_TOKEN) return {ok:false,error:"missing_bot_token"};
+  const token=String(env.TELEGRAM_CENTER_BOT_TOKEN||env.TELEGRAM_BOT_TOKEN||"").trim();
+  if (!token) return {ok:false,error:"missing_bot_token"};
   try {
     const params=new URLSearchParams(initData);
     const providedHash=params.get("hash")||"";
@@ -98,7 +99,7 @@ async function telegramAuth(request,env) {
     const dataCheck=[...params.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>`${k}=${v}`).join("\n");
     const encoder=new TextEncoder();
     const key1=await crypto.subtle.importKey("raw",encoder.encode("WebAppData"),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
-    const secret=await crypto.subtle.sign("HMAC",key1,encoder.encode(String(env.TELEGRAM_BOT_TOKEN)));
+    const secret=await crypto.subtle.sign("HMAC",key1,encoder.encode(token));
     const key2=await crypto.subtle.importKey("raw",secret,{name:"HMAC",hash:"SHA-256"},false,["sign"]);
     const digest=await crypto.subtle.sign("HMAC",key2,encoder.encode(dataCheck));
     const calculated=bytesToHex(new Uint8Array(digest));
