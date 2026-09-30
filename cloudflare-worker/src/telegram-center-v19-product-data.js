@@ -74,6 +74,7 @@ async function broadcasts(request, env) {
       ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC;
     `).bind(from,to).all();
     const games=(rows.results||[]).map(decorateArchiveGame);
+    await hydrateMissingBroadcastCovers(env.DB,games,20);
     const map=new Map();
     for(const g of games){const d=map.get(g.calendar_date)||{date:g.calendar_date,count:0,regular:0,playoffs:0,preseason:0,vk:0};d.count++;if(g.game_type===3)d.playoffs++;else if(g.game_type===2)d.regular++;else if(g.game_type===1)d.preseason++;if(g.vk)d.vk++;map.set(g.calendar_date,d)}
     return json({ok:true,version:"V19",minimum_date:MIN_ARCHIVE_DATE,from,to,days:[...map.values()],games});
@@ -108,6 +109,7 @@ async function featuredGame(request,env){
       home:{tri:x.home_tri,name_ru:x.home_name_ru,name_en:x.home_name_en,logo:x.home_logo||teamLogo(x.home_tri)},away:{tri:x.away_tri,name_ru:x.away_name_ru,name_en:x.away_name_en,logo:x.away_logo||teamLogo(x.away_tri)},
       vk:x.source_key?{source_key:x.source_key,title:x.vk_title,web_url:x.vk_url,app_url:x.vk_app_url,thumbnail_url:x.vk_thumbnail,status:x.vk_status}:null,
       winline:[x.winline_p1,x.winline_x,x.winline_p2].some(v=>Number.isFinite(Number(v))&&Number(v)>1)?{event_id:x.winline_event_id,p1:Number(x.winline_p1)||null,x:Number(x.winline_x)||null,p2:Number(x.winline_p2)||null}:null}));
+    await hydrateMissingBroadcastCovers(env.DB,games,20);
     if(!games.length)return json({ok:true,date,featured:null});
     const tris=[...new Set(games.flatMap(g=>[g.home.tri,g.away.tri]).filter(Boolean))],ph=tris.map(()=>"?").join(",");
     const [standings,followers]=await Promise.all([
@@ -249,11 +251,13 @@ async function loadBroadcast(db,gamePk){
     FROM game_vk_broadcasts m JOIN vk_broadcasts b ON b.source_key=m.source_key
     WHERE m.game_pk=? LIMIT 1;
   `).bind(gamePk).first();
-  if(direct)return direct;
+  if(direct?.thumbnail_url)return direct;
   const game=await db.prepare(`
     SELECT game_pk,scheduled_start_utc,home_tri,away_tri FROM games WHERE game_pk=? LIMIT 1;
   `).bind(gamePk).first();
-  return game?findBroadcastByPairTime(db,game):null;
+  const fallback=game?await findBroadcastByPairTime(db,game):null;
+  if(direct&&fallback)return {...direct,thumbnail_url:fallback.thumbnail_url||direct.thumbnail_url,web_url:direct.web_url||fallback.web_url,app_url:direct.app_url||fallback.app_url,title:direct.title||fallback.title,fallback_source_key:fallback.source_key||null,fallback_match_method:fallback.match_method||null};
+  return direct||fallback||null;
 }
 async function findBroadcastByPairTime(db,game){
   const start=String(game?.scheduled_start_utc||"");
@@ -273,7 +277,8 @@ async function findBroadcastByPairTime(db,game){
       AND LOWER(COALESCE(b.title,'')) NOT LIKE '%обзор матча%'
       AND LOWER(COALESCE(b.title,'')) NOT LIKE '%лучшие моменты%'
       AND LOWER(COALESCE(b.title,'')) NOT LIKE '%best moment%'
-    ORDER BY ABS(julianday(COALESCE(b.scheduled_at,b.published_at))-julianday(?)) ASC,
+    ORDER BY CASE WHEN b.thumbnail_url IS NOT NULL AND TRIM(b.thumbnail_url)<>'' THEN 0 ELSE 1 END,
+             ABS(julianday(COALESCE(b.scheduled_at,b.published_at))-julianday(?)) ASC,
              COALESCE(b.duration_seconds,0) DESC,b.updated_at DESC LIMIT 1;
   `).bind(home,away,away,home,start,start).first().catch(()=>null);
   if(full)return full;
@@ -291,9 +296,21 @@ async function findBroadcastByPairTime(db,game){
         OR LOWER(COALESCE(b.title,'')) LIKE '%обзор матча%' OR LOWER(COALESCE(b.title,'')) LIKE '%лучшие моменты%'
         OR LOWER(COALESCE(b.title,'')) LIKE '%best moment%'
       )
-    ORDER BY ABS(julianday(COALESCE(b.scheduled_at,b.published_at))-julianday(?)) ASC,
+    ORDER BY CASE WHEN b.thumbnail_url IS NOT NULL AND TRIM(b.thumbnail_url)<>'' THEN 0 ELSE 1 END,
+             ABS(julianday(COALESCE(b.scheduled_at,b.published_at))-julianday(?)) ASC,
              COALESCE(b.duration_seconds,0) DESC,b.updated_at DESC LIMIT 1;
   `).bind(home,away,away,home,start,start).first().catch(()=>null);
+}
+
+async function hydrateMissingBroadcastCovers(db,games,limit=20){
+  let used=0;
+  for(const g of games||[]){
+    if(g?.vk?.thumbnail_url||used>=limit)continue;
+    used++;
+    const fallback=await findBroadcastByPairTime(db,{game_pk:g.game_pk,scheduled_start_utc:g.scheduled_start_utc,home_tri:g.home?.tri,away_tri:g.away?.tri}).catch(()=>null);
+    if(!fallback)continue;
+    g.vk={...(g.vk||{}),source_key:g.vk?.source_key||fallback.source_key||null,title:g.vk?.title||fallback.title||null,web_url:g.vk?.web_url||fallback.web_url||null,app_url:g.vk?.app_url||fallback.app_url||null,thumbnail_url:g.vk?.thumbnail_url||fallback.thumbnail_url||null,status:g.vk?.status||fallback.status||null,match_method:g.vk?.match_method||fallback.match_method||null};
+  }
 }
 
 async function loadHistoricalOdds(db,game){
