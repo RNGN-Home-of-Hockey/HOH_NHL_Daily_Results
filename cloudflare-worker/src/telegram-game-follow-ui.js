@@ -28,13 +28,12 @@ function gameFollowEnhancer(){
   function isReminded(gamePk){const f=gameFollow(gamePk);return Boolean(f&&Number(f.notify_pregame)===1)}
 
   async function toggle(gamePk,button){
-    if(!initData){tg?.showAlert?.('Откройте приложение из Telegram-бота, чтобы подписываться на матч.');return}
+    if(!initData){tg?.showAlert?.('Откройте приложение из Telegram-бота, чтобы включить напоминание.');return}
     const remove=isReminded(gamePk);
     button.disabled=true;
     try{
       const d=await api('/api/telegram-app/follows',{method:remove?'DELETE':'POST',body:JSON.stringify({
-        subject_type:'game',subject_key:String(gamePk),notify_pregame:true,notify_start:true,
-        notify_goal:true,notify_assist:false,notify_period_end:true,notify_final:true,
+        subject_type:'game',subject_key:String(gamePk),reminder_only:true,
       })});
       follows=d.follows||d.subscriptions||[];
       paint(button,gamePk);
@@ -83,5 +82,5 @@ function gameFollowEnhancer(){
   refreshFollows();
 }
 
-function js(body){return new Response(body,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"public, max-age=120","X-Content-Type-Options":"nosniff"}})}
+function js(body){return new Response(body,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store, no-cache, must-revalidate","Pragma":"no-cache","X-Content-Type-Options":"nosniff"}})}
 function json(payload,status=200){return new Response(JSON.stringify(payload),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"}})}

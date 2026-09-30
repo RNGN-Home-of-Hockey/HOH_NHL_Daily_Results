@@ -175,7 +175,9 @@ jobs:
           }
           if (v20.includes('sports.ru/')) throw new Error('V20 UI must not expose Sports.ru links');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
-          if (!r || r.status !== 200 || !(await r.text()).includes('gameFollowEnhancer')) throw new Error('Game-follow JS route failed');
+          if (!r || r.status !== 200) throw new Error('Game-follow JS route failed');
+          const gameFollowJs=await r.text();
+          for(const marker of ['gameFollowEnhancer','Напомнить за 15 минут','reminder_only:true'])if(!gameFollowJs.includes(marker))throw new Error('Game-follow reminder marker missing '+marker);
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/preferences.js'), {}, '/telegram-app/preferences.js');
           if (!r || r.status !== 200 || !(await r.text()).includes('notificationPreferencesEnhancer')) throw new Error('Notification preferences JS route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/matchup.js'), {}, '/telegram-app/matchup.js');
