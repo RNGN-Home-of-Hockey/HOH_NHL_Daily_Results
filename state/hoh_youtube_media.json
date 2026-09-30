@@ -1,14 +1,22 @@
 {
   "channel": "@homeofhockey-yt",
   "news": {
-    "id": "DI6jCWi6Bjw",
+    "id": "-xWXmA43rJ4",
     "kind": "news",
-    "url": "https://www.youtube.com/watch?v=DI6jCWi6Bjw",
-    "title": "МАРЧЕНКО ПОМОЖЕТ ТОРОНТО? | ГЛАВНЫЕ СОБЫТИЯ НОВОГО СЕЗОНА НХЛ – HOME OF HOCKEY NEWS",
-    "thumb": "https://i.ytimg.com/vi/DI6jCWi6Bjw/hq720.jpg",
-    "view_count": 334
+    "url": "https://www.youtube.com/watch?v=-xWXmA43rJ4",
+    "title": "СУХАЯ ПЕРВАЯ ИГРА СЕЗОНА | ЭДМОНТОН ОПЯТЬ СТРАДАЕТ – HOME OF HOCKEY NEWS",
+    "thumb": "https://i.ytimg.com/vi/-xWXmA43rJ4/hq720.jpg",
+    "view_count": 320
   },
   "shorts_top10": [
+    {
+      "id": "a7Ia7xeg6O0",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/a7Ia7xeg6O0",
+      "title": "😡 Nicolas Deslauriers and Bokondji Imama get into a heated scrap! #shorts",
+      "thumb": "https://i.ytimg.com/vi/a7Ia7xeg6O0/hq720.jpg",
+      "view_count": 893
+    },
     {
       "id": "lE6HsW_lO3A",
       "kind": "short",
@@ -47,7 +55,7 @@
       "url": "https://www.youtube.com/shorts/4Zqd87BfPk8",
       "title": "🥲 ASMR конца сезона... #shorts",
       "thumb": "https://i.ytimg.com/vi/4Zqd87BfPk8/hq720.jpg",
-      "view_count": 135
+      "view_count": 136
     },
     {
       "id": "sgYGqUNa6Lc",
@@ -80,15 +88,7 @@
       "title": "🤩 Вы точно их видели! #shorts",
       "thumb": "https://i.ytimg.com/vi/dneld6G5cDc/hq720.jpg",
       "view_count": 4800
-    },
-    {
-      "id": "C5vDDyYoQAw",
-      "kind": "short",
-      "url": "https://www.youtube.com/shorts/C5vDDyYoQAw",
-      "title": "🤔 Как выглядит один день из жизни арбитра НХЛ? #shorts",
-      "thumb": "https://i.ytimg.com/vi/C5vDDyYoQAw/hq720.jpg",
-      "view_count": 3700
     }
   ],
-  "updated_at": "2026-09-29T12:38:35.269096+00:00"
+  "updated_at": "2026-09-30T13:37:42.059255+00:00"
 }
