@@ -174,6 +174,15 @@ async function processPlayerPostgameReports(env,game,relevant,ctx,userPrefs,dryR
   const byUser=new Map();
   for(const s of relevant){if(s.subject_type!=="player"||!truthy(s.notify_final))continue;const uid=Number(s.telegram_user_id),pref=userPrefs.get(uid)||{};if(Number(pref.player_postgame_reports??1)!==1)continue;if(!byUser.has(uid))byUser.set(uid,[]);byUser.get(uid).push(s)}
   if(!byUser.size)return;
+  // Avoid refetching the NHL boxscore every minute after all recipients for this
+  // game have already received their report.
+  if(!dryRun){
+    try{
+      const sent=await env.DB.prepare(`SELECT telegram_user_id FROM notification_log WHERE notification_type='player_postgame_report' AND game_pk=?;`).bind(game.game_pk).all();
+      for(const row of sent.results||[])byUser.delete(Number(row.telegram_user_id));
+    }catch{}
+    if(!byUser.size)return;
+  }
   const box=await fetchJson(`${NHL}/gamecenter/${game.game_pk}/boxscore`).catch(()=>null),stats=box?boxscorePlayerMap(box):new Map();
   if(!stats.size)return; // NHL may mark FINAL a little before the complete player boxscore is ready; retry next minute.
   for(const [userId,list] of byUser){
