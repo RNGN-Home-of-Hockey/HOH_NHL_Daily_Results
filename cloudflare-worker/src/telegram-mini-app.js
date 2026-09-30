@@ -447,9 +447,10 @@ async function fetchNhl(url) {
 }
 
 async function telegramBotRequest(env,method,payload) {
-  if (!env.TELEGRAM_BOT_TOKEN) return {ok:false,error:"missing_TELEGRAM_BOT_TOKEN"};
+  const token=String(env.TELEGRAM_CENTER_BOT_TOKEN||env.TELEGRAM_BOT_TOKEN||"").trim();
+  if (!token) return {ok:false,error:"missing_TELEGRAM_BOT_TOKEN"};
   try {
-    const response=await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`,{
+    const response=await fetch(`https://api.telegram.org/bot${token}/${method}`,{
       method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),
     });
     const data=await response.json().catch(()=>({}));
