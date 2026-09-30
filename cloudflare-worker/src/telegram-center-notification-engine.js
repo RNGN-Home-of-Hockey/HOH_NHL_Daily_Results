@@ -59,7 +59,7 @@ async function processGame(env,game,subs,ctx,userPrefs,now,dryRun,summary){
     if(FINAL.has(state))await dispatch(env,game,relevant,ctx,{key:`center:final:${game.game_pk}`,type:"final",flag:"notify_final",scope:"non_player",text:`✅ Матч завершён\n${game.away.tri} ${score(game.away.score)}:${score(game.home.score)} ${game.home.tri}`},dryRun,summary);
   }
 
-  if(FINAL.has(state))await processPlayerPostgameReports(env,game,relevant,ctx,userPrefs,dryRun,summary);
+  if(FINAL.has(state))await processPlayerPostgameReports(env,game,relevant,ctx,userPrefs,now,dryRun,summary);
 }
 async function processLivePlays(env,game,relevant,ctx,state,dryRun,summary){
   const pbp=await fetchJson(`${NHL}/gamecenter/${game.game_pk}/play-by-play`).catch(()=>null);if(!pbp)return;
@@ -241,9 +241,8 @@ function isDigestWindowGame(game,now){
 function localParts(date,tz){try{const p=new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(date),m=Object.fromEntries(p.map(x=>[x.type,x.value]));return{date:`${m.year}-${m.month}-${m.day}`,hour:Number(m.hour),minute:Number(m.minute)}}catch{return null}}
 function formatLocalTime(value,tz){const d=new Date(value);if(!Number.isFinite(d.getTime()))return"—";try{return new Intl.DateTimeFormat("ru-RU",{timeZone:tz,hour:"2-digit",minute:"2-digit"}).format(d)}catch{return d.toISOString().slice(11,16)}}
 
-async function processPlayerPostgameReports(env,game,relevant,ctx,userPrefs,dryRun,summary){
+async function processPlayerPostgameReports(env,game,relevant,ctx,userPrefs,now,dryRun,summary){
   const byUser=new Map();
-  const now=new Date();
   for(const s of relevant){if(s.subject_type!=="player"||!truthy(s.notify_final))continue;const uid=Number(s.telegram_user_id),pref=userPrefs.get(uid)||{};if(Number(pref.player_postgame_reports??1)!==1||!inDeliveryShard(uid,now))continue;if(!byUser.has(uid))byUser.set(uid,[]);byUser.get(uid).push(s)}
   if(!byUser.size)return;
   // Avoid refetching the NHL boxscore every minute after all recipients for this
