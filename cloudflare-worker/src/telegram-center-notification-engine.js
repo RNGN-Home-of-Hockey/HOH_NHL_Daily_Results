@@ -9,8 +9,14 @@ export async function getCenterNotificationStatus(env){
       SELECT
         (SELECT COUNT(*) FROM telegram_users WHERE notifications_enabled=1) users,
         (SELECT COUNT(*) FROM subscriptions) subscriptions,
+        (SELECT COUNT(*) FROM subscriptions WHERE subject_type='player') player_subscriptions,
+        (SELECT COUNT(*) FROM subscriptions WHERE subject_type='game' AND notify_pregame=1) game_reminders,
         (SELECT COUNT(*) FROM subscriptions WHERE subject_type='group') group_subscriptions,
+        (SELECT COUNT(*) FROM notification_user_preferences WHERE timezone_name IS NOT NULL AND TRIM(timezone_name)<>'') timezone_users,
         (SELECT COUNT(*) FROM notification_log WHERE sent_at>=datetime('now','-24 hours')) sent_24h,
+        (SELECT COUNT(*) FROM notification_log WHERE notification_type='daily_player_digest' AND sent_at>=datetime('now','-24 hours')) digests_24h,
+        (SELECT COUNT(*) FROM notification_log WHERE notification_type='player_postgame_report' AND sent_at>=datetime('now','-24 hours')) player_reports_24h,
+        (SELECT COUNT(*) FROM notification_log WHERE notification_type='reminder_15m' AND sent_at>=datetime('now','-24 hours')) reminders_24h,
         (SELECT MAX(sent_at) FROM notification_log) last_sent_at;
     `).first();
     return {ok:true,engine:"center-v2",enabled:envFlag(env.TELEGRAM_LIVE_NOTIFICATIONS_ENABLED,false),center_token_configured:Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim()),...row};
