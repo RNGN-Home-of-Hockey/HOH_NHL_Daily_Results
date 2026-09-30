@@ -271,7 +271,13 @@ async function findBroadcastByPairTime(db,game){
     WHERE ((b.parsed_home_tri=? AND b.parsed_away_tri=?) OR (b.parsed_home_tri=? AND b.parsed_away_tri=?))
       AND COALESCE(b.scheduled_at,b.published_at) IS NOT NULL
       AND ABS(julianday(COALESCE(b.scheduled_at,b.published_at))-julianday(?))<=2.0
-      AND (b.duration_seconds IS NULL OR b.duration_seconds>=1800)
+      AND (
+        b.duration_seconds IS NULL OR b.duration_seconds>=1800
+        OR (
+          COALESCE(b.duration_seconds,0)=0
+          AND LOWER(COALESCE(b.status,'')) IN ('upcoming','live','scheduled','online')
+        )
+      )
       AND LOWER(COALESCE(b.title,'')) NOT LIKE '%хайлайт%'
       AND LOWER(COALESCE(b.title,'')) NOT LIKE '%highlight%'
       AND LOWER(COALESCE(b.title,'')) NOT LIKE '%обзор матча%'

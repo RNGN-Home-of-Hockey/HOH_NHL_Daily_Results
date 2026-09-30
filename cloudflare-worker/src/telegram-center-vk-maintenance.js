@@ -277,13 +277,13 @@ async function loadCandidateGames(db,records){
   return rows.results||[];
 }
 
-function broadcastLengthEligible(record){
+export function broadcastLengthEligible(record){
   const title=String(record?.title||"");
   if(/(?:хайлайт|highlights?|обзор\s+матча|лучшие\s+моменты|best\s+moments?)/iu.test(title))return false;
   const duration=Number(record?.duration_seconds);
   if(Number.isFinite(duration)&&duration>0)return duration>=MIN_CANONICAL_DURATION_SECONDS;
   const status=norm(record?.status||"");
-  return /live|прямой эфир/.test(status);
+  return /live|upcoming|scheduled|online|прямой эфир|предстоящ/.test(status);
 }
 function matchFromCandidates(games,a,b,dateIso,record){
   if(!broadcastLengthEligible(record))return {kind:"unmatched",reason:"duration_under_60m"};
