@@ -202,6 +202,7 @@ jobs:
           }
           if(!r?.ok||!d?.ok)throw new Error('player notification status unhealthy '+JSON.stringify(d));
           if(d.engine!=='center-v2'||d.enabled!==true||d.center_token_configured!==true)throw new Error('player notification engine not enabled '+JSON.stringify(d));
+          if(Number(d.delivery_shards)!==5||Number(d.max_sends_per_tick)!==30)throw new Error('notification burst protection missing '+JSON.stringify(d));
           async function waitText(path,check,label){
             let last='';
             for(let i=0;i<15;i++){
@@ -213,6 +214,11 @@ jobs:
             }
             throw new Error(label+' did not reach production');
           }
+          const injuryProbe=await fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries',{headers:{accept:'application/json','user-agent':'HOH-Center-Notification-Smoke/1'},cache:'no-store'});
+          if(!injuryProbe.ok)throw new Error('ESPN NHL injury feed HTTP '+injuryProbe.status);
+          const injuryJson=await injuryProbe.json().catch(()=>null);
+          if(!injuryJson||typeof injuryJson!=='object')throw new Error('ESPN NHL injury feed invalid JSON');
+          console.log('PLAYER_NOTIFICATION_INJURY_FEED_OK');
           const gameFollowJs=await waitText('/telegram-app/game-follow.js?build=25.0.1',js=>js.includes('reminder_only')&&js.includes('notify_pregame'),'15-minute reminder UI');
           new Function(gameFollowJs);
           const preferencesJs=await waitText('/telegram-app/preferences.js?build=25.0.1',js=>js.includes('timezone_name')&&js.includes('telegram-center-notifications-v2/me'),'timezone sync UI');
