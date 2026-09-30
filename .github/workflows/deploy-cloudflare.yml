@@ -352,7 +352,7 @@ jobs:
           const visual=await fetch(base+'/telegram-app/v24-visual.js?build=24.8.0',{cache:'no-store'}).then(async r=>{if(!r.ok)throw new Error('V24 visual HTTP '+r.status);return r.text()});
           for(const needle of ['V24.2 complete visual audit','V24.3 score/odds/Winline regression fixes','V24.8 compact Winline and player hero fixes','white-space:nowrap','min-width:max-content','v19Cal','v20News','v22ProfileCard','padding-right:40px','top:50%!important','z-index:7','width:18px','font-size:10px','.v23RecBrand{display:block!important;height:13px!important'])if(!visual.includes(needle))throw new Error('V24.4 visual contract missing '+needle);
           const v22nav=await fetch(base+'/telegram-app/v22.js?build=24.8.0',{cache:'no-store'}).then(r=>r.text());
-          for(const x of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds'])if(!v22nav.includes(x))throw new Error('V22 production nav/settings missing '+x);
+          for(const x of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds','legacyGame','H.openGameV19'])if(!v22nav.includes(x))throw new Error('V22 production nav/settings missing '+x);
           const v23player=await fetch(base+'/telegram-app/v23-player.js?build=24.8.0',{cache:'no-store'}).then(r=>r.text());
           for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')"])if(!v23player.includes(x))throw new Error('V23 production player UX missing '+x);
           if(v23player.includes('Команда: ')||v23player.includes('ОЦЕНКА HOH')||v23player.includes('Линия WINLINE'))throw new Error('V23 production recommendation still verbose');
@@ -384,7 +384,7 @@ jobs:
             if(legacyUrlShell.includes(forbidden))throw new Error('Legacy player layer leaked into /telegram-app '+forbidden);
           }
           const ui=await fetch(base+'/telegram-app/v19.js',{cache:'no-store'}).then(r=>r.text());
-          for(const needle of ["b.dataset.tab='broadcasts'","v19Audio","aspect-ratio:16/9","v19Country","v19Playoff","v25GameCover","v25HasCover","a.onclick=e=>e.stopPropagation()"]){
+          for(const needle of ["b.dataset.tab='broadcasts'","v19Audio","aspect-ratio:16/9","v19Country","v19Playoff","v25GameCover","v25HasCover","root.querySelectorAll('[data-v19-game]')","a.onclick=e=>e.stopPropagation()"]){
             if(!ui.includes(needle))throw new Error('V19 UI contract missing '+needle);
           }
           if(ui.includes('new MutationObserver'))throw new Error('V19 unexpectedly added MutationObserver');
