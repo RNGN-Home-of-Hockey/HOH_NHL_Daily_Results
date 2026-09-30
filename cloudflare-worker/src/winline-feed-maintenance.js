@@ -88,7 +88,7 @@ export async function getWinlineFeedMaintenanceStatus(env){
   };
 }
 
-function cadenceFor(startRaw,nowMs){
+export function cadenceFor(startRaw,nowMs){
   const start=Date.parse(String(startRaw||""));
   if(!Number.isFinite(start))return SIX_HOURS_MS;
   const left=start-nowMs;
