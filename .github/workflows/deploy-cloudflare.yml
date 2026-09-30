@@ -203,6 +203,7 @@ jobs:
           if(!r?.ok||!d?.ok)throw new Error('player notification status unhealthy '+JSON.stringify(d));
           if(d.engine!=='center-v2'||d.enabled!==true||d.center_token_configured!==true)throw new Error('player notification engine not enabled '+JSON.stringify(d));
           if(Number(d.delivery_shards)!==5||Number(d.max_sends_per_tick)!==30)throw new Error('notification burst protection missing '+JSON.stringify(d));
+          if(d.default_timezone!=='Europe/Moscow'||Number(d.digest_catchup_hours)!==4)throw new Error('digest fallback/catch-up contract missing '+JSON.stringify(d));
           async function waitText(path,check,label){
             let last='';
             for(let i=0;i<15;i++){
@@ -224,7 +225,12 @@ jobs:
           const preferencesJs=await waitText('/telegram-app/preferences.js?build=25.0.1',js=>js.includes('timezone_name')&&js.includes('telegram-center-notifications-v2/me'),'timezone sync UI');
           new Function(preferencesJs);
           const shell=await waitText('/telegram-app-v24?build=24.8.0',html=>html.includes('/telegram-app/game-follow.js?build=25.0.1')&&html.includes('/telegram-app/preferences.js?build=25.0.1'),'canonical notification shell');
-          console.log('PLAYER_NOTIFICATION_WAVE_PRODUCTION_OK',JSON.stringify({player_subscriptions:d.player_subscriptions,game_reminders:d.game_reminders,timezone_users:d.timezone_users,digests_24h:d.digests_24h,player_reports_24h:d.player_reports_24h,reminders_24h:d.reminders_24h}));
+          console.log('PLAYER_NOTIFICATION_WAVE_PRODUCTION_OK',JSON.stringify({player_subscriptions:d.player_subscriptions,game_reminders:d.game_reminders,timezone_users:d.timezone_users,timezone_fallback_users:d.timezone_fallback_users,digests_24h:d.digests_24h,player_reports_24h:d.player_reports_24h,reminders_24h:d.reminders_24h}));
+          const live=await fetch(base+'/api/winline/live/status',{cache:'no-store',headers:{accept:'application/json'}}).then(async r=>({r,d:await r.json().catch(()=>({}))}));
+          if(!live.r.ok||live.d?.ok!==true)throw new Error('Winline live status unhealthy '+JSON.stringify(live.d));
+          if(Number(live.d.cadence_target_seconds)!==60||Number(live.d.quote_max_age_seconds)!==90)throw new Error('Winline live cadence contract regressed '+JSON.stringify(live.d));
+          if(live.d.candidate_games>0&&live.d.healthy!==true)throw new Error('Winline live feed is stale with live candidates '+JSON.stringify(live.d));
+          console.log('WINLINE_LIVE_STATUS_OK',JSON.stringify(live.d));
           JS
 
       - name: Repair and verify legacy Telegram bot

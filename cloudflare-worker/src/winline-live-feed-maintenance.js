@@ -39,6 +39,25 @@ export async function runWinlineLiveFeedMaintenance(env,{force=false,nowMs=Date.
   return {ok:true,skipped:false,...payload};
 }
 
+export async function getWinlineLiveFeedMaintenanceStatus(env,{nowMs=Date.now()}={}){
+  if(!env?.DB)return {ok:false,error:"missing_d1_binding"};
+  const state=await loadState(env.DB);
+  const candidates=await liveGameCandidates(env.DB,new Date(nowMs).toISOString()).catch(()=>[]);
+  const lastAt=Date.parse(String(state?.fetched_at||""));
+  const ageSeconds=Number.isFinite(lastAt)?Math.max(0,Math.round((nowMs-lastAt)/1000)):null;
+  return {
+    ok:true,
+    cadence_target_seconds:60,
+    throttle_seconds:45,
+    quote_max_age_seconds:90,
+    candidate_games:candidates.length,
+    last_fetch_at:state?.fetched_at||null,
+    last_fetch_age_seconds:ageSeconds,
+    last_sync:state||null,
+    healthy:candidates.length===0||ageSeconds!==null&&ageSeconds<=90,
+  };
+}
+
 export function parseNhlLiveFeed(xml){
   const sport=[...String(xml||"").matchAll(/<Sport\b([^>]*)>([\s\S]*?)<\/Sport>/gi)].find(m=>String(attrs(m[1]).Id)==="4");
   if(!sport)return[];

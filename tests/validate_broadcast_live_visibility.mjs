@@ -33,5 +33,8 @@ assert.match(source,/datetime\(g\.scheduled_start_utc\) >= datetime\('now','-8 h
 assert.match(source,/gameListTimer=setInterval\(refreshGameList,15000\)/,"games list must refresh while the control room is open");
 assert.match(source,/if\(gameLooksLive\(l\.game\|\|currentData\?\.game\)&&!liveTimer\)/,"live endpoint must keep polling after puck drop even if the stored game state lags");
 assert.match(source,/if\(broadcastGameLooksLive\(game\)\)return 90\*1000/,"started games must require fresh Winline pricing");
+assert.doesNotMatch(source,/Матч сейчас ведёт другой оператор/,"shared operator mode must not block live controls");
+assert.doesNotMatch(source,/Режим просмотра · матч ведёт/,"shared operator mode must not downgrade the second operator to read-only");
+assert.match(source,/Совместный режим · также в матче/,"shared operator presence should stay visible without locking controls");
 
 console.log("BROADCAST_LIVE_VISIBILITY_OK");

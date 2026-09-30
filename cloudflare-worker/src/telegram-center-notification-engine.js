@@ -4,6 +4,8 @@ const LIVE = new Set(["LIVE","CRIT","INTERMISSION"]);
 const FINAL = new Set(["FINAL","OFF"]);
 const DELIVERY_SHARDS = 5;
 const MAX_SENDS_PER_TICK = 30;
+const DEFAULT_NOTIFICATION_TIMEZONE = "Europe/Moscow";
+const DIGEST_CATCHUP_HOURS = 4;
 
 export async function getCenterNotificationStatus(env){
   if(!env.DB)return {ok:false,error:"missing_d1_binding"};
@@ -16,13 +18,17 @@ export async function getCenterNotificationStatus(env){
         (SELECT COUNT(*) FROM subscriptions WHERE subject_type='game' AND notify_pregame=1) game_reminders,
         (SELECT COUNT(*) FROM subscriptions WHERE subject_type='group') group_subscriptions,
         (SELECT COUNT(*) FROM notification_user_preferences WHERE timezone_name IS NOT NULL AND TRIM(timezone_name)<>'') timezone_users,
+        (SELECT COUNT(DISTINCT s.telegram_user_id)
+           FROM subscriptions s
+           LEFT JOIN notification_user_preferences n ON n.telegram_user_id=s.telegram_user_id
+          WHERE s.subject_type='player' AND (n.timezone_name IS NULL OR TRIM(n.timezone_name)='')) timezone_fallback_users,
         (SELECT COUNT(*) FROM notification_log WHERE sent_at>=datetime('now','-24 hours')) sent_24h,
         (SELECT COUNT(*) FROM notification_log WHERE notification_type='daily_player_digest' AND sent_at>=datetime('now','-24 hours')) digests_24h,
         (SELECT COUNT(*) FROM notification_log WHERE notification_type='player_postgame_report' AND sent_at>=datetime('now','-24 hours')) player_reports_24h,
         (SELECT COUNT(*) FROM notification_log WHERE notification_type='reminder_15m' AND sent_at>=datetime('now','-24 hours')) reminders_24h,
         (SELECT MAX(sent_at) FROM notification_log) last_sent_at;
     `).first();
-    return {ok:true,engine:"center-v2",enabled:envFlag(env.TELEGRAM_LIVE_NOTIFICATIONS_ENABLED,false),center_token_configured:Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim()),delivery_shards:DELIVERY_SHARDS,max_sends_per_tick:MAX_SENDS_PER_TICK,...row};
+    return {ok:true,engine:"center-v2",enabled:envFlag(env.TELEGRAM_LIVE_NOTIFICATIONS_ENABLED,false),center_token_configured:Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim()),delivery_shards:DELIVERY_SHARDS,max_sends_per_tick:MAX_SENDS_PER_TICK,default_timezone:DEFAULT_NOTIFICATION_TIMEZONE,digest_catchup_hours:DIGEST_CATCHUP_HOURS,...row};
   }catch(error){return {ok:false,error:"center_notification_status_failed",detail:errorText(error)}}
 }
 
@@ -36,7 +42,7 @@ export async function runCenterNotificationTick(env,{dryRun=true,now=null}={}){
   const userPrefs=await loadUserNotificationPreferences(env.DB,subscriptions);
   const games=await loadSchedule(clock);
   const relevant=games.filter(g=>subscriptions.some(s=>touches(s,g,context)));
-  const summary={ok:true,dry_run:dryRun,subscriptions:subscriptions.length,schedule_games:games.length,relevant_games:relevant.length,delivery_shards:DELIVERY_SHARDS,max_sends_per_tick:MAX_SENDS_PER_TICK,planned:0,sent:0,daily_digests:0,player_reports:0,game_reminders:0,injury_feed_records:0,timezone_missing:0,deferred_budget:0,skipped_limit:0,skipped_duplicate:0,failed:0,events:[]};
+  const summary={ok:true,dry_run:dryRun,subscriptions:subscriptions.length,schedule_games:games.length,relevant_games:relevant.length,delivery_shards:DELIVERY_SHARDS,max_sends_per_tick:MAX_SENDS_PER_TICK,planned:0,sent:0,daily_digests:0,player_reports:0,game_reminders:0,injury_feed_records:0,timezone_missing:0,timezone_fallback:0,deferred_budget:0,skipped_limit:0,skipped_duplicate:0,failed:0,events:[]};
   Object.defineProperty(summary,"_delivery",{value:{used:0,sentToday:dryRun?new Map():await loadSentTodayCounts(env.DB)},enumerable:false});
   const active=relevant.filter(g=>!FINAL.has(upper(g.state))),finals=relevant.filter(g=>FINAL.has(upper(g.state)));
   for(const game of active){try{await processGame(env,game,subscriptions,context,userPrefs,clock,dryRun,summary)}catch(error){summary.failed++;summary.events.push({game_pk:game.game_pk,error:errorText(error)})}}
@@ -167,16 +173,18 @@ async function processDailyPlayerDigests(env,games,subs,ctx,userPrefs,now,dryRun
   const due=[];
   for(const [userId,playerSubs] of byUser){
     const pref=userPrefs.get(userId)||{};if(Number(pref.daily_player_digest??1)!==1)continue;
-    const tz=String(pref.timezone_name||"").trim();if(!tz){summary.timezone_missing++;continue}
+    const storedTz=String(pref.timezone_name||"").trim(),tz=storedTz||DEFAULT_NOTIFICATION_TIMEZONE;
+    if(!storedTz){summary.timezone_missing++;summary.timezone_fallback++}
     const parts=localParts(now,tz);if(!parts)continue;
     const hour=Number(pref.daily_digest_hour??20);
-    if(parts.hour!==hour||parts.minute>=30||(parts.minute%DELIVERY_SHARDS)!==deliveryShard(userId))continue;
-    due.push({userId,playerSubs,tz,parts});
+    const lastHour=Math.min(23,hour+DIGEST_CATCHUP_HOURS-1);
+    if(parts.hour<hour||parts.hour>lastHour||(parts.minute%DELIVERY_SHARDS)!==deliveryShard(userId))continue;
+    due.push({userId,playerSubs,tz,parts,timezoneFallback:!storedTz});
   }
   if(!due.length)return;
   const injuries=await loadEspnInjuries().catch(()=>new Map());
   summary.injury_feed_records=injuries.size;
-  for(const {userId,playerSubs,tz,parts} of due){
+  for(const {userId,playerSubs,tz,parts,timezoneFallback} of due){
     const localDate=parts.date,key=`center:daily-players:${localDate}`;
     const lines=[];
     for(const sub of playerSubs){
@@ -188,9 +196,10 @@ async function processDailyPlayerDigests(env,games,subs,ctx,userPrefs,now,dryRun
       lines.push(`• ${meta.name} — ${tri} vs ${opponent} · ${at}${status}`);
     }
     if(!lines.length)continue;
-    const text=`🏒 Сегодня / этой ночью играют ваши игроки\n\n${lines.join("\n")}\n\nОткройте матч в Live Center, чтобы включить напоминание за 15 минут.`;
+    const timezoneNote=timezoneFallback?"\n\n🕗 Часовой пояс ещё не сохранён — временно используем московское время. Откройте Live Center, и дальше время будет локальным.":"";
+    const text=`🏒 Сегодня / этой ночью играют ваши игроки\n\n${lines.join("\n")}\n\nОткройте матч в Live Center, чтобы включить напоминание за 15 минут.${timezoneNote}`;
     summary.planned++;
-    if(dryRun){summary.daily_digests++;summary.events.push({user_id:userId,type:"daily_player_digest",local_date:localDate,timezone:tz,players:lines.length,text});continue}
+    if(dryRun){summary.daily_digests++;summary.events.push({user_id:userId,type:"daily_player_digest",local_date:localDate,timezone:tz,timezone_fallback:Boolean(timezoneFallback),players:lines.length,text});continue}
     const cap=Math.max(1,Math.min(...playerSubs.map(x=>Number(x.max_pushes_per_day)||12)));
     if(!canSendNow(summary,userId,cap))continue;
     if(!(await reserve(env.DB,key,userId,"daily_player_digest",null,JSON.stringify({timezone:tz,local_date:localDate,players:lines.length})))){summary.skipped_duplicate++;continue}
@@ -274,25 +283,30 @@ async function processPlayerPostgameReports(env,game,relevant,ctx,userPrefs,now,
   const box=await fetchJson(`${NHL}/gamecenter/${game.game_pk}/boxscore`).catch(()=>null),stats=box?boxscorePlayerMap(box):new Map();
   if(!stats.size)return; // NHL may mark FINAL a little before the complete player boxscore is ready; retry next minute.
   for(const [userId,list] of byUser){
-    const lines=[];
-    for(const sub of list){const id=String(sub.subject_key),meta=ctx.playerMeta.get(id);if(!meta)continue;const row=stats.get(id);lines.push(formatPlayerReportLine(meta,row))}
-    if(!lines.length)continue;
-    const key=`center:player-report:${game.game_pk}`,text=`📊 Матч завершён: статистика ваших игроков\n${game.away.tri} ${score(game.away.score)}:${score(game.home.score)} ${game.home.tri}\n\n${lines.join("\n")}`;
+    const blocks=[];
+    for(const sub of list){const id=String(sub.subject_key),meta=ctx.playerMeta.get(id);if(!meta)continue;const row=stats.get(id);blocks.push(formatPlayerReportBlock(meta,row))}
+    if(!blocks.length)continue;
+    const key=`center:player-report:${game.game_pk}`,text=`🏒 <b>${html(game.away.tri)} ${html(score(game.away.score))} : ${html(score(game.home.score))} ${html(game.home.tri)}</b>\n📊 <b>СТАТИСТИКА ВАШИХ ИГРОКОВ</b>\n\n${blocks.join("\n\n────────────\n\n")}`;
     summary.planned++;
-    if(dryRun){summary.player_reports++;summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",players:lines.length,text});continue}
+    if(dryRun){summary.player_reports++;summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",players:blocks.length,text});continue}
     const cap=Math.max(1,Math.min(...list.map(x=>Number(x.max_pushes_per_day)||12)));
     if(!canSendNow(summary,userId,cap))continue;
-    if(!(await reserve(env.DB,key,userId,"player_postgame_report",game.game_pk,JSON.stringify({players:lines.length})))){summary.skipped_duplicate++;continue}
-    try{await sendCenter(env,userId,text);markSent(summary,userId);summary.sent++;summary.player_reports++}catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(key,userId).run().catch(()=>{});summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",error:errorText(error)})}
+    if(!(await reserve(env.DB,key,userId,"player_postgame_report",game.game_pk,JSON.stringify({players:blocks.length})))){summary.skipped_duplicate++;continue}
+    try{await sendCenter(env,userId,text,{parse_mode:"HTML"});markSent(summary,userId);summary.sent++;summary.player_reports++}catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(key,userId).run().catch(()=>{});summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",error:errorText(error)})}
   }
 }
 function boxscorePlayerMap(box){const out=new Map(),root=box?.playerByGameStats||box?.playerByGameStats?.playerByGameStats||{};for(const side of ["awayTeam","homeTeam"]){const team=root?.[side]||{};for(const section of ["forwards","defense","defensemen","goalies"]){for(const p of team?.[section]||[]){const id=positive(p.playerId||p.id);if(id)out.set(String(id),{...p,__goalie:section==="goalies"})}}}return out}
-function formatPlayerReportLine(meta,row){
-  if(!row)return `• ${meta.name} — не выходил на лёд`;
-  if(row.__goalie){const saves=finite(row.saves),against=finite(row.shotsAgainst),ga=finite(row.goalsAgainst),pct=finite(row.savePctg??row.savePercentage);return `• ${meta.name} — ${saves??"—"} сейвов из ${against??"—"} · ${pct==null?"—":(pct<=1?(pct*100).toFixed(1):pct.toFixed(1))}% · пропущено ${ga??"—"}`}
-  const g=finite(row.goals)??0,a=finite(row.assists)??0,p=finite(row.points)??g+a,shots=finite(row.sog??row.shots),hits=finite(row.hits),blocks=finite(row.blockedShots??row.blocked),pm=finite(row.plusMinus),toi=String(row.toi||row.timeOnIce||"—");
-  const extras=[shots==null?null:`${shots} брос.`,hits==null?null:`${hits} хитов`,blocks==null?null:`${blocks} блоков`,pm==null?null:`+/- ${pm>0?"+":""}${pm}`,toi&&toi!=="—"?`TOI ${toi}`:null].filter(Boolean).join(" · ");
-  return `• ${meta.name} — ${g}+${a}=${p}${extras?" · "+extras:""}`
+function formatPlayerReportBlock(meta,row){
+  const name=html(meta?.name||"Игрок");
+  if(!row)return `⭐ <b>${name}</b>\nНе выходил на лёд`;
+  if(row.__goalie){
+    const saves=finite(row.saves),against=finite(row.shotsAgainst),ga=finite(row.goalsAgainst),pct=finite(row.savePctg??row.savePercentage),toi=String(row.toi||row.timeOnIce||"—");
+    const savePct=pct==null?"—":(pct<=1?(pct*100).toFixed(1):pct.toFixed(1))+"%";
+    return `🥅 <b>${name}</b>\n🧤 Сейвы: <b>${html(saves??"—")}</b> / ${html(against??"—")}\n📈 % отражённых: <b>${html(savePct)}</b>\n🚨 Пропущено: <b>${html(ga??"—")}</b>\n⏱ Время: <b>${html(toi)}</b>`;
+  }
+  const g=finite(row.goals)??0,a=finite(row.assists)??0,p=finite(row.points)??g+a,shots=finite(row.sog??row.shots)??0,hits=finite(row.hits)??0,blocks=finite(row.blockedShots??row.blocked)??0,pm=finite(row.plusMinus),toi=String(row.toi||row.timeOnIce||"—");
+  const plusMinus=pm==null?"—":(pm>0?"+":"")+pm;
+  return `⭐ <b>${name}</b>\n🏒 Голы: <b>${g}</b>   🎯 Передачи: <b>${a}</b>   🔥 Очки: <b>${p}</b>\n🥅 Броски: <b>${shots}</b>   💥 Хиты: <b>${hits}</b>   🧱 Блоки: <b>${blocks}</b>\n➕ +/-: <b>${html(plusMinus)}</b>   ⏱ TOI: <b>${html(toi)}</b>`;
 }
 
 async function loadSchedule(now){const dates=[-1,0,1].map(o=>{const d=new Date(now);d.setUTCDate(d.getUTCDate()+o);return d.toISOString().slice(0,10)}),payloads=await Promise.all(dates.map(d=>fetchJson(`${NHL}/schedule/${d}`).catch(()=>null))),map=new Map();for(let i=0;i<payloads.length;i++)for(const g of normalizeSchedule(payloads[i],dates[i]))map.set(g.game_pk,g);return [...map.values()].sort((a,b)=>String(a.start_utc).localeCompare(String(b.start_utc)))}
@@ -309,8 +323,9 @@ function canSendNow(summary,userId,cap){
 }
 function markSent(summary,userId){const d=summary?._delivery;if(!d)return;d.used=Number(d.used||0)+1;d.sentToday.set(Number(userId),Number(d.sentToday.get(Number(userId))||0)+1)}
 async function reserve(db,key,user,type,game,payload){const r=await db.prepare(`INSERT OR IGNORE INTO notification_log (notification_key,telegram_user_id,notification_type,subject_type,subject_key,game_pk,payload_json) VALUES (?,?,?,?,?,?,?);`).bind(key,user,type,"game",String(game),game,payload).run();return Number(r?.meta?.changes??r?.changes??0)>0}
-async function sendCenter(env,user,text){const token=String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim();if(!token)throw new Error("missing_telegram_center_token");const r=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:user,text,disable_web_page_preview:true})}),d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.description||`Telegram ${r.status}`)}
+async function sendCenter(env,user,text,options={}){const token=String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim();if(!token)throw new Error("missing_telegram_center_token");const payload={chat_id:user,text,disable_web_page_preview:true};if(options.parse_mode)payload.parse_mode=options.parse_mode;const r=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.description||`Telegram ${r.status}`)}
 async function fetchJson(url){const r=await fetch(url,{headers:{Accept:"application/json"}});if(!r.ok)throw new Error(`NHL HTTP ${r.status}`);return r.json()}
+function html(v){return String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
 function chunks(values,size=90){const out=[];for(let i=0;i<(values||[]).length;i+=size)out.push(values.slice(i,i+size));return out}
 function deliveryShard(userId){return Math.abs(Number(userId)||0)%DELIVERY_SHARDS}
 function inDeliveryShard(userId,now){const d=now instanceof Date?now:new Date(now);return deliveryShard(userId)===(d.getUTCMinutes()%DELIVERY_SHARDS)}
