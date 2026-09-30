@@ -98,10 +98,10 @@ jobs:
           if(!bg.r.ok)throw new Error('goalie background HTTP '+bg.r.status);
           if(!String(bg.r.headers.get('content-type')||'').includes('image/webp'))throw new Error('goalie background content-type '+bg.r.headers.get('content-type'));
           const v22nav=await text('/telegram-app/v22.js');
-          for(const x of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds'])if(!v22nav.includes(x))throw new Error('V22 navigation/settings missing '+x);
+          for(const x of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds','legacyGame','H.openGameV19'])if(!v22nav.includes(x))throw new Error('V22 navigation/settings missing '+x);
           const v23player=await text('/telegram-app/v23-player.js');
-          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','TEAM_CITY','font:italic 950',"a.join('<br>')"])if(!v23player.includes(x))throw new Error('V23 player UX missing '+x);
-          if(v23player.includes('Команда: ')||v23player.includes('ОЦЕНКА HOH'))throw new Error('V23 recommendation still verbose');
+          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')"])if(!v23player.includes(x))throw new Error('V23 player UX missing '+x);
+          if(v23player.includes('Команда: ')||v23player.includes('ОЦЕНКА HOH')||v23player.includes('Линия WINLINE'))throw new Error('V23 recommendation still verbose');
           const v15core=await text('/telegram-app/v15-core.js');
           if(!v15core.includes("localStorage.getItem('hoh-center-theme')||'light'"))throw new Error('light theme is not default');
           const v19=await text('/telegram-app/v19.js');
