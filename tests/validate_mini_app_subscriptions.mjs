@@ -164,7 +164,7 @@ function apiRequest(path, initData, options = {}) {
 }
 
 const db = new FakeDB();
-const env = { DB: db, TELEGRAM_BOT_TOKEN: botToken };
+const env = { DB: db, TELEGRAM_CENTER_BOT_TOKEN: botToken };
 const auth = await signedInitData();
 
 let request = apiRequest("/api/me/subscriptions", "");
