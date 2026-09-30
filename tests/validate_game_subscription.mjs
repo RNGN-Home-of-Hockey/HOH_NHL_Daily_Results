@@ -73,7 +73,7 @@ try{
     method:'POST',headers:{'content-type':'application/json','x-telegram-init-data':auth},
     body:JSON.stringify({subject_type:'game',subject_key:String(gamePk),notify_goal:true,notify_period_end:true}),
   });
-  let response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_BOT_TOKEN:token},'/api/telegram-app/follows');
+  let response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_CENTER_BOT_TOKEN:token},'/api/telegram-app/follows');
   assert.equal(response.status,200);
   let payload=await response.json();
   assert.equal(payload.ok,true);assert.equal(payload.removed,false);assert.equal(payload.follows.length,1);
@@ -83,14 +83,14 @@ try{
     method:'DELETE',headers:{'content-type':'application/json','x-telegram-init-data':auth},
     body:JSON.stringify({subject_type:'game',subject_key:String(gamePk)}),
   });
-  response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_BOT_TOKEN:token},'/api/telegram-app/follows');
+  response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_CENTER_BOT_TOKEN:token},'/api/telegram-app/follows');
   assert.equal(response.status,200);payload=await response.json();assert.equal(payload.removed,true);assert.equal(payload.follows.length,0);
 
   request=new Request('https://example.test/api/telegram-app/follows',{
     method:'POST',headers:{'content-type':'application/json','x-telegram-init-data':auth},
     body:JSON.stringify({subject_type:'game',subject_key:String(gamePk),reminder_only:true}),
   });
-  response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_BOT_TOKEN:token},'/api/telegram-app/follows');
+  response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_CENTER_BOT_TOKEN:token},'/api/telegram-app/follows');
   assert.equal(response.status,200);payload=await response.json();
   assert.equal(payload.follows.length,1);assert.equal(payload.follows[0].notify_pregame,1);assert.equal(payload.follows[0].notify_start,0);assert.equal(payload.follows[0].notify_final,0);
 
@@ -98,14 +98,14 @@ try{
     method:'DELETE',headers:{'content-type':'application/json','x-telegram-init-data':auth},
     body:JSON.stringify({subject_type:'game',subject_key:String(gamePk),reminder_only:true}),
   });
-  response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_BOT_TOKEN:token},'/api/telegram-app/follows');
+  response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_CENTER_BOT_TOKEN:token},'/api/telegram-app/follows');
   assert.equal(response.status,200);payload=await response.json();assert.equal(payload.follows.length,0,'reminder-only row should disappear after reminder is disabled');
 
   const bad=new Request('https://example.test/api/telegram-app/follows',{
     method:'POST',headers:{'content-type':'application/json','x-telegram-init-data':'auth_date=1&user=%7B%22id%22%3A1%7D&hash=bad'},
     body:JSON.stringify({subject_type:'game',subject_key:String(gamePk)}),
   });
-  response=await handleTelegramGameSubscriptionRequest(bad,{DB:db,TELEGRAM_BOT_TOKEN:token},'/api/telegram-app/follows');
+  response=await handleTelegramGameSubscriptionRequest(bad,{DB:db,TELEGRAM_CENTER_BOT_TOKEN:token},'/api/telegram-app/follows');
   assert.equal(response.status,401);
   console.log('TELEGRAM_GAME_SUBSCRIPTION_OK');
 }finally{globalThis.fetch=realFetch}
