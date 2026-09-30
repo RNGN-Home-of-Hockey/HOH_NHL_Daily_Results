@@ -156,6 +156,7 @@ async function processDailyPlayerDigests(env,games,subs,ctx,userPrefs,now,dryRun
 }
 
 function isDigestWindowGame(game,now,tz,hour){
+  if(FINAL.has(upper(game.state)))return false;
   const start=Date.parse(String(game.start_utc||""));if(!Number.isFinite(start))return false;
   // The 20:00 digest is for the coming NHL night, not just the strict calendar day.
   return start>=now.getTime()-2*60*60*1000&&start<=now.getTime()+18*60*60*1000;
