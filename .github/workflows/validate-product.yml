@@ -155,7 +155,7 @@ jobs:
           for (const needle of ['v15TeamRec','teamRecommendation','TEAM_CITY','canonical-3']) if (!v15team.includes(needle)) throw new Error('V15 compact team recommendation missing '+needle);
           if (v15team.includes('async function nextOdds(') || v15team.includes('v15OddsMatch')) throw new Error('legacy team three-way odds panel remains');
           const v22ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v22.js'), {}, '/telegram-app/v22.js')).text();
-          for (const needle of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','data-tab="follows"','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds']) if (!v22ui.includes(needle)) throw new Error('V22 navigation/settings contract missing '+needle);
+          for (const needle of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','data-tab="follows"','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds','legacyGame','H.openGameV19']) if (!v22ui.includes(needle)) throw new Error('V22 navigation/settings contract missing '+needle);
           const v23ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v23-player.js'), {}, '/telegram-app/v23-player.js')).text();
           for (const needle of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')"]) if (!v23ui.includes(needle)) throw new Error('V23 player contract missing '+needle);
           if (v23ui.includes('Команда: ') || v23ui.includes('ОЦЕНКА HOH') || v23ui.includes('Линия WINLINE')) throw new Error('V23 recommendation still contains verbose legacy copy');
@@ -164,7 +164,7 @@ jobs:
           if (v24ui.includes('--hoh-bg-player') || v24ui.includes('background=1&v=')) throw new Error('V24 must not dynamically zoom player headshots');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v19.js'), {}, '/telegram-app/v19.js');
           const v19 = await r.text();
-          for (const needle of ['openBroadcasts','v19Audio','aspect-ratio:16/9','historical_pregame','v19Country','/broadcast/winline-logo.png?asset=canonical-3','decorateHomeOdds','v25GameCover','v25HasCover',"a.onclick=e=>e.stopPropagation()","b.textContent='Матчи'"]) {
+          for (const needle of ['openBroadcasts','v19Audio','aspect-ratio:16/9','historical_pregame','v19Country','/broadcast/winline-logo.png?asset=canonical-3','decorateHomeOdds','v25GameCover','v25HasCover',"root.querySelectorAll('[data-v19-game]')","a.onclick=e=>e.stopPropagation()","b.textContent='Матчи'"]) {
             if (!r || r.status !== 200 || !v19.includes(needle)) throw new Error('Center V19 UI missing: '+needle);
           }
           if (v19.includes('new MutationObserver')) throw new Error('V19 authoritative UI must not add a MutationObserver layer');
