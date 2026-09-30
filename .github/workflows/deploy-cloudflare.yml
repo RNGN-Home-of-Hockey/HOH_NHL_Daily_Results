@@ -186,6 +186,34 @@ jobs:
           }));
           JS
 
+      - name: Verify player notification wave
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          let d=null,r=null;
+          for(let i=0;i<15;i++){
+            r=await fetch(base+'/api/telegram-center-notifications-v2/status',{cache:'no-store',headers:{accept:'application/json'}});
+            d=await r.json().catch(()=>({}));
+            console.log('PLAYER_NOTIFICATION_STATUS',i+1,JSON.stringify(d));
+            if(r.ok&&d?.ok&&d?.engine==='center-v2'&&d?.enabled===true&&d?.center_token_configured===true)break;
+            await new Promise(res=>setTimeout(res,2000));
+          }
+          if(!r?.ok||!d?.ok)throw new Error('player notification status unhealthy '+JSON.stringify(d));
+          if(d.engine!=='center-v2'||d.enabled!==true||d.center_token_configured!==true)throw new Error('player notification engine not enabled '+JSON.stringify(d));
+          for(const asset of ['/telegram-app/game-follow.js?build=25.0.0','/telegram-app/preferences.js?build=25.0.0']){
+            const ar=await fetch(base+asset,{cache:'no-store'}),js=await ar.text();
+            if(!ar.ok)throw new Error('notification UI asset HTTP '+ar.status+' '+asset);
+            new Function(js);
+            if(asset.includes('game-follow')&&!js.includes('Напомнить за 15 минут'))throw new Error('15-minute reminder UI marker missing');
+            if(asset.includes('preferences')&&!js.includes('resolvedOptions().timeZone'))throw new Error('timezone sync UI marker missing');
+          }
+          const shell=await fetch(base+'/telegram-app-v24?build=24.8.0',{cache:'no-store'}).then(r=>r.text());
+          if(!shell.includes('/telegram-app/game-follow.js?build=25.0.0')||!shell.includes('/telegram-app/preferences.js?build=25.0.0'))throw new Error('notification enhancers missing from canonical Mini App shell');
+          console.log('PLAYER_NOTIFICATION_WAVE_PRODUCTION_OK',JSON.stringify({player_subscriptions:d.player_subscriptions,game_reminders:d.game_reminders,timezone_users:d.timezone_users,digests_24h:d.digests_24h,player_reports_24h:d.player_reports_24h,reminders_24h:d.reminders_24h}));
+          JS
+
       - name: Repair and verify legacy Telegram bot
         shell: bash
         run: |

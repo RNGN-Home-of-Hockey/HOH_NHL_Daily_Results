@@ -152,7 +152,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
       "/telegram-app/v21.js?build=24.8.0",
       "/telegram-app/v22.js?build=24.8.0",
       "/telegram-app/v23-player.js?build=24.8.0",
-      "/telegram-app/v24-visual.js?build=24.8.0"
+      "/telegram-app/v24-visual.js?build=24.8.0",
+      "/telegram-app/game-follow.js?build=25.0.0",
+      "/telegram-app/preferences.js?build=25.0.0"
     ]) body = body.replace('</body>', '<script src="'+src+'"></script></body>');
     return new Response(body, {status:200,headers:{
       "Content-Type":"text/html; charset=utf-8",

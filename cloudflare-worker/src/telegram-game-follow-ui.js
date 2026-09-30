@@ -22,28 +22,29 @@ function gameFollowEnhancer(){
   }
 
   async function refreshFollows(){
-    try{const d=await api('/api/telegram-app/bootstrap');follows=d.follows||[]}catch{follows=[]}
+    try{const d=await api('/api/me/subscriptions');follows=d.subscriptions||[]}catch{follows=[]}
   }
-  function isFollowed(gamePk){return follows.some(f=>f.subject_type==='game'&&String(f.subject_key)===String(gamePk))}
+  function gameFollow(gamePk){return follows.find(f=>f.subject_type==='game'&&String(f.subject_key)===String(gamePk))||null}
+  function isReminded(gamePk){const f=gameFollow(gamePk);return Boolean(f&&Number(f.notify_pregame)===1)}
 
   async function toggle(gamePk,button){
     if(!initData){tg?.showAlert?.('Откройте приложение из Telegram-бота, чтобы подписываться на матч.');return}
-    const remove=isFollowed(gamePk);
+    const remove=isReminded(gamePk);
     button.disabled=true;
     try{
       const d=await api('/api/telegram-app/follows',{method:remove?'DELETE':'POST',body:JSON.stringify({
         subject_type:'game',subject_key:String(gamePk),notify_pregame:true,notify_start:true,
         notify_goal:true,notify_assist:false,notify_period_end:true,notify_final:true,
       })});
-      follows=d.follows||[];
+      follows=d.follows||d.subscriptions||[];
       paint(button,gamePk);
-    }catch(e){tg?.showAlert?.('Не удалось изменить подписку на матч: '+e.message)}finally{button.disabled=false}
+    }catch(e){tg?.showAlert?.('Не удалось изменить напоминание: '+e.message)}finally{button.disabled=false}
   }
 
   function paint(button,gamePk){
-    const on=isFollowed(gamePk);
+    const on=isReminded(gamePk);
     button.classList.toggle('on',on);
-    button.textContent=on?'✓ Матч в «Моих»':'＋ Следить за матчем';
+    button.textContent=on?'✓ Напомним за 15 минут':'🔔 Напомнить за 15 минут';
   }
 
   function injectButton(){
@@ -62,7 +63,7 @@ function gameFollowEnhancer(){
     selectedGame=Number(gamePk);overlay.classList.add('open');sheet.innerHTML='<div class="empty">Загружаю матч…</div>';
     try{
       const d=await api('/api/telegram-app/games/'+gamePk),g=d.game;
-      sheet.innerHTML=`<button class="close" id="gfClose">×</button><div class="eyebrow">МАТЧ #${esc(gamePk)}</div><h2>${esc(g.away.tri)} ${score(g.away.score)} — ${score(g.home.score)} ${esc(g.home.tri)}</h2><p class="gfMeta">${esc(g.away.name||g.away.tri)} · ${esc(g.home.name||g.home.tri)}</p><button class="follow" id="gameFollowAction"></button><div class="metric2"><div><b>${score(g.away.shots)}</b><span>броски ${esc(g.away.tri)}</span></div><div><b>${score(g.home.shots)}</b><span>броски ${esc(g.home.tri)}</span></div></div>`;
+      sheet.innerHTML=`<button class="close" id="gfClose">×</button><div class="eyebrow">МАТЧ #${esc(gamePk)}</div><h2>${esc(g.away.tri)} ${score(g.away.score)} — ${score(g.home.score)} ${esc(g.home.tri)}</h2><p class="gfMeta">${esc(g.away.name||g.away.tri)} · ${esc(g.home.name||g.home.tri)}</p><button class="follow" id="gameFollowAction"></button><div class="gfHint">Пришлём отдельное сообщение примерно за 15 минут до старта.</div><div class="metric2"><div><b>${score(g.away.shots)}</b><span>броски ${esc(g.away.tri)}</span></div><div><b>${score(g.home.shots)}</b><span>броски ${esc(g.home.tri)}</span></div></div>`;
       const b=sheet.querySelector('#gameFollowAction');paint(b,gamePk);b.onclick=()=>toggle(gamePk,b);
       sheet.querySelector('#gfClose').onclick=()=>overlay.classList.remove('open');
     }catch(e){sheet.innerHTML=`<button class="close" id="gfClose">×</button><div class="empty">${esc(e.message)}</div>`;sheet.querySelector('#gfClose').onclick=()=>overlay.classList.remove('open')}
@@ -78,7 +79,7 @@ function gameFollowEnhancer(){
 
   const observer=new MutationObserver(()=>injectButton());
   const sheet=document.querySelector('#sheet');if(sheet)observer.observe(sheet,{childList:true,subtree:true});
-  const style=document.createElement('style');style.textContent='.gfMeta{font-size:10px;color:#777;margin:4px 0 12px}';document.head.appendChild(style);
+  const style=document.createElement('style');style.textContent='.gfMeta{font-size:10px;color:#777;margin:4px 0 12px}.gfHint{font-size:9px;color:#777;margin:6px 0 12px;line-height:1.35}';document.head.appendChild(style);
   refreshFollows();
 }
 

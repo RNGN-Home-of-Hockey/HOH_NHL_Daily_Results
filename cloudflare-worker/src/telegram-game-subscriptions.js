@@ -22,9 +22,32 @@ export async function handleTelegramGameSubscriptionRequest(request, env, path) 
   }
 
   await upsertTelegramUser(env.DB, auth.user);
+  const reminderOnly=body?.reminder_only===true;
   if (request.method === "DELETE") {
-    await env.DB.prepare(`DELETE FROM subscriptions WHERE telegram_user_id=? AND subject_type='game' AND subject_key=?;`)
-      .bind(auth.user.id,key).run();
+    if(reminderOnly){
+      await env.DB.prepare(`UPDATE subscriptions SET notify_pregame=0 WHERE telegram_user_id=? AND subject_type='game' AND subject_key=?;`)
+        .bind(auth.user.id,key).run();
+      await env.DB.prepare(`
+        DELETE FROM subscriptions
+        WHERE telegram_user_id=? AND subject_type='game' AND subject_key=?
+          AND COALESCE(notify_pregame,0)=0 AND COALESCE(notify_start,0)=0
+          AND COALESCE(notify_goal,0)=0 AND COALESCE(notify_assist,0)=0
+          AND COALESCE(notify_point,0)=0 AND COALESCE(notify_period_end,0)=0
+          AND COALESCE(notify_final,0)=0;
+      `).bind(auth.user.id,key).run();
+    }else{
+      await env.DB.prepare(`DELETE FROM subscriptions WHERE telegram_user_id=? AND subject_type='game' AND subject_key=?;`)
+        .bind(auth.user.id,key).run();
+    }
+  } else if(reminderOnly) {
+    await env.DB.prepare(`
+      INSERT INTO subscriptions(
+        telegram_user_id,subject_type,subject_key,notify_pregame,notify_start,
+        notify_goal,notify_assist,notify_point,notify_period_end,notify_final
+      ) VALUES(?,'game',?,1,0,0,0,0,0,0)
+      ON CONFLICT(telegram_user_id,subject_type,subject_key) DO UPDATE SET
+        notify_pregame=1;
+    `).bind(auth.user.id,key).run();
   } else {
     const flags = notificationFlags(body);
     await env.DB.prepare(`
@@ -44,7 +67,7 @@ export async function handleTelegramGameSubscriptionRequest(request, env, path) 
 
   const follows = await env.DB.prepare(`
     SELECT subscription_id,subject_type,subject_key,notify_pregame,notify_start,notify_goal,
-           notify_assist,notify_period_end,notify_final,created_at
+           notify_assist,COALESCE(notify_point,0) notify_point,notify_period_end,notify_final,created_at
     FROM subscriptions WHERE telegram_user_id=? ORDER BY subject_type,subject_key;
   `).bind(auth.user.id).all();
   return json({ok:true,removed:request.method==="DELETE",follows:follows.results||[]});
