@@ -65,7 +65,7 @@ async function processLivePlays(env,game,relevant,ctx,state,dryRun,summary){
 
 async function dispatch(env,game,relevant,ctx,event,dryRun,summary){
   const byUser=new Map();for(const s of relevant){if(!matches(s,game,event,ctx))continue;if(!byUser.has(s.telegram_user_id))byUser.set(s.telegram_user_id,[]);byUser.get(s.telegram_user_id).push(s)}
-  for(const [userId,matchesList] of byUser){summary.planned++;const cap=Math.max(1,Math.min(...matchesList.map(s=>Number(s.max_pushes_per_day)||12)));if(!dryRun&&await sentToday(env.DB,userId)>=cap){summary.skipped_limit++;continue}if(dryRun){summary.events.push({game_pk:game.game_pk,user_id:userId,type:event.type,subscriptions:matchesList.map(minSub),cap});if(event.type==="reminder_15m")summary.game_reminders++;continue}const payload=JSON.stringify({engine:"center-v2",game_pk:game.game_pk,type:event.type,subscriptions:matchesList.map(minSub)});if(!(await reserve(env.DB,event.key,userId,event.type,game.game_pk,payload))){summary.skipped_duplicate++;continue}try{await sendCenter(env,userId,event.text);summary.sent++;if(event.type==="reminder_15m")summary.game_reminders++}catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(event.key,userId).run().catch(()=>{});summary.events.push({game_pk:game.game_pk,user_id:userId,type:event.type,error:errorText(error)})}}
+  for(const [userId,matchesList] of byUser){summary.planned++;const cap=Math.max(1,Math.min(...matchesList.map(s=>Number(s.max_pushes_per_day)||12)));if(!dryRun&&await sentToday(env.DB,userId)>=cap){summary.skipped_limit++;continue}if(dryRun){summary.events.push({game_pk:game.game_pk,user_id:userId,type:event.type,text:event.text,subscriptions:matchesList.map(minSub),cap});if(event.type==="reminder_15m")summary.game_reminders++;continue}const payload=JSON.stringify({engine:"center-v2",game_pk:game.game_pk,type:event.type,subscriptions:matchesList.map(minSub)});if(!(await reserve(env.DB,event.key,userId,event.type,game.game_pk,payload))){summary.skipped_duplicate++;continue}try{await sendCenter(env,userId,event.text);summary.sent++;if(event.type==="reminder_15m")summary.game_reminders++}catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(event.key,userId).run().catch(()=>{});summary.events.push({game_pk:game.game_pk,user_id:userId,type:event.type,error:errorText(error)})}}
 }
 
 function matches(s,game,event,ctx){
@@ -149,7 +149,7 @@ async function processDailyPlayerDigests(env,games,subs,ctx,userPrefs,now,dryRun
     if(!lines.length)continue;
     const text=`🏒 Сегодня / этой ночью играют ваши игроки\n\n${lines.join("\n")}\n\nОткройте матч в Live Center, чтобы включить напоминание за 15 минут.`;
     summary.planned++;
-    if(dryRun){summary.daily_digests++;summary.events.push({user_id:userId,type:"daily_player_digest",local_date:localDate,timezone:tz,players:lines.length});continue}
+    if(dryRun){summary.daily_digests++;summary.events.push({user_id:userId,type:"daily_player_digest",local_date:localDate,timezone:tz,players:lines.length,text});continue}
     if(!(await reserve(env.DB,key,userId,"daily_player_digest",null,JSON.stringify({timezone:tz,local_date:localDate,players:lines.length})))){summary.skipped_duplicate++;continue}
     try{await sendCenter(env,userId,text);summary.sent++;summary.daily_digests++}catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(key,userId).run().catch(()=>{});summary.events.push({user_id:userId,type:"daily_player_digest",error:errorText(error)})}
   }
@@ -175,7 +175,7 @@ async function processPlayerPostgameReports(env,game,relevant,ctx,userPrefs,dryR
     if(!lines.length)continue;
     const key=`center:player-report:${game.game_pk}`,text=`📊 Матч завершён: статистика ваших игроков\n${game.away.tri} ${score(game.away.score)}:${score(game.home.score)} ${game.home.tri}\n\n${lines.join("\n")}`;
     summary.planned++;
-    if(dryRun){summary.player_reports++;summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",players:lines.length});continue}
+    if(dryRun){summary.player_reports++;summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",players:lines.length,text});continue}
     if(!(await reserve(env.DB,key,userId,"player_postgame_report",game.game_pk,JSON.stringify({players:lines.length})))){summary.skipped_duplicate++;continue}
     try{await sendCenter(env,userId,text);summary.sent++;summary.player_reports++}catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(key,userId).run().catch(()=>{});summary.events.push({game_pk:game.game_pk,user_id:userId,type:"player_postgame_report",error:errorText(error)})}
   }
