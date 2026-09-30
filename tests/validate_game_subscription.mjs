@@ -29,10 +29,25 @@ class FakeStatement{
   async run(){
     if(this.sql.includes('INSERT INTO telegram_users')){this.db.users.add(Number(this.args[0]));return {meta:{changes:1}}}
     if(this.sql.includes('INSERT INTO subscriptions')){
-      this.db.follows.set(`${this.args[0]}:game:${this.args[1]}`,{subscription_id:1,subject_type:'game',subject_key:String(this.args[1]),notify_pregame:this.args[2],notify_start:this.args[3],notify_goal:this.args[4],notify_assist:this.args[5],notify_period_end:this.args[6],notify_final:this.args[7],created_at:'NOW'});
+      const key=`${this.args[0]}:game:${this.args[1]}`,current=this.db.follows.get(key);
+      if(this.sql.includes("VALUES(?,'game',?,1,0,0,0,0,0,0)")){
+        this.db.follows.set(key,{...(current||{}),subscription_id:1,subject_type:'game',subject_key:String(this.args[1]),notify_pregame:1,notify_start:current?.notify_start||0,notify_goal:current?.notify_goal||0,notify_assist:current?.notify_assist||0,notify_point:current?.notify_point||0,notify_period_end:current?.notify_period_end||0,notify_final:current?.notify_final||0,created_at:'NOW'});
+      }else{
+        this.db.follows.set(key,{subscription_id:1,subject_type:'game',subject_key:String(this.args[1]),notify_pregame:this.args[2],notify_start:this.args[3],notify_goal:this.args[4],notify_assist:this.args[5],notify_point:0,notify_period_end:this.args[6],notify_final:this.args[7],created_at:'NOW'});
+      }
       return {meta:{changes:1}};
     }
-    if(this.sql.includes('DELETE FROM subscriptions')){this.db.follows.delete(`${this.args[0]}:game:${this.args[1]}`);return {meta:{changes:1}}}
+    if(this.sql.includes('UPDATE subscriptions SET notify_pregame=0')){
+      const key=`${this.args[0]}:game:${this.args[1]}`,row=this.db.follows.get(key);if(row)row.notify_pregame=0;return {meta:{changes:row?1:0}};
+    }
+    if(this.sql.includes('DELETE FROM subscriptions')){
+      const key=`${this.args[0]}:game:${this.args[1]}`,row=this.db.follows.get(key);
+      if(this.sql.includes('COALESCE(notify_pregame,0)=0')){
+        const empty=row&&['notify_pregame','notify_start','notify_goal','notify_assist','notify_point','notify_period_end','notify_final'].every(k=>Number(row[k]||0)===0);
+        if(empty)this.db.follows.delete(key);
+      }else this.db.follows.delete(key);
+      return {meta:{changes:1}};
+    }
     throw new Error('Unexpected run SQL '+this.sql);
   }
   async all(){
@@ -70,6 +85,21 @@ try{
   });
   response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_BOT_TOKEN:token},'/api/telegram-app/follows');
   assert.equal(response.status,200);payload=await response.json();assert.equal(payload.removed,true);assert.equal(payload.follows.length,0);
+
+  request=new Request('https://example.test/api/telegram-app/follows',{
+    method:'POST',headers:{'content-type':'application/json','x-telegram-init-data':auth},
+    body:JSON.stringify({subject_type:'game',subject_key:String(gamePk),reminder_only:true}),
+  });
+  response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_BOT_TOKEN:token},'/api/telegram-app/follows');
+  assert.equal(response.status,200);payload=await response.json();
+  assert.equal(payload.follows.length,1);assert.equal(payload.follows[0].notify_pregame,1);assert.equal(payload.follows[0].notify_start,0);assert.equal(payload.follows[0].notify_final,0);
+
+  request=new Request('https://example.test/api/telegram-app/follows',{
+    method:'DELETE',headers:{'content-type':'application/json','x-telegram-init-data':auth},
+    body:JSON.stringify({subject_type:'game',subject_key:String(gamePk),reminder_only:true}),
+  });
+  response=await handleTelegramGameSubscriptionRequest(request,{DB:db,TELEGRAM_BOT_TOKEN:token},'/api/telegram-app/follows');
+  assert.equal(response.status,200);payload=await response.json();assert.equal(payload.follows.length,0,'reminder-only row should disappear after reminder is disabled');
 
   const bad=new Request('https://example.test/api/telegram-app/follows',{
     method:'POST',headers:{'content-type':'application/json','x-telegram-init-data':'auth_date=1&user=%7B%22id%22%3A1%7D&hash=bad'},
