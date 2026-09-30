@@ -213,9 +213,9 @@ jobs:
             }
             throw new Error(label+' did not reach production');
           }
-          const gameFollowJs=await waitText('/telegram-app/game-follow.js?build=25.0.1',js=>js.includes('Напомнить за 15 минут')&&js.includes('reminder_only:true'),'15-minute reminder UI');
+          const gameFollowJs=await waitText('/telegram-app/game-follow.js?build=25.0.1',js=>js.includes('reminder_only')&&js.includes('notify_pregame'),'15-minute reminder UI');
           new Function(gameFollowJs);
-          const preferencesJs=await waitText('/telegram-app/preferences.js?build=25.0.1',js=>js.includes('resolvedOptions().timeZone'),'timezone sync UI');
+          const preferencesJs=await waitText('/telegram-app/preferences.js?build=25.0.1',js=>js.includes('timezone_name')&&js.includes('telegram-center-notifications-v2/me'),'timezone sync UI');
           new Function(preferencesJs);
           const shell=await waitText('/telegram-app-v24?build=24.8.0',html=>html.includes('/telegram-app/game-follow.js?build=25.0.1')&&html.includes('/telegram-app/preferences.js?build=25.0.1'),'canonical notification shell');
           console.log('PLAYER_NOTIFICATION_WAVE_PRODUCTION_OK',JSON.stringify({player_subscriptions:d.player_subscriptions,game_reminders:d.game_reminders,timezone_users:d.timezone_users,digests_24h:d.digests_24h,player_reports_24h:d.player_reports_24h,reminders_24h:d.reminders_24h}));
