@@ -13,6 +13,18 @@ function notificationPreferencesEnhancer(){
     ['notify_assist','Передачи игрока'],['notify_period_end','Конец периода'],['notify_final','Финал'],
   ];
 
+  async function syncTimezone(){
+    if(!initData)return;
+    const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone||'';
+    if(!timezone)return;
+    try{
+      await api('/api/telegram-center-notifications-v2/me',{
+        method:'POST',
+        body:JSON.stringify({timezone_name:timezone,daily_player_digest:true,daily_digest_hour:20,player_postgame_reports:true})
+      });
+    }catch{}
+  }
+
   async function api(url,opts={}){
     const headers={...(opts.headers||{})};
     if(initData)headers['X-Telegram-Init-Data']=initData;
@@ -85,6 +97,7 @@ function notificationPreferencesEnhancer(){
   const style=document.createElement('style');
   style.textContent='.notifyPrefs{display:block;width:100%;margin:7px 0 14px;border:1px solid #34343b;background:#151518;color:#aaa;border-radius:11px;padding:10px;font-weight:800;font-size:10px}.notifyPrefOverlay{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:90;display:grid;align-items:end}.notifyPrefCard{background:#111114;border:1px solid #303038;border-radius:20px 20px 0 0;padding:20px 16px calc(22px + env(safe-area-inset-bottom));max-width:720px;width:100%;margin:0 auto}.notifyPrefClose{float:right;border:1px solid #34343b;background:#19191d;color:#aaa;border-radius:9px;width:34px;height:34px}.notifyPrefEyebrow{font-size:8px;color:#c8b7ff;letter-spacing:.1em}.notifyPrefCard h3{font-size:22px;margin:7px 0 16px}.notifyPrefRows label{display:flex;align-items:center;justify-content:space-between;padding:12px 2px;border-bottom:1px solid #29292f;font-size:12px}.notifyPrefRows input{width:20px;height:20px;accent-color:#ff5a1f}.notifyPrefSave{width:100%;margin-top:17px;border:0;background:#ff5a1f;color:#111;border-radius:12px;padding:13px;font-weight:950}';
   document.head.appendChild(style);
+  syncTimezone();
 }
 
 function js(body){return new Response(body,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"public, max-age=120","X-Content-Type-Options":"nosniff"}})}
