@@ -122,9 +122,17 @@ async function loadSubscriptions(db){
 
 async function buildSubjectContext(db,subs){
   const direct=[...new Set(subs.filter(s=>s.subject_type==="player").map(s=>String(s.subject_key)).filter(x=>/^\d+$/.test(x)))],groups=[...new Set(subs.filter(s=>s.subject_type==="group").map(s=>String(s.subject_key)))],groupPlayers=new Map();
-  if(groups.length){const q=groups.map(()=>"?").join(","),r=await db.prepare(`SELECT group_key,subject_key FROM subscription_group_members WHERE subject_type='player' AND group_key IN (${q});`).bind(...groups).all().catch(()=>({results:[]}));for(const x of r.results||[]){if(!groupPlayers.has(x.group_key))groupPlayers.set(x.group_key,new Set());groupPlayers.get(x.group_key).add(String(x.subject_key));direct.push(String(x.subject_key))}}
+  for(const groupChunk of chunks(groups,90)){
+    if(!groupChunk.length)continue;
+    const q=groupChunk.map(()=>"?").join(","),r=await db.prepare(`SELECT group_key,subject_key FROM subscription_group_members WHERE subject_type='player' AND group_key IN (${q});`).bind(...groupChunk).all().catch(()=>({results:[]}));
+    for(const x of r.results||[]){if(!groupPlayers.has(x.group_key))groupPlayers.set(x.group_key,new Set());groupPlayers.get(x.group_key).add(String(x.subject_key));direct.push(String(x.subject_key))}
+  }
   const ids=[...new Set(direct)].filter(x=>/^\d+$/.test(x)),playerTeams=new Map(),playerMeta=new Map();
-  if(ids.length){const q=ids.map(()=>"?").join(","),r=await db.prepare(`SELECT player_id,current_team_tri,full_name_en,full_name_ru,COALESCE(active,1) active,position_code FROM players WHERE player_id IN (${q});`).bind(...ids.map(Number)).all();for(const x of r.results||[]){if(x.current_team_tri)playerTeams.set(String(x.player_id),upper(x.current_team_tri));playerMeta.set(String(x.player_id),{player_id:Number(x.player_id),team_tri:upper(x.current_team_tri),name:x.full_name_ru||x.full_name_en||`NHL ${x.player_id}`,full_name_en:x.full_name_en||null,active:Number(x.active)!==0,position_code:upper(x.position_code)})}}
+  for(const idChunk of chunks(ids,90)){
+    if(!idChunk.length)continue;
+    const q=idChunk.map(()=>"?").join(","),r=await db.prepare(`SELECT player_id,current_team_tri,full_name_en,full_name_ru,COALESCE(active,1) active,position_code FROM players WHERE player_id IN (${q});`).bind(...idChunk.map(Number)).all();
+    for(const x of r.results||[]){if(x.current_team_tri)playerTeams.set(String(x.player_id),upper(x.current_team_tri));playerMeta.set(String(x.player_id),{player_id:Number(x.player_id),team_tri:upper(x.current_team_tri),name:x.full_name_ru||x.full_name_en||`NHL ${x.player_id}`,full_name_en:x.full_name_en||null,active:Number(x.active)!==0,position_code:upper(x.position_code)})}
+  }
   return {playerTeams,groupPlayers,playerMeta}
 }
 
@@ -132,17 +140,20 @@ async function loadUserNotificationPreferences(db,subs){
   const ids=[...new Set((subs||[]).map(s=>Number(s.telegram_user_id)).filter(Number.isSafeInteger))];
   const map=new Map();
   if(!ids.length)return map;
-  const q=ids.map(()=>"?").join(",");
-  let rows=[];
-  try{const r=await db.prepare(`
-    SELECT u.telegram_user_id,n.timezone_name,COALESCE(n.daily_player_digest,1) daily_player_digest,
-           COALESCE(n.daily_digest_hour,20) daily_digest_hour,COALESCE(n.player_postgame_reports,1) player_postgame_reports
-    FROM telegram_users u
-    LEFT JOIN notification_user_preferences n ON n.telegram_user_id=u.telegram_user_id
-    WHERE u.telegram_user_id IN (${q});
-  `).bind(...ids).all();rows=r.results||[]}catch{}
   for(const id of ids)map.set(id,{timezone_name:null,daily_player_digest:1,daily_digest_hour:20,player_postgame_reports:1});
-  for(const r of rows)map.set(Number(r.telegram_user_id),{timezone_name:r.timezone_name||null,daily_player_digest:Number(r.daily_player_digest??1),daily_digest_hour:Number(r.daily_digest_hour??20),player_postgame_reports:Number(r.player_postgame_reports??1)});
+  for(const idChunk of chunks(ids,90)){
+    const q=idChunk.map(()=>"?").join(",");
+    try{
+      const r=await db.prepare(`
+        SELECT u.telegram_user_id,n.timezone_name,COALESCE(n.daily_player_digest,1) daily_player_digest,
+               COALESCE(n.daily_digest_hour,20) daily_digest_hour,COALESCE(n.player_postgame_reports,1) player_postgame_reports
+        FROM telegram_users u
+        LEFT JOIN notification_user_preferences n ON n.telegram_user_id=u.telegram_user_id
+        WHERE u.telegram_user_id IN (${q});
+      `).bind(...idChunk).all();
+      for(const row of r.results||[])map.set(Number(row.telegram_user_id),{timezone_name:row.timezone_name||null,daily_player_digest:Number(row.daily_player_digest??1),daily_digest_hour:Number(row.daily_digest_hour??20),player_postgame_reports:Number(row.player_postgame_reports??1)});
+    }catch{}
+  }
   return map;
 }
 
@@ -285,6 +296,7 @@ async function sentToday(db,user){const r=await db.prepare(`SELECT COUNT(*) coun
 async function reserve(db,key,user,type,game,payload){const r=await db.prepare(`INSERT OR IGNORE INTO notification_log (notification_key,telegram_user_id,notification_type,subject_type,subject_key,game_pk,payload_json) VALUES (?,?,?,?,?,?,?);`).bind(key,user,type,"game",String(game),game,payload).run();return Number(r?.meta?.changes??r?.changes??0)>0}
 async function sendCenter(env,user,text){const token=String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim();if(!token)throw new Error("missing_telegram_center_token");const r=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:user,text,disable_web_page_preview:true})}),d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.description||`Telegram ${r.status}`)}
 async function fetchJson(url){const r=await fetch(url,{headers:{Accept:"application/json"}});if(!r.ok)throw new Error(`NHL HTTP ${r.status}`);return r.json()}
+function chunks(values,size=90){const out=[];for(let i=0;i<(values||[]).length;i+=size)out.push(values.slice(i,i+size));return out}
 function deliveryShard(userId){return Math.abs(Number(userId)||0)%DELIVERY_SHARDS}
 function inDeliveryShard(userId,now){const d=now instanceof Date?now:new Date(now);return deliveryShard(userId)===(d.getUTCMinutes()%DELIVERY_SHARDS)}
 function minSub(s){return {subscription_id:s.subscription_id,subject_type:s.subject_type,subject_key:s.subject_key}}
