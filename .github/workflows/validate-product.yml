@@ -157,12 +157,144 @@ jobs:
           const v22ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v22.js'), {}, '/telegram-app/v22.js')).text();
           for (const needle of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','data-tab="follows"','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds','legacyGame','H.openGameV19']) if (!v22ui.includes(needle)) throw new Error('V22 navigation/settings contract missing '+needle);
           const v23ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v23-player.js'), {}, '/telegram-app/v23-player.js')).text();
-          for (const needle of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')",'function uniqueTrends','function recommendationFact','Линия: ','source_key=','loading="eager"']) if (!v23ui.includes(needle)) throw new Error('V23 player contract missing '+needle);
+          for (const needle of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')",'function uniqueTrends','function trendFamily','function recommendationFact','function playerPropOutcome','Ставка: ','Выборка: ','source_key=','loading="eager"']) if (!v23ui.includes(needle)) throw new Error('V23 player contract missing '+needle);
           if (v23ui.includes('Команда: ') || v23ui.includes('ОЦЕНКА HOH') || v23ui.includes('Линия WINLINE') || v23ui.includes('Последний подтверждённый матч')) throw new Error('V23 player page contains obsolete copy');
+          const trendSource=fs.readFileSync('./cloudflare-worker/src/telegram-center-v15-player-data.js','utf8');
+          if(!trendSource.includes('families=new Set()')||!trendSource.includes('family:x.family'))throw new Error('player trend-family dedupe contract missing');
           const botSource=fs.readFileSync('./cloudflare-worker/src/telegram-product-bot.js','utf8');
-          for(const needle of ['callback_query','center_gr:','center_gra','editMessageReplyMarkup','answerCallbackQuery'])if(!botSource.includes(needle))throw new Error('Center inline reminder callback missing '+needle);
+          for(const needle of ['callback_query','center_gr:','center_gra:','editMessageReplyMarkup','answerCallbackQuery','([01])
+          if (v24ui.includes('--hoh-bg-player') || v24ui.includes('background=1&v=')) throw new Error('V24 must not dynamically zoom player headshots');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v19.js'), {}, '/telegram-app/v19.js');
+          const v19 = await r.text();
+          for (const needle of ['openBroadcasts','v19Audio','aspect-ratio:16/9','historical_pregame','v19Country','/broadcast/winline-logo.png?asset=canonical-3','decorateHomeOdds','v25GameCover','v25HasCover','telegram-center-media/vk-cover',"root.querySelectorAll('[data-v19-game]')","a.onclick=e=>e.stopPropagation()","b.textContent='Матчи'"]) {
+            if (!r || r.status !== 200 || !v19.includes(needle)) throw new Error('Center V19 UI missing: '+needle);
+          }
+          if (v19.includes('new MutationObserver')) throw new Error('V19 authoritative UI must not add a MutationObserver layer');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v20.js'), {}, '/telegram-app/v20.js');
+          const v20 = await r.text();
+          for (const needle of ['СВЕЖЕЕ В НХЛ','v20PlayerNews','v20CommentSend','/api/telegram-center-v20','v25HomeStable','v25FeaturedGame','v25FeaturedLabel','aspect-ratio:16/9','box.dataset.v25FeaturedGame','(cover||teams)','telegram-center-media/vk-cover','Смотреть матч в VK Видео','#gameList{display:grid','font-size:11px']) {
+            if (!r || r.status !== 200 || !v20.includes(needle)) throw new Error('Center V20 UI missing: '+needle);
+          }
+          const featuredFn=v20.slice(v20.indexOf('function featuredHtml(g){'),v20.indexOf('function stabilizeHome'));
+          if(featuredFn.indexOf('v25FeaturedLabel')<0||featuredFn.indexOf('v25FeaturedLabel')>featuredFn.indexOf('(cover||teams)')) throw new Error('Match-of-day label must render above the featured cover');
+          if(v20.includes('#gameList{display:none')) throw new Error('Home must keep today match cards visible');
+          if (v20.includes('sports.ru/')) throw new Error('V20 UI must not expose Sports.ru links');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/api/telegram-center-media/vk-cover?url='+encodeURIComponent('https://example.com/not-vk.jpg')), {}, '/api/telegram-center-media/vk-cover');
+          if (!r || r.status !== 400) throw new Error('VK cover relay allowlist contract failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
+          if (!r || r.status !== 200) throw new Error('Game-follow JS route failed');
+          const gameFollowJs=await r.text();
+          for(const marker of ['gameFollowEnhancer','Напомнить за 15 минут','reminder_only:true'])if(!gameFollowJs.includes(marker))throw new Error('Game-follow reminder marker missing '+marker);
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/preferences.js'), {}, '/telegram-app/preferences.js');
+          if (!r || r.status !== 200 || !(await r.text()).includes('notificationPreferencesEnhancer')) throw new Error('Notification preferences JS route failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/matchup.js'), {}, '/telegram-app/matchup.js');
+          if (!r || r.status !== 200 || !(await r.text()).includes('telegramMatchupPreview')) throw new Error('Telegram Matchup preview JS route failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/teams'), {}, '/teams');
+          if (!r || r.status !== 200 || !(await r.text()).includes('Team Center')) throw new Error('Team Center shell failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/control'), {}, '/control');
+          if (!r || r.status !== 200 || !(await r.text()).includes('HOH NHL Control Center')) throw new Error('Control Center v2 shell failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/matchup'), {}, '/matchup');
+          if (!r || r.status !== 200 || !(await r.text()).includes('MATCHUP LAB')) throw new Error('Matchup Lab shell failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/broadcast/operator'), {}, '/broadcast/operator');
+          if (!r || r.status !== 200 || !(await r.text()).includes('BROADCAST OPERATOR')) throw new Error('Broadcast Operator shell failed');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/broadcast/overlay'), {}, '/broadcast/overlay');
+          if (!r || r.status !== 200 || !(await r.text()).includes('HOME OF HOCKEY × WINLINE')) throw new Error('Broadcast overlay shell failed');
+          const secret = 'test-secret';
+          const req = new Request('https://example.test/api/telegram', {
+            method:'POST',
+            headers:{'x-telegram-bot-api-secret-token':secret,'content-type':'application/json'},
+            body:JSON.stringify({message:{chat:{id:-100,type:'supergroup'},text:'/start'}}),
+          });
+          const delegated = await handleTelegramProductBotRequest(req,{TELEGRAM_WEBHOOK_VERIFY_SECRET:secret},'/api/telegram');
+          if (delegated !== null) throw new Error('Group Telegram update was intercepted');
+          console.log('ROUTE_CONTRACTS_OK');
+          JS
+
+      - name: Kaprizov historical season smoke
+        run: |
+          node --input-type=module <<'JS'
+          import { handleTeamCurrentRequest } from './cloudflare-worker/src/team-current-routes.js';
+          const call = async path => {
+            let last;
+            for (let i=0;i<3;i++) {
+              const r=await handleTeamCurrentRequest(new Request('https://example.test'+path), {}, path);
+              const d=await r.json().catch(()=>({}));
+              if (r.ok) return d;
+              last=new Error(JSON.stringify(d));
+              await new Promise(res=>setTimeout(res,500*(i+1)));
+            }
+            throw last;
+          };
+          const seasons=await call('/api/telegram-center-v12/players/8478864/seasons');
+          if (!(seasons.seasons||[]).some(x=>x.season_id==='20252026')) throw new Error('Kaprizov 2025/26 season missing');
+          const prev=await call('/api/telegram-center-v12/players/8478864/season/20252026');
+          if (!prev.stats || Number(prev.stats.games_played||0)<1 || Number(prev.stats.points||0)<1) throw new Error('Kaprizov historical stats missing');
+          if (!/^[A-Z]{3}$/.test(String(prev.team_tri||''))) throw new Error('Kaprizov historical team missing');
+          console.log('KAPRIZOV_HISTORY_OK', prev.season, prev.team_tri, prev.stats);
+          JS
+
+      - name: Telegram notification rules
+        run: |
+          node tests/validate_notification_engine.mjs
+          node tests/validate_game_subscription.mjs
+          node tests/validate_player_notification_wave_v1.mjs
+          node tests/validate_center_digest_callbacks.mjs
+          node tests/validate_notification_100_user_load.mjs
+          node tests/validate_mini_app_subscriptions.mjs
+          node tests/validate_vk_upcoming_broadcast.mjs
+
+      - name: Market line evaluator
+        run: |
+          node tests/validate_market_line_evaluator.mjs
+          node tests/validate_universal_market_evaluator.mjs
+          node tests/validate_winline_broadcast_mapping.mjs
+
+      - name: Broadcast renderer
+        working-directory: vercel-broadcast-renderer
+        run: |
+          python3 -m pip install --quiet fonttools
+          curl -fsSL --retry 3 --retry-delay 2 'https://raw.githubusercontent.com/google/fonts/main/ofl/sofiasanscondensed/SofiaSansCondensed-Italic%5Bwght%5D.ttf' -o /tmp/sofia-sans-condensed-variable.ttf
+          python3 -m fontTools.varLib.instancer /tmp/sofia-sans-condensed-variable.ttf wght=700 --output assets/sofia-sans-condensed-italic.ttf
+          test -s assets/sofia-sans-condensed-italic.ttf
+          file assets/sofia-sans-condensed-italic.ttf
+          npm install --no-audit --no-fund
+          npm test
+
+      - name: Broadcast Operator safety
+        run: |
+          node tests/validate_broadcast_operator.mjs
+          node tests/validate_broadcast_operator_leases.mjs
+          node tests/validate_broadcast_live_visibility.mjs
+          node tests/validate_broadcast_air_score.mjs
+          node tests/validate_broadcast_value_score_v2.mjs
+          node tests/validate_broadcast_multi_match_state.mjs
+          node tests/validate_broadcast_operator_actions.mjs
+          node tests/validate_broadcast_queue_summary.mjs
+          node tests/validate_market_combination_engine.mjs
+          node tests/validate_market_coverage_audit.mjs
+          node tests/validate_provider_market_history.mjs
+          node tests/validate_expanded_market_integrity.mjs
+          node tests/validate_broadcast_angle_engine.mjs
+          node tests/validate_broadcast_four_cards.mjs
+          node tests/validate_h2h_current_line_broadcast.mjs
+          node tests/validate_winline_live_feed.mjs
+          node tests/validate_live_market_enrichment.mjs
+          node tests/validate_advanced_team_snapshot_insights.mjs
+          node tests/validate_advanced_winline_link.mjs
+          node tests/validate_broadcast_priced_merge.mjs
+          node tests/validate_period_market_insights.mjs
+          node tests/validate_advanced_rolling_venue.mjs
+          node tests/validate_postgame_finalizer.mjs
+          node tests/validate_broadcast_insight_history.mjs
+          python tests/validate_team_current_snapshot_refresh.py
+
+      - name: Worker dry run
+        run: |
+          npm install --no-audit --no-fund
+          npx wrangler deploy --dry-run --outdir .validation-build
+])if(!botSource.includes(needle))throw new Error('Center inline reminder callback missing '+needle);
           const v24ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v24-visual.js'), {}, '/telegram-app/v24-visual.js')).text();
-          for (const needle of ['V24.8 compact Winline and player hero fixes','padding-right:40px','top:50%!important','background-size:auto,auto 78%','object-fit:contain!important','.v23RecBrand{display:block!important;height:13px!important']) if (!v24ui.includes(needle)) throw new Error('V24 visual contract missing '+needle);
+          for (const needle of ['V24.8 compact Winline and player hero fixes','padding-right:40px','top:50%!important','background-size:auto,auto 78%','object-fit:contain!important','.v23RecBrand{display:block!important;height:13px!important','.v23Last{-webkit-backdrop-filter:none!important']) if (!v24ui.includes(needle)) throw new Error('V24 visual contract missing '+needle);
           if (v24ui.includes('--hoh-bg-player') || v24ui.includes('background=1&v=')) throw new Error('V24 must not dynamically zoom player headshots');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v19.js'), {}, '/telegram-app/v19.js');
           const v19 = await r.text();
