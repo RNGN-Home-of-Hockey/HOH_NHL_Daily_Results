@@ -289,6 +289,8 @@ def find_ep_audio(player: dict, old: dict | None, session: requests.Session) -> 
         candidates.append(f"{EP_BASE}/{slug}.mp3")
     for url in dict.fromkeys(candidates):
         if verified_url(url, session):
+            if not profile_url:
+                profile_url, _ = discover_ep_profile(player, session)
             return url, profile_url
 
     found_profile, _search_html = discover_ep_profile(player, session)
@@ -396,6 +398,7 @@ def main() -> int:
 
     players = load_roster()
     mapped: dict[str, dict] = {}
+    profiles: dict[str, dict] = {}
     misses: list[dict] = []
     with ThreadPoolExecutor(max_workers=max(2, min(args.workers, 32))) as ex:
         future_map = {
@@ -412,8 +415,12 @@ def main() -> int:
                 pid, row, miss = p["player_id"], None, {**row_base(p, None), "reason": "probe_exception"}
             if row:
                 mapped[str(pid)] = row
+                profiles[str(pid)] = row
             else:
-                misses.append(miss or {**row_base(p, None), "reason": "unresolved"})
+                missing_row = miss or {**row_base(p, None), "reason": "unresolved"}
+                missing_row = {**missing_row, "pronunciation_available": False, "audio_cached": False}
+                profiles[str(pid)] = missing_row
+                misses.append(missing_row)
             done += 1
             if done % 50 == 0 or done == len(players):
                 ep_count = sum(1 for x in mapped.values() if x.get("pronunciation_source") == "eliteprospects_player_audio")
@@ -421,7 +428,7 @@ def main() -> int:
 
     ep_count = sum(1 for x in mapped.values() if x.get("pronunciation_source") == "eliteprospects_player_audio")
     nhl_count = len(mapped) - ep_count
-    profile_count = sum(1 for x in mapped.values() if x.get("eliteprospects_url"))
+    profile_count = sum(1 for x in profiles.values() if x.get("eliteprospects_url"))
     payload = {
         "source": "eliteprospects_player_audio_with_nhl_fallback",
         "source_pattern": f"{EP_BASE}/<normalized_player_name>.mp3",
@@ -432,6 +439,7 @@ def main() -> int:
         "roster_players": len(players),
         "audio_storage": "/player-audio/<nhl_player_id>.mp3",
         "players": dict(sorted(mapped.items(), key=lambda kv: int(kv[0]))),
+        "profiles": dict(sorted(profiles.items(), key=lambda kv: int(kv[0]))),
         "unresolved": sorted(misses, key=lambda x: (x.get("team_tri") or "", x.get("full_name_en") or "")),
     }
     out.parent.mkdir(parents=True, exist_ok=True)
