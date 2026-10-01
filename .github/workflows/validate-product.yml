@@ -162,7 +162,7 @@ jobs:
           const trendSource=fs.readFileSync('./cloudflare-worker/src/telegram-center-v15-player-data.js','utf8');
           if(!trendSource.includes('families=new Set()')||!trendSource.includes('family:x.family'))throw new Error('player trend-family dedupe contract missing');
           const botSource=fs.readFileSync('./cloudflare-worker/src/telegram-product-bot.js','utf8');
-          for(const needle of ['callback_query','center_gr:','center_gra:','editMessageReplyMarkup','answerCallbackQuery','center_gr:(\\d+):([01])'])if(!botSource.includes(needle))throw new Error('Center inline reminder callback missing '+needle);
+          for(const needle of ['callback_query','center_gr:','center_gra:','editMessageReplyMarkup','answerCallbackQuery','center_gr:(\\d+):([01])','webhookAllowsCallbacks'])if(!botSource.includes(needle))throw new Error('Center inline reminder callback missing '+needle);
           const v24ui = await (await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v24-visual.js'), {}, '/telegram-app/v24-visual.js')).text();
           for (const needle of ['V24.8 compact Winline and player hero fixes','padding-right:40px','top:50%!important','background-size:auto,auto 78%','object-fit:contain!important','.v23RecBrand{display:block!important;height:13px!important','.v23Last{-webkit-backdrop-filter:none!important']) if (!v24ui.includes(needle)) throw new Error('V24 visual contract missing '+needle);
           if (v24ui.includes('--hoh-bg-player') || v24ui.includes('background=1&v=')) throw new Error('V24 must not dynamically zoom player headshots');
