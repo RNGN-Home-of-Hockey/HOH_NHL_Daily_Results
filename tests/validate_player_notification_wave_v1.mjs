@@ -23,6 +23,9 @@ class FakeStatement{
     if(this.sql.includes("FROM telegram_users u")&&this.sql.includes("notification_user_preferences")){
       return {results:[{telegram_user_id:USER,timezone_name:this.db.timezone,daily_player_digest:1,daily_digest_hour:20,player_postgame_reports:1}]};
     }
+    if(this.sql.includes("SELECT subject_key")&&this.sql.includes("subject_type='game'")){
+      return {results:[{subject_key:String(UPCOMING_GAME)}]};
+    }
     throw new Error("Unexpected all SQL: "+this.sql);
   }
   async first(){throw new Error("dry-run fixture must not call first(): "+this.sql)}
@@ -78,6 +81,11 @@ try{
   assert.match(digest.text,/Lower Body/);
   assert.doesNotMatch(digest.text,/вне активного состава/);
   assert.doesNotMatch(digest.text,/Александр Тестов/,"completed game must not be repeated in evening digest");
+  assert.match(digest.text,/Выберите ниже, за какие матчи напомнить за 15 минут/);
+  assert.ok(Array.isArray(digest.reply_markup?.inline_keyboard),"digest must contain inline reminder keyboard");
+  const reminderButtons=digest.reply_markup.inline_keyboard.flat();
+  assert.ok(reminderButtons.some(b=>b.callback_data===`center_gr:${UPCOMING_GAME}`),"digest must expose one-game reminder toggle");
+  assert.ok(reminderButtons.some(b=>String(b.text||"").startsWith("✅")),"existing reminder must render as enabled");
 
   const reminder=result.events.find(x=>x.type==="reminder_15m");
   assert.ok(reminder);
