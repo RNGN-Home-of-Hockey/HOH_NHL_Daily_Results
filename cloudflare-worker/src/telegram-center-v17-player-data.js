@@ -28,7 +28,7 @@ async function players(request,env){
     const id=Number(idRaw);if(!Number.isSafeInteger(id))continue;
     map.set(id,{player_id:id,full_name_en:String(s?.full_name_en||s?.nhl_name||"").trim(),full_name_ru:fullNames?.[idRaw]||fallbackRuName(String(s?.full_name_en||s?.nhl_name||""))||null,current_team_tri:up(s?.team||""),salary_aav:numOrNull(s?.aav??s?.cap_hit),salary_cash:numOrNull(s?.salary_cash)});
   }
-  for(const [idRaw,p] of Object.entries(pronunciationCache?.players||{})){
+  for(const [idRaw,p] of Object.entries(pronunciationCache?.profiles||pronunciationCache?.players||{})){
     const id=Number(idRaw);if(!Number.isSafeInteger(id))continue;const prev=map.get(id)||{};
     map.set(id,{...prev,player_id:id,full_name_en:prev.full_name_en||String(p?.full_name_en||"").trim(),full_name_ru:prev.full_name_ru||fullNames?.[idRaw]||fallbackRuName(prev.full_name_en||String(p?.full_name_en||""))||null,current_team_tri:up(prev.current_team_tri||p?.team_tri||""),eliteprospects_url:p?.eliteprospects_url||prev.eliteprospects_url||null,pronunciation_available:Boolean(p?.audio_local_path||p?.pronunciation_url),pronunciation_audio_url:p?.audio_local_path||p?.pronunciation_url||null,pronunciation_audio_source:p?.pronunciation_source||null});
   }
@@ -52,7 +52,7 @@ async function players(request,env){
 
 async function profile(env,id){
   if(!Number.isSafeInteger(id)||id<=0)return json({ok:false,error:"invalid_player_id"},400);
-  const sal=(salaryCache?.players||{})[String(id)]||null,pron=(pronunciationCache?.players||{})[String(id)]||null;
+  const sal=(salaryCache?.players||{})[String(id)]||null,pron=(pronunciationCache?.profiles||pronunciationCache?.players||{})[String(id)]||null;
   let row=null;
   try{row=await env.DB.prepare(`SELECT p.player_id,p.full_name_en,COALESCE(m.full_name_ru,p.full_name_ru) full_name_ru,p.current_team_tri,p.position_code,p.sweater_number,m.primary_country_code,m.birth_date,m.height_cm,m.weight_kg FROM players p LEFT JOIN player_profile_meta m ON m.player_id=p.player_id WHERE p.player_id=? LIMIT 1;`).bind(id).first();}catch{}
   const landing=await fetchJson(`${NHL}/player/${id}/landing`).catch(()=>null);
