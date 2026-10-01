@@ -34,6 +34,7 @@ import { handleTelegramCenterV18VkData } from "./telegram-center-v18-vk-data.js"
 import { handleTelegramCenterV18VkUi } from "./telegram-center-v18-vk-ui.js";
 import { handleTelegramCenterV19ProductData } from "./telegram-center-v19-product-data.js";
 import { handleTelegramCenterV19Ui } from "./telegram-center-v19-ui.js";
+import { handleTelegramCenterMediaProxy } from "./telegram-center-media-proxy.js";
 import { handleTelegramCenterV20News } from "./telegram-center-v20-news.js";
 import { handleTelegramCenterV20Ui } from "./telegram-center-v20-ui.js";
 import { handleTelegramCenterV21SpoilersUi } from "./telegram-center-v21-spoilers-ui.js";
@@ -56,6 +57,10 @@ import { handleBroadcastOperatorRequest } from "./broadcast-operator.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
   if (path === "/telegram-app/goalie-bg.webp" && request.method === "GET" && env.ASSETS?.fetch) {
+    return env.ASSETS.fetch(request);
+  }
+
+  if (/^\/player-audio\/\d+\.mp3$/.test(path) && request.method === "GET" && env.ASSETS?.fetch) {
     return env.ASSETS.fetch(request);
   }
 
@@ -105,6 +110,9 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (centerV17PlayerDataResponse) return centerV17PlayerDataResponse;
   const centerV17HotfixResponse = handleTelegramCenterV17Hotfix(request, path);
   if (centerV17HotfixResponse) return centerV17HotfixResponse;
+
+  const centerMediaProxyResponse = await handleTelegramCenterMediaProxy(request.clone(), path);
+  if (centerMediaProxyResponse) return centerMediaProxyResponse;
 
   const centerV19DataResponse = await handleTelegramCenterV19ProductData(request.clone(), env, path);
   if (centerV19DataResponse) return centerV19DataResponse;

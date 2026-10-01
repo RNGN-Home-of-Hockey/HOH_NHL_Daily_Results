@@ -139,7 +139,7 @@ jobs:
           if (!r || r.status !== 200 || !v11.includes('v11Audio') || !v11.includes('hoh-center-v11-expanded-subscriptions')) throw new Error('Center V11 UI route failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/api/telegram-center-v11/pronunciation/8478864'), {}, '/api/telegram-center-v11/pronunciation/8478864');
           const kaprizovAudio = await r.json();
-          if (!r || r.status !== 200 || !kaprizovAudio.available || kaprizovAudio.source !== 'eliteprospects_player_audio' || !String(kaprizovAudio.audio_url||'').includes('kirill_kaprizov.mp3')) throw new Error('Kaprizov Elite Prospects audio contract failed');
+          if (!r || r.status !== 200 || !kaprizovAudio.available || kaprizovAudio.source !== 'eliteprospects_player_audio' || !(/^\/player-audio\/8478864\.mp3$/.test(String(kaprizovAudio.audio_url||'')) || String(kaprizovAudio.audio_url||'').includes('kirill_kaprizov.mp3'))) throw new Error('Kaprizov pronunciation audio contract failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v12.js'), {}, '/telegram-app/v12.js');
           const v12 = await r.text();
           for (const needle of ['v12PhotoBadge','v12Audio','installSeasons','место\\s+обновится','/api/telegram-center-v12']) if (!r || r.status !== 200 || !v12.includes(needle)) throw new Error('Center V12 UI missing: '+needle);
@@ -164,19 +164,21 @@ jobs:
           if (v24ui.includes('--hoh-bg-player') || v24ui.includes('background=1&v=')) throw new Error('V24 must not dynamically zoom player headshots');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v19.js'), {}, '/telegram-app/v19.js');
           const v19 = await r.text();
-          for (const needle of ['openBroadcasts','v19Audio','aspect-ratio:16/9','historical_pregame','v19Country','/broadcast/winline-logo.png?asset=canonical-3','decorateHomeOdds','v25GameCover','v25HasCover',"root.querySelectorAll('[data-v19-game]')","a.onclick=e=>e.stopPropagation()","b.textContent='Матчи'"]) {
+          for (const needle of ['openBroadcasts','v19Audio','aspect-ratio:16/9','historical_pregame','v19Country','/broadcast/winline-logo.png?asset=canonical-3','decorateHomeOdds','v25GameCover','v25HasCover','telegram-center-media/vk-cover',"root.querySelectorAll('[data-v19-game]')","a.onclick=e=>e.stopPropagation()","b.textContent='Матчи'"]) {
             if (!r || r.status !== 200 || !v19.includes(needle)) throw new Error('Center V19 UI missing: '+needle);
           }
           if (v19.includes('new MutationObserver')) throw new Error('V19 authoritative UI must not add a MutationObserver layer');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/v20.js'), {}, '/telegram-app/v20.js');
           const v20 = await r.text();
-          for (const needle of ['СВЕЖЕЕ В НХЛ','v20PlayerNews','v20CommentSend','/api/telegram-center-v20','v25HomeStable','v25FeaturedGame','v25FeaturedLabel','aspect-ratio:16/9','box.dataset.v25FeaturedGame','(cover||teams)','Смотреть матч в VK Видео','#gameList{display:grid','font-size:11px']) {
+          for (const needle of ['СВЕЖЕЕ В НХЛ','v20PlayerNews','v20CommentSend','/api/telegram-center-v20','v25HomeStable','v25FeaturedGame','v25FeaturedLabel','aspect-ratio:16/9','box.dataset.v25FeaturedGame','(cover||teams)','telegram-center-media/vk-cover','Смотреть матч в VK Видео','#gameList{display:grid','font-size:11px']) {
             if (!r || r.status !== 200 || !v20.includes(needle)) throw new Error('Center V20 UI missing: '+needle);
           }
           const featuredFn=v20.slice(v20.indexOf('function featuredHtml(g){'),v20.indexOf('function stabilizeHome'));
           if(featuredFn.indexOf('v25FeaturedLabel')<0||featuredFn.indexOf('v25FeaturedLabel')>featuredFn.indexOf('(cover||teams)')) throw new Error('Match-of-day label must render above the featured cover');
           if(v20.includes('#gameList{display:none')) throw new Error('Home must keep today match cards visible');
           if (v20.includes('sports.ru/')) throw new Error('V20 UI must not expose Sports.ru links');
+          r = await handleTeamCurrentRequest(new Request('https://example.test/api/telegram-center-media/vk-cover?url='+encodeURIComponent('https://example.com/not-vk.jpg')), {}, '/api/telegram-center-media/vk-cover');
+          if (!r || r.status !== 400) throw new Error('VK cover relay allowlist contract failed');
           r = await handleTeamCurrentRequest(new Request('https://example.test/telegram-app/game-follow.js'), {}, '/telegram-app/game-follow.js');
           if (!r || r.status !== 200) throw new Error('Game-follow JS route failed');
           const gameFollowJs=await r.text();
