@@ -34,9 +34,9 @@ class FakeDB {
 }
 
 const baseKeyboard={inline_keyboard:[
-  [{text:"☐ MIN — NSH · 03:00",callback_data:`center_gr:${G1}`}],
-  [{text:"☐ EDM — VAN · 05:00",callback_data:`center_gr:${G2}`}],
-  [{text:"🔔 Все матчи",callback_data:"center_gra"}],
+  [{text:"☐ MIN — NSH · 03:00",callback_data:`center_gr:${G1}:1`}],
+  [{text:"☐ EDM — VAN · 05:00",callback_data:`center_gr:${G2}:1`}],
+  [{text:"🔔 Все матчи",callback_data:"center_gra:1"}],
 ]};
 
 const db=new FakeDB();
@@ -61,7 +61,7 @@ function callback(data,reply_markup,id="cb1"){
 try{
   const env={DB:db,TELEGRAM_CENTER_BOT_TOKEN:"fixture-token"};
 
-  const one=await processCenterReminderCallback(env,callback(`center_gr:${G1}`,baseKeyboard));
+  const one=await processCenterReminderCallback(env,callback(`center_gr:${G1}:1`,baseKeyboard));
   assert.equal(one.handled,true);
   assert.equal(one.ok,true);
   assert.equal(one.enabled,true);
@@ -69,25 +69,32 @@ try{
   const edit1=telegramCalls.find(x=>x.method==="editMessageReplyMarkup");
   assert.ok(edit1,"individual callback must edit keyboard");
   const flat1=edit1.payload.reply_markup.inline_keyboard.flat();
-  assert.match(flat1.find(x=>x.callback_data===`center_gr:${G1}`).text,/^✅/);
-  assert.match(flat1.find(x=>x.callback_data===`center_gr:${G2}`).text,/^☐/);
-  assert.equal(flat1.find(x=>x.callback_data==="center_gra").text,"◩ Все матчи");
+  assert.match(flat1.find(x=>x.callback_data===`center_gr:${G1}:0`).text,/^✅/);
+  assert.match(flat1.find(x=>x.callback_data===`center_gr:${G2}:1`).text,/^☐/);
+  assert.equal(flat1.find(x=>x.callback_data==="center_gra:1").text,"◩ Все матчи");
 
   telegramCalls.length=0;
-  const all=await processCenterReminderCallback(env,callback("center_gra",edit1.payload.reply_markup,"cb2"));
+  const all=await processCenterReminderCallback(env,callback("center_gra:1",edit1.payload.reply_markup,"cb2"));
   assert.equal(all.ok,true);
   assert.equal(all.enabled,true);
   assert.deepEqual([...db.reminders].sort((a,b)=>a-b),[G1,G2]);
   const edit2=telegramCalls.find(x=>x.method==="editMessageReplyMarkup");
   const flat2=edit2.payload.reply_markup.inline_keyboard.flat();
-  assert.ok(flat2.filter(x=>/^center_gr:/.test(x.callback_data||"")).every(x=>String(x.text).startsWith("✅")));
-  assert.equal(flat2.find(x=>x.callback_data==="center_gra").text,"✅ Все матчи");
+  assert.ok(flat2.filter(x=>/^center_gr:\\d+:[01]$/.test(x.callback_data||"")).every(x=>String(x.text).startsWith("✅")));
+  assert.equal(flat2.find(x=>x.callback_data==="center_gra:0").text,"✅ Все матчи");
   assert.ok(telegramCalls.some(x=>x.method==="answerCallbackQuery"),"callback must be acknowledged");
 
   telegramCalls.length=0;
-  const off=await processCenterReminderCallback(env,callback("center_gra",edit2.payload.reply_markup,"cb3"));
+  const off=await processCenterReminderCallback(env,callback("center_gra:0",edit2.payload.reply_markup,"cb3"));
   assert.equal(off.ok,true);
   assert.equal(off.enabled,false);
+  assert.equal(db.reminders.size,0);
+
+  // Replaying the same explicit target is safe: it must not toggle back on.
+  telegramCalls.length=0;
+  const replay=await processCenterReminderCallback(env,callback("center_gra:0",edit2.payload.reply_markup,"cb4"));
+  assert.equal(replay.handled,true);
+  assert.equal(replay.enabled,false);
   assert.equal(db.reminders.size,0);
 
   console.log("CENTER_DIGEST_CALLBACKS_OK",{individual:one.games,all:all.games,disabled:off.games});
