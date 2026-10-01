@@ -23,7 +23,7 @@ class FakeStatement{
     if(this.sql.includes("FROM telegram_users u")&&this.sql.includes("notification_user_preferences")){
       return {results:[{telegram_user_id:USER,timezone_name:this.db.timezone,daily_player_digest:1,daily_digest_hour:20,player_postgame_reports:1}]};
     }
-    if(this.sql.includes("SELECT subject_key")&&this.sql.includes("subject_type='game'")){
+    if(this.sql.includes("subject_key")&&this.sql.includes("subject_type='game'")&&this.sql.includes("subscription_preferences")){
       return {results:[{subject_key:String(UPCOMING_GAME)}]};
     }
     throw new Error("Unexpected all SQL: "+this.sql);
