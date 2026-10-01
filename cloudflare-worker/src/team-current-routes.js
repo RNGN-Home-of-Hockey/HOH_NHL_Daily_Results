@@ -60,6 +60,10 @@ export async function handleTeamCurrentRequest(request, env, path) {
     return env.ASSETS.fetch(request);
   }
 
+  if (/^\/player-audio\/\d+\.mp3$/.test(path) && request.method === "GET" && env.ASSETS?.fetch) {
+    return env.ASSETS.fetch(request);
+  }
+
   const healthResponse = await handleDataCoreHealthV2(request, env, path);
   if (healthResponse) return healthResponse;
 
