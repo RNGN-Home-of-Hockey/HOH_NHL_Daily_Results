@@ -3,7 +3,10 @@ name: Deploy Cloudflare Worker
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["Refresh Center player salaries"]
+    workflows:
+      - "Refresh Center player salaries"
+      - "Refresh Elite Prospects player pronunciation audio"
+      - "Refresh Center player pronunciation text"
     types: [completed]
   push:
     branches: [main]
@@ -30,7 +33,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
