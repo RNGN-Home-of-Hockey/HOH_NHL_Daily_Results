@@ -332,6 +332,12 @@ jobs:
           if(!player.player?.full_name_ru||!player.player?.team_logo||!player.player?.primary_country_code)throw new Error('Ovechkin profile metadata incomplete');
           const audio=await get('/api/telegram-center-v11/pronunciation/8471214');
           console.log('PLAYER_OK',player.player.full_name_ru,player.player.primary_country_code,'audio',Boolean(audio.available),'pronunciation',player.player.pronunciation_text||null);
+          const kapAudio=await get('/api/telegram-center-v11/pronunciation/8478864');
+          if(!kapAudio.available||!/^\/player-audio\/8478864\.mp3$/.test(String(kapAudio.audio_url||'')))throw new Error('Kaprizov first-party pronunciation audio missing '+JSON.stringify(kapAudio));
+          const kapAudioRes=await fetch(base+kapAudio.audio_url,{cache:'no-store'});
+          const kapAudioBytes=await kapAudioRes.arrayBuffer();
+          if(!kapAudioRes.ok||kapAudioBytes.byteLength<1000||!/^audio\//i.test(String(kapAudioRes.headers.get('content-type')||'')))throw new Error('Kaprizov audio asset failed '+kapAudioRes.status+' '+kapAudioBytes.byteLength+' '+String(kapAudioRes.headers.get('content-type')||''));
+          console.log('PRONUNCIATION_AUDIO_OK',kapAudio.audio_url,kapAudioBytes.byteLength);
           const winlineStatus=await get('/api/winline/center/status');
           console.log('WINLINE_STATUS',JSON.stringify({events:winlineStatus.events,markets:winlineStatus.markets,active_markets:winlineStatus.active_markets,snapshots:winlineStatus.snapshots,snapshot_games:winlineStatus.snapshot_games,latest_market_update:winlineStatus.latest_market_update}));
           const regular=await get('/api/telegram-center-v19/broadcasts?from=2025-04-01&to=2025-04-07');
