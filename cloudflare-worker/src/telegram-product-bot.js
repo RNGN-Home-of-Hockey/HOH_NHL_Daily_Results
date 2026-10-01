@@ -617,9 +617,9 @@ export async function pollTelegramCenterUpdates(env) {
 
 export async function processCenterReminderCallback(env, callback) {
   const data = String(callback?.data || "").trim();
-  if (data !== "center_gra" && !/^center_gr:\d+$/.test(data)) {
-    return { handled: false, retry: false };
-  }
+  const one = /^center_gr:(\d+):([01])$/.exec(data);
+  const all = /^center_gra:([01])$/.exec(data);
+  if (!one && !all) return { handled: false, retry: false };
 
   const callbackId = String(callback?.id || "");
   const userId = Number(callback?.from?.id || 0);
@@ -639,24 +639,18 @@ export async function processCenterReminderCallback(env, callback) {
     await answerCenterCallback(env, callbackId, "Список матчей устарел.");
     return { handled: true, retry: false, ok: false, error: "digest_games_missing" };
   }
-  const selected = data === "center_gra"
+  const selected = all
     ? gameIds
-    : [Number(data.split(":")[1])].filter((id) => gameIds.includes(id));
+    : [Number(one[1])].filter((id) => gameIds.includes(id));
   if (!selected.length) {
     await answerCenterCallback(env, callbackId, "Матч уже недоступен.");
     return { handled: true, retry: false, ok: false, error: "game_not_in_digest" };
   }
+  const turnOn = (all ? all[1] : one[2]) === "1";
 
   try {
     await upsertCenterTelegramUser(env.DB, callback.from);
-    const before = await centerGameReminderStates(env.DB, userId, gameIds);
-    const turnOn = data === "center_gra"
-      ? !gameIds.every((id) => before.has(id))
-      : !before.has(selected[0]);
-
-    for (const gamePk of selected) {
-      await setCenterGameReminder(env.DB, userId, gamePk, turnOn);
-    }
+    for (const gamePk of selected) await setCenterGameReminder(env.DB, userId, gamePk, turnOn);
 
     const after = await centerGameReminderStates(env.DB, userId, gameIds);
     const replyMarkup = refreshReminderKeyboard(callback.message.reply_markup, after);
@@ -672,7 +666,7 @@ export async function processCenterReminderCallback(env, callback) {
         ? (selected.length > 1 ? "Напоминания включены" : "Напоминание включено")
         : (selected.length > 1 ? "Напоминания выключены" : "Напоминание выключено"),
     );
-    return { handled: true, retry: !edited.ok, ok: edited.ok, enabled: turnOn, games: selected };
+    return { handled: true, retry: false, ok: edited.ok, enabled: turnOn, games: selected, keyboard_updated: edited.ok };
   } catch (error) {
     console.log("telegram_center_reminder_callback_failed", {
       error: String(error?.message || error || "unknown"),
@@ -686,7 +680,7 @@ function callbackGameIds(replyMarkup) {
   const out = [];
   for (const row of replyMarkup?.inline_keyboard || []) {
     for (const button of row || []) {
-      const match = /^center_gr:(\d+)$/.exec(String(button?.callback_data || ""));
+      const match = /^center_gr:(\d+):[01]$/.exec(String(button?.callback_data || ""));
       if (!match) continue;
       const id = Number(match[1]);
       if (Number.isSafeInteger(id) && id > 0 && !out.includes(id)) out.push(id);
@@ -703,15 +697,15 @@ function refreshReminderKeyboard(replyMarkup, enabled) {
   const ids = callbackGameIds(replyMarkup);
   const rows = (replyMarkup?.inline_keyboard || []).map((row) => (row || []).map((button) => {
     const data = String(button?.callback_data || "");
-    const match = /^center_gr:(\d+)$/.exec(data);
+    const match = /^center_gr:(\d+):[01]$/.exec(data);
     if (match) {
-      const id = Number(match[1]);
-      return { ...button, text: `${enabled.has(id) ? "✅" : "☐"} ${cleanReminderButtonText(button.text)}` };
+      const id = Number(match[1]),on=enabled.has(id);
+      return { ...button, text: `${on ? "✅" : "☐"} ${cleanReminderButtonText(button.text)}`, callback_data:`center_gr:${id}:${on?0:1}` };
     }
-    if (data === "center_gra") {
-      const all = ids.length > 0 && ids.every((id) => enabled.has(id));
+    if (/^center_gra:[01]$/.test(data)) {
+      const allOn = ids.length > 0 && ids.every((id) => enabled.has(id));
       const some = ids.some((id) => enabled.has(id));
-      return { ...button, text: all ? "✅ Все матчи" : some ? "◩ Все матчи" : "🔔 Все матчи" };
+      return { ...button, text: allOn ? "✅ Все матчи" : some ? "◩ Все матчи" : "🔔 Все матчи", callback_data:`center_gra:${allOn?0:1}` };
     }
     return button;
   }));
@@ -724,10 +718,12 @@ async function centerGameReminderStates(db, userId, gameIds) {
   if (!ids.length) return out;
   const placeholders = ids.map(() => "?").join(",");
   const rows = await db.prepare(`
-    SELECT subject_key
-    FROM subscriptions
-    WHERE telegram_user_id=? AND subject_type='game' AND COALESCE(notify_pregame,0)=1
-      AND CAST(subject_key AS INTEGER) IN (${placeholders});
+    SELECT s.subject_key
+    FROM subscriptions s
+    LEFT JOIN subscription_preferences p ON p.subscription_id=s.subscription_id
+    WHERE s.telegram_user_id=? AND s.subject_type='game'
+      AND COALESCE(p.notify_pregame,s.notify_pregame,0)=1
+      AND CAST(s.subject_key AS INTEGER) IN (${placeholders});
   `).bind(userId, ...ids).all();
   for (const row of rows.results || []) out.add(Number(row.subject_key));
   return out;
