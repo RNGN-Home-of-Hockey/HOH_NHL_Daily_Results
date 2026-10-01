@@ -2,6 +2,10 @@ name: Refresh Elite Prospects player pronunciation audio
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/build_center_player_pronunciations_from_eliteprospects.py'
+      - '.github/workflows/center-player-pronunciation-eliteprospects.yml'
   push:
     branches: [main]
     paths:
