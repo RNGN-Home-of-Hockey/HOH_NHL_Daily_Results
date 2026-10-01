@@ -1,4 +1,5 @@
 import fullNames from "../../ru_full_names.json" with { type: "json" };
+import pronunciationCache from "../../state/center_player_pronunciations_eliteprospects.json" with { type: "json" };
 
 const NHL="https://api-web.nhle.com/v1";
 const TEAMS=["ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA","LAK","MIN","MTL","NSH","NJD","NYI","NYR","OTT","PHI","PIT","SJS","SEA","STL","TBL","TOR","UTA","VAN","VGK","WSH","WPG"];
@@ -61,17 +62,25 @@ export async function runCenterRosterMaintenance(env,{force=false}={}){
           updated_at=CURRENT_TIMESTAMP;
       `).bind(p.player_id,p.first_name_en,p.last_name_en,p.full_name_en,p.full_name_ru,p.current_team_tri,p.position_code,p.sweater_number,p.shoots_catches));
       statements.push(env.DB.prepare(`
-        INSERT INTO player_profile_meta (player_id,primary_country_code,countries_json,birth_date,height_cm,weight_kg,source_updated_at,updated_at)
-        VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+        INSERT INTO player_profile_meta (player_id,primary_country_code,countries_json,birth_date,height_cm,weight_kg,eliteprospects_url,pronunciation_url,pronunciation_source,source_updated_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
         ON CONFLICT(player_id) DO UPDATE SET
           primary_country_code=COALESCE(excluded.primary_country_code,player_profile_meta.primary_country_code),
           countries_json=COALESCE(excluded.countries_json,player_profile_meta.countries_json),
           birth_date=COALESCE(excluded.birth_date,player_profile_meta.birth_date),
           height_cm=COALESCE(excluded.height_cm,player_profile_meta.height_cm),
           weight_kg=COALESCE(excluded.weight_kg,player_profile_meta.weight_kg),
+          eliteprospects_url=COALESCE(excluded.eliteprospects_url,player_profile_meta.eliteprospects_url),
+          pronunciation_url=COALESCE(excluded.pronunciation_url,player_profile_meta.pronunciation_url),
+          pronunciation_source=COALESCE(excluded.pronunciation_source,player_profile_meta.pronunciation_source),
           source_updated_at=CURRENT_TIMESTAMP,
           updated_at=CURRENT_TIMESTAMP;
-      `).bind(p.player_id,p.birth_country,p.birth_country?JSON.stringify([p.birth_country]):null,p.birth_date,p.height_cm,p.weight_kg));
+      `).bind(
+        p.player_id,p.birth_country,p.birth_country?JSON.stringify([p.birth_country]):null,p.birth_date,p.height_cm,p.weight_kg,
+        pronunciationCache?.players?.[String(p.player_id)]?.eliteprospects_url||null,
+        pronunciationCache?.players?.[String(p.player_id)]?.audio_local_path||pronunciationCache?.players?.[String(p.player_id)]?.pronunciation_url||null,
+        pronunciationCache?.players?.[String(p.player_id)]?.pronunciation_source||null
+      ));
     }
     await env.DB.batch(statements);
     written+=Math.floor(statements.length/2);
