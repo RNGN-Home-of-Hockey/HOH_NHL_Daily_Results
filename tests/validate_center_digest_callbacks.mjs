@@ -7,7 +7,7 @@ class FakeStatement {
   constructor(db,sql){this.db=db;this.sql=sql;this.args=[]}
   bind(...args){this.args=args;return this}
   async all(){
-    if(this.sql.includes("SELECT subject_key")&&this.sql.includes("subject_type='game'")){
+    if(this.sql.includes("subject_key")&&this.sql.includes("subject_type='game'")&&this.sql.includes("subscription_preferences")){
       const ids=this.args.slice(1).map(Number);
       return {results:ids.filter(id=>this.db.reminders.has(id)).map(id=>({subject_key:String(id)}))};
     }
@@ -80,7 +80,7 @@ try{
   assert.deepEqual([...db.reminders].sort((a,b)=>a-b),[G1,G2]);
   const edit2=telegramCalls.find(x=>x.method==="editMessageReplyMarkup");
   const flat2=edit2.payload.reply_markup.inline_keyboard.flat();
-  assert.ok(flat2.filter(x=>/^center_gr:\\d+:[01]$/.test(x.callback_data||"")).every(x=>String(x.text).startsWith("✅")));
+  assert.ok(flat2.filter(x=>/^center_gr:\d+:[01]$/.test(x.callback_data||"")).every(x=>String(x.text).startsWith("✅")));
   assert.equal(flat2.find(x=>x.callback_data==="center_gra:0").text,"✅ Все матчи");
   assert.ok(telegramCalls.some(x=>x.method==="answerCallbackQuery"),"callback must be acknowledged");
 
