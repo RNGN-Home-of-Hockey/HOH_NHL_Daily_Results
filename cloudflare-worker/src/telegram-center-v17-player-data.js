@@ -35,7 +35,7 @@ async function players(request,env){
 
   try{
     const r=await env.DB.prepare(`SELECT p.player_id,p.full_name_en,COALESCE(m.full_name_ru,p.full_name_ru) full_name_ru,p.current_team_tri,p.position_code,p.sweater_number,m.primary_country_code,m.birth_date,m.height_cm,m.weight_kg,m.eliteprospects_url,m.pronunciation_url,m.pronunciation_source FROM players p LEFT JOIN player_profile_meta m ON m.player_id=p.player_id WHERE COALESCE(p.active,1)=1 LIMIT 1800;`).all();
-    for(const d of r.results||[]){const id=Number(d.player_id),prev=map.get(id)||{},sal=(salaryCache?.players||{})[String(id)]||{};map.set(id,{...prev,...d,player_id:id,full_name_ru:d.full_name_ru||prev.full_name_ru||fullNames?.[String(id)]||fallbackRuName(d.full_name_en||prev.full_name_en)||null,salary_aav:numOrNull(sal?.aav??sal?.cap_hit??prev.salary_aav),salary_cash:numOrNull(sal?.salary_cash??prev.salary_cash)});}
+    for(const d of r.results||[]){const id=Number(d.player_id),prev=map.get(id)||{},sal=(salaryCache?.players||{})[String(id)]||{};map.set(id,{...prev,...d,player_id:id,full_name_ru:d.full_name_ru||prev.full_name_ru||fullNames?.[String(id)]||fallbackRuName(d.full_name_en||prev.full_name_en)||null,eliteprospects_url:d.eliteprospects_url||prev.eliteprospects_url||null,pronunciation_available:Boolean(d.pronunciation_url||prev.pronunciation_audio_url||prev.pronunciation_available),pronunciation_audio_url:d.pronunciation_url||prev.pronunciation_audio_url||null,pronunciation_audio_source:d.pronunciation_source||prev.pronunciation_audio_source||null,salary_aav:numOrNull(sal?.aav??sal?.cap_hit??prev.salary_aav),salary_cash:numOrNull(sal?.salary_cash??prev.salary_cash)});}
   }catch{}
 
   let liveIds=null;
