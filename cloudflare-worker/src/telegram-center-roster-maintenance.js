@@ -77,9 +77,9 @@ export async function runCenterRosterMaintenance(env,{force=false}={}){
           updated_at=CURRENT_TIMESTAMP;
       `).bind(
         p.player_id,p.birth_country,p.birth_country?JSON.stringify([p.birth_country]):null,p.birth_date,p.height_cm,p.weight_kg,
-        pronunciationCache?.players?.[String(p.player_id)]?.eliteprospects_url||null,
-        pronunciationCache?.players?.[String(p.player_id)]?.audio_local_path||pronunciationCache?.players?.[String(p.player_id)]?.pronunciation_url||null,
-        pronunciationCache?.players?.[String(p.player_id)]?.pronunciation_source||null
+        (pronunciationCache?.profiles||pronunciationCache?.players||{})[String(p.player_id)]?.eliteprospects_url||null,
+        (pronunciationCache?.profiles||pronunciationCache?.players||{})[String(p.player_id)]?.audio_local_path||(pronunciationCache?.profiles||pronunciationCache?.players||{})[String(p.player_id)]?.pronunciation_url||null,
+        (pronunciationCache?.profiles||pronunciationCache?.players||{})[String(p.player_id)]?.pronunciation_source||null
       ));
     }
     await env.DB.batch(statements);
