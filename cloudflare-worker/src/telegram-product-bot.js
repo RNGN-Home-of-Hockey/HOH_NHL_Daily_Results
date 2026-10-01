@@ -193,6 +193,7 @@ async function centerStatus(request, env) {
   const centerTokenConfigured = Boolean(String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim());
   const webhookSecretConfigured = Boolean(String(env.TELEGRAM_WEBHOOK_VERIFY_SECRET || "").trim());
   const expectedMiniApp = miniAppUrl(request, env);
+  const expectedWebhook = String(env.TELEGRAM_CENTER_WEBHOOK_URL || "").trim() || DEFAULT_CENTER_WEBHOOK_URL;
 
   let bot = { ok: false, error: "missing_telegram_center_token" };
   let webhook = { ok: false, error: "missing_telegram_center_token" };
@@ -254,7 +255,12 @@ async function centerStatus(request, env) {
   if (centerTokenConfigured) {
     await readTelegramState();
     let menuUrl = String(menuButton?.value?.web_app?.url || "");
-    if (menuUrl !== expectedMiniApp) {
+    const webhookAllowsCallbacks = Array.isArray(webhook?.allowed_updates)
+      && webhook.allowed_updates.includes("message")
+      && webhook.allowed_updates.includes("callback_query");
+    const webhookNeedsRepair = deliveryMode === "webhook"
+      && (!webhook.ok || webhook.url !== expectedWebhook || !webhookAllowsCallbacks);
+    if (menuUrl !== expectedMiniApp || webhookNeedsRepair) {
       deliverySetup = deliveryMode === "polling"
         ? await ensureTelegramCenterPolling(env, { force: true })
         : await ensureTelegramCenterWebhook(env, { force: true });
@@ -273,7 +279,6 @@ async function centerStatus(request, env) {
   const menuButtonMatchesBuild = menuButton.ok
     && menuButton?.value?.type === "web_app"
     && String(menuButton?.value?.web_app?.url || "") === expectedMiniApp;
-  const expectedWebhook = String(env.TELEGRAM_CENTER_WEBHOOK_URL || "").trim() || DEFAULT_CENTER_WEBHOOK_URL;
   const webhookMatchesExpected = webhook.ok && webhook.url === expectedWebhook;
   const pollingReady = webhook.ok && !webhook.url;
   const lastEvent = await readCenterDiagnostic(env);
@@ -281,7 +286,7 @@ async function centerStatus(request, env) {
 
   return json({
     ok: centerTokenConfigured && bot.ok && webhook.ok && menuButtonMatchesBuild
-      && (deliveryMode === "polling" ? pollingReady && deliverySetup.ok : webhookSecretConfigured && webhookMatchesExpected && deliverySetup.ok),
+      && (deliveryMode === "polling" ? pollingReady && deliverySetup.ok : webhookSecretConfigured && webhookMatchesExpected && Array.isArray(webhook.allowed_updates) && webhook.allowed_updates.includes("callback_query") && deliverySetup.ok),
     service: "hoh-nhl-center",
     runtime_marker: "telegram-center-2026-09-24-v24.2",
     center_token_configured: centerTokenConfigured,
