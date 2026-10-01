@@ -43,16 +43,25 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
-          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.8.0';
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
           for(let i=0;i<60;i++){
-            const r=await fetch(url,{cache:'no-store'});
-            const body=await r.text().catch(()=>'');
-            const build=String(r.headers.get('x-hoh-mini-app-build')||'');
-            console.log('CENTER_DEPLOY_WAIT',i+1,r.status,build);
-            if(r.ok&&build==='24.8.0'&&body.includes('HOH_MINI_APP_BUILD="24.8.0"'))process.exit(0);
+            const [shellRes,v19Res,v23Res]=await Promise.all([
+              fetch(base+'/telegram-app-v24?build=24.8.0',{cache:'no-store'}),
+              fetch(base+'/telegram-app/v19.js?deploy_wait='+Date.now(),{cache:'no-store'}),
+              fetch(base+'/telegram-app/v23-player.js?deploy_wait='+Date.now(),{cache:'no-store'}),
+            ]);
+            const [body,v19,v23]=await Promise.all([shellRes.text().catch(()=>''),v19Res.text().catch(()=>''),v23Res.text().catch(()=>'')]);
+            const build=String(shellRes.headers.get('x-hoh-mini-app-build')||'');
+            const ready=shellRes.ok&&v19Res.ok&&v23Res.ok&&build==='24.8.0'
+              &&body.includes('HOH_MINI_APP_BUILD="24.8.0"')
+              &&v19.includes('source_key=')
+              &&v23.includes('function uniqueTrends')
+              &&v23.includes('function recommendationFact');
+            console.log('CENTER_DEPLOY_WAIT',i+1,shellRes.status,build,'ready',ready);
+            if(ready)process.exit(0);
             await new Promise(resolve=>setTimeout(resolve,2000));
           }
-          throw new Error('V24.8.0 did not reach production before verification');
+          throw new Error('current Center player/cover fixes did not reach production before verification');
           JS
       - name: Verify production V22 contracts
         shell: bash
@@ -100,8 +109,8 @@ jobs:
           const v22nav=await text('/telegram-app/v22.js');
           for(const x of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds','legacyGame','H.openGameV19'])if(!v22nav.includes(x))throw new Error('V22 navigation/settings missing '+x);
           const v23player=await text('/telegram-app/v23-player.js');
-          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')"])if(!v23player.includes(x))throw new Error('V23 player UX missing '+x);
-          if(v23player.includes('Команда: ')||v23player.includes('ОЦЕНКА HOH')||v23player.includes('Линия WINLINE'))throw new Error('V23 recommendation still verbose');
+          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')",'function uniqueTrends','function recommendationFact','Линия: ','source_key=','loading="eager"'])if(!v23player.includes(x))throw new Error('V23 player UX missing '+x);
+          if(v23player.includes('Команда: ')||v23player.includes('ОЦЕНКА HOH')||v23player.includes('Линия WINLINE')||v23player.includes('Последний подтверждённый матч'))throw new Error('V23 player page still contains obsolete copy');
           const v15core=await text('/telegram-app/v15-core.js');
           if(!v15core.includes("localStorage.getItem('hoh-center-theme')||'light'"))throw new Error('light theme is not default');
           const v19=await text('/telegram-app/v19.js');
@@ -115,6 +124,12 @@ jobs:
           if(!v15logo.includes('hoh-center-theme-default-24.7'))throw new Error('white-theme migration marker missing');
           const playerLogo=await text('/telegram-app/v23-player.js');
           if(!playerLogo.includes('/broadcast/winline-logo.png?asset=canonical-3')||!playerLogo.includes('<img class="v23RecBrand"'))throw new Error('player canonical Winline image missing');
+          const coverGames=await json('/api/telegram-center-v19/broadcasts?from=2026-09-30&to=2026-09-30');
+          const coverGame=(coverGames.games||[]).find(g=>g.vk?.thumbnail_url&&g.vk?.source_key);
+          if(!coverGame)throw new Error('production cover fixture missing');
+          const coverRes=await fetch(base+'/api/telegram-center-media/vk-cover?source_key='+encodeURIComponent(coverGame.vk.source_key),{cache:'no-store'});
+          if(!coverRes.ok||!String(coverRes.headers.get('content-type')||'').startsWith('image/'))throw new Error('production source-key VK cover failed '+coverRes.status+' '+String(coverRes.headers.get('content-type')||''));
+
           const archiveFallback=await json('/api/telegram-center-v19/broadcasts?from=2026-09-23&to=2026-09-25');
           const completedNoVk=(archiveFallback.games||[]).find(g=>['FINAL','OFF'].includes(String(g.game_state||'').toUpperCase())&&!g.vk);
           if(completedNoVk){
