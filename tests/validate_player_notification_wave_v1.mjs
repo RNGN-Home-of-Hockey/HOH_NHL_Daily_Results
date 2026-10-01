@@ -84,7 +84,7 @@ try{
   assert.match(digest.text,/Выберите ниже, за какие матчи напомнить за 15 минут/);
   assert.ok(Array.isArray(digest.reply_markup?.inline_keyboard),"digest must contain inline reminder keyboard");
   const reminderButtons=digest.reply_markup.inline_keyboard.flat();
-  assert.ok(reminderButtons.some(b=>b.callback_data===`center_gr:${UPCOMING_GAME}`),"digest must expose one-game reminder toggle");
+  assert.ok(reminderButtons.some(b=>b.callback_data===`center_gr:${UPCOMING_GAME}:0`),"enabled digest reminder must expose explicit disable target");
   assert.ok(reminderButtons.some(b=>String(b.text||"").startsWith("✅")),"existing reminder must render as enabled");
 
   const reminder=result.events.find(x=>x.type==="reminder_15m");
