@@ -70,9 +70,16 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     return json({ ok: false, error: "telegram_webhook_invalid_json" }, 400);
   }
 
+  const callback = update.callback_query || null;
+  if (callback) {
+    const outcome = await processCenterReminderCallback(env, callback);
+    if (outcome.handled) return json({ ok: true, action: "game_reminder_callback", ...outcome });
+  }
+
   const message = update.message || null;
   console.log("telegram_center_update", {
     has_message: Boolean(message),
+    has_callback: Boolean(callback),
     chat_type: message?.chat?.type || null,
     has_text: Boolean(message?.text),
   });
@@ -340,7 +347,7 @@ export async function ensureTelegramCenterWebhook(env, { force = false } = {}) {
     url: expectedWebhook,
     secret_token: secret,
     drop_pending_updates: false,
-    allowed_updates: ["message"],
+    allowed_updates: ["message", "callback_query"],
   });
   if (!setWebhook.ok) {
     const error = setWebhook.response?.description || setWebhook.error || "telegram_set_webhook_failed";
@@ -559,7 +566,7 @@ export async function pollTelegramCenterUpdates(env) {
   const payload = {
     timeout: 25,
     limit: 100,
-    allowed_updates: ["message"],
+    allowed_updates: ["message", "callback_query"],
   };
   if (lastOffset > 0) payload.offset = lastOffset + 1;
 
@@ -608,9 +615,198 @@ export async function pollTelegramCenterUpdates(env) {
 }
 
 
+async function processCenterReminderCallback(env, callback) {
+  const data = String(callback?.data || "").trim();
+  if (data !== "center_gra" && !/^center_gr:\d+$/.test(data)) {
+    return { handled: false, retry: false };
+  }
+
+  const callbackId = String(callback?.id || "");
+  const userId = Number(callback?.from?.id || 0);
+  const chatId = Number(callback?.message?.chat?.id || 0);
+  const messageId = Number(callback?.message?.message_id || 0);
+  if (!Number.isSafeInteger(userId) || userId <= 0 || !Number.isSafeInteger(chatId) || chatId !== userId || !Number.isSafeInteger(messageId)) {
+    await answerCenterCallback(env, callbackId, "Не удалось определить чат.");
+    return { handled: true, retry: false, ok: false, error: "invalid_callback_context" };
+  }
+  if (!env?.DB) {
+    await answerCenterCallback(env, callbackId, "Сервис напоминаний временно недоступен.");
+    return { handled: true, retry: true, ok: false, error: "missing_d1_binding" };
+  }
+
+  const gameIds = callbackGameIds(callback?.message?.reply_markup);
+  if (!gameIds.length) {
+    await answerCenterCallback(env, callbackId, "Список матчей устарел.");
+    return { handled: true, retry: false, ok: false, error: "digest_games_missing" };
+  }
+  const selected = data === "center_gra"
+    ? gameIds
+    : [Number(data.split(":")[1])].filter((id) => gameIds.includes(id));
+  if (!selected.length) {
+    await answerCenterCallback(env, callbackId, "Матч уже недоступен.");
+    return { handled: true, retry: false, ok: false, error: "game_not_in_digest" };
+  }
+
+  try {
+    await upsertCenterTelegramUser(env.DB, callback.from);
+    const before = await centerGameReminderStates(env.DB, userId, gameIds);
+    const turnOn = data === "center_gra"
+      ? !gameIds.every((id) => before.has(id))
+      : !before.has(selected[0]);
+
+    for (const gamePk of selected) {
+      await setCenterGameReminder(env.DB, userId, gamePk, turnOn);
+    }
+
+    const after = await centerGameReminderStates(env.DB, userId, gameIds);
+    const replyMarkup = refreshReminderKeyboard(callback.message.reply_markup, after);
+    const edited = await telegramRequest(env, "editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: replyMarkup,
+    });
+    await answerCenterCallback(
+      env,
+      callbackId,
+      turnOn
+        ? (selected.length > 1 ? "Напоминания включены" : "Напоминание включено")
+        : (selected.length > 1 ? "Напоминания выключены" : "Напоминание выключено"),
+    );
+    return { handled: true, retry: !edited.ok, ok: edited.ok, enabled: turnOn, games: selected };
+  } catch (error) {
+    console.log("telegram_center_reminder_callback_failed", {
+      error: String(error?.message || error || "unknown"),
+    });
+    await answerCenterCallback(env, callbackId, "Не удалось изменить напоминание.");
+    return { handled: true, retry: true, ok: false, error: "reminder_callback_failed" };
+  }
+}
+
+function callbackGameIds(replyMarkup) {
+  const out = [];
+  for (const row of replyMarkup?.inline_keyboard || []) {
+    for (const button of row || []) {
+      const match = /^center_gr:(\d+)$/.exec(String(button?.callback_data || ""));
+      if (!match) continue;
+      const id = Number(match[1]);
+      if (Number.isSafeInteger(id) && id > 0 && !out.includes(id)) out.push(id);
+    }
+  }
+  return out;
+}
+
+function cleanReminderButtonText(value) {
+  return String(value || "").replace(/^(?:✅|☐)\s*/, "").trim();
+}
+
+function refreshReminderKeyboard(replyMarkup, enabled) {
+  const ids = callbackGameIds(replyMarkup);
+  const rows = (replyMarkup?.inline_keyboard || []).map((row) => (row || []).map((button) => {
+    const data = String(button?.callback_data || "");
+    const match = /^center_gr:(\d+)$/.exec(data);
+    if (match) {
+      const id = Number(match[1]);
+      return { ...button, text: `${enabled.has(id) ? "✅" : "☐"} ${cleanReminderButtonText(button.text)}` };
+    }
+    if (data === "center_gra") {
+      const all = ids.length > 0 && ids.every((id) => enabled.has(id));
+      const some = ids.some((id) => enabled.has(id));
+      return { ...button, text: all ? "✅ Все матчи" : some ? "◩ Все матчи" : "🔔 Все матчи" };
+    }
+    return button;
+  }));
+  return { inline_keyboard: rows };
+}
+
+async function centerGameReminderStates(db, userId, gameIds) {
+  const ids = [...new Set((gameIds || []).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
+  const out = new Set();
+  if (!ids.length) return out;
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await db.prepare(`
+    SELECT subject_key
+    FROM subscriptions
+    WHERE telegram_user_id=? AND subject_type='game' AND COALESCE(notify_pregame,0)=1
+      AND CAST(subject_key AS INTEGER) IN (${placeholders});
+  `).bind(userId, ...ids).all();
+  for (const row of rows.results || []) out.add(Number(row.subject_key));
+  return out;
+}
+
+async function setCenterGameReminder(db, userId, gamePk, enabled) {
+  const key = String(gamePk);
+  if (enabled) {
+    await db.prepare(`
+      INSERT INTO subscriptions(
+        telegram_user_id,subject_type,subject_key,notify_pregame,notify_start,
+        notify_goal,notify_assist,notify_point,notify_period_end,notify_final
+      ) VALUES(?,'game',?,1,0,0,0,0,0,0)
+      ON CONFLICT(telegram_user_id,subject_type,subject_key) DO UPDATE SET notify_pregame=1;
+    `).bind(userId, key).run();
+    await db.prepare(`
+      UPDATE subscription_preferences SET notify_pregame=1,updated_at=CURRENT_TIMESTAMP
+      WHERE subscription_id=(
+        SELECT subscription_id FROM subscriptions
+        WHERE telegram_user_id=? AND subject_type='game' AND subject_key=? LIMIT 1
+      );
+    `).bind(userId, key).run().catch(() => {});
+  } else {
+    await db.prepare(`
+      UPDATE subscriptions SET notify_pregame=0
+      WHERE telegram_user_id=? AND subject_type='game' AND subject_key=?;
+    `).bind(userId, key).run();
+    await db.prepare(`
+      UPDATE subscription_preferences SET notify_pregame=0,updated_at=CURRENT_TIMESTAMP
+      WHERE subscription_id=(
+        SELECT subscription_id FROM subscriptions
+        WHERE telegram_user_id=? AND subject_type='game' AND subject_key=? LIMIT 1
+      );
+    `).bind(userId, key).run().catch(() => {});
+    await db.prepare(`
+      DELETE FROM subscriptions
+      WHERE telegram_user_id=? AND subject_type='game' AND subject_key=?
+        AND COALESCE(notify_pregame,0)=0 AND COALESCE(notify_start,0)=0
+        AND COALESCE(notify_goal,0)=0 AND COALESCE(notify_assist,0)=0
+        AND COALESCE(notify_point,0)=0 AND COALESCE(notify_period_end,0)=0
+        AND COALESCE(notify_final,0)=0;
+    `).bind(userId, key).run();
+  }
+}
+
+async function upsertCenterTelegramUser(db, user) {
+  await db.prepare(`
+    INSERT INTO telegram_users(
+      telegram_user_id,username,first_name,last_name,language_code,notifications_enabled,updated_at
+    ) VALUES(?,?,?,?,?,1,CURRENT_TIMESTAMP)
+    ON CONFLICT(telegram_user_id) DO UPDATE SET
+      username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,
+      language_code=excluded.language_code,notifications_enabled=1,updated_at=CURRENT_TIMESTAMP;
+  `).bind(
+    Number(user?.id),
+    user?.username || null,
+    user?.first_name || null,
+    user?.last_name || null,
+    user?.language_code || null,
+  ).run();
+}
+
+async function answerCenterCallback(env, callbackId, text) {
+  if (!callbackId) return null;
+  return telegramRequest(env, "answerCallbackQuery", {
+    callback_query_id: callbackId,
+    text: String(text || "").slice(0, 180),
+  });
+}
+
+
 async function processPolledCenterUpdate(env, update) {
-  const message = update?.message || null;
   const updateId = Number(update?.update_id || 0) || null;
+  const callback = update?.callback_query || null;
+  if (callback) {
+    const outcome = await processCenterReminderCallback(env, callback);
+    if (outcome.handled) return { ...outcome, retry: Boolean(outcome.retry) };
+  }
+  const message = update?.message || null;
   if (!message || message.chat?.type !== "private") {
     await recordCenterDiagnostic(env, {
       stage: "poll_update_skipped",
