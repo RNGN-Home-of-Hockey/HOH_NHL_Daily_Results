@@ -12,7 +12,7 @@ export function handleTelegramCenterV11Polish(request,path){
     if(request.method!=="GET")return json({ok:false,error:"method_not_allowed"},405);
     const id=String(path.slice(API_PREFIX.length)||"").replace(/\D/g,"");
     if(!id)return json({ok:false,error:"invalid_player_id"},400);
-    const row=eliteAudio?.players?.[id]||null;
+    const row=(eliteAudio?.profiles||eliteAudio?.players||{})[id]||null;
     const audioUrl=row?.audio_local_path||row?.pronunciation_url||null;
     return json({
       ok:true,
