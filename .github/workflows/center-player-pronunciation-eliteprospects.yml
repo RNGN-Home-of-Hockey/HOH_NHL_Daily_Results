@@ -61,6 +61,7 @@ jobs:
           print({'local_audio':local})
           PY
       - name: Commit refreshed cache
+        if: github.ref == 'refs/heads/main'
         run: |
           if [ -z "$(git status --porcelain -- state/center_player_pronunciations_eliteprospects.json cloudflare-worker/public/player-audio)" ]; then
             echo "No Elite Prospects pronunciation changes"
