@@ -56,7 +56,10 @@ jobs:
               &&body.includes('HOH_MINI_APP_BUILD="24.8.0"')
               &&v19.includes('source_key=')
               &&v23.includes('function uniqueTrends')
-              &&v23.includes('function recommendationFact');
+              &&v23.includes('function trendFamily')
+              &&v23.includes('function recommendationFact')
+              &&v23.includes('function playerPropOutcome')
+              &&v23.includes('Ставка: ');
             console.log('CENTER_DEPLOY_WAIT',i+1,shellRes.status,build,'ready',ready);
             if(ready)process.exit(0);
             await new Promise(resolve=>setTimeout(resolve,2000));
@@ -102,14 +105,14 @@ jobs:
           for(const x of ['v22NavRow','v22BackRow','HOHEnsureCommentIdentity','v22OpenProfile','avatar_data_url','normalizePlayers','v15GameRich','legacyGame','v22_no_spoilers','Любимая команда','HOHSetNoSpoilers','data-v15-player',"top='4px'"])if(!v22.includes(x))throw new Error('V22 missing '+x);
           const visual=await text('/telegram-app/v24-visual.js');
           if(visual.includes('--hoh-bg-player')||visual.includes('background=1&v='))throw new Error('V24 dynamic headshot background leaked into production');
-          for(const x of ['goalie-bg.webp','--hoh-glass-light','backdrop-filter','V24.2 complete visual audit','V24.3 score/odds/Winline regression fixes','V24.8 compact Winline and player hero fixes','white-space:nowrap','min-width:max-content','v19Cal','v20News','v22ProfileCard','v23Audio','padding-right:40px','top:50%!important','z-index:7','width:18px','font-size:10px'])if(!visual.includes(x))throw new Error('V24.4 visual layer missing '+x);
+          for(const x of ['goalie-bg.webp','--hoh-glass-light','backdrop-filter','V24.2 complete visual audit','V24.3 score/odds/Winline regression fixes','V24.8 compact Winline and player hero fixes','white-space:nowrap','min-width:max-content','v19Cal','v20News','v22ProfileCard','v23Audio','padding-right:40px','top:50%!important','z-index:7','width:18px','font-size:10px','.v23Last{-webkit-backdrop-filter:none!important'])if(!visual.includes(x))throw new Error('V24.4 visual layer missing '+x);
           const bg=await raw('/telegram-app/goalie-bg.webp?build=24.8.0');
           if(!bg.r.ok)throw new Error('goalie background HTTP '+bg.r.status);
           if(!String(bg.r.headers.get('content-type')||'').includes('image/webp'))throw new Error('goalie background content-type '+bg.r.headers.get('content-type'));
           const v22nav=await text('/telegram-app/v22.js');
           for(const x of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds','legacyGame','H.openGameV19'])if(!v22nav.includes(x))throw new Error('V22 navigation/settings missing '+x);
           const v23player=await text('/telegram-app/v23-player.js');
-          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')",'function uniqueTrends','function recommendationFact','Линия: ','source_key=','loading="eager"'])if(!v23player.includes(x))throw new Error('V23 player UX missing '+x);
+          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')",'function uniqueTrends','function trendFamily','function recommendationFact','function playerPropOutcome','Ставка: ','Выборка: ','source_key=','loading="eager"'])if(!v23player.includes(x))throw new Error('V23 player UX missing '+x);
           if(v23player.includes('Команда: ')||v23player.includes('ОЦЕНКА HOH')||v23player.includes('Линия WINLINE')||v23player.includes('Последний подтверждённый матч'))throw new Error('V23 player page still contains obsolete copy');
           const v15core=await text('/telegram-app/v15-core.js');
           if(!v15core.includes("localStorage.getItem('hoh-center-theme')||'light'"))throw new Error('light theme is not default');
