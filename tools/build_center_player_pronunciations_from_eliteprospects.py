@@ -24,7 +24,9 @@ import requests
 
 NHL_API = "https://api-web.nhle.com/v1"
 EP_ORIGIN = "https://www.eliteprospects.com"
+EP_AUTOCOMPLETE = "https://autocomplete.eliteprospects.com/players"
 EP_BASE = "https://files.eliteprospects.com/layout/player_audio"
+_EP_BUILD_ID: str | None = None
 TEAM_CODES = [
     "ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA",
     "LAK","MIN","MTL","NSH","NJD","NYI","NYR","OTT","PHI","PIT","SJS","SEA",
@@ -232,7 +234,46 @@ def profile_score(url: str, player: dict) -> int:
 
 def discover_ep_profile(player: dict, session: requests.Session) -> tuple[str | None, str | None]:
     name = player["full_name_en"]
-    # EP has changed search implementations several times; try both public query shapes.
+    # Current EliteProspects search box uses this public unauthenticated autocomplete
+    # backend. It returns stable player id + slug and avoids scraping the client-rendered
+    # advanced-search page.
+    try:
+        r = session.get(
+            EP_AUTOCOMPLETE,
+            params={"q": name},
+            headers={**HEADERS, "Accept": "application/json"},
+            timeout=15,
+        )
+        if r.ok:
+            rows = r.json()
+            if isinstance(rows, list):
+                birth_year = str(player.get("birth_date") or "")[:4]
+                scored: list[tuple[int, dict]] = []
+                target = compact_token(name)
+                for raw in rows:
+                    if not isinstance(raw, dict):
+                        continue
+                    pid = str(raw.get("id") or "").strip()
+                    slug = str(raw.get("slug") or "").strip()
+                    full = str(raw.get("fullname") or "").strip()
+                    if not pid or not slug:
+                        continue
+                    score = 0
+                    if compact_token(full) == target:
+                        score += 120
+                    score += profile_score(f"{EP_ORIGIN}/player/{pid}/{slug}", player)
+                    if birth_year and str(raw.get("age") or "").strip() == birth_year:
+                        score += 30
+                    if score >= 70:
+                        scored.append((score, raw))
+                if scored:
+                    scored.sort(key=lambda x: x[0], reverse=True)
+                    raw = scored[0][1]
+                    return f"{EP_ORIGIN}/player/{raw['id']}/{raw['slug']}", None
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        pass
+
+    # Legacy/fallback HTML search paths in case the autocomplete service changes.
     for search_url in (
         f"{EP_ORIGIN}/search/player?name={quote(name)}",
         f"{EP_ORIGIN}/search/player?q={quote(name)}",
@@ -255,7 +296,42 @@ def discover_ep_profile(player: dict, session: requests.Session) -> tuple[str | 
     return None, None
 
 
+def extract_audio_urls_from_value(value, out: list[str]) -> None:
+    if isinstance(value, dict):
+        for v in value.values():
+            extract_audio_urls_from_value(v, out)
+        return
+    if isinstance(value, list):
+        for v in value:
+            extract_audio_urls_from_value(v, out)
+        return
+    if not isinstance(value, str):
+        return
+    text = html.unescape(value.replace("\\/", "/"))
+    for raw in re.findall(r'https://files\.eliteprospects\.com/[^"\'\\s<>]+\.mp3(?:\?[^"\'\\s<>]*)?', text, flags=re.I):
+        if raw not in out:
+            out.append(raw)
+
+
+def ep_build_id(session: requests.Session) -> str | None:
+    global _EP_BUILD_ID
+    if _EP_BUILD_ID:
+        return _EP_BUILD_ID
+    try:
+        r = session.get(f"{EP_ORIGIN}/leagues", headers=HTML_HEADERS, timeout=20)
+        if not r.ok:
+            return None
+        m = re.search(r'"buildId"\s*:\s*"([^"]+)"', r.text)
+        if m:
+            _EP_BUILD_ID = m.group(1)
+            return _EP_BUILD_ID
+    except requests.RequestException:
+        return None
+    return None
+
+
 def extract_profile_audio(profile_url: str, prefetched_html: str | None, session: requests.Session) -> list[str]:
+    out: list[str] = []
     page = prefetched_html or ""
     if not page:
         try:
@@ -264,17 +340,25 @@ def extract_profile_audio(profile_url: str, prefetched_html: str | None, session
                 page = r.text
         except requests.RequestException:
             pass
-    page = html.unescape(str(page or "").replace("\\/", "/"))
-    out: list[str] = []
-    patterns = [
-        r'https://files\.eliteprospects\.com/layout/player_audio/[A-Za-z0-9_.%\-]+\.mp3',
-        r'["\'](/layout/player_audio/[A-Za-z0-9_.%\-]+\.mp3)["\']',
-    ]
-    for pattern in patterns:
-        for raw in re.findall(pattern, page, flags=re.I):
-            url = urljoin("https://files.eliteprospects.com", raw)
-            if url not in out:
-                out.append(url)
+    if page:
+        extract_audio_urls_from_value(page, out)
+
+    # EP detail pages are Next.js. The structured data route is more reliable than
+    # rendered HTML and includes page properties that may be loaded client-side.
+    m = re.search(r"/player/(\d+)/([^/?#]+)", profile_url)
+    build = ep_build_id(session)
+    if m and build:
+        try:
+            data_url = f"{EP_ORIGIN}/_next/data/{build}/player/{m.group(1)}/{m.group(2)}.json"
+            r = session.get(
+                data_url,
+                headers={**HEADERS, "Accept": "application/json", "x-nextjs-data": "1"},
+                timeout=20,
+            )
+            if r.ok:
+                extract_audio_urls_from_value(r.json(), out)
+        except (requests.RequestException, ValueError):
+            pass
     return out
 
 
