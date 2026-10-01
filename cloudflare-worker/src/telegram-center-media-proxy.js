@@ -12,15 +12,28 @@ const ALLOWED_HOSTS=[
   "vkusercontent.net",
 ];
 
-export async function handleTelegramCenterMediaProxy(request,path){
+export async function handleTelegramCenterMediaProxy(request,env,path){
   if(path!==VK_COVER_PATH)return null;
   if(request.method!=="GET")return json({ok:false,error:"method_not_allowed"},405);
-  const raw=new URL(request.url).searchParams.get("url")||"";
+  const url=new URL(request.url),sourceKey=String(url.searchParams.get("source_key")||"").trim();
+  let raw=String(url.searchParams.get("url")||"").trim(),trusted=false;
+  if(sourceKey){
+    if(!env?.DB)return json({ok:false,error:"missing_d1_binding"},503);
+    try{
+      const row=await env.DB.prepare("SELECT thumbnail_url FROM vk_broadcasts WHERE source_key=? LIMIT 1;").bind(sourceKey).first();
+      raw=String(row?.thumbnail_url||"").trim();
+      trusted=true;
+    }catch(error){
+      console.error("vk cover lookup failed",error);
+      return json({ok:false,error:"cover_lookup_failed"},503);
+    }
+    if(!raw)return json({ok:false,error:"cover_not_found"},404);
+  }
   const normalized=normalizeSource(raw);
   let source;
   try{source=new URL(normalized)}catch{return json({ok:false,error:"invalid_url"},400)}
   if(source.protocol==="http:"&&allowedHost(source.hostname))source.protocol="https:";
-  if(source.protocol!=="https:"||!allowedHost(source.hostname)){
+  if(source.protocol!=="https:"||source.username||source.password||(!trusted&&!allowedHost(source.hostname))){
     return json({ok:false,error:"source_not_allowed",host:safeHost(source.hostname)},400);
   }
   try{
@@ -36,7 +49,7 @@ export async function handleTelegramCenterMediaProxy(request,path){
     });
     let finalUrl;
     try{finalUrl=new URL(upstream.url||source.toString())}catch{finalUrl=source}
-    if(finalUrl.protocol!=="https:"||!allowedHost(finalUrl.hostname)){
+    if(finalUrl.protocol!=="https:"||finalUrl.username||finalUrl.password||(!trusted&&!allowedHost(finalUrl.hostname))){
       return json({ok:false,error:"redirect_not_allowed",host:safeHost(finalUrl.hostname)},502);
     }
     if(!upstream.ok)return json({ok:false,error:"upstream_image_failed",status:upstream.status,host:safeHost(finalUrl.hostname)},upstream.status===404?404:502);
