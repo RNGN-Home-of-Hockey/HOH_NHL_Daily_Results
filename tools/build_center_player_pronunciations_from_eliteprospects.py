@@ -291,10 +291,10 @@ def find_ep_audio(player: dict, old: dict | None, session: requests.Session) -> 
         if verified_url(url, session):
             return url, profile_url
 
-    found_profile, search_html = discover_ep_profile(player, session)
+    found_profile, _search_html = discover_ep_profile(player, session)
     if found_profile:
         profile_url = found_profile
-        for url in extract_profile_audio(found_profile, search_html, session):
+        for url in extract_profile_audio(found_profile, None, session):
             if verified_url(url, session):
                 return url, profile_url
     return None, profile_url
