@@ -107,6 +107,17 @@ async function playerRecommendation(env,id){
       scope:isPlayerCard(best)?"player":"team",score,
       title:String(best.broadcast_title||best.title||best.value||"").trim(),
       subtitle:String(best.broadcast_subtitle||best.explanation||"").trim(),
+      evidence:{
+        hits:numOrNull(best?.evidence?.hits),
+        decisions:numOrNull(best?.evidence?.decisions??best?.evidence?.sample),
+        sample:numOrNull(best?.evidence?.sample??best?.evidence?.decisions),
+        window:numOrNull(best?.evidence?.window),
+        hit_rate:numOrNull(best?.evidence?.hit_rate),
+        current_streak:numOrNull(best?.evidence?.current_streak),
+        team:up(best?.evidence?.team||"")||null,
+        opponent:up(best?.evidence?.opponent||"")||null,
+        split:String(best?.evidence?.split||"").trim()||null
+      },
       market:{market_id:marketId,event_id:market.event_id||null,type:market.type||null,label:market.label||null,outcome_name:market.outcome_name||market.label||null,subject:market.subject||null,side:market.side||null,line:market.line??null,odds:numOrNull(market.odds),deeplink:market.deeplink||null,live:true},
       game:{game_pk:Number(game.game_pk),scheduled_start_utc:game.scheduled_start_utc,home_tri:game.home_tri,away_tri:game.away_tri}
     }});
