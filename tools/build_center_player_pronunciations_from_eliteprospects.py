@@ -232,103 +232,61 @@ def profile_score(url: str, player: dict) -> int:
     return score
 
 
-def discover_ep_profile(player: dict, session: requests.Session) -> tuple[str | None, str | None]:
+def discover_ep_profile(player: dict, session: requests.Session) -> tuple[str | None, dict | None]:
+    """Resolve the canonical Elite Prospects profile through its public autocomplete API."""
     name = player["full_name_en"]
-    # Current EliteProspects search box uses this public unauthenticated autocomplete
-    # backend. It returns stable player id + slug and avoids scraping the client-rendered
-    # advanced-search page.
+    birth_year = str(player.get("birth_date") or "")[:4]
     try:
         r = session.get(
             EP_AUTOCOMPLETE,
             params={"q": name},
-            headers={**HEADERS, "Accept": "application/json"},
+            headers={**HEADERS, "Accept": "application/json", "Accept-Language": "en-US,en;q=0.8"},
             timeout=15,
         )
-        if r.ok:
-            rows = r.json()
-            if isinstance(rows, list):
-                birth_year = str(player.get("birth_date") or "")[:4]
-                scored: list[tuple[int, dict]] = []
-                target = compact_token(name)
-                for raw in rows:
-                    if not isinstance(raw, dict):
-                        continue
-                    pid = str(raw.get("id") or "").strip()
-                    slug = str(raw.get("slug") or "").strip()
-                    full = str(raw.get("fullname") or "").strip()
-                    if not pid or not slug:
-                        continue
-                    score = 0
-                    if compact_token(full) == target:
-                        score += 120
-                    score += profile_score(f"{EP_ORIGIN}/player/{pid}/{slug}", player)
-                    if birth_year and str(raw.get("age") or "").strip() == birth_year:
-                        score += 30
-                    if score >= 70:
-                        scored.append((score, raw))
-                if scored:
-                    scored.sort(key=lambda x: x[0], reverse=True)
-                    raw = scored[0][1]
-                    return f"{EP_ORIGIN}/player/{raw['id']}/{raw['slug']}", None
-    except (requests.RequestException, ValueError, TypeError, KeyError):
-        pass
-
-    # Legacy/fallback HTML search paths in case the autocomplete service changes.
-    for search_url in (
-        f"{EP_ORIGIN}/search/player?name={quote(name)}",
-        f"{EP_ORIGIN}/search/player?q={quote(name)}",
-        f"{EP_ORIGIN}/search?q={quote(name)}",
-    ):
-        try:
-            r = session.get(search_url, headers=HTML_HEADERS, allow_redirects=True, timeout=15)
-            if not r.ok:
-                continue
-            links = extract_ep_links(r.text)
-            if not links:
-                continue
-            links.sort(key=lambda x: profile_score(x, player), reverse=True)
-            best = links[0]
-            if profile_score(best, player) < 40:
-                continue
-            return best, r.text
-        except requests.RequestException:
-            continue
-    return None, None
-
-
-def extract_audio_urls_from_value(value, out: list[str]) -> None:
-    if isinstance(value, dict):
-        for v in value.values():
-            extract_audio_urls_from_value(v, out)
-        return
-    if isinstance(value, list):
-        for v in value:
-            extract_audio_urls_from_value(v, out)
-        return
-    if not isinstance(value, str):
-        return
-    text = html.unescape(value.replace("\\/", "/"))
-    for raw in re.findall(r'https://files\.eliteprospects\.com/[^"\'\\s<>]+\.mp3(?:\?[^"\'\\s<>]*)?', text, flags=re.I):
-        if raw not in out:
-            out.append(raw)
-
-
-def ep_build_id(session: requests.Session) -> str | None:
-    global _EP_BUILD_ID
-    if _EP_BUILD_ID:
-        return _EP_BUILD_ID
-    try:
-        r = session.get(f"{EP_ORIGIN}/leagues", headers=HTML_HEADERS, timeout=20)
         if not r.ok:
-            return None
-        m = re.search(r'"buildId"\s*:\s*"([^"]+)"', r.text)
-        if m:
-            _EP_BUILD_ID = m.group(1)
-            return _EP_BUILD_ID
-    except requests.RequestException:
-        return None
-    return None
+            return None, None
+        items = r.json()
+    except (requests.RequestException, ValueError):
+        return None, None
+    if not isinstance(items, list):
+        return None, None
 
+    wanted_full = compact_token(name)
+    wanted_first = compact_token(player["first_name"])
+    wanted_last = compact_token(player["last_name"])
+    ranked: list[tuple[int, dict]] = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        ep_id = str(raw.get("id") or "").strip()
+        slug = str(raw.get("slug") or "").strip()
+        fullname = str(raw.get("fullname") or "").strip()
+        if not ep_id.isdigit() or not slug or not fullname:
+            continue
+        compact_full = compact_token(fullname)
+        score = 0
+        if compact_full == wanted_full:
+            score += 140
+        if wanted_first and wanted_first in compact_full:
+            score += 25
+        if wanted_last and wanted_last in compact_full:
+            score += 55
+        result_year = str(raw.get("age") or "").strip()
+        if birth_year and result_year == birth_year:
+            score += 35
+        result_team = compact_token(raw.get("team") or "")
+        if result_team and compact_token(player.get("team_tri") or "") in result_team:
+            score += 3
+        ranked.append((score, raw))
+    if not ranked:
+        return None, None
+    ranked.sort(key=lambda x: x[0], reverse=True)
+    score, best = ranked[0]
+    if score < 100:
+        return None, None
+    ep_id = str(best["id"]).strip()
+    slug = str(best["slug"]).strip()
+    return f"{EP_ORIGIN}/player/{ep_id}/{slug}", best
 
 def extract_profile_audio(profile_url: str, prefetched_html: str | None, session: requests.Session) -> list[str]:
     out: list[str] = []
@@ -377,16 +335,29 @@ def find_ep_audio(player: dict, old: dict | None, session: requests.Session) -> 
                 profile_url, _ = discover_ep_profile(player, session)
             return url, profile_url
 
-    found_profile, _search_html = discover_ep_profile(player, session)
+    found_profile, profile_meta = discover_ep_profile(player, session)
     if found_profile:
         profile_url = found_profile
-        for url in extract_profile_audio(found_profile, None, session):
+        profile_audio: list[str] = []
+        ep_slug = ascii_token(str((profile_meta or {}).get("slug") or ""))
+        ep_name = str((profile_meta or {}).get("fullname") or "").strip()
+        if ep_slug:
+            profile_audio.append(f"{EP_BASE}/{ep_slug}.mp3")
+        if ep_name:
+            profile_audio.append(f"{EP_BASE}/{ascii_token(ep_name)}.mp3")
+        for url in [*dict.fromkeys(profile_audio), *extract_profile_audio(found_profile, None, session)]:
             if verified_url(url, session):
                 return url, profile_url
     return None, profile_url
 
 
 def row_base(player: dict, profile_url: str | None) -> dict:
+    ep_id = None
+    ep_slug = None
+    if profile_url:
+        m = re.search(r"/player/(\d+)/([^/?#]+)", str(profile_url))
+        if m:
+            ep_id, ep_slug = m.group(1), m.group(2)
     return {
         "player_id": player["player_id"],
         "first_name": player["first_name"],
@@ -401,7 +372,9 @@ def row_base(player: dict, profile_url: str | None) -> dict:
         "height_cm": player.get("height_cm"),
         "weight_kg": player.get("weight_kg"),
         "eliteprospects_url": profile_url,
-        "eliteprospects_search_url": f"{EP_ORIGIN}/search/player?name={quote(player['full_name_en'])}",
+        "eliteprospects_id": ep_id,
+        "eliteprospects_slug": ep_slug,
+        "eliteprospects_search_url": f"{EP_AUTOCOMPLETE}?q={quote(player['full_name_en'])}",
     }
 
 
@@ -476,7 +449,7 @@ def main() -> int:
     audio_dir = Path(args.audio_dir)
     audio_dir.mkdir(parents=True, exist_ok=True)
     old_payload = load_json(out)
-    old_players = old_payload.get("players") or {}
+    old_players = old_payload.get("profiles") or old_payload.get("players") or {}
     nhl_payload = load_json(Path(args.nhl_audio_cache))
     nhl_audio = nhl_payload.get("players") or {}
 
