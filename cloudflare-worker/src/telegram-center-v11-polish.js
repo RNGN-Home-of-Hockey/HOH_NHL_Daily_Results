@@ -13,7 +13,17 @@ export function handleTelegramCenterV11Polish(request,path){
     const id=String(path.slice(API_PREFIX.length)||"").replace(/\D/g,"");
     if(!id)return json({ok:false,error:"invalid_player_id"},400);
     const row=eliteAudio?.players?.[id]||null;
-    return json({ok:true,player_id:Number(id),available:Boolean(row?.pronunciation_url),audio_url:row?.pronunciation_url||null,source:row?.pronunciation_source||"eliteprospects_player_audio"});
+    const audioUrl=row?.audio_local_path||row?.pronunciation_url||null;
+    return json({
+      ok:true,
+      player_id:Number(id),
+      available:Boolean(audioUrl),
+      audio_url:audioUrl,
+      source:row?.pronunciation_source||null,
+      source_url:row?.pronunciation_url||null,
+      stored_locally:Boolean(row?.audio_local_path),
+      eliteprospects_url:row?.eliteprospects_url||null
+    });
   }
   return null;
 }
