@@ -1,21 +1,29 @@
 {
   "channel": "@homeofhockey-yt",
   "news": {
-    "id": "-xWXmA43rJ4",
+    "id": "WZt6lPEapV0",
     "kind": "news",
-    "url": "https://www.youtube.com/watch?v=-xWXmA43rJ4",
-    "title": "СУХАЯ ПЕРВАЯ ИГРА СЕЗОНА | ЭДМОНТОН ОПЯТЬ СТРАДАЕТ – HOME OF HOCKEY NEWS",
-    "thumb": "https://i.ytimg.com/vi/-xWXmA43rJ4/hq720.jpg",
-    "view_count": 320
+    "url": "https://www.youtube.com/watch?v=WZt6lPEapV0",
+    "title": "ФАНАТЫ НЕ ПРОСТЯТ ТАКОГО ПОЗОРА | ЗА КРОСБИ МСТИЛ ВЕСЬ ПИТТСБУРГ – HOME OF HOCKEY NEWS",
+    "thumb": "https://i.ytimg.com/vi/WZt6lPEapV0/hq720.jpg",
+    "view_count": 669
   },
   "shorts_top10": [
+    {
+      "id": "6ILGGX5FSyk",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/6ILGGX5FSyk",
+      "title": "🥊 MacKinnon dropped the gloves! Are you serious?! #shorts",
+      "thumb": "https://i.ytimg.com/vi/6ILGGX5FSyk/hq720.jpg",
+      "view_count": 1200
+    },
     {
       "id": "a7Ia7xeg6O0",
       "kind": "short",
       "url": "https://www.youtube.com/shorts/a7Ia7xeg6O0",
       "title": "😡 Nicolas Deslauriers and Bokondji Imama get into a heated scrap! #shorts",
       "thumb": "https://i.ytimg.com/vi/a7Ia7xeg6O0/hq720.jpg",
-      "view_count": 893
+      "view_count": 1500
     },
     {
       "id": "lE6HsW_lO3A",
@@ -80,15 +88,7 @@
       "title": "🤣 Мартен Сен-Луи точно фанат Леонардо Ди Каприо... #shorts",
       "thumb": "https://i.ytimg.com/vi/4Z0U1rksbEA/hq720.jpg",
       "view_count": 1200
-    },
-    {
-      "id": "dneld6G5cDc",
-      "kind": "short",
-      "url": "https://www.youtube.com/shorts/dneld6G5cDc",
-      "title": "🤩 Вы точно их видели! #shorts",
-      "thumb": "https://i.ytimg.com/vi/dneld6G5cDc/hq720.jpg",
-      "view_count": 4800
     }
   ],
-  "updated_at": "2026-09-30T13:37:42.059255+00:00"
+  "updated_at": "2026-10-01T14:48:40.097188+00:00"
 }
