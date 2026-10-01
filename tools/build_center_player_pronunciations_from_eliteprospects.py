@@ -289,29 +289,44 @@ def discover_ep_profile(player: dict, session: requests.Session) -> tuple[str | 
     slug = str(best["slug"]).strip()
     return f"{EP_ORIGIN}/player/{ep_id}/{slug}", best
 
-def extract_audio_urls_from_value(value, out: list[str]) -> None:
-    """Collect EP-hosted MP3 URLs from HTML or nested Next.js JSON."""
+def extract_audio_urls_from_value(value, out: list[str], hint: str = "") -> None:
+    """Collect EP-hosted pronunciation MP3 URLs from HTML or nested Next.js JSON."""
     if isinstance(value, dict):
-        for child in value.values():
-            extract_audio_urls_from_value(child, out)
+        for key, child in value.items():
+            key_hint = str(key or "").lower()
+            if isinstance(child, str) and ("audio" in key_hint or "pronun" in key_hint):
+                raw = html.unescape(child.replace("\\/", "/")).strip()
+                if ".mp3" in raw.lower():
+                    if raw.startswith("https://"):
+                        candidate = raw
+                    elif raw.startswith("/"):
+                        candidate = urljoin("https://files.eliteprospects.com", raw)
+                    else:
+                        candidate = f"{EP_BASE}/{raw.lstrip('/')}"
+                    if candidate.startswith("https://files.eliteprospects.com/") and candidate not in out:
+                        out.append(candidate)
+            extract_audio_urls_from_value(child, out, key_hint)
         return
     if isinstance(value, (list, tuple)):
         for child in value:
-            extract_audio_urls_from_value(child, out)
+            extract_audio_urls_from_value(child, out, hint)
         return
     if value is None:
         return
     text = html.unescape(str(value).replace("\\/", "/"))
     patterns = [
         r'https://files\.eliteprospects\.com/[^"\'<>\s]+\.mp3(?:\?[^"\'<>\s]*)?',
-        r'["\'](/[^"\']*player_audio/[^"\']+\.mp3(?:\?[^"\']*)?)["\']',
+        r'(/[^"\'<>\s]*player_audio/[^"\'<>\s]+\.mp3(?:\?[^"\'<>\s]*)?)',
     ]
     for pattern in patterns:
         for raw in re.findall(pattern, text, flags=re.I):
-            url = urljoin("https://files.eliteprospects.com", raw)
+            url = raw if raw.startswith("https://") else urljoin("https://files.eliteprospects.com", raw)
             if url not in out:
                 out.append(url)
-
+    if ("audio" in hint or "pronun" in hint) and re.fullmatch(r'[^/\\\s]+\.mp3(?:\?.*)?', text.strip(), flags=re.I):
+        url = f"{EP_BASE}/{text.strip()}"
+        if url not in out:
+            out.append(url)
 
 def ep_build_id(session: requests.Session) -> str | None:
     """Read the current Elite Prospects Next.js build id once per process."""
