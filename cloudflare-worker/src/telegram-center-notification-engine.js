@@ -230,8 +230,8 @@ async function loadDigestReminderSet(db,userId,gamePks){
   return out;
 }
 function digestReminderKeyboard(games,enabled){
-  const rows=(games||[]).map(g=>[{text:`${enabled?.has(Number(g.game_pk))?"✅":"☐"} ${g.away} — ${g.home} · ${g.at}`,callback_data:`center_gr:${g.game_pk}`}]);
-  if(rows.length>1){const all=(games||[]).every(g=>enabled?.has(Number(g.game_pk)));rows.push([{text:all?"✅ Все матчи":"🔔 Все матчи",callback_data:"center_gra"}])}
+  const rows=(games||[]).map(g=>{const on=enabled?.has(Number(g.game_pk));return[{text:`${on?"✅":"☐"} ${g.away} — ${g.home} · ${g.at}`,callback_data:`center_gr:${g.game_pk}:${on?0:1}`}]} );
+  if(rows.length>1){const all=(games||[]).every(g=>enabled?.has(Number(g.game_pk)));rows.push([{text:all?"✅ Все матчи":"🔔 Все матчи",callback_data:`center_gra:${all?0:1}`}])}
   return {inline_keyboard:rows};
 }
 
