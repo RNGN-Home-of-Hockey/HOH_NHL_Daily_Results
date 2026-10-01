@@ -105,7 +105,7 @@ jobs:
           const v15core=await text('/telegram-app/v15-core.js');
           if(!v15core.includes("localStorage.getItem('hoh-center-theme')||'light'"))throw new Error('light theme is not default');
           const v19=await text('/telegram-app/v19.js');
-          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v19WinlineLogo','video_fallback','data-v19-link',"b.textContent='Матчи'"])if(!v19.includes(x))throw new Error('V19 match UI regression fix missing '+x);
+          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v19WinlineLogo','video_fallback','data-v19-link','telegram-center-media/vk-cover',"b.textContent='Матчи'"])if(!v19.includes(x))throw new Error('V19 match UI regression fix missing '+x);
           const logoRes=await fetch(base+'/broadcast/winline-logo.png?asset=canonical-3',{cache:'no-store'});
           if(!logoRes.ok||!String(logoRes.headers.get('content-type')||'').includes('image/png'))throw new Error('clean Winline logo unavailable');
           const logoHex=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await logoRes.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');
