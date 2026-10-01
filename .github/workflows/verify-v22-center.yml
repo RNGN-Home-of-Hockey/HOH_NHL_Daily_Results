@@ -194,8 +194,9 @@ jobs:
           const leoRec=await json('/api/telegram-center-v17/players/8484153/recommendation');
           if(leoRec.ok!==true)throw new Error('Leo Carlsson recommendation endpoint failed '+JSON.stringify(leoRec));
           if(leoRec.recommendation){
-            const m=leoRec.recommendation.market||{};
+            const m=leoRec.recommendation.market||{},e=leoRec.recommendation.evidence||{};
             if(!(Number(m.odds)>1)||!m.live||!m.market_id)throw new Error('player recommendation is not a real Winline market '+JSON.stringify(leoRec));
+            for(const k of ['hits','decisions','sample','window','hit_rate','split'])if(!Object.prototype.hasOwnProperty.call(e,k))throw new Error('player recommendation evidence missing '+k+' '+JSON.stringify(leoRec));
           }
           const dahlinSearch=await json('/api/telegram-center-v17/players?q='+encodeURIComponent('Rasmus Dahlin')+'&limit=20');
           const dahlinHit=(dahlinSearch.players||[]).find(x=>String(x.full_name_en||'').toLowerCase()==='rasmus dahlin');
