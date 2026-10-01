@@ -16,6 +16,8 @@ on:
       - 'player_salary_2026_27.json'
       - 'ru_full_names.json'
       - 'state/hoh_youtube_media.json'
+      - 'state/center_player_pronunciations_eliteprospects.json'
+      - 'state/center_player_pronunciation_text_nhl.json'
       - 'wrangler.jsonc'
       - 'package.json'
 
@@ -393,8 +395,12 @@ jobs:
           const targetCovers=(matchCovers.games||[]).filter(g=>coverPairs.has(String(g.away?.tri||'')+'-'+String(g.home?.tri||''))||coverPairs.has(String(g.home?.tri||'')+'-'+String(g.away?.tri||'')));
           if(targetCovers.length<3)throw new Error('expected Sep 30 match-card fixtures missing '+JSON.stringify((matchCovers.games||[]).map(g=>[g.away?.tri,g.home?.tri])));
           for(const g of targetCovers)if(!g.vk?.thumbnail_url)throw new Error('match cover missing for '+g.away?.tri+'-'+g.home?.tri);
-          const coverProbe=await fetch(base+'/api/telegram-center-media/vk-cover?url='+encodeURIComponent(targetCovers[0].vk.thumbnail_url),{cache:'no-store'});
-          if(!coverProbe.ok||!String(coverProbe.headers.get('content-type')||'').startsWith('image/'))throw new Error('VK cover relay failed '+coverProbe.status+' '+String(coverProbe.headers.get('content-type')||''));
+          if(!targetCovers[0].vk?.source_key)throw new Error('VK cover source key missing');
+          const coverProbe=await fetch(base+'/api/telegram-center-media/vk-cover?source_key='+encodeURIComponent(targetCovers[0].vk.source_key),{cache:'no-store'});
+          if(!coverProbe.ok||!String(coverProbe.headers.get('content-type')||'').startsWith('image/')){
+            const body=await coverProbe.text().catch(()=>'');
+            throw new Error('VK cover relay failed '+coverProbe.status+' '+String(coverProbe.headers.get('content-type')||'')+' '+body.slice(0,220));
+          }
           console.log('V19_PRODUCTION_SMOKE_OK',JSON.stringify({active_players:status.active_players,snapshots:status.winline_snapshots,snapshot_games:status.winline_snapshot_games,match_covers:targetCovers.length,cover_relay:true}));
 
           const news=await get('/api/telegram-center-v20/news/home?limit=10&v='+Date.now(),120000);
