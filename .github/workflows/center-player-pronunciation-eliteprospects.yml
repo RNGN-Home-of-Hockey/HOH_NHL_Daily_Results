@@ -43,6 +43,12 @@ jobs:
               raise SystemExit('unexpectedly small NHL roster pool')
           if matched < 25:
               raise SystemExit(f'Elite Prospects audio cache unexpectedly weak: {matched}')
+          profiles=p.get('profiles') or {}
+          if len(profiles) != roster:
+              raise SystemExit(f'player profile catalog incomplete: {len(profiles)}/{roster}')
+          for pid,row in profiles.items():
+              if not str(row.get('full_name_en') or '').strip() or not str(row.get('team_tri') or '').strip():
+                  raise SystemExit(f'player profile metadata incomplete: {pid}')
           local=0
           for row in (p.get('players') or {}).values():
               u=str(row.get('pronunciation_url') or '')
