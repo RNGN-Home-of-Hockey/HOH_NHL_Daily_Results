@@ -45,6 +45,7 @@ HTML_HEADERS = {
     "Accept-Language": "en-US,en;q=0.8",
 }
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
+_EP_BUILD_ID_CACHE: str | None = None
 
 
 def localized(value) -> str:
@@ -287,6 +288,59 @@ def discover_ep_profile(player: dict, session: requests.Session) -> tuple[str | 
     ep_id = str(best["id"]).strip()
     slug = str(best["slug"]).strip()
     return f"{EP_ORIGIN}/player/{ep_id}/{slug}", best
+
+def extract_audio_urls_from_value(value, out: list[str]) -> None:
+    """Collect EP-hosted MP3 URLs from HTML or nested Next.js JSON."""
+    if isinstance(value, dict):
+        for child in value.values():
+            extract_audio_urls_from_value(child, out)
+        return
+    if isinstance(value, (list, tuple)):
+        for child in value:
+            extract_audio_urls_from_value(child, out)
+        return
+    if value is None:
+        return
+    text = html.unescape(str(value).replace("\\/", "/"))
+    patterns = [
+        r'https://files\.eliteprospects\.com/[^"\'<>\s]+\.mp3(?:\?[^"\'<>\s]*)?',
+        r'["\'](/[^"\']*player_audio/[^"\']+\.mp3(?:\?[^"\']*)?)["\']',
+    ]
+    for pattern in patterns:
+        for raw in re.findall(pattern, text, flags=re.I):
+            url = urljoin("https://files.eliteprospects.com", raw)
+            if url not in out:
+                out.append(url)
+
+
+def ep_build_id(session: requests.Session) -> str | None:
+    """Read the current Elite Prospects Next.js build id once per process."""
+    global _EP_BUILD_ID_CACHE
+    if _EP_BUILD_ID_CACHE:
+        return _EP_BUILD_ID_CACHE
+    try:
+        r = session.get(f"{EP_ORIGIN}/leagues", headers=HTML_HEADERS, allow_redirects=True, timeout=20)
+        if not r.ok:
+            return None
+        page = r.text
+        m = re.search(r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', page, flags=re.I | re.S)
+        if m:
+            try:
+                data = json.loads(html.unescape(m.group(1)))
+                build = str(data.get("buildId") or "").strip()
+                if build:
+                    _EP_BUILD_ID_CACHE = build
+                    return build
+            except ValueError:
+                pass
+        m = re.search(r'"buildId"\s*:\s*"([^"]+)"', page)
+        if m:
+            _EP_BUILD_ID_CACHE = m.group(1)
+            return _EP_BUILD_ID_CACHE
+    except requests.RequestException:
+        return None
+    return None
+
 
 def extract_profile_audio(profile_url: str, prefetched_html: str | None, session: requests.Session) -> list[str]:
     out: list[str] = []
