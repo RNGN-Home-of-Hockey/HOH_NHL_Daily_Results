@@ -2,6 +2,10 @@ name: Refresh Elite Prospects player pronunciation audio
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/build_center_player_pronunciations_from_eliteprospects.py'
+      - '.github/workflows/center-player-pronunciation-eliteprospects.yml'
   push:
     branches: [main]
     paths:
@@ -46,15 +50,23 @@ jobs:
           profiles=p.get('profiles') or {}
           if len(profiles) != roster:
               raise SystemExit(f'player profile catalog incomplete: {len(profiles)}/{roster}')
+          resolved_profiles=sum(1 for row in profiles.values() if str(row.get('eliteprospects_url') or '').strip())
+          print({'eliteprospects_profiles_resolved':resolved_profiles})
+          if resolved_profiles < max(500, int(roster*0.70)):
+              raise SystemExit(f'Elite Prospects profile resolver unexpectedly weak: {resolved_profiles}/{roster}')
           for pid,row in profiles.items():
               if not str(row.get('full_name_en') or '').strip() or not str(row.get('team_tri') or '').strip():
                   raise SystemExit(f'player profile metadata incomplete: {pid}')
+          for pid in ('8480803','8478864','8478402','8481559'):
+              row=profiles.get(pid)
+              if row:
+                  print('PLAYER_AUDIT',pid,{k:row.get(k) for k in ('full_name_en','team_tri','eliteprospects_url','pronunciation_source','audio_local_path')})
           local=0
           for row in (p.get('players') or {}).values():
               u=str(row.get('pronunciation_url') or '')
               local_path=str(row.get('audio_local_path') or '')
               if row.get('pronunciation_source') == 'eliteprospects_player_audio':
-                  if not u.startswith('https://files.eliteprospects.com/layout/player_audio/') or not u.endswith('.mp3'):
+                  if not u.startswith('https://files.eliteprospects.com/') or '.mp3' not in u.lower():
                       raise SystemExit('invalid Elite Prospects pronunciation URL')
               if not local_path.startswith('/player-audio/') or not local_path.endswith('.mp3'):
                   raise SystemExit('missing local player audio path')

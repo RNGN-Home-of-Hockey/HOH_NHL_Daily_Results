@@ -111,7 +111,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const centerV17HotfixResponse = handleTelegramCenterV17Hotfix(request, path);
   if (centerV17HotfixResponse) return centerV17HotfixResponse;
 
-  const centerMediaProxyResponse = await handleTelegramCenterMediaProxy(request.clone(), path);
+  const centerMediaProxyResponse = await handleTelegramCenterMediaProxy(request.clone(), env, path);
   if (centerMediaProxyResponse) return centerMediaProxyResponse;
 
   const centerV19DataResponse = await handleTelegramCenterV19ProductData(request.clone(), env, path);

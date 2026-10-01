@@ -3,7 +3,10 @@ name: Deploy Cloudflare Worker
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["Refresh Center player salaries"]
+    workflows:
+      - "Refresh Center player salaries"
+      - "Refresh Elite Prospects player pronunciation audio"
+      - "Refresh Center player pronunciation text"
     types: [completed]
   push:
     branches: [main]
@@ -16,6 +19,8 @@ on:
       - 'player_salary_2026_27.json'
       - 'ru_full_names.json'
       - 'state/hoh_youtube_media.json'
+      - 'state/center_player_pronunciations_eliteprospects.json'
+      - 'state/center_player_pronunciation_text_nhl.json'
       - 'wrangler.jsonc'
       - 'package.json'
 
@@ -28,7 +33,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -330,6 +335,12 @@ jobs:
           if(!player.player?.full_name_ru||!player.player?.team_logo||!player.player?.primary_country_code)throw new Error('Ovechkin profile metadata incomplete');
           const audio=await get('/api/telegram-center-v11/pronunciation/8471214');
           console.log('PLAYER_OK',player.player.full_name_ru,player.player.primary_country_code,'audio',Boolean(audio.available),'pronunciation',player.player.pronunciation_text||null);
+          const kapAudio=await get('/api/telegram-center-v11/pronunciation/8478864');
+          if(!kapAudio.available||!/^\/player-audio\/8478864\.mp3$/.test(String(kapAudio.audio_url||'')))throw new Error('Kaprizov first-party pronunciation audio missing '+JSON.stringify(kapAudio));
+          const kapAudioRes=await fetch(base+kapAudio.audio_url,{cache:'no-store'});
+          const kapAudioBytes=await kapAudioRes.arrayBuffer();
+          if(!kapAudioRes.ok||kapAudioBytes.byteLength<1000||!/^audio\//i.test(String(kapAudioRes.headers.get('content-type')||'')))throw new Error('Kaprizov audio asset failed '+kapAudioRes.status+' '+kapAudioBytes.byteLength+' '+String(kapAudioRes.headers.get('content-type')||''));
+          console.log('PRONUNCIATION_AUDIO_OK',kapAudio.audio_url,kapAudioBytes.byteLength);
           const winlineStatus=await get('/api/winline/center/status');
           console.log('WINLINE_STATUS',JSON.stringify({events:winlineStatus.events,markets:winlineStatus.markets,active_markets:winlineStatus.active_markets,snapshots:winlineStatus.snapshots,snapshot_games:winlineStatus.snapshot_games,latest_market_update:winlineStatus.latest_market_update}));
           const regular=await get('/api/telegram-center-v19/broadcasts?from=2025-04-01&to=2025-04-07');
@@ -393,8 +404,12 @@ jobs:
           const targetCovers=(matchCovers.games||[]).filter(g=>coverPairs.has(String(g.away?.tri||'')+'-'+String(g.home?.tri||''))||coverPairs.has(String(g.home?.tri||'')+'-'+String(g.away?.tri||'')));
           if(targetCovers.length<3)throw new Error('expected Sep 30 match-card fixtures missing '+JSON.stringify((matchCovers.games||[]).map(g=>[g.away?.tri,g.home?.tri])));
           for(const g of targetCovers)if(!g.vk?.thumbnail_url)throw new Error('match cover missing for '+g.away?.tri+'-'+g.home?.tri);
-          const coverProbe=await fetch(base+'/api/telegram-center-media/vk-cover?url='+encodeURIComponent(targetCovers[0].vk.thumbnail_url),{cache:'no-store'});
-          if(!coverProbe.ok||!String(coverProbe.headers.get('content-type')||'').startsWith('image/'))throw new Error('VK cover relay failed '+coverProbe.status+' '+String(coverProbe.headers.get('content-type')||''));
+          if(!targetCovers[0].vk?.source_key)throw new Error('VK cover source key missing');
+          const coverProbe=await fetch(base+'/api/telegram-center-media/vk-cover?source_key='+encodeURIComponent(targetCovers[0].vk.source_key),{cache:'no-store'});
+          if(!coverProbe.ok||!String(coverProbe.headers.get('content-type')||'').startsWith('image/')){
+            const body=await coverProbe.text().catch(()=>'');
+            throw new Error('VK cover relay failed '+coverProbe.status+' '+String(coverProbe.headers.get('content-type')||'')+' '+body.slice(0,220));
+          }
           console.log('V19_PRODUCTION_SMOKE_OK',JSON.stringify({active_players:status.active_players,snapshots:status.winline_snapshots,snapshot_games:status.winline_snapshot_games,match_covers:targetCovers.length,cover_relay:true}));
 
           const news=await get('/api/telegram-center-v20/news/home?limit=10&v='+Date.now(),120000);

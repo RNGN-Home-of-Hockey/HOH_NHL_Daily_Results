@@ -1,15 +1,41 @@
 const VK_COVER_PATH="/api/telegram-center-media/vk-cover";
 const ALLOWED_HOSTS=[
-  "vkvideo.ru","vk.com","vk.ru","userapi.com","vkuser.net","vk-cdn.net",
+  "vkvideo.ru",
+  "vk.com",
+  "vk.ru",
+  "userapi.com",
+  "vkuser.net",
+  "vk-cdn.net",
+  "vkuserphoto.ru",
+  "vkuserlive.net",
+  "vkuseraudio.net",
+  "vkusercontent.net",
 ];
 
-export async function handleTelegramCenterMediaProxy(request,path){
+export async function handleTelegramCenterMediaProxy(request,env,path){
   if(path!==VK_COVER_PATH)return null;
   if(request.method!=="GET")return json({ok:false,error:"method_not_allowed"},405);
-  const raw=new URL(request.url).searchParams.get("url")||"";
+  const url=new URL(request.url),sourceKey=String(url.searchParams.get("source_key")||"").trim();
+  let raw=String(url.searchParams.get("url")||"").trim(),trusted=false;
+  if(sourceKey){
+    if(!env?.DB)return json({ok:false,error:"missing_d1_binding"},503);
+    try{
+      const row=await env.DB.prepare("SELECT thumbnail_url FROM vk_broadcasts WHERE source_key=? LIMIT 1;").bind(sourceKey).first();
+      raw=String(row?.thumbnail_url||"").trim();
+      trusted=true;
+    }catch(error){
+      console.error("vk cover lookup failed",error);
+      return json({ok:false,error:"cover_lookup_failed"},503);
+    }
+    if(!raw)return json({ok:false,error:"cover_not_found"},404);
+  }
+  const normalized=normalizeSource(raw);
   let source;
-  try{source=new URL(raw)}catch{return json({ok:false,error:"invalid_url"},400)}
-  if(source.protocol!=="https:"||!allowedHost(source.hostname))return json({ok:false,error:"source_not_allowed"},400);
+  try{source=new URL(normalized)}catch{return json({ok:false,error:"invalid_url"},400)}
+  if(source.protocol==="http:"&&allowedHost(source.hostname))source.protocol="https:";
+  if(source.protocol!=="https:"||source.username||source.password||(!trusted&&!allowedHost(source.hostname))){
+    return json({ok:false,error:"source_not_allowed",host:safeHost(source.hostname)},400);
+  }
   try{
     const upstream=await fetch(source.toString(),{
       method:"GET",
@@ -23,10 +49,12 @@ export async function handleTelegramCenterMediaProxy(request,path){
     });
     let finalUrl;
     try{finalUrl=new URL(upstream.url||source.toString())}catch{finalUrl=source}
-    if(finalUrl.protocol!=="https:"||!allowedHost(finalUrl.hostname))return json({ok:false,error:"redirect_not_allowed"},502);
-    if(!upstream.ok)return json({ok:false,error:"upstream_image_failed",status:upstream.status},upstream.status===404?404:502);
+    if(finalUrl.protocol!=="https:"||finalUrl.username||finalUrl.password||(!trusted&&!allowedHost(finalUrl.hostname))){
+      return json({ok:false,error:"redirect_not_allowed",host:safeHost(finalUrl.hostname)},502);
+    }
+    if(!upstream.ok)return json({ok:false,error:"upstream_image_failed",status:upstream.status,host:safeHost(finalUrl.hostname)},upstream.status===404?404:502);
     const type=String(upstream.headers.get("content-type")||"").toLowerCase();
-    if(!type.startsWith("image/"))return json({ok:false,error:"upstream_not_image"},502);
+    if(!type.startsWith("image/"))return json({ok:false,error:"upstream_not_image",content_type:type.split(";")[0]||null,host:safeHost(finalUrl.hostname)},502);
     const headers=new Headers();
     headers.set("Content-Type",type.split(";")[0]||"image/jpeg");
     headers.set("Cache-Control","public, max-age=21600, stale-while-revalidate=86400");
@@ -40,8 +68,16 @@ export async function handleTelegramCenterMediaProxy(request,path){
   }
 }
 
+function normalizeSource(value){
+  const s=String(value||"").trim();
+  if(s.startsWith("//"))return "https:"+s;
+  return s;
+}
 function allowedHost(hostname){
-  const h=String(hostname||"").toLowerCase().replace(/\.$/,"");
+  const h=safeHost(hostname);
   return ALLOWED_HOSTS.some(root=>h===root||h.endsWith("."+root));
+}
+function safeHost(hostname){
+  return String(hostname||"").toLowerCase().replace(/\.$/,"").slice(0,253);
 }
 function json(payload,status=200){return new Response(JSON.stringify(payload),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}})}
