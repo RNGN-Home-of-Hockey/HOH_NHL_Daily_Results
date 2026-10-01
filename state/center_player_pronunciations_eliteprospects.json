@@ -1,8 +1,8 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
-  "eliteprospects_audio_matched": 547,
-  "eliteprospects_profiles_resolved": 750,
-  "matched": 555,
+  "eliteprospects_audio_matched": 546,
+  "eliteprospects_profiles_resolved": 748,
+  "matched": 554,
   "nhl_audio_fallback_matched": 8,
   "players": {
     "8470613": {
@@ -11436,29 +11436,6 @@
       "upstream_verified": true,
       "weight_kg": 84
     },
-    "8483487": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8483487.mp3",
-      "birth_country": "USA",
-      "birth_date": "2004-03-30",
-      "eliteprospects_id": "526095",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Rutger%20McGroarty",
-      "eliteprospects_slug": "rutger-mcgroarty",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/526095/rutger-mcgroarty",
-      "first_name": "Rutger",
-      "full_name_en": "Rutger McGroarty",
-      "height_cm": 188,
-      "last_name": "McGroarty",
-      "player_id": 8483487,
-      "position_code": "R",
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/rutger_mcgroarty.mp3",
-      "shoots_catches": "L",
-      "sweater_number": 2,
-      "team_tri": "PIT",
-      "upstream_verified": true,
-      "weight_kg": 96
-    },
     "8483489": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8483489.mp3",
@@ -21552,27 +21529,6 @@
       "team_tri": "WPG",
       "weight_kg": 98
     },
-    "8480051": {
-      "audio_cached": false,
-      "birth_country": "USA",
-      "birth_date": "1999-08-11",
-      "eliteprospects_id": "256228",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Cayden%20Primeau",
-      "eliteprospects_slug": "cayden-primeau",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/256228/cayden-primeau",
-      "first_name": "Cayden",
-      "full_name_en": "Cayden Primeau",
-      "height_cm": 190,
-      "last_name": "Primeau",
-      "player_id": 8480051,
-      "position_code": "G",
-      "pronunciation_available": false,
-      "reason": "no_verified_audio",
-      "shoots_catches": "L",
-      "sweater_number": 55,
-      "team_tri": "CAR",
-      "weight_kg": 93
-    },
     "8480064": {
       "audio_cached": false,
       "birth_country": "USA",
@@ -27605,29 +27561,6 @@
       "upstream_verified": true,
       "weight_kg": 84
     },
-    "8483487": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8483487.mp3",
-      "birth_country": "USA",
-      "birth_date": "2004-03-30",
-      "eliteprospects_id": "526095",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Rutger%20McGroarty",
-      "eliteprospects_slug": "rutger-mcgroarty",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/526095/rutger-mcgroarty",
-      "first_name": "Rutger",
-      "full_name_en": "Rutger McGroarty",
-      "height_cm": 188,
-      "last_name": "McGroarty",
-      "player_id": 8483487,
-      "position_code": "R",
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/rutger_mcgroarty.mp3",
-      "shoots_catches": "L",
-      "sweater_number": 2,
-      "team_tri": "PIT",
-      "upstream_verified": true,
-      "weight_kg": 96
-    },
     "8483489": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8483489.mp3",
@@ -30158,7 +30091,7 @@
       "weight_kg": 84
     }
   },
-  "roster_players": 775,
+  "roster_players": 773,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
@@ -30980,27 +30913,6 @@
       "sweater_number": 32,
       "team_tri": "CAR",
       "weight_kg": 99
-    },
-    {
-      "audio_cached": false,
-      "birth_country": "USA",
-      "birth_date": "1999-08-11",
-      "eliteprospects_id": "256228",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Cayden%20Primeau",
-      "eliteprospects_slug": "cayden-primeau",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/256228/cayden-primeau",
-      "first_name": "Cayden",
-      "full_name_en": "Cayden Primeau",
-      "height_cm": 190,
-      "last_name": "Primeau",
-      "player_id": 8480051,
-      "position_code": "G",
-      "pronunciation_available": false,
-      "reason": "no_verified_audio",
-      "shoots_catches": "L",
-      "sweater_number": 55,
-      "team_tri": "CAR",
-      "weight_kg": 93
     },
     {
       "audio_cached": false,
