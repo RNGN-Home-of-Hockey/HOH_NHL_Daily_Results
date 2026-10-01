@@ -384,7 +384,7 @@ jobs:
             if(legacyUrlShell.includes(forbidden))throw new Error('Legacy player layer leaked into /telegram-app '+forbidden);
           }
           const ui=await fetch(base+'/telegram-app/v19.js',{cache:'no-store'}).then(r=>r.text());
-          for(const needle of ["b.dataset.tab='broadcasts'","v19Audio","aspect-ratio:16/9","v19Country","v19Playoff","v25GameCover","v25HasCover","root.querySelectorAll('[data-v19-game]')","a.onclick=e=>e.stopPropagation()"]){
+          for(const needle of ["b.dataset.tab='broadcasts'","v19Audio","aspect-ratio:16/9","v19Country","v19Playoff","v25GameCover","v25HasCover","telegram-center-media/vk-cover","root.querySelectorAll('[data-v19-game]')","a.onclick=e=>e.stopPropagation()"]){
             if(!ui.includes(needle))throw new Error('V19 UI contract missing '+needle);
           }
           if(ui.includes('new MutationObserver'))throw new Error('V19 unexpectedly added MutationObserver');
@@ -393,7 +393,9 @@ jobs:
           const targetCovers=(matchCovers.games||[]).filter(g=>coverPairs.has(String(g.away?.tri||'')+'-'+String(g.home?.tri||''))||coverPairs.has(String(g.home?.tri||'')+'-'+String(g.away?.tri||'')));
           if(targetCovers.length<3)throw new Error('expected Sep 30 match-card fixtures missing '+JSON.stringify((matchCovers.games||[]).map(g=>[g.away?.tri,g.home?.tri])));
           for(const g of targetCovers)if(!g.vk?.thumbnail_url)throw new Error('match cover missing for '+g.away?.tri+'-'+g.home?.tri);
-          console.log('V19_PRODUCTION_SMOKE_OK',JSON.stringify({active_players:status.active_players,snapshots:status.winline_snapshots,snapshot_games:status.winline_snapshot_games,match_covers:targetCovers.length}));
+          const coverProbe=await fetch(base+'/api/telegram-center-media/vk-cover?url='+encodeURIComponent(targetCovers[0].vk.thumbnail_url),{cache:'no-store'});
+          if(!coverProbe.ok||!String(coverProbe.headers.get('content-type')||'').startsWith('image/'))throw new Error('VK cover relay failed '+coverProbe.status+' '+String(coverProbe.headers.get('content-type')||''));
+          console.log('V19_PRODUCTION_SMOKE_OK',JSON.stringify({active_players:status.active_players,snapshots:status.winline_snapshots,snapshot_games:status.winline_snapshot_games,match_covers:targetCovers.length,cover_relay:true}));
 
           const news=await get('/api/telegram-center-v20/news/home?limit=10&v='+Date.now(),120000);
           if(Number(news.refresh_interval_ms)!==600000)throw new Error('V20 news refresh interval mismatch '+JSON.stringify(news));
