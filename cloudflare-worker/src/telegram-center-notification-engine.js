@@ -186,7 +186,7 @@ async function processDailyPlayerDigests(env,games,subs,ctx,userPrefs,now,dryRun
   summary.injury_feed_records=injuries.size;
   for(const {userId,playerSubs,tz,parts,timezoneFallback} of due){
     const localDate=parts.date,key=`center:daily-players:${localDate}`;
-    const lines=[];
+    const lines=[],digestGames=new Map();
     for(const sub of playerSubs){
       const id=String(sub.subject_key),meta=ctx.playerMeta.get(id),tri=ctx.playerTeams.get(id);if(!tri||!meta)continue;
       const game=(games||[]).find(g=>inGame(tri,g)&&isDigestWindowGame(g,now));if(!game)continue;
@@ -194,18 +194,38 @@ async function processDailyPlayerDigests(env,games,subs,ctx,userPrefs,now,dryRun
       const injury=findInjury(meta,injuries);
       const status=injury?formatInjuryStatus(injury):(meta.active?"":" · ⚠️ вне активного состава");
       lines.push(`• ${meta.name} — ${tri} vs ${opponent} · ${at}${status}`);
+      digestGames.set(Number(game.game_pk),{game_pk:Number(game.game_pk),away:game.away.tri,home:game.home.tri,at});
     }
     if(!lines.length)continue;
+    const digestGameList=[...digestGames.values()];
+    const enabledReminders=await loadDigestReminderSet(env.DB,userId,digestGameList.map(x=>x.game_pk));
+    const replyMarkup=digestReminderKeyboard(digestGameList,enabledReminders);
     const timezoneNote=timezoneFallback?"\n\n🕗 Часовой пояс ещё не сохранён — временно используем московское время. Откройте Live Center, и дальше время будет локальным.":"";
-    const text=`🏒 Сегодня / этой ночью играют ваши игроки\n\n${lines.join("\n")}\n\nОткройте матч в Live Center, чтобы включить напоминание за 15 минут.${timezoneNote}`;
+    const text=`🏒 Сегодня / этой ночью играют ваши игроки\n\n${lines.join("\n")}\n\nВыберите ниже, за какие матчи напомнить за 15 минут.${timezoneNote}`;
     summary.planned++;
-    if(dryRun){summary.daily_digests++;summary.events.push({user_id:userId,type:"daily_player_digest",local_date:localDate,timezone:tz,timezone_fallback:Boolean(timezoneFallback),players:lines.length,text});continue}
+    if(dryRun){summary.daily_digests++;summary.events.push({user_id:userId,type:"daily_player_digest",local_date:localDate,timezone:tz,timezone_fallback:Boolean(timezoneFallback),players:lines.length,games:digestGameList.length,text,reply_markup:replyMarkup});continue}
     const cap=Math.max(1,Math.min(...playerSubs.map(x=>Number(x.max_pushes_per_day)||12)));
     if(!canSendNow(summary,userId,cap))continue;
     if(!(await reserve(env.DB,key,userId,"daily_player_digest",null,JSON.stringify({timezone:tz,local_date:localDate,players:lines.length})))){summary.skipped_duplicate++;continue}
-    try{await sendCenter(env,userId,text);markSent(summary,userId);summary.sent++;summary.daily_digests++}
+    try{await sendCenter(env,userId,text,{reply_markup:replyMarkup});markSent(summary,userId);summary.sent++;summary.daily_digests++}
     catch(error){summary.failed++;await env.DB.prepare(`DELETE FROM notification_log WHERE notification_key=? AND telegram_user_id=?;`).bind(key,userId).run().catch(()=>{});summary.events.push({user_id:userId,type:"daily_player_digest",error:errorText(error)})}
   }
+}
+
+async function loadDigestReminderSet(db,userId,gamePks){
+  const ids=[...new Set((gamePks||[]).map(Number).filter(x=>Number.isSafeInteger(x)&&x>0))];
+  const out=new Set();if(!ids.length)return out;
+  const q=ids.map(()=>"?").join(",");
+  try{
+    const r=await db.prepare(`SELECT subject_key FROM subscriptions WHERE telegram_user_id=? AND subject_type='game' AND COALESCE(notify_pregame,0)=1 AND CAST(subject_key AS INTEGER) IN (${q});`).bind(Number(userId),...ids).all();
+    for(const row of r.results||[])out.add(Number(row.subject_key));
+  }catch{}
+  return out;
+}
+function digestReminderKeyboard(games,enabled){
+  const rows=(games||[]).map(g=>[{text:`${enabled?.has(Number(g.game_pk))?"✅":"☐"} ${g.away} — ${g.home} · ${g.at}`,callback_data:`center_gr:${g.game_pk}`}]);
+  if(rows.length>1){const all=(games||[]).every(g=>enabled?.has(Number(g.game_pk)));rows.push([{text:all?"✅ Все матчи":"🔔 Все матчи",callback_data:"center_gra"}])}
+  return {inline_keyboard:rows};
 }
 
 async function loadEspnInjuries(){
@@ -323,7 +343,7 @@ function canSendNow(summary,userId,cap){
 }
 function markSent(summary,userId){const d=summary?._delivery;if(!d)return;d.used=Number(d.used||0)+1;d.sentToday.set(Number(userId),Number(d.sentToday.get(Number(userId))||0)+1)}
 async function reserve(db,key,user,type,game,payload){const r=await db.prepare(`INSERT OR IGNORE INTO notification_log (notification_key,telegram_user_id,notification_type,subject_type,subject_key,game_pk,payload_json) VALUES (?,?,?,?,?,?,?);`).bind(key,user,type,"game",String(game),game,payload).run();return Number(r?.meta?.changes??r?.changes??0)>0}
-async function sendCenter(env,user,text,options={}){const token=String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim();if(!token)throw new Error("missing_telegram_center_token");const payload={chat_id:user,text,disable_web_page_preview:true};if(options.parse_mode)payload.parse_mode=options.parse_mode;const r=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.description||`Telegram ${r.status}`)}
+async function sendCenter(env,user,text,options={}){const token=String(env.TELEGRAM_CENTER_BOT_TOKEN||"").trim();if(!token)throw new Error("missing_telegram_center_token");const payload={chat_id:user,text,disable_web_page_preview:true};if(options.parse_mode)payload.parse_mode=options.parse_mode;if(options.reply_markup)payload.reply_markup=options.reply_markup;const r=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.description||`Telegram ${r.status}`)}
 async function fetchJson(url){const r=await fetch(url,{headers:{Accept:"application/json"}});if(!r.ok)throw new Error(`NHL HTTP ${r.status}`);return r.json()}
 function html(v){return String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
 function chunks(values,size=90){const out=[];for(let i=0;i<(values||[]).length;i+=size)out.push(values.slice(i,i+size));return out}
