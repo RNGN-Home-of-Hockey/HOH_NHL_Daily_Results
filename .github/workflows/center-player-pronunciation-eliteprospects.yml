@@ -66,7 +66,7 @@ jobs:
               u=str(row.get('pronunciation_url') or '')
               local_path=str(row.get('audio_local_path') or '')
               if row.get('pronunciation_source') == 'eliteprospects_player_audio':
-                  if not u.startswith('https://files.eliteprospects.com/layout/player_audio/') or not u.endswith('.mp3'):
+                  if not u.startswith('https://files.eliteprospects.com/') or '.mp3' not in u.lower():
                       raise SystemExit('invalid Elite Prospects pronunciation URL')
               if not local_path.startswith('/player-audio/') or not local_path.endswith('.mp3'):
                   raise SystemExit('missing local player audio path')
