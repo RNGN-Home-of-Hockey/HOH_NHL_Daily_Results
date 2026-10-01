@@ -615,7 +615,7 @@ export async function pollTelegramCenterUpdates(env) {
 }
 
 
-async function processCenterReminderCallback(env, callback) {
+export async function processCenterReminderCallback(env, callback) {
   const data = String(callback?.data || "").trim();
   if (data !== "center_gra" && !/^center_gr:\d+$/.test(data)) {
     return { handled: false, retry: false };
