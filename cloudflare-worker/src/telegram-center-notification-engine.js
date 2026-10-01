@@ -217,7 +217,14 @@ async function loadDigestReminderSet(db,userId,gamePks){
   const out=new Set();if(!ids.length)return out;
   const q=ids.map(()=>"?").join(",");
   try{
-    const r=await db.prepare(`SELECT subject_key FROM subscriptions WHERE telegram_user_id=? AND subject_type='game' AND COALESCE(notify_pregame,0)=1 AND CAST(subject_key AS INTEGER) IN (${q});`).bind(Number(userId),...ids).all();
+    const r=await db.prepare(`
+      SELECT s.subject_key
+      FROM subscriptions s
+      LEFT JOIN subscription_preferences p ON p.subscription_id=s.subscription_id
+      WHERE s.telegram_user_id=? AND s.subject_type='game'
+        AND COALESCE(p.notify_pregame,s.notify_pregame,0)=1
+        AND CAST(s.subject_key AS INTEGER) IN (${q});
+    `).bind(Number(userId),...ids).all();
     for(const row of r.results||[])out.add(Number(row.subject_key));
   }catch{}
   return out;
