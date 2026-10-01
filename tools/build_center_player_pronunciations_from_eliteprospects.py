@@ -328,28 +328,6 @@ def extract_audio_urls_from_value(value, out: list[str], hint: str = "") -> None
         if url not in out:
             out.append(url)
 
-def pronunciation_debug_values(value, path: str = "", out: list | None = None) -> list:
-    out = out if out is not None else []
-    if len(out) >= 80:
-        return out
-    if isinstance(value, dict):
-        for key, child in value.items():
-            child_path = f"{path}.{key}" if path else str(key)
-            key_l = str(key).lower()
-            if ("pronun" in key_l or "audio" in key_l) and not isinstance(child, (dict, list, tuple)):
-                out.append((child_path, str(child)[:500]))
-            pronunciation_debug_values(child, child_path, out)
-        return out
-    if isinstance(value, (list, tuple)):
-        for i, child in enumerate(value):
-            pronunciation_debug_values(child, f"{path}[{i}]", out)
-        return out
-    text = str(value or "")
-    if ("pronun" in text.lower() or ".mp3" in text.lower()) and len(out) < 80:
-        out.append((path, text[:500]))
-    return out
-
-
 def ep_build_id(session: requests.Session) -> str | None:
     """Read the current Elite Prospects Next.js build id once per process."""
     global _EP_BUILD_ID_CACHE
@@ -407,12 +385,8 @@ def extract_profile_audio(profile_url: str, prefetched_html: str | None, session
             if r.ok:
                 data = r.json()
                 extract_audio_urls_from_value(data, out)
-                if "/player/300591/" in profile_url:
-                    print("EP_BOUCHARD_PRON_DEBUG", json.dumps(pronunciation_debug_values(data), ensure_ascii=False), flush=True)
         except (requests.RequestException, ValueError):
             pass
-    if "/player/300591/" in profile_url and page:
-        print("EP_BOUCHARD_HTML_DEBUG", json.dumps(pronunciation_debug_values(page), ensure_ascii=False), flush=True)
     return out
 
 
