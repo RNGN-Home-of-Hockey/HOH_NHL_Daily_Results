@@ -1,21 +1,29 @@
 {
   "channel": "@homeofhockey-yt",
   "news": {
-    "id": "WZt6lPEapV0",
+    "id": "5t89qCWxALE",
     "kind": "news",
-    "url": "https://www.youtube.com/watch?v=WZt6lPEapV0",
-    "title": "ФАНАТЫ НЕ ПРОСТЯТ ТАКОГО ПОЗОРА | ЗА КРОСБИ МСТИЛ ВЕСЬ ПИТТСБУРГ – HOME OF HOCKEY NEWS",
-    "thumb": "https://i.ytimg.com/vi/WZt6lPEapV0/hq720.jpg",
-    "view_count": 669
+    "url": "https://www.youtube.com/watch?v=5t89qCWxALE",
+    "title": "SHESTERKIN SCORED | 5 POINTS FOR MCDAVID | KUCHEROV AND KAPRIZOV'S FIRST GOALS – HOME OF HOCKEY NEWS",
+    "thumb": "https://i.ytimg.com/vi/5t89qCWxALE/hq720.jpg",
+    "view_count": 108
   },
   "shorts_top10": [
+    {
+      "id": "IumdJ-sTNXA",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/IumdJ-sTNXA",
+      "title": "😱 Shestyorkin scores a goal in the NHL! #shorts",
+      "thumb": "https://i.ytimg.com/vi/IumdJ-sTNXA/hq720.jpg",
+      "view_count": 1200
+    },
     {
       "id": "6ILGGX5FSyk",
       "kind": "short",
       "url": "https://www.youtube.com/shorts/6ILGGX5FSyk",
       "title": "🥊 MacKinnon dropped the gloves! Are you serious?! #shorts",
       "thumb": "https://i.ytimg.com/vi/6ILGGX5FSyk/hq720.jpg",
-      "view_count": 1200
+      "view_count": 1800
     },
     {
       "id": "a7Ia7xeg6O0",
@@ -23,7 +31,7 @@
       "url": "https://www.youtube.com/shorts/a7Ia7xeg6O0",
       "title": "😡 Nicolas Deslauriers and Bokondji Imama get into a heated scrap! #shorts",
       "thumb": "https://i.ytimg.com/vi/a7Ia7xeg6O0/hq720.jpg",
-      "view_count": 1500
+      "view_count": 1700
     },
     {
       "id": "lE6HsW_lO3A",
@@ -47,7 +55,7 @@
       "url": "https://www.youtube.com/shorts/PWS0j-pab8k",
       "title": "🤯 Что делает Овечкин...?  #shorts",
       "thumb": "https://i.ytimg.com/vi/PWS0j-pab8k/hq720.jpg",
-      "view_count": 3700
+      "view_count": 3800
     },
     {
       "id": "EdW_k6Yv60s",
@@ -63,7 +71,7 @@
       "url": "https://www.youtube.com/shorts/4Zqd87BfPk8",
       "title": "🥲 ASMR конца сезона... #shorts",
       "thumb": "https://i.ytimg.com/vi/4Zqd87BfPk8/hq720.jpg",
-      "view_count": 136
+      "view_count": 140
     },
     {
       "id": "sgYGqUNa6Lc",
@@ -80,15 +88,7 @@
       "title": "🤣 После ЭТОГО им забили... #shorts",
       "thumb": "https://i.ytimg.com/vi/OuZ48CZZe9M/hq720.jpg",
       "view_count": 3000
-    },
-    {
-      "id": "4Z0U1rksbEA",
-      "kind": "short",
-      "url": "https://www.youtube.com/shorts/4Z0U1rksbEA",
-      "title": "🤣 Мартен Сен-Луи точно фанат Леонардо Ди Каприо... #shorts",
-      "thumb": "https://i.ytimg.com/vi/4Z0U1rksbEA/hq720.jpg",
-      "view_count": 1200
     }
   ],
-  "updated_at": "2026-10-01T14:48:40.097188+00:00"
+  "updated_at": "2026-10-02T08:58:55.659949+00:00"
 }
