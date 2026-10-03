@@ -1,8 +1,8 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
-  "eliteprospects_audio_matched": 546,
-  "eliteprospects_profiles_resolved": 743,
-  "matched": 554,
+  "eliteprospects_audio_matched": 545,
+  "eliteprospects_profiles_resolved": 741,
+  "matched": 553,
   "nhl_audio_fallback_matched": 8,
   "players": {
     "8470613": {
@@ -8284,29 +8284,6 @@
       "team_tri": "NYI",
       "upstream_verified": true,
       "weight_kg": 94
-    },
-    "8481019": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8481019.mp3",
-      "birth_country": "SWE",
-      "birth_date": "2000-04-11",
-      "eliteprospects_id": "293796",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=David%20Gustafsson",
-      "eliteprospects_slug": "david-gustafsson",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/293796/david-gustafsson",
-      "first_name": "David",
-      "full_name_en": "David Gustafsson",
-      "height_cm": 190,
-      "last_name": "Gustafsson",
-      "player_id": 8481019,
-      "position_code": "C",
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/david_gustavsson.mp3",
-      "shoots_catches": "L",
-      "sweater_number": 13,
-      "team_tri": "PIT",
-      "upstream_verified": true,
-      "weight_kg": 95
     },
     "8481020": {
       "audio_cached": true,
@@ -22982,29 +22959,6 @@
       "upstream_verified": true,
       "weight_kg": 94
     },
-    "8481019": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8481019.mp3",
-      "birth_country": "SWE",
-      "birth_date": "2000-04-11",
-      "eliteprospects_id": "293796",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=David%20Gustafsson",
-      "eliteprospects_slug": "david-gustafsson",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/293796/david-gustafsson",
-      "first_name": "David",
-      "full_name_en": "David Gustafsson",
-      "height_cm": 190,
-      "last_name": "Gustafsson",
-      "player_id": 8481019,
-      "position_code": "C",
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/david_gustavsson.mp3",
-      "shoots_catches": "L",
-      "sweater_number": 13,
-      "team_tri": "PIT",
-      "upstream_verified": true,
-      "weight_kg": 95
-    },
     "8481020": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8481020.mp3",
@@ -29008,27 +28962,6 @@
       "team_tri": "MTL",
       "weight_kg": 88
     },
-    "8484428": {
-      "audio_cached": false,
-      "birth_country": "CAN",
-      "birth_date": "2003-09-05",
-      "eliteprospects_id": "485094",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Charles%20Alexis%20Legault",
-      "eliteprospects_slug": "charles-alexis-legault",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/485094/charles-alexis-legault",
-      "first_name": "Charles Alexis",
-      "full_name_en": "Charles Alexis Legault",
-      "height_cm": 193,
-      "last_name": "Legault",
-      "player_id": 8484428,
-      "position_code": "D",
-      "pronunciation_available": false,
-      "reason": "no_verified_audio",
-      "shoots_catches": "R",
-      "sweater_number": 62,
-      "team_tri": "CAR",
-      "weight_kg": 100
-    },
     "8484471": {
       "audio_cached": false,
       "birth_country": "CAN",
@@ -29986,7 +29919,7 @@
       "weight_kg": 84
     }
   },
-  "roster_players": 768,
+  "roster_players": 766,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
@@ -30703,27 +30636,6 @@
       "sweater_number": 32,
       "team_tri": "CAR",
       "weight_kg": 99
-    },
-    {
-      "audio_cached": false,
-      "birth_country": "CAN",
-      "birth_date": "2003-09-05",
-      "eliteprospects_id": "485094",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Charles%20Alexis%20Legault",
-      "eliteprospects_slug": "charles-alexis-legault",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/485094/charles-alexis-legault",
-      "first_name": "Charles Alexis",
-      "full_name_en": "Charles Alexis Legault",
-      "height_cm": 193,
-      "last_name": "Legault",
-      "player_id": 8484428,
-      "position_code": "D",
-      "pronunciation_available": false,
-      "reason": "no_verified_audio",
-      "shoots_catches": "R",
-      "sweater_number": 62,
-      "team_tri": "CAR",
-      "weight_kg": 100
     },
     {
       "audio_cached": false,
