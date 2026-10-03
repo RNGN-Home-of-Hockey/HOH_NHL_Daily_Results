@@ -1,8 +1,8 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
-  "eliteprospects_audio_matched": 544,
-  "eliteprospects_profiles_resolved": 741,
-  "matched": 552,
+  "eliteprospects_audio_matched": 546,
+  "eliteprospects_profiles_resolved": 743,
+  "matched": 554,
   "nhl_audio_fallback_matched": 8,
   "players": {
     "8470613": {
@@ -11735,6 +11735,29 @@
       "upstream_verified": true,
       "weight_kg": 88
     },
+    "8483575": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8483575.mp3",
+      "birth_country": "CAN",
+      "birth_date": "1998-02-02",
+      "eliteprospects_id": "166670",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Matt%20Murray",
+      "eliteprospects_slug": "matt-murray",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/166670/matt-murray",
+      "first_name": "Matt",
+      "full_name_en": "Matt Murray",
+      "height_cm": 185,
+      "last_name": "Murray",
+      "player_id": 8483575,
+      "position_code": "G",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/matt_murray.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 32,
+      "team_tri": "NSH",
+      "upstream_verified": true,
+      "weight_kg": 89
+    },
     "8483609": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8483609.mp3",
@@ -12355,6 +12378,29 @@
       "team_tri": "CHI",
       "upstream_verified": true,
       "weight_kg": 80
+    },
+    "8484509": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8484509.mp3",
+      "birth_country": "DEU",
+      "birth_date": "2002-03-22",
+      "eliteprospects_id": "427110",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Josh%20Samanski",
+      "eliteprospects_slug": "josh-samanski",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/427110/josh-samanski",
+      "first_name": "Josh",
+      "full_name_en": "Josh Samanski",
+      "height_cm": 188,
+      "last_name": "Samanski",
+      "player_id": 8484509,
+      "position_code": "C",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/joshua_samanski.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 81,
+      "team_tri": "EDM",
+      "upstream_verified": true,
+      "weight_kg": 90
     },
     "8484790": {
       "audio_cached": true,
@@ -27856,6 +27902,29 @@
       "team_tri": "WSH",
       "weight_kg": 91
     },
+    "8483575": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8483575.mp3",
+      "birth_country": "CAN",
+      "birth_date": "1998-02-02",
+      "eliteprospects_id": "166670",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Matt%20Murray",
+      "eliteprospects_slug": "matt-murray",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/166670/matt-murray",
+      "first_name": "Matt",
+      "full_name_en": "Matt Murray",
+      "height_cm": 185,
+      "last_name": "Murray",
+      "player_id": 8483575,
+      "position_code": "G",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/matt_murray.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 32,
+      "team_tri": "NSH",
+      "upstream_verified": true,
+      "weight_kg": 89
+    },
     "8483609": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8483609.mp3",
@@ -28981,6 +29050,29 @@
       "team_tri": "DET",
       "weight_kg": 89
     },
+    "8484509": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8484509.mp3",
+      "birth_country": "DEU",
+      "birth_date": "2002-03-22",
+      "eliteprospects_id": "427110",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Josh%20Samanski",
+      "eliteprospects_slug": "josh-samanski",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/427110/josh-samanski",
+      "first_name": "Josh",
+      "full_name_en": "Josh Samanski",
+      "height_cm": 188,
+      "last_name": "Samanski",
+      "player_id": 8484509,
+      "position_code": "C",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/joshua_samanski.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 81,
+      "team_tri": "EDM",
+      "upstream_verified": true,
+      "weight_kg": 90
+    },
     "8484759": {
       "audio_cached": false,
       "birth_country": "CAN",
@@ -29894,7 +29986,7 @@
       "weight_kg": 84
     }
   },
-  "roster_players": 766,
+  "roster_players": 768,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
