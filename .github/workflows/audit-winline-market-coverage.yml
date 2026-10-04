@@ -99,3 +99,89 @@ jobs:
             ORDER BY selections DESC,freetext ASC
             LIMIT 80;
           "
+
+      - name: Incident audit game 2026010021
+        run: |
+          set -euo pipefail
+          GAME=2026010021
+          echo '=== INCIDENT GAME ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,last_synced_at
+            FROM games WHERE game_pk=$GAME;
+          "
+          echo '=== INCIDENT WINLINE EVENTS ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT winline_event_id,game_pk,status,starts_at,updated_at,deeplink,raw_json
+            FROM winline_events WHERE game_pk=$GAME ORDER BY updated_at;
+          "
+          echo '=== INCIDENT CURRENT MARKET STATE ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT is_live,active,COUNT(*) selections,COUNT(DISTINCT market_type) market_types,
+                   MIN(updated_at) oldest_update,MAX(updated_at) newest_update
+            FROM winline_markets
+            WHERE winline_event_id IN (SELECT winline_event_id FROM winline_events WHERE game_pk=$GAME)
+            GROUP BY is_live,active ORDER BY is_live,active;
+          "
+          echo '=== INCIDENT LIVE MARKET FAMILIES ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT market_type,COALESCE(json_extract(raw_json,'$.freetext'),'') freetext,
+                   COUNT(*) selections,SUM(CASE WHEN active=1 THEN 1 ELSE 0 END) active_selections,
+                   MIN(updated_at) first_update,MAX(updated_at) last_update
+            FROM winline_markets
+            WHERE winline_event_id IN (SELECT winline_event_id FROM winline_events WHERE game_pk=$GAME)
+              AND is_live=1
+            GROUP BY market_type,freetext
+            ORDER BY datetime(last_update) ASC,market_type ASC;
+          "
+          echo '=== INCIDENT SNAPSHOT RANGE ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT is_live,COUNT(*) snapshots,COUNT(DISTINCT winline_market_id) markets,
+                   MIN(captured_at) first_at,MAX(captured_at) last_at
+            FROM winline_market_snapshots
+            WHERE game_pk=$GAME
+            GROUP BY is_live ORDER BY is_live;
+          "
+          echo '=== INCIDENT LIVE SNAPSHOTS BY MINUTE ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT strftime('%Y-%m-%d %H:%M',captured_at) minute,
+                   COUNT(*) rows,COUNT(DISTINCT winline_market_id) markets,
+                   ROUND(MIN(odds),3) min_odds,ROUND(MAX(odds),3) max_odds
+            FROM winline_market_snapshots
+            WHERE game_pk=$GAME AND is_live=1
+            GROUP BY minute ORDER BY minute;
+          "
+          echo '=== INCIDENT BROADCAST INSIGHT HISTORY ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT market_type,period,subject,side,line,first_odds,latest_odds,
+                   first_seen_at,last_seen_at,seen_count,top_for_air_seen
+            FROM broadcast_insight_history
+            WHERE game_pk=$GAME
+            ORDER BY datetime(last_seen_at),market_type;
+          "
+          echo '=== INCIDENT WINLINE LIFECYCLE ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT market_type,subject_key,outcome_name,opening_odds,closing_odds,
+                   opening_at,closing_at,min_odds,max_odds,snapshot_count
+            FROM winline_market_lifecycle
+            WHERE game_pk=$GAME
+            ORDER BY datetime(closing_at),market_type;
+          "
+          echo '=== LATEST LIVE FEED META ==='
+          npx wrangler d1 execute hoh-data-core --remote --command "
+            SELECT meta_key,meta_value,updated_at FROM data_core_meta
+            WHERE meta_key='winline_live_feed_sync_state';
+          "
+
+      - name: Incident production API probes
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          for(const p of ['/api/winline/live/status','/api/broadcast/games/2026010021','/api/broadcast/live/2026010021']){
+            try{
+              const r=await fetch(base+p,{headers:{accept:'application/json'},cache:'no-store'});
+              const text=await r.text();
+              console.log('PROBE',p,'HTTP',r.status,text.slice(0,30000));
+            }catch(e){console.log('PROBE_ERROR',p,String(e?.stack||e));}
+          }
+          JS
