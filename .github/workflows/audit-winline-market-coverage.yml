@@ -27,152 +27,95 @@ jobs:
           set -euo pipefail
           echo '=== ACTIVE INVENTORY ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT
-              COUNT(*) active_selections,
-              COUNT(DISTINCT m.winline_event_id) events,
-              COUNT(DISTINCT m.market_type) market_type_keys
-            FROM winline_markets m
-            WHERE m.active=1 AND m.odds IS NOT NULL;
-          "
-          echo '=== EVENT MATCHING ==='
-          npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT
-              COUNT(*) events_total,
-              SUM(CASE WHEN game_pk IS NOT NULL THEN 1 ELSE 0 END) matched_games,
-              SUM(CASE WHEN game_pk IS NULL THEN 1 ELSE 0 END) unmatched_events,
-              MIN(starts_at) first_start,
-              MAX(starts_at) last_start,
-              MAX(updated_at) latest_event_update
-            FROM winline_events;
-          "
-          echo '=== ACTIVE EVENTS ==='
-          npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT e.winline_event_id,e.game_pk,e.starts_at,e.status,
-                   COUNT(CASE WHEN m.active=1 AND m.odds IS NOT NULL THEN 1 END) active_selections,
-                   MAX(m.updated_at) latest_market_update
-            FROM winline_events e
-            LEFT JOIN winline_markets m ON m.winline_event_id=e.winline_event_id
-            GROUP BY e.winline_event_id,e.game_pk,e.starts_at,e.status
-            HAVING active_selections>0
-            ORDER BY datetime(e.starts_at) ASC
-            LIMIT 60;
-          "
-          echo '=== MARKET TYPES ==='
-          npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT m.market_type,COUNT(*) selections,COUNT(DISTINCT m.winline_event_id) events
-            FROM winline_markets m
-            WHERE m.active=1 AND m.odds IS NOT NULL
-            GROUP BY m.market_type
-            ORDER BY selections DESC,market_type ASC
-            LIMIT 120;
-          "
-          echo '=== FREETEXT FAMILIES ==='
-          npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT
-              COALESCE(json_extract(m.raw_json,'$.freetext'),'') freetext,
-              COUNT(*) selections,
-              COUNT(DISTINCT m.winline_event_id) events
-            FROM winline_markets m
-            WHERE m.active=1 AND m.odds IS NOT NULL
-            GROUP BY freetext
-            ORDER BY selections DESC,freetext ASC
-            LIMIT 120;
-          "
-          echo '=== SAMPLE FUTURE EVENT 2026020001 ==='
-          npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT m.winline_market_id,m.market_type,m.subject_key,m.outcome_name,m.odds,
-                   json_extract(m.raw_json,'$.freetext') freetext,
-                   json_extract(m.raw_json,'$.value') line_value
-            FROM winline_markets m
-            JOIN winline_events e ON e.winline_event_id=m.winline_event_id
-            WHERE e.game_pk=2026020001 AND m.active=1 AND m.odds IS NOT NULL
-            ORDER BY m.market_type,m.winline_market_id;
+            SELECT COUNT(*) active_selections,COUNT(DISTINCT m.winline_event_id) events,COUNT(DISTINCT m.market_type) market_type_keys
+            FROM winline_markets m WHERE m.active=1 AND m.odds IS NOT NULL;
           "
           echo '=== LIVE FREETEXT FAMILIES ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT
-              COALESCE(json_extract(m.raw_json,'$.freetext'),'') freetext,
-              COUNT(*) selections
-            FROM winline_markets m
-            WHERE m.active=1 AND m.odds IS NOT NULL AND m.is_live=1
-            GROUP BY freetext
-            ORDER BY selections DESC,freetext ASC
-            LIMIT 80;
+            SELECT COALESCE(json_extract(m.raw_json,'$.freetext'),'') freetext,COUNT(*) selections
+            FROM winline_markets m WHERE m.active=1 AND m.odds IS NOT NULL AND m.is_live=1
+            GROUP BY freetext ORDER BY selections DESC,freetext ASC LIMIT 80;
           "
 
-      - name: Incident audit game 2026010021
+      - name: Incident audit linked game 2026010021
         run: |
           set -euo pipefail
           GAME=2026010021
-          echo '=== INCIDENT GAME ==='
+          echo '=== LINKED GAME ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
             SELECT game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,last_synced_at
             FROM games WHERE game_pk=$GAME;
           "
-          echo '=== INCIDENT WINLINE EVENTS ==='
+          echo '=== LINKED GAME WINLINE ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT winline_event_id,game_pk,status,starts_at,updated_at,deeplink,raw_json
-            FROM winline_events WHERE game_pk=$GAME ORDER BY updated_at;
+            SELECT e.winline_event_id,e.status,e.starts_at,e.updated_at,
+                   SUM(CASE WHEN m.is_live=0 AND m.active=1 THEN 1 ELSE 0 END) active_pregame,
+                   SUM(CASE WHEN m.is_live=1 AND m.active=1 THEN 1 ELSE 0 END) active_live,
+                   MIN(CASE WHEN m.is_live=1 THEN m.updated_at END) first_live_update,
+                   MAX(CASE WHEN m.is_live=1 THEN m.updated_at END) last_live_update
+            FROM winline_events e LEFT JOIN winline_markets m ON m.winline_event_id=e.winline_event_id
+            WHERE e.game_pk=$GAME GROUP BY e.winline_event_id,e.status,e.starts_at,e.updated_at;
           "
-          echo '=== INCIDENT CURRENT MARKET STATE ==='
+          echo '=== LINKED GAME SNAPSHOTS ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT is_live,active,COUNT(*) selections,COUNT(DISTINCT market_type) market_types,
-                   MIN(updated_at) oldest_update,MAX(updated_at) newest_update
-            FROM winline_markets
-            WHERE winline_event_id IN (SELECT winline_event_id FROM winline_events WHERE game_pk=$GAME)
-            GROUP BY is_live,active ORDER BY is_live,active;
+            SELECT is_live,COUNT(*) snapshots,COUNT(DISTINCT winline_market_id) markets,MIN(captured_at) first_at,MAX(captured_at) last_at
+            FROM winline_market_snapshots WHERE game_pk=$GAME GROUP BY is_live ORDER BY is_live;
           "
-          echo '=== INCIDENT LIVE MARKET FAMILIES ==='
+
+      - name: Oct 4 live incident sweep
+        run: |
+          set -euo pipefail
+          echo '=== OCT 4 GAMES ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT market_type,COALESCE(json_extract(raw_json,'$.freetext'),'') freetext,
-                   COUNT(*) selections,SUM(CASE WHEN active=1 THEN 1 ELSE 0 END) active_selections,
-                   MIN(updated_at) first_update,MAX(updated_at) last_update
-            FROM winline_markets
-            WHERE winline_event_id IN (SELECT winline_event_id FROM winline_events WHERE game_pk=$GAME)
-              AND is_live=1
-            GROUP BY market_type,freetext
-            ORDER BY datetime(last_update) ASC,market_type ASC;
+            SELECT game_pk,game_type,scheduled_start_utc,game_state,away_tri,home_tri,away_score,home_score,last_synced_at
+            FROM games
+            WHERE datetime(scheduled_start_utc)>=datetime('2026-10-04T00:00:00Z')
+              AND datetime(scheduled_start_utc)<datetime('2026-10-05T00:00:00Z')
+            ORDER BY datetime(scheduled_start_utc),game_pk;
           "
-          echo '=== INCIDENT SNAPSHOT RANGE ==='
+          echo '=== OCT 4 WINLINE COVERAGE ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT is_live,COUNT(*) snapshots,COUNT(DISTINCT winline_market_id) markets,
-                   MIN(captured_at) first_at,MAX(captured_at) last_at
-            FROM winline_market_snapshots
-            WHERE game_pk=$GAME
-            GROUP BY is_live ORDER BY is_live;
+            SELECT g.game_pk,g.away_tri,g.home_tri,g.scheduled_start_utc,g.game_state,
+                   e.winline_event_id,e.status AS winline_status,e.updated_at AS event_updated_at,
+                   SUM(CASE WHEN m.is_live=0 AND m.active=1 THEN 1 ELSE 0 END) active_pregame,
+                   SUM(CASE WHEN m.is_live=1 AND m.active=1 THEN 1 ELSE 0 END) active_live,
+                   COUNT(DISTINCT CASE WHEN m.is_live=1 THEN m.winline_market_id END) live_market_rows,
+                   MIN(CASE WHEN m.is_live=1 THEN m.updated_at END) first_live_update,
+                   MAX(CASE WHEN m.is_live=1 THEN m.updated_at END) last_live_update
+            FROM games g
+            LEFT JOIN winline_events e ON e.game_pk=g.game_pk
+            LEFT JOIN winline_markets m ON m.winline_event_id=e.winline_event_id
+            WHERE datetime(g.scheduled_start_utc)>=datetime('2026-10-04T00:00:00Z')
+              AND datetime(g.scheduled_start_utc)<datetime('2026-10-05T00:00:00Z')
+            GROUP BY g.game_pk,g.away_tri,g.home_tri,g.scheduled_start_utc,g.game_state,e.winline_event_id,e.status,e.updated_at
+            ORDER BY datetime(g.scheduled_start_utc),g.game_pk;
           "
-          echo '=== INCIDENT LIVE SNAPSHOTS BY MINUTE ==='
+          echo '=== OCT 4 LIVE SNAPSHOT RANGES ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT strftime('%Y-%m-%d %H:%M',captured_at) minute,
-                   COUNT(*) rows,COUNT(DISTINCT winline_market_id) markets,
-                   ROUND(MIN(odds),3) min_odds,ROUND(MAX(odds),3) max_odds
-            FROM winline_market_snapshots
-            WHERE game_pk=$GAME AND is_live=1
-            GROUP BY minute ORDER BY minute;
+            SELECT s.game_pk,g.away_tri,g.home_tri,COUNT(*) snapshots,COUNT(DISTINCT s.winline_market_id) markets,
+                   MIN(s.captured_at) first_at,MAX(s.captured_at) last_at
+            FROM winline_market_snapshots s JOIN games g ON g.game_pk=s.game_pk
+            WHERE s.is_live=1
+              AND datetime(g.scheduled_start_utc)>=datetime('2026-10-04T00:00:00Z')
+              AND datetime(g.scheduled_start_utc)<datetime('2026-10-05T00:00:00Z')
+            GROUP BY s.game_pk,g.away_tri,g.home_tri ORDER BY s.game_pk;
           "
-          echo '=== INCIDENT BROADCAST INSIGHT HISTORY ==='
+          echo '=== OCT 4 LIVE SNAPSHOTS BY MINUTE ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT market_type,period,subject,side,line,first_odds,latest_odds,
-                   first_seen_at,last_seen_at,seen_count,top_for_air_seen
-            FROM broadcast_insight_history
-            WHERE game_pk=$GAME
-            ORDER BY datetime(last_seen_at),market_type;
-          "
-          echo '=== INCIDENT WINLINE LIFECYCLE ==='
-          npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT market_type,subject_key,outcome_name,opening_odds,closing_odds,
-                   opening_at,closing_at,min_odds,max_odds,snapshot_count
-            FROM winline_market_lifecycle
-            WHERE game_pk=$GAME
-            ORDER BY datetime(closing_at),market_type;
+            SELECT s.game_pk,strftime('%Y-%m-%d %H:%M',s.captured_at) minute,
+                   COUNT(*) rows,COUNT(DISTINCT s.winline_market_id) markets
+            FROM winline_market_snapshots s JOIN games g ON g.game_pk=s.game_pk
+            WHERE s.is_live=1
+              AND datetime(g.scheduled_start_utc)>=datetime('2026-10-04T00:00:00Z')
+              AND datetime(g.scheduled_start_utc)<datetime('2026-10-05T00:00:00Z')
+            GROUP BY s.game_pk,minute ORDER BY s.game_pk,minute;
           "
           echo '=== LATEST LIVE FEED META ==='
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT meta_key,meta_value,updated_at FROM data_core_meta
-            WHERE meta_key='winline_live_feed_sync_state';
+            SELECT meta_key,meta_value,updated_at FROM data_core_meta WHERE meta_key='winline_live_feed_sync_state';
           "
 
-      - name: Incident production API probes
+      - name: Production API probes
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
