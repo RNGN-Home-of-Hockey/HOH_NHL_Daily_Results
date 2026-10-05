@@ -2,8 +2,8 @@
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
   "eliteprospects_audio_matched": 545,
   "eliteprospects_profiles_resolved": 741,
-  "matched": 553,
-  "nhl_audio_fallback_matched": 8,
+  "matched": 554,
+  "nhl_audio_fallback_matched": 9,
   "players": {
     "8470613": {
       "audio_cached": true,
@@ -12631,6 +12631,29 @@
       "team_tri": "MIN",
       "upstream_verified": true,
       "weight_kg": 76
+    },
+    "8485957": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8485957.mp3",
+      "birth_country": "LVA",
+      "birth_date": "2007-12-02",
+      "eliteprospects_id": "876994",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Alberts%20Smits",
+      "eliteprospects_slug": "alberts-mits",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/876994/alberts-mits",
+      "first_name": "Alberts",
+      "full_name_en": "Alberts Smits",
+      "height_cm": 190,
+      "last_name": "Smits",
+      "player_id": 8485957,
+      "position_code": "D",
+      "pronunciation_source": "nhl.com_team_pronunciation_guide",
+      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/eepfdwzgixxlmraewzyu.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 12,
+      "team_tri": "NYR",
+      "upstream_verified": true,
+      "weight_kg": 94
     },
     "8486052": {
       "audio_cached": true,
@@ -29722,7 +29745,8 @@
       "weight_kg": 76
     },
     "8485957": {
-      "audio_cached": false,
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8485957.mp3",
       "birth_country": "LVA",
       "birth_date": "2007-12-02",
       "eliteprospects_id": "876994",
@@ -29735,11 +29759,12 @@
       "last_name": "Smits",
       "player_id": 8485957,
       "position_code": "D",
-      "pronunciation_available": false,
-      "reason": "no_verified_audio",
+      "pronunciation_source": "nhl.com_team_pronunciation_guide",
+      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/eepfdwzgixxlmraewzyu.mp3",
       "shoots_catches": "L",
       "sweater_number": 12,
       "team_tri": "NYR",
+      "upstream_verified": true,
       "weight_kg": 94
     },
     "8486025": {
@@ -32379,27 +32404,6 @@
       "sweater_number": 48,
       "team_tri": "NYI",
       "weight_kg": 88
-    },
-    {
-      "audio_cached": false,
-      "birth_country": "LVA",
-      "birth_date": "2007-12-02",
-      "eliteprospects_id": "876994",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Alberts%20Smits",
-      "eliteprospects_slug": "alberts-mits",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/876994/alberts-mits",
-      "first_name": "Alberts",
-      "full_name_en": "Alberts Smits",
-      "height_cm": 190,
-      "last_name": "Smits",
-      "player_id": 8485957,
-      "position_code": "D",
-      "pronunciation_available": false,
-      "reason": "no_verified_audio",
-      "shoots_catches": "L",
-      "sweater_number": 12,
-      "team_tri": "NYR",
-      "weight_kg": 94
     },
     {
       "audio_cached": false,
