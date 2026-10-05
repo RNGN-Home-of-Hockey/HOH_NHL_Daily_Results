@@ -1,4 +1,9 @@
-const LIVE_FEED_URL="https://back.winline.ru/banners/live_mainsports_eng";
+const LIVE_FEEDS=[
+  {key:"live_mainsports_eng",url:"https://back.winline.ru/banners/live_mainsports_eng"},
+  {key:"liveeng",url:"https://back.winline.ru/banners/liveeng"},
+  {key:"live_mainsports",url:"https://back.winline.ru/banners/live_mainsports"},
+  {key:"live",url:"https://back.winline.ru/banners/live"},
+];
 const META_KEY="winline_live_feed_sync_state";
 const LIVE_STATES=new Set(["LIVE","CRIT","INTERMISSION"]);
 const TEAM_ALIASES={
@@ -20,23 +25,81 @@ export async function runWinlineLiveFeedMaintenance(env,{force=false,nowMs=Date.
   if(!force&&Number.isFinite(last)&&nowMs-last<45*1000){
     return {ok:true,skipped:true,reason:"cadence",live_games:candidates.length,last_fetch_at:state?.fetched_at||null};
   }
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
-  let response,text;
-  try{
-    response=await fetchImpl(LIVE_FEED_URL,{signal:controller.signal,headers:{accept:"application/xml,text/xml,*/*","user-agent":"HOH-NHL-Live-Winline/1.0"}});
-    if(!response.ok)throw new Error("Winline live HTTP "+response.status);
-    text=await response.text();
-  }finally{clearTimeout(timer)}
-  const events=parseNhlLiveFeed(text);
-  const mapped=mapLiveEvents(events,candidates);
-  const persisted=await persistLive(env.DB,mapped,new Date(nowMs).toISOString());
+
+  const feed=await fetchNhlLiveFeedWithFallback(fetchImpl,candidates);
+  const persisted=await persistLive(env.DB,feed.mapped,new Date(nowMs).toISOString());
   const payload={
-    fetched_at:new Date(nowMs).toISOString(),live_games:candidates.length,feed_events:events.length,mapped_events:mapped.length,
-    markets_written:persisted.markets_written,snapshot_rows_written:persisted.snapshot_rows_written,changed_markets:persisted.changed_markets,
-    unmapped_events:Math.max(0,events.length-mapped.length)
+    fetched_at:new Date(nowMs).toISOString(),
+    live_games:candidates.length,
+    feed_events:feed.events.length,
+    mapped_events:feed.mapped.length,
+    mapped_games:new Set(feed.mapped.map(x=>Number(x.game_pk))).size,
+    markets_written:persisted.markets_written,
+    snapshot_rows_written:persisted.snapshot_rows_written,
+    changed_markets:persisted.changed_markets,
+    unmapped_events:Math.max(0,feed.events.length-feed.mapped.length),
+    feed_sources:feed.sources,
+    feed_attempts:feed.attempts,
+    fallback_used:feed.fallback_used,
+    provider_empty:feed.mapped.length===0,
   };
   await saveState(env.DB,payload);
   return {ok:true,skipped:false,...payload};
+}
+
+export async function fetchNhlLiveFeedWithFallback(fetchImpl=fetch,candidates=[],{timeoutMs=12000}={}){
+  const primary=await fetchLiveSource(LIVE_FEEDS[0],fetchImpl,timeoutMs);
+  let attempts=[attemptMeta(primary)],results=[primary];
+  let events=dedupeFeedEvents(primary.events||[]);
+  let mapped=selectMappedEvents(mapLiveEvents(events,candidates));
+  const candidateGames=new Set((candidates||[]).map(x=>Number(x.game_pk)).filter(Number.isSafeInteger)).size;
+  const mappedGames=new Set(mapped.map(x=>Number(x.game_pk))).size;
+  let fallbackUsed=false;
+
+  if(mappedGames<candidateGames){
+    fallbackUsed=true;
+    const fallbacks=await Promise.all(LIVE_FEEDS.slice(1).map(source=>fetchLiveSource(source,fetchImpl,timeoutMs)));
+    results=results.concat(fallbacks);
+    attempts=attempts.concat(fallbacks.map(attemptMeta));
+    events=dedupeFeedEvents(results.flatMap(x=>x.events||[]));
+    mapped=selectMappedEvents(mapLiveEvents(events,candidates));
+  }
+
+  const sources=[...new Set(mapped.map(x=>x.feed_source).filter(Boolean))];
+  return {events,mapped,attempts,sources,fallback_used:fallbackUsed};
+}
+
+async function fetchLiveSource(source,fetchImpl,timeoutMs){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const response=await fetchImpl(source.url,{signal:controller.signal,headers:{accept:"application/xml,text/xml,*/*","user-agent":"HOH-NHL-Live-Winline/2.0"}});
+    const text=await response.text();
+    const bytes=new TextEncoder().encode(text).length;
+    if(!response.ok)return {key:source.key,url:source.url,ok:false,status:Number(response.status)||null,bytes,events:[],error:"HTTP "+response.status};
+    const events=parseNhlLiveFeed(text).map(event=>({...event,feed_source:source.key}));
+    return {key:source.key,url:source.url,ok:true,status:Number(response.status)||200,bytes,events};
+  }catch(error){
+    return {key:source.key,url:source.url,ok:false,status:null,bytes:0,events:[],error:String(error?.name==="AbortError"?"timeout":error?.message||error)};
+  }finally{clearTimeout(timer)}
+}
+function attemptMeta(result){return {key:result.key,ok:Boolean(result.ok),status:result.status??null,bytes:Number(result.bytes||0),nhl_events:(result.events||[]).length,error:result.error||null}}
+function dedupeFeedEvents(events){
+  const byId=new Map();
+  for(const event of events||[]){
+    const key=String(event?.event_id||"");if(!key)continue;
+    const previous=byId.get(key);
+    if(!previous||Number(event?.lines?.length||0)>Number(previous?.lines?.length||0))byId.set(key,event);
+  }
+  return [...byId.values()];
+}
+function selectMappedEvents(items){
+  const byGame=new Map();
+  for(const item of items||[]){
+    const key=Number(item?.game_pk);if(!Number.isSafeInteger(key))continue;
+    const previous=byGame.get(key);
+    if(!previous||Number(item?.lines?.length||0)>Number(previous?.lines?.length||0))byGame.set(key,item);
+  }
+  return [...byGame.values()];
 }
 
 export async function getWinlineLiveFeedMaintenanceStatus(env,{nowMs=Date.now()}={}){
@@ -45,6 +108,16 @@ export async function getWinlineLiveFeedMaintenanceStatus(env,{nowMs=Date.now()}
   const candidates=await liveGameCandidates(env.DB,new Date(nowMs).toISOString()).catch(()=>[]);
   const lastAt=Date.parse(String(state?.fetched_at||""));
   const ageSeconds=Number.isFinite(lastAt)?Math.max(0,Math.round((nowMs-lastAt)/1000)):null;
+  const lastLiveGames=Number(state?.live_games||0);
+  const feedEvents=Number(state?.feed_events||0);
+  const mappedEvents=Number(state?.mapped_events||0);
+  const recentWindowSeconds=8*60*60;
+  const recentLiveSync=lastLiveGames>0&&ageSeconds!==null&&ageSeconds<=recentWindowSeconds;
+  let degradedReason=null;
+  if((candidates.length>0||recentLiveSync)&&lastLiveGames>0&&feedEvents===0)degradedReason="provider_empty";
+  else if((candidates.length>0||recentLiveSync)&&feedEvents>0&&mappedEvents===0)degradedReason="mapping_empty";
+  else if(candidates.length>0&&(ageSeconds===null||ageSeconds>90))degradedReason="sync_stale";
+  const healthy=degradedReason===null;
   return {
     ok:true,
     cadence_target_seconds:60,
@@ -54,7 +127,10 @@ export async function getWinlineLiveFeedMaintenanceStatus(env,{nowMs=Date.now()}
     last_fetch_at:state?.fetched_at||null,
     last_fetch_age_seconds:ageSeconds,
     last_sync:state||null,
-    healthy:candidates.length===0||ageSeconds!==null&&ageSeconds<=90,
+    healthy,
+    status:healthy?(candidates.length?"live_ok":"idle"):"degraded",
+    degraded_reason:degradedReason,
+    recent_live_incident:Boolean(!healthy&&recentLiveSync),
   };
 }
 
@@ -107,7 +183,7 @@ async function persistLive(db,items,capturedAt){
   if(!items.length)return {markets_written:0,snapshot_rows_written:0,changed_markets:0};
   const marketStmts=[],eventStmts=[],snapshotStmts=[];let changedMarkets=0;
   for(const item of items){
-    const eventRaw=JSON.stringify({source:"live_mainsports_eng",team1:item.team1,team2:item.team2});
+    const eventRaw=JSON.stringify({source:item.feed_source||"live_mainsports_eng",team1:item.team1,team2:item.team2});
     eventStmts.push(db.prepare(`
       INSERT INTO winline_events(winline_event_id,game_pk,status,starts_at,deeplink,raw_json,updated_at)
       VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
