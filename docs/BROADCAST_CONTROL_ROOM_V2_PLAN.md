@@ -50,3 +50,14 @@ Goal: make the broadcast dashboard safe for many parallel NHL games/operators an
 - [x] AIR SCORE fixtures for obvious good/bad examples.
 - [x] Copy/sample-format fixtures for 20, 80 and 200+ game samples.
 - [x] AIR SCORE + lease schema fixtures are part of mandatory product CI.
+
+
+## P7 — live reliability and useful in-game cards
+- [x] Repaint the visible score and live metrics from direct NHL play-by-play every 15 seconds; never leave the hero score on the initial D1 snapshot.
+- [x] Persist selected-game live score/state back to D1 and run a minute-level NHL scoreboard sync for the global match list.
+- [x] Add live SOG, hits, PIM and faceoff metrics from NHL play-by-play.
+- [x] Reject weak “5:1 shots therefore match winner” logic; moneyline pressure needs a larger sample, >=70% shot share and no >1-goal deficit.
+- [x] Use real offered Winline moneyline/next-goal/period-result markets as conservative fallback cards when a strong live context exists, so exact synthetic-line matching does not empty the queue.
+- [x] Make live copy concrete: score, exact shot split and time window are visible in the headline/subtitle.
+- [x] Add cache-busting and an automatic watchdog to the OBS overlay so a stuck Browser Source recovers without manual reload.
+- [x] Cover score repaint, live metrics, weak-signal rejection, provider-driven fallback and overlay watchdog with product CI.

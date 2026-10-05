@@ -14,6 +14,7 @@ import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance
 import { runSportsRuNewsMaintenance } from "./telegram-center-v20-news.js";
 import { runWinlineFeedMaintenance } from "./winline-feed-maintenance.js";
 import { getWinlineLiveFeedMaintenanceStatus, runWinlineLiveFeedMaintenance } from "./winline-live-feed-maintenance.js";
+import { persistNhlLiveGame, runNhlLiveScoreMaintenance } from "./nhl-live-score-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
@@ -109,6 +110,13 @@ export default {
     const cron = String(controller?.cron || "");
 
     if (cron === "* * * * *") {
+      if (env.DB) {
+        ctx.waitUntil(
+          runNhlLiveScoreMaintenance(env).catch((error) => {
+            console.error("scheduled NHL live score maintenance failed", error);
+          }),
+        );
+      }
       ctx.waitUntil(
         pollTelegramCenterUpdates(env).catch((error) => {
           console.error("scheduled Telegram Center polling failed", error);
@@ -312,6 +320,7 @@ async function broadcastLiveRoute(request, env, gamePk) {
   try {
     let snapshot=await buildLiveGameSnapshot(gamePk);
     if(env?.DB){
+      try{await persistNhlLiveGame(env.DB,snapshot.game)}catch(error){console.error("broadcast live NHL persistence failed",error)}
       try{
         const providerMarkets=await loadBroadcastWinlineMarkets(env.DB,snapshot.game);
         snapshot=attachLiveWinlineMarkets(snapshot,providerMarkets,{

@@ -712,17 +712,20 @@ html,body{margin:0;width:100%;height:100%;background:transparent!important;overf
 #cardimg.on{opacity:1;transform:none}
 </style></head><body><div class="stage"><img id="cardimg" alt=""></div>
 <script>
-let current="";
+let current="",failures=0,imageFailures=0,lastOk=Date.now();
 const overlayGame=new URLSearchParams(location.search).get("game")||"";
 const stateUrl="/api/broadcast/state"+(overlayGame?"?game="+encodeURIComponent(overlayGame):"");
+function statePollUrl(){return stateUrl+(stateUrl.includes("?")?"&":"?")+"_ts="+Date.now()}
 async function tick(){
   const img=document.getElementById("cardimg");
   try{
-    const r=await fetch(stateUrl,{cache:"no-store"});
+    const r=await fetch(statePollUrl(),{cache:"no-store",headers:{"Cache-Control":"no-cache"}});
+    if(!r.ok)throw new Error("state_http_"+r.status);
     const d=await r.json();
+    failures=0;lastOk=Date.now();
     const c=d&&d.on_air;
     if(!c||!c.render_hash){
-      current="";
+      current="";imageFailures=0;
       img.classList.remove("on");
       img.removeAttribute("src");
       return;
@@ -731,17 +734,20 @@ async function tick(){
     if(key!==current){
       current=key;
       img.classList.remove("on");
-      img.onload=()=>img.classList.add("on");
-      img.onerror=()=>{img.classList.remove("on");current=""};
-      img.src="/api/broadcast/rendered/"+encodeURIComponent(c.card_id)+".png?v="+encodeURIComponent(c.render_hash);
+      img.onload=()=>{imageFailures=0;img.classList.add("on")};
+      img.onerror=()=>{img.classList.remove("on");current="";imageFailures++;if(imageFailures>=4)location.reload()};
+      img.src="/api/broadcast/rendered/"+encodeURIComponent(c.card_id)+".png?v="+encodeURIComponent(c.render_hash)+"&t="+Date.now();
     }else{
       img.classList.add("on");
     }
   }catch(error){
     console.error(error);
+    failures++;
     img.classList.remove("on");
+    if(failures>=12)location.reload();
   }
 }
 tick();
 setInterval(tick,750);
+setInterval(()=>{if(Date.now()-lastOk>20000)location.reload()},5000);
 </script></body></html>`;
