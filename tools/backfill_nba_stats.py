@@ -24,7 +24,7 @@ STATS=["MIN","FGM","FGA","FG_PCT","FG3M","FG3A","FG3_PCT","FTM","FTA","FT_PCT","
 def args():
  p=argparse.ArgumentParser(); p.add_argument("--seasons",nargs="+",default=SEASONS); p.add_argument("--season-types",nargs="+",default=SEASON_TYPES)
  p.add_argument("--output-dir",default="local-data/nba"); p.add_argument("--timeout",type=int,default=60); p.add_argument("--attempts",type=int,default=6)
- p.add_argument("--request-gap",type=float,default=6); p.add_argument("--rows-per-file",type=int,default=1200); return p.parse_args()
+ p.add_argument("--request-gap",type=float,default=6); p.add_argument("--rows-per-statement",type=int,default=200); p.add_argument("--statements-per-file",type=int,default=40); return p.parse_args()
 
 def params(endpoint,season,stype):
  d={"DateFrom":"","DateTo":"","GameSegment":"","LastNGames":"0","LeagueID":"00","Location":"","MeasureType":"Base","Month":"0","Outcome":"","PORound":"0","PerMode":"Totals","Period":"0","PlayerID":"","Season":season,"SeasonSegment":"","SeasonType":stype,"ShotClockRange":"","TeamID":"","VsConference":"","VsDivision":""}
@@ -101,7 +101,8 @@ def team_sql(raws,season,stype,chunk):
  gcols=["game_id","season_year","season_type","game_date","home_team_id","away_team_id","home_team_abbr","away_team_abbr","home_score","away_score","game_status"]
  tcols=["game_id","team_id","season_year","season_type","game_date","team_abbr","team_name","matchup","wl","is_home","minutes","fgm","fga","fg_pct","fg3m","fg3a","fg3_pct","ftm","fta","ft_pct","oreb","dreb","reb","ast","tov","stl","blk","blka","pf","pfd","pts","plus_minus"]
  trows=[[r["game_id"],r["team_id"],r["season_year"],r["season_type"],r["game_date"],r["team_abbr"],r["team_name"],r["matchup"],r["wl"],r["is_home"],r["min"],r["fgm"],r["fga"],r["fg_pct"],r["fg3m"],r["fg3a"],r["fg3_pct"],r["ftm"],r["fta"],r["ft_pct"],r["oreb"],r["dreb"],r["reb"],r["ast"],r["tov"],r["stl"],r["blk"],r["blka"],r["pf"],r["pfd"],r["pts"],r["plus_minus"]] for r in norm]
- sql=[insert("nba_teams",dimcols,dims,dimconf),insert("nba_games",gcols,grows,update_all(gcols,["game_id"]))]
+ sql=[insert("nba_teams",dimcols,dims,dimconf)]
+ sql += [insert("nba_games",gcols,c,update_all(gcols,["game_id"])) for c in chunks(grows,chunk)]
  sql += [insert("nba_team_game_stats",tcols,c,update_all(tcols,["game_id","team_id"])) for c in chunks(trows,chunk)]
  return sql,{"games":len(grows),"team_rows":len(trows),"first_game_date":min((r["game_date"] for r in norm),default=None),"last_game_date":max((r["game_date"] for r in norm),default=None)}
 
@@ -119,15 +120,15 @@ def player_sql(raws,season,stype,chunk):
  dconf="ON CONFLICT(player_id) DO UPDATE SET full_name=excluded.full_name,current_team_id=CASE WHEN COALESCE(nba_players.last_seen_game_date,'')<excluded.last_seen_game_date OR (nba_players.last_seen_game_date=excluded.last_seen_game_date AND COALESCE(nba_players.last_seen_game_id,'')<excluded.last_seen_game_id) THEN excluded.current_team_id ELSE nba_players.current_team_id END,current_team_abbr=CASE WHEN COALESCE(nba_players.last_seen_game_date,'')<excluded.last_seen_game_date OR (nba_players.last_seen_game_date=excluded.last_seen_game_date AND COALESCE(nba_players.last_seen_game_id,'')<excluded.last_seen_game_id) THEN excluded.current_team_abbr ELSE nba_players.current_team_abbr END,last_seen_game_date=MAX(COALESCE(nba_players.last_seen_game_date,''),excluded.last_seen_game_date),last_seen_game_id=CASE WHEN COALESCE(nba_players.last_seen_game_date,'')<excluded.last_seen_game_date OR (nba_players.last_seen_game_date=excluded.last_seen_game_date AND COALESCE(nba_players.last_seen_game_id,'')<excluded.last_seen_game_id) THEN excluded.last_seen_game_id ELSE nba_players.last_seen_game_id END,updated_at=CURRENT_TIMESTAMP"
  cols=["game_id","player_id","season_year","season_type","game_date","player_name","team_id","team_abbr","team_name","matchup","wl","minutes","fgm","fga","fg_pct","fg3m","fg3a","fg3_pct","ftm","fta","ft_pct","oreb","dreb","reb","ast","tov","stl","blk","blka","pf","pfd","pts","plus_minus","nba_fantasy_pts","dd2","td3"]
  prows=[[r["game_id"],r["player_id"],r["season_year"],r["season_type"],r["game_date"],r["player_name"],r["team_id"],r["team_abbr"],r["team_name"],r["matchup"],r["wl"],r["min"],r["fgm"],r["fga"],r["fg_pct"],r["fg3m"],r["fg3a"],r["fg3_pct"],r["ftm"],r["fta"],r["ft_pct"],r["oreb"],r["dreb"],r["reb"],r["ast"],r["tov"],r["stl"],r["blk"],r["blka"],r["pf"],r["pfd"],r["pts"],r["plus_minus"],r["nba_fantasy_pts"],r["dd2"],r["td3"]] for r in norm]
- sql=[insert("nba_players",dcols,drows,dconf)]
+ sql=[insert("nba_players",dcols,c,dconf) for c in chunks(drows,chunk)]
  sql += [insert("nba_player_game_stats",cols,c,update_all(cols,["game_id","player_id"])) for c in chunks(prows,chunk)]
  return sql,{"player_rows":len(prows)}
 
 def slug(s): return re.sub(r"[^a-z0-9]+","-",s.lower()).strip("-")
-def write_sql(root,prefix,statements):
- out=[]
- for i,s in enumerate((x for x in statements if x.strip()),1):
-  p=root/f"{prefix}_{i:02d}.sql"; p.write_text("PRAGMA foreign_keys = ON;\n"+s); out.append(p)
+def write_sql(root,prefix,statements,statements_per_file):
+ clean=[s for s in statements if s.strip()]; out=[]
+ for i,batch in enumerate(chunks(clean,statements_per_file),1):
+  p=root/f"{prefix}_{i:02d}.sql"; p.write_text("PRAGMA foreign_keys = ON;\n"+"\n".join(batch)); out.append(p)
  return out
 
 def main():
@@ -141,7 +142,7 @@ def main():
    time.sleep(a.request_gap)
    pp,pb=fetch("playergamelogs",params("playergamelogs",season,stype),a.timeout,a.attempts); pr=rows(pp,"PlayerGameLogs"); (rawdir/f"{key}_playergamelogs.json").write_bytes(pb)
    if not tr or not pr: raise RuntimeError(f"empty dataset {season} {stype}: teams={len(tr)} players={len(pr)}")
-   ts,tm=team_sql(tr,season,stype,a.rows_per_file); ps,pm=player_sql(pr,season,stype,a.rows_per_file); files=write_sql(sqldir,key,ts+ps)
+   ts,tm=team_sql(tr,season,stype,a.rows_per_statement); ps,pm=player_sql(pr,season,stype,a.rows_per_statement); files=write_sql(sqldir,key,ts+ps,a.statements_per_file)
    fetched=datetime.now(timezone.utc).isoformat().replace("+00:00","Z")
    mcols=["season_year","season_type","source","player_rows","team_rows","game_rows","first_game_date","last_game_date","player_payload_sha256","team_payload_sha256","fetched_at"]
    mrow=[[season,stype,"stats.nba.com",pm["player_rows"],tm["team_rows"],tm["games"],tm["first_game_date"],tm["last_game_date"],hashlib.sha256(pb).hexdigest(),hashlib.sha256(tb).hexdigest(),fetched]]
