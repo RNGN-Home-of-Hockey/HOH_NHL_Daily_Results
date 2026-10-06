@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: nba-five-season-backfill
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   backfill:
@@ -56,7 +56,8 @@ jobs:
             --request-gap 8 \
             --attempts 6 \
             --timeout 60 \
-            --rows-per-file 1200
+            --rows-per-statement 200 \
+            --statements-per-file 40
 
       - name: Upload NBA data to D1
         shell: bash
