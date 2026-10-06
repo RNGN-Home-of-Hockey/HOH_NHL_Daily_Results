@@ -1,0 +1,45 @@
+name: Probe NBA Schedule CDN
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-nba-schedule.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Inspect official schedule endpoints
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          urls=[
+            'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json',
+            'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json',
+          ]
+          headers={'User-Agent':'Mozilla/5.0','Referer':'https://www.nba.com/'}
+          for url in urls:
+            print('\nURL',url)
+            try:
+              req=urllib.request.Request(url,headers=headers)
+              with urllib.request.urlopen(req,timeout=30) as r:
+                p=json.load(r)
+              s=p.get('leagueSchedule') or p
+              dates=s.get('gameDates') or []
+              games=[g for d in dates for g in (d.get('games') or [])]
+              ids=[str(g.get('gameId') or '') for g in games]
+              print('seasonYear=',s.get('seasonYear'),'leagueId=',s.get('leagueId'),'games=',len(games))
+              print('prefix_counts=',{x:sum(1 for i in ids if i.startswith(x)) for x in ['001','002','004','005','006']})
+              print('first=',ids[:5]); print('last=',ids[-10:])
+              finals=sum(1 for g in games if int(g.get('gameStatus') or 0)==3)
+              print('finals=',finals)
+            except Exception as e:
+              print(type(e).__name__,repr(e))
+          PY
