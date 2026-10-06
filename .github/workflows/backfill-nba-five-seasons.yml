@@ -6,8 +6,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/backfill-nba-five-seasons.yml'
+      - 'tools/backfill_nba_cdn.py'
       - 'tools/backfill_nba_stats.py'
       - 'migrations/0044_nba_data_core.sql'
+      - 'migrations/0045_nba_cdn_manifest.sql'
 
 permissions:
   contents: read
@@ -48,67 +50,85 @@ jobs:
       - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply hoh-data-core --remote
 
-      - name: Fetch NBA league-wide game logs
+      - name: Fetch NBA official schedules and box scores
         run: |
-          python tools/backfill_nba_stats.py \
+          python tools/backfill_nba_cdn.py \
             --seasons 2021-22 2022-23 2023-24 2024-25 2025-26 \
-            --season-types "Regular Season" Playoffs \
-            --request-gap 8 \
-            --attempts 6 \
-            --timeout 60 \
-            --rows-per-statement 200 \
-            --statements-per-file 40
+            --workers 12 \
+            --attempts 5 \
+            --timeout 30 \
+            --statement-rows 150 \
+            --statements-per-file 50 \
+            --allow-failures 0
 
       - name: Upload NBA data to D1
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -d '' files < <(find local-data/nba/sql -type f -name '*.sql' -print0 | sort -z)
+          mapfile -d '' files < <(find local-data/nba-cdn/sql -type f -name '*.sql' -print0 | sort -z)
           test ${#files[@]} -gt 0 || { echo 'No generated NBA SQL files'; exit 3; }
           for file in "${files[@]}"; do
             echo "IMPORT $file"
             npx wrangler d1 execute hoh-data-core --remote --file "$file"
           done
 
-      - name: Verify NBA coverage
+      - name: Verify NBA coverage and integrity
         shell: bash
         run: |
           set -euo pipefail
+          npx wrangler d1 execute hoh-data-core --remote --json --command "
+            SELECT
+              (SELECT COUNT(DISTINCT season_year) FROM nba_games) AS seasons,
+              (SELECT COUNT(*) FROM nba_games) AS games,
+              (SELECT COUNT(*) FROM nba_team_game_stats) AS team_rows,
+              (SELECT COUNT(*) FROM nba_player_game_stats) AS player_rows,
+              (SELECT COUNT(*) FROM nba_sync_manifest WHERE source='cdn.nba.com+data.nba.com') AS manifest_rows,
+              (SELECT COALESCE(SUM(failed_game_count),0) FROM nba_sync_manifest WHERE source='cdn.nba.com+data.nba.com') AS failed_games,
+              (SELECT COUNT(*) FROM nba_player_game_stats p LEFT JOIN nba_games g ON g.game_id=p.game_id LEFT JOIN nba_players d ON d.player_id=p.player_id WHERE g.game_id IS NULL OR d.player_id IS NULL) AS orphan_player_rows,
+              (SELECT COUNT(*) FROM nba_team_game_stats t LEFT JOIN nba_games g ON g.game_id=t.game_id LEFT JOIN nba_teams d ON d.team_id=t.team_id WHERE g.game_id IS NULL OR d.team_id IS NULL) AS orphan_team_rows,
+              (SELECT COUNT(*) FROM nba_games g WHERE (SELECT COUNT(*) FROM nba_team_game_stats t WHERE t.game_id=g.game_id)<>2) AS bad_team_row_counts;
+          " > /tmp/nba_verify.json
+          cat /tmp/nba_verify.json
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/nba_verify.json'))
+          if isinstance(data,list): data=data[0]
+          rows=data.get('results') or data.get('result') or []
+          if isinstance(rows,dict): rows=[rows]
+          if not rows: raise SystemExit('No verification result from D1')
+          r=rows[0]
+          checks={
+            'five_seasons': int(r['seasons']) >= 5,
+            'games_gt_6000': int(r['games']) > 6000,
+            'two_team_rows_per_game': int(r['team_rows']) == int(r['games']) * 2,
+            'player_rows_gt_120k': int(r['player_rows']) > 120000,
+            'manifest_present': int(r['manifest_rows']) >= 10,
+            'failed_games_zero': int(r['failed_games']) == 0,
+            'orphan_players_zero': int(r['orphan_player_rows']) == 0,
+            'orphan_teams_zero': int(r['orphan_team_rows']) == 0,
+            'bad_team_counts_zero': int(r['bad_team_row_counts']) == 0,
+          }
+          print(json.dumps({'metrics':r,'checks':checks},indent=2))
+          failed=[k for k,v in checks.items() if not v]
+          if failed: raise SystemExit('NBA D1 verification failed: '+', '.join(failed))
+          PY
+
+      - name: Show NBA season coverage
+        run: |
           npx wrangler d1 execute hoh-data-core --remote --command "
-            SELECT season_year,season_type,game_rows,team_rows,player_rows,first_game_date,last_game_date,fetched_at
+            SELECT season_year,season_type,game_rows,team_rows,player_rows,failed_game_count,first_game_date,last_game_date,source
             FROM nba_sync_manifest
+            WHERE source='cdn.nba.com+data.nba.com'
             ORDER BY season_year,season_type;
-
-            SELECT season_year,season_type,COUNT(*) games
-            FROM nba_games
-            GROUP BY season_year,season_type
-            ORDER BY season_year,season_type;
-
-            SELECT season_year,season_type,COUNT(*) player_game_rows,COUNT(DISTINCT player_id) players
-            FROM nba_player_game_stats
-            GROUP BY season_year,season_type
-            ORDER BY season_year,season_type;
-
-            SELECT COUNT(*) orphan_player_rows
-            FROM nba_player_game_stats p
-            LEFT JOIN nba_games g ON g.game_id=p.game_id
-            LEFT JOIN nba_players d ON d.player_id=p.player_id
-            WHERE g.game_id IS NULL OR d.player_id IS NULL;
-
-            SELECT COUNT(*) orphan_team_rows
-            FROM nba_team_game_stats t
-            LEFT JOIN nba_games g ON g.game_id=t.game_id
-            LEFT JOIN nba_teams d ON d.team_id=t.team_id
-            WHERE g.game_id IS NULL OR d.team_id IS NULL;
           "
 
-      - name: Save NBA raw snapshots
+      - name: Save NBA source snapshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nba-five-season-backfill
           path: |
-            local-data/nba/raw
-            local-data/nba/summary.json
+            local-data/nba-cdn/raw
+            local-data/nba-cdn/summary.json
           if-no-files-found: warn
           retention-days: 30
