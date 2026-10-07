@@ -12,7 +12,8 @@ from datetime import timedelta
 import backfill_nba_espn_team as importer
 
 # Players added after the legacy 2025 data.nba.com directory stopped refreshing.
-# These are canonical NBA/G-League player identity IDs.
+# These are canonical NBA/G-League player identity IDs. Keys use the shared canon()
+# normalization, which removes suffixes such as II/Jr./III.
 importer.PLAYER_ID_OVERRIDES.update({
     "acebailey": 1642846,
     "leakyblack": 1641778,
@@ -24,7 +25,7 @@ importer.PLAYER_ID_OVERRIDES.update({
     "anderssongarcia": 1643158,
     "joshoduro": 1642490,
     "kadaryrichmond": 1642955,
-    "dariusbrownii": 1642468,
+    "dariusbrown": 1642468,
     "bezmbeng": 1643016,
 })
 
