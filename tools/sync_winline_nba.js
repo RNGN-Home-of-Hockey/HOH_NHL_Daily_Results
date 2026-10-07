@@ -61,7 +61,7 @@ function normalizeEvent(event, fetchedAt){
 }
 
 function makeSql(events, fetchedAt){
-  const lines=['BEGIN;','DELETE FROM nba_winline_markets;','DELETE FROM nba_winline_events;'];
+  const lines=['DELETE FROM nba_winline_markets;','DELETE FROM nba_winline_events;'];
   let marketCount=0, playerProps=0;
   for (const e of events) {
     marketCount += e.markets.length; playerProps += e.playerProps;
@@ -69,7 +69,6 @@ function makeSql(events, fetchedAt){
     for (const m of e.markets) lines.push(`INSERT OR REPLACE INTO nba_winline_markets(market_key,event_id,market_id,market_type,entity_type,entity_name,entity_abbr,selection_side,line_value,odds,market_label,selection_label,fetched_at,raw_json) VALUES (${esc(m.key)},${e.event_id},${m.marketId},${esc(m.type)},${esc(m.entityType)},${esc(m.entityName)},${m.entityAbbr?esc(m.entityAbbr):'NULL'},${esc(m.side)},${m.line==null?'NULL':sqlNum(m.line)},${sqlNum(m.odds)},${esc(m.marketLabel)},${esc(m.selectionLabel)},${esc(fetchedAt)},${esc(JSON.stringify(m.raw))});`);
   }
   lines.push(`INSERT OR REPLACE INTO nba_winline_sync(source,fetched_at,event_count,market_count,player_props_count,status,note) VALUES ('winline',${esc(fetchedAt)},${events.length},${marketCount},${playerProps},'ok','Public Winline NBA preseason line via site websocket');`);
-  lines.push('COMMIT;');
   return {sql:lines.join('\n')+'\n',marketCount,playerProps};
 }
 
@@ -109,6 +108,7 @@ function makeSql(events, fetchedAt){
     console.log(`Winline NBA sync: ${normalized.length} events, ${result.marketCount} markets, ${result.playerProps} player-prop rows`);
   } finally { await browser.close(); }
 })().catch(err=>{ console.error(err.stack||err); process.exit(1); });
+
 
 
 
