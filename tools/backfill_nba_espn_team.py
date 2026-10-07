@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Complete NBA backfill from ESPN team schedules + summaries with canonical NBA IDs.
 
-This importer is used for seasons where the legacy data.nba.com game-detail feed is
-incomplete or stale. Event discovery comes from ESPN's per-team season schedules,
-which expose complete regular-season (2), playoff (3), and play-in (5) event sets.
-Official data.nba.com schedule and player directory remain the canonical source for
-NBA game/team/player IDs wherever available.
+Used for seasons where legacy data.nba.com game detail is incomplete/stale.
+ESPN supplies complete event discovery + box scores; data.nba.com remains the
+canonical identity source for NBA team/player/game IDs wherever available.
 """
 from __future__ import annotations
 
 import concurrent.futures
+import copy
 import gzip
 import hashlib
 import json
@@ -24,12 +23,18 @@ ESPN_TEAM_SCHEDULE = (
     "{team_id}/schedule?season={season_end}&seasontype={season_type}"
 )
 
-ESPN_TEAMS = {
-    "ATL": 1, "BOS": 2, "NOP": 3, "CHI": 4, "CLE": 5, "DAL": 6,
-    "DEN": 7, "DET": 8, "GSW": 9, "HOU": 10, "IND": 11, "LAC": 12,
-    "LAL": 13, "MIA": 14, "MIL": 15, "MIN": 16, "BKN": 17, "NYK": 18,
-    "ORL": 19, "PHI": 20, "PHX": 21, "POR": 22, "SAC": 23, "SAS": 24,
-    "OKC": 25, "UTA": 26, "WAS": 27, "TOR": 28, "MEM": 29, "CHA": 30,
+# ESPN team numeric IDs are stable across these seasons. Values are canonical NBA abbreviations.
+ESPN_TEAM_ID_TO_NBA = {
+    "1": "ATL", "2": "BOS", "3": "NOP", "4": "CHI", "5": "CLE", "6": "DAL",
+    "7": "DEN", "8": "DET", "9": "GSW", "10": "HOU", "11": "IND", "12": "LAC",
+    "13": "LAL", "14": "MIA", "15": "MIL", "16": "MIN", "17": "BKN", "18": "NYK",
+    "19": "ORL", "20": "PHI", "21": "PHX", "22": "POR", "23": "SAC", "24": "SAS",
+    "25": "OKC", "26": "UTA", "27": "WAS", "28": "TOR", "29": "MEM", "30": "CHA",
+}
+ESPN_TEAMS = {abbr: int(team_id) for team_id, abbr in ESPN_TEAM_ID_TO_NBA.items()}
+ESPN_ABBR_TO_NBA = {
+    "GS": "GSW", "NO": "NOP", "NY": "NYK", "SA": "SAS", "WSH": "WAS",
+    "UTAH": "UTA",
 }
 
 NAME_ALIASES = {
@@ -38,7 +43,6 @@ NAME_ALIASES = {
     "vjedgecombe": "valdezedgecombe",
     "jaserichardson": "jasonrichardson",
 }
-
 PLAYER_ID_OVERRIDES = {
     "dejonjarreau": 1630610,
     "seanpedulla": 1642951,
@@ -52,6 +56,43 @@ PLAYER_ID_OVERRIDES = {
     "jaysonkent": 1643257,
     "lucaswilliamson": 1631351,
 }
+
+
+def canonical_team_abbr(team):
+    if not isinstance(team, dict):
+        return ""
+    by_id = ESPN_TEAM_ID_TO_NBA.get(str(team.get("id") or ""))
+    if by_id:
+        return by_id
+    raw = str(team.get("abbreviation") or "").upper()
+    return ESPN_ABBR_TO_NBA.get(raw, raw)
+
+
+def normalize_event(event):
+    event = copy.deepcopy(event)
+    for comp in event.get("competitions") or []:
+        for competitor in comp.get("competitors") or []:
+            team = competitor.get("team") or {}
+            abbr = canonical_team_abbr(team)
+            if abbr:
+                team["abbreviation"] = abbr
+    return event
+
+
+def normalize_summary(payload):
+    payload = copy.deepcopy(payload)
+    box = payload.get("boxscore") or {}
+    for group in box.get("players") or []:
+        team = group.get("team") or {}
+        abbr = canonical_team_abbr(team)
+        if abbr:
+            team["abbreviation"] = abbr
+    for row in box.get("teams") or []:
+        team = row.get("team") or {}
+        abbr = canonical_team_abbr(team)
+        if abbr:
+            team["abbreviation"] = abbr
+    return payload
 
 
 def mapped_player(name, abbr, by_name):
@@ -84,10 +125,10 @@ def classify_type(local_date, event, official_type):
     if official_type:
         return official_type
     espn_type = int(event.get("_espn_season_type") or 0)
-    if espn_type == 3:
-        return "Playoffs"
     if espn_type == 5:
         return "Play-In"
+    if espn_type == 3:
+        return "Playoffs"
     text = (
         str(event.get("name") or "")
         + " "
@@ -104,8 +145,7 @@ def classify_type(local_date, event, official_type):
 def event_utc_date(event):
     value = str(event.get("date") or "")
     if not value:
-        comp = (event.get("competitions") or [{}])[0]
-        value = str(comp.get("date") or "")
+        value = str(((event.get("competitions") or [{}])[0]).get("date") or "")
     if not value:
         return None
     try:
@@ -116,17 +156,16 @@ def event_utc_date(event):
 
 def official_match(event, official_by_pair):
     home, away, _ = base.competitors(event)
-    ha = str((home.get("team") or {}).get("abbreviation") or "").upper()
-    aa = str((away.get("team") or {}).get("abbreviation") or "").upper()
+    ha = canonical_team_abbr(home.get("team") or {})
+    aa = canonical_team_abbr(away.get("team") or {})
     dt = event_utc_date(event)
     if not ha or not aa or dt is None:
         return None
-    candidates = [dt.date(), (dt - timedelta(days=1)).date(), (dt + timedelta(days=1)).date()]
     rows = official_by_pair.get((ha, aa), [])
-    for d in candidates:
-        for r in rows:
-            if r["game_date"] == d.isoformat():
-                return r
+    for d in (dt.date(), (dt - timedelta(days=1)).date(), (dt + timedelta(days=1)).date()):
+        for row in rows:
+            if row["game_date"] == d.isoformat():
+                return row
     return None
 
 
@@ -137,6 +176,7 @@ def local_event_date(event, official_by_pair):
     dt = event_utc_date(event)
     if dt is None:
         raise ValueError(f"event {event.get('id')} missing date")
+    # All NBA arenas are west of UTC-4; UTC-6 safely maps late-night UTC games to US game date.
     return (dt - timedelta(hours=6)).date()
 
 
@@ -166,26 +206,26 @@ def fetch_team_schedule_events(season, timeout, attempts, workers):
                 failures.append({"team": abbr, "season_type": st, "error": err})
                 continue
             raw_rows.append((abbr, st, raw))
-            for event in payload.get("events") or []:
+            for raw_event in payload.get("events") or []:
                 state = (
-                    ((((event.get("competitions") or [{}])[0].get("status") or {}).get("type") or {}).get("state"))
-                    or (((event.get("status") or {}).get("type") or {}).get("state"))
+                    ((((raw_event.get("competitions") or [{}])[0].get("status") or {}).get("type") or {}).get("state"))
+                    or (((raw_event.get("status") or {}).get("type") or {}).get("state"))
                 )
                 if state != "post":
                     continue
+                event = normalize_event(raw_event)
                 home, away, _ = base.competitors(event)
-                ha = str((home.get("team") or {}).get("abbreviation") or "").upper()
-                aa = str((away.get("team") or {}).get("abbreviation") or "").upper()
+                ha = canonical_team_abbr(home.get("team") or {})
+                aa = canonical_team_abbr(away.get("team") or {})
                 if ha not in ESPN_TEAMS or aa not in ESPN_TEAMS:
                     continue
                 eid = str(event.get("id") or "")
                 if not eid:
                     continue
-                copy = dict(event)
-                copy["_espn_season_type"] = st
+                event["_espn_season_type"] = st
                 prev = found.get(eid)
                 if prev is None or st > int(prev.get("_espn_season_type") or 0):
-                    found[eid] = copy
+                    found[eid] = event
             if done % 15 == 0 or done == len(futs):
                 print(f"{season}: team schedules {done}/{len(futs)}", flush=True)
 
@@ -194,8 +234,8 @@ def fetch_team_schedule_events(season, timeout, attempts, workers):
 
     by_type = {2: 0, 3: 0, 5: 0}
     for event in found.values():
-        t = int(event.get("_espn_season_type") or 0)
-        by_type[t] = by_type.get(t, 0) + 1
+        st = int(event.get("_espn_season_type") or 0)
+        by_type[st] = by_type.get(st, 0) + 1
     print(f"{season}: unique ESPN events={len(found)} by_type={by_type}", flush=True)
     if by_type.get(2, 0) < 1230:
         raise RuntimeError(f"{season}: incomplete regular-season discovery: {by_type.get(2,0)} < 1230")
@@ -238,8 +278,8 @@ def main():
             raise RuntimeError(f"{season}: expected 30 canonical NBA teams, got {len(team_ids)}")
         official = base.official_schedule(schedule_payload)
         official_by_pair = {}
-        for r in official:
-            official_by_pair.setdefault((r["home_abbr"], r["away_abbr"]), []).append(r)
+        for row in official:
+            official_by_pair.setdefault((row["home_abbr"], row["away_abbr"]), []).append(row)
         official_by_key = {(r["game_date"], r["home_abbr"], r["away_abbr"]): r for r in official}
 
         events, discovery_sha, schedule_raws = fetch_team_schedule_events(
@@ -266,7 +306,7 @@ def main():
             eid, event = item
             try:
                 payload, rb = base.fetch_json(base.ESPN_SUMMARY.format(event_id=eid), a.timeout, a.attempts)
-                return eid, event, payload, rb, None
+                return eid, event, normalize_summary(payload), rb, None
             except Exception as exc:
                 return eid, event, None, None, str(exc)
 
