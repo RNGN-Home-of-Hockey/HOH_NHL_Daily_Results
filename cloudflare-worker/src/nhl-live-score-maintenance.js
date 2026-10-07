@@ -71,4 +71,4 @@ function finiteOrZero(v){const n=Number(v);return Number.isFinite(n)?n:0}
 function intOrNull(v){const n=Number(v);return Number.isSafeInteger(n)?n:null}
 function localized(v){if(!v)return null;if(typeof v==="string")return v;return v.default||v.en||Object.values(v)[0]||null}
 
-// Stage 2 release marker: force normal push-triggered validation and production deployment.
+// Live Center diversity v3 release marker: normal push-triggered CI + production deploy.
