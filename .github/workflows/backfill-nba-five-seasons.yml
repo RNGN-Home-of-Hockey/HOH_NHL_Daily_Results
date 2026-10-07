@@ -77,9 +77,9 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 2
       matrix:
-        season: ['2022-23', '2023-24', '2024-25']
+        season: ['2022-23', '2024-25']
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -115,9 +115,9 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 3
       matrix:
-        season: ['2021-22', '2025-26']
+        season: ['2021-22', '2023-24', '2025-26']
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
