@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: nba-five-season-backfill
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -42,8 +42,43 @@ jobs:
       - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply hoh-data-core --remote
 
+  source-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify data.nba.com player-level game detail
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          headers={'User-Agent':'Mozilla/5.0','Accept':'application/json','Referer':'https://www.nba.com/'}
+          samples=[
+            ('2021','0022100001'),
+            ('2024','0022400061'),
+            ('2025','0022500471'),
+          ]
+          ok=0
+          for year,gid in samples:
+            url=f'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/{year}/scores/gamedetail/{gid}_gamedetail.json'
+            try:
+              req=urllib.request.Request(url,headers=headers)
+              with urllib.request.urlopen(req,timeout=20) as r:
+                p=json.load(r)
+              g=p.get('g') or {}; h=g.get('hls') or {}; v=g.get('vls') or {}
+              hp=len(h.get('pstsg') or []); vp=len(v.get('pstsg') or [])
+              print(year,gid,'home',h.get('ta'),'players',hp,'away',v.get('ta'),'players',vp,flush=True)
+              if hp and vp: ok += 1
+            except Exception as e:
+              print(year,gid,type(e).__name__,repr(e),flush=True)
+          if ok < 2:
+            raise SystemExit(f'data.nba.com gamedetail smoke failed: only {ok}/{len(samples)} samples worked')
+          PY
+
   fetch:
-    needs: migrate
+    needs: [migrate, source-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -60,7 +95,7 @@ jobs:
         run: |
           python tools/backfill_nba_cdn.py \
             --seasons "${{ matrix.season }}" \
-            --output-dir "local-data/nba-cdn/${{ matrix.season }}" \
+            --output-dir "local-data/nba-data/${{ matrix.season }}" \
             --workers 12 \
             --attempts 5 \
             --timeout 30 \
@@ -70,18 +105,18 @@ jobs:
       - name: Upload generated SQL
         uses: actions/upload-artifact@v4
         with:
-          name: nba-cdn-sql-${{ matrix.season }}
-          path: local-data/nba-cdn/${{ matrix.season }}/sql/*.sql
+          name: nba-data-sql-${{ matrix.season }}
+          path: local-data/nba-data/${{ matrix.season }}/sql/*.sql
           if-no-files-found: error
           retention-days: 7
       - name: Save NBA source snapshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nba-cdn-raw-${{ matrix.season }}
+          name: nba-data-raw-${{ matrix.season }}
           path: |
-            local-data/nba-cdn/${{ matrix.season }}/raw
-            local-data/nba-cdn/${{ matrix.season }}/summary.json
+            local-data/nba-data/${{ matrix.season }}/raw
+            local-data/nba-data/${{ matrix.season }}/summary.json
           if-no-files-found: warn
           retention-days: 30
 
@@ -108,7 +143,7 @@ jobs:
       - name: Download generated SQL
         uses: actions/download-artifact@v4
         with:
-          pattern: nba-cdn-sql-*
+          pattern: nba-data-sql-*
           path: nba-sql
           merge-multiple: true
       - name: Upload NBA data to D1
@@ -132,8 +167,8 @@ jobs:
               (SELECT COUNT(*) FROM nba_games) AS games,
               (SELECT COUNT(*) FROM nba_team_game_stats) AS team_rows,
               (SELECT COUNT(*) FROM nba_player_game_stats) AS player_rows,
-              (SELECT COUNT(*) FROM nba_sync_manifest WHERE source='cdn.nba.com+data.nba.com') AS manifest_rows,
-              (SELECT COALESCE(SUM(failed_game_count),0) FROM nba_sync_manifest WHERE source='cdn.nba.com+data.nba.com') AS failed_games,
+              (SELECT COUNT(*) FROM nba_sync_manifest WHERE source='data.nba.com/v2015') AS manifest_rows,
+              (SELECT COALESCE(SUM(failed_game_count),0) FROM nba_sync_manifest WHERE source='data.nba.com/v2015') AS failed_games,
               (SELECT COUNT(*) FROM nba_player_game_stats p LEFT JOIN nba_games g ON g.game_id=p.game_id LEFT JOIN nba_players d ON d.player_id=p.player_id WHERE g.game_id IS NULL OR d.player_id IS NULL) AS orphan_player_rows,
               (SELECT COUNT(*) FROM nba_team_game_stats t LEFT JOIN nba_games g ON g.game_id=t.game_id LEFT JOIN nba_teams d ON d.team_id=t.team_id WHERE g.game_id IS NULL OR d.team_id IS NULL) AS orphan_team_rows,
               (SELECT COUNT(*) FROM nba_games g WHERE (SELECT COUNT(*) FROM nba_team_game_stats t WHERE t.game_id=g.game_id)<>2) AS bad_team_row_counts;
@@ -167,6 +202,6 @@ jobs:
           npx wrangler d1 execute hoh-data-core --remote --command "
             SELECT season_year,season_type,game_rows,team_rows,player_rows,failed_game_count,first_game_date,last_game_date,source
             FROM nba_sync_manifest
-            WHERE source='cdn.nba.com+data.nba.com'
+            WHERE source='data.nba.com/v2015'
             ORDER BY season_year,season_type;
           "
