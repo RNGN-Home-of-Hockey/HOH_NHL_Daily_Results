@@ -17,19 +17,20 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Probe api.nba.com mobilefeed
+      - name: Probe legacy NBA player directories and rosters
         shell: bash
         run: |
           python - <<'PY'
           import json, urllib.request
           headers={'User-Agent':'Mozilla/5.0','Accept':'application/json','Referer':'https://www.nba.com/'}
           urls=[
-            'https://api.nba.com/v0/api/mobilefeed/nba/2025/scores/gamedetail/0022500001_gamedetail.json',
-            'https://api.nba.com/v0/api/mobilefeed/nba/2025/league/00_full_schedule.json',
-            'https://api.nba.com/v0/api/mobilefeed/nba/2021/scores/gamedetail/0022100773_gamedetail.json',
-            'https://api.nba.com/v0/api/mobilefeed/nba/2024/scores/gamedetail/0022400061_gamedetail.json',
+            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2025/players/00_player_info.json',
+            'https://data.nba.com/data/v2015/json/mobile_teams/nba/2025/players/00_player_info.json',
+            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2021/players/00_player_info.json',
+            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2025/teams/thunder_roster.json',
+            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2025/teams/rockets_roster.json',
           ]
-          working=0
+          useful=0
           for url in urls:
             print('\nURL',url,flush=True)
             try:
@@ -37,21 +38,23 @@ jobs:
               with urllib.request.urlopen(req,timeout=30) as r:
                 raw=r.read()
               p=json.loads(raw.decode('utf-8-sig'))
-              print('status=200 bytes=',len(raw),'keys=',list(p)[:10],flush=True)
-              data=p.get('data') if isinstance(p.get('data'),dict) else p
-              if 'gamedetail' in url:
-                g=(data or {}).get('g') or data or {}; h=g.get('hls') or {}; v=g.get('vls') or {}
-                print('gid=',g.get('gid'),'status=',g.get('st'),g.get('stt'),'home=',h.get('ta'),'score=',h.get('s'),'players=',len(h.get('pstsg') or []),'away=',v.get('ta'),'score=',v.get('s'),'players=',len(v.get('pstsg') or []),flush=True)
-                if h.get('pstsg') and v.get('pstsg'): working += 1
-              else:
-                root=data or {}; games=[]
-                for x in root.get('lscd') or []:
-                  games.extend((x.get('mscd') or {}).get('g') or [])
-                finals=[g for g in games if str(g.get('st'))=='3' or 'final' in str(g.get('stt') or '').lower()]
-                print('schedule_games=',len(games),'finals=',len(finals),'regular_finals=',sum(1 for g in finals if str(g.get('gid') or '').startswith('002')),flush=True)
-                if any(str(g.get('gid') or '').startswith('002') for g in finals): working += 1
+              print('status=200 bytes=',len(raw),'keys=',list(p)[:15],flush=True)
+              candidates=[]
+              for path in [('pls','pl'),('t','pl')]:
+                cur=p
+                for key in path:
+                  cur=cur.get(key) if isinstance(cur,dict) else None
+                if isinstance(cur,list): candidates=cur; break
+              if not candidates:
+                for key in ('pl','players'):
+                  if isinstance(p.get(key),list): candidates=p[key]; break
+              print('players=',len(candidates),flush=True)
+              if candidates:
+                print('sample=',candidates[0],flush=True)
+                print('sample_keys=',list(candidates[0])[:80],flush=True)
+                useful += 1
             except Exception as e:
               print(type(e).__name__,repr(e),flush=True)
-          if working == 0:
-            raise SystemExit('api.nba.com mobilefeed not usable from runner')
+          if useful == 0:
+            raise SystemExit('No official legacy NBA player directory/roster worked')
           PY
