@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rngn-nba-broadcast",
+  "main": "nba-worker/src/index.js",
+  "compatibility_date": "2026-10-07",
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hoh-data-core",
+      "database_id": "e72d8730-e1b1-4291-b659-6500769a1229",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
