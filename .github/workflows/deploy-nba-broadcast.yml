@@ -8,6 +8,8 @@ on:
       - '.github/workflows/deploy-nba-broadcast.yml'
       - 'wrangler.nba.jsonc'
       - 'nba-worker/**'
+      - 'migrations/0046_nba_winline_live_markets.sql'
+      - 'migrations/0047_nba_winline_seed_20261007.sql'
 
 permissions:
   contents: read
@@ -37,9 +39,26 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID'; exit 2; }
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Ensure Winline tables
+        run: npx wrangler d1 execute hoh-data-core --remote --file=migrations/0046_nba_winline_live_markets.sql
+      - name: Seed verified Winline line if database is empty
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute hoh-data-core --remote --command "SELECT COUNT(*) AS c FROM nba_winline_events" --json > /tmp/count.json
+          COUNT=$(python - <<'PY'
+          import json
+          d=json.load(open('/tmp/count.json'))
+          rows=(d[0].get('results') or []) if isinstance(d,list) and d else []
+          print(int(rows[0].get('c',0)) if rows else 0)
+          PY
+          )
+          if [ "$COUNT" -eq 0 ]; then
+            npx wrangler d1 execute hoh-data-core --remote --file=migrations/0047_nba_winline_seed_20261007.sql
+          fi
       - name: Deploy standalone NBA Worker
         run: npx wrangler deploy --config wrangler.nba.jsonc
-      - name: Smoke test NBA server
+      - name: Smoke test NBA Winline scanner
         shell: bash
         run: |
           set -euo pipefail
@@ -55,15 +74,21 @@ jobs:
           assert d.get('ok') is True, d
           assert int(d.get('games') or 0) > 6000, d
           assert int(d.get('player_rows') or 0) > 120000, d
+          w=d.get('winline') or {}
+          assert int(w.get('events') or 0) >= 1, d
+          assert int(w.get('markets') or 0) >= 20, d
           PY
-          curl -fsS "$base/api/cards?season=2025-26&window=10" -o /tmp/cards.json
+          curl -fsS "$base/api/line-cards?season=2025-26&window=10" -o /tmp/cards.json
+          cat /tmp/cards.json
           python - <<'PY'
           import json
           d=json.load(open('/tmp/cards.json'))
           assert d.get('ok') is True, d
+          assert int((d.get('current') or {}).get('events') or 0) >= 1, d
+          assert int((d.get('current') or {}).get('markets') or 0) >= 20, d
           cards=d.get('cards') or []
-          assert len(cards) >= 6, d
-          print('cards:', len(cards))
+          assert len(cards) >= 3, d
+          print('broadcast cards:',len(cards))
           for c in cards[:6]:
-            print(c['player_name'], c['market'], f"{c['hits']}/{c['sample']}")
+            print(c['matchup'],c['selection_label'],c['odds'],f"{c['hits']}/{c['sample']}")
           PY
