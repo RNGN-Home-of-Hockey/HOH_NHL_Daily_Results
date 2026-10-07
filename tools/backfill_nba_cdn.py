@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Backfill NBA game/team/player box scores from official NBA schedule + live CDN.
+"""Backfill NBA game/team/player box scores from official legacy data.nba.com feeds.
 
-Schedule source: data.nba.com (season schedule, one request per season)
-Box score source: cdn.nba.com/static/json/liveData/boxscore (one request per game)
+Schedule: data.nba.com mobile full_schedule (one request per season).
+Boxscore: data.nba.com mobile gamedetail (one request per game).
 
-The script emits idempotent SQL for the nba_* tables. Individual INSERT statements
-are intentionally kept small for Cloudflare D1's SQL statement-size limit.
+The script emits idempotent, D1-safe SQL for the existing nba_* tables.
 """
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ import hashlib
 import json
 import math
 import random
-import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +23,8 @@ from urllib.request import Request, urlopen
 
 DEFAULT_SEASONS = ["2021-22", "2022-23", "2023-24", "2024-25", "2025-26"]
 SCHEDULE_URL = "https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/{year}/league/00_full_schedule.json"
-BOX_URL = "https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json"
+BOX_URL = "https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/{year}/scores/gamedetail/{game_id}_gamedetail.json"
+SOURCE = "data.nba.com/v2015"
 HEADERS = {
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
@@ -76,8 +75,7 @@ def schedule_games(payload: dict, season: str, include_preseason: bool) -> list[
     allowed = set(DEFAULT_TYPES)
     if include_preseason:
         allowed.add("001")
-    out = []
-    seen = set()
+    out, seen = [], set()
     for league in payload.get("lscd") or []:
         month = league.get("mscd") or {}
         for g in month.get("g") or []:
@@ -114,105 +112,132 @@ def number(v, integer=False):
         return None
 
 
-def minutes(v):
-    if v is None or v == "":
+def first(stats: dict, *keys):
+    for k in keys:
+        if k in stats and stats.get(k) not in (None, ""):
+            return stats.get(k)
+    return None
+
+
+def ratio(made, attempted):
+    m, a = number(made), number(attempted)
+    return None if a in (None, 0) or m is None else m / a
+
+
+def legacy_minutes(row: dict):
+    total = number(row.get("totsec"))
+    if total is not None:
+        return total / 60.0
+    mins = number(row.get("min"))
+    secs = number(row.get("sec"))
+    if mins is None and secs is None:
         return None
-    if isinstance(v, (int, float)):
-        return float(v)
-    s = str(v).strip()
-    m = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?", s)
-    if m:
-        return float(m.group(1) or 0) * 60 + float(m.group(2) or 0) + float(m.group(3) or 0) / 60
-    try:
-        if ":" in s:
-            a, b = s.split(":", 1)
-            return float(a) + float(b) / 60
-        return float(s)
-    except ValueError:
-        return None
+    return (mins or 0.0) + (secs or 0.0) / 60.0
 
 
-def pct(stats, key):
-    return number(stats.get(key))
+def played_legacy(player: dict) -> bool:
+    return (legacy_minutes(player) or 0) > 0
 
 
-def game_date_from_box(game: dict, fallback: str) -> str:
-    for k in ("gameTimeLocal", "gameTimeUTC", "gameEt"):
-        v = str(game.get(k) or "")
-        if re.match(r"^\d{4}-\d{2}-\d{2}", v):
-            return v[:10]
-    return fallback
+def full_name_legacy(player: dict) -> str:
+    name = " ".join(x for x in [str(player.get("fn") or "").strip(), str(player.get("ln") or "").strip()] if x).strip()
+    return name or str(player.get("pid") or "Unknown")
 
 
-def played(player: dict) -> bool:
-    v = player.get("played")
-    if v in (1, True, "1", "true", "TRUE"):
-        return True
-    return (minutes((player.get("statistics") or {}).get("minutes")) or 0) > 0
-
-
-def full_name(player: dict) -> str:
-    return (str(player.get("name") or "").strip()
-            or " ".join(x for x in [str(player.get("firstName") or "").strip(), str(player.get("familyName") or "").strip()] if x).strip()
-            or str(player.get("personId") or "Unknown"))
-
-
-def team_name(team: dict) -> str:
-    city = str(team.get("teamCity") or "").strip()
-    name = str(team.get("teamName") or "").strip()
+def team_name_legacy(team: dict) -> str:
+    city = str(team.get("tc") or "").strip()
+    name = str(team.get("tn") or "").strip()
     return " ".join(x for x in (city, name) if x).strip() or name or city
 
 
+def team_score(team: dict, schedule_team: dict):
+    value = first(team, "s", "pts") if team else None
+    score = number(value, integer=True)
+    return score if score is not None else number(first(schedule_team, "s", "pts"), integer=True)
+
+
 def normalize_box(schedule_row: dict, payload: dict):
-    game = payload.get("game") or {}
-    gid = str(game.get("gameId") or schedule_row["game_id"])
+    game = payload.get("g") or {}
+    gid = str(game.get("gid") or schedule_row["game_id"]).strip()
     if gid != schedule_row["game_id"]:
         raise ValueError(f"game id mismatch expected={schedule_row['game_id']} got={gid}")
-    if int(number(game.get("gameStatus"), integer=True) or 0) != 3 and "final" not in str(game.get("gameStatusText") or "").lower():
-        raise ValueError(f"game {gid} is not final: {game.get('gameStatusText')!r}")
-    home = game.get("homeTeam") or {}
-    away = game.get("awayTeam") or {}
-    if not home.get("teamId") or not away.get("teamId"):
-        raise ValueError(f"game {gid} missing teams")
-    gd = game_date_from_box(game, schedule_row["game_date"])
-    hs = number(home.get("score"), integer=True); aways = number(away.get("score"), integer=True)
+    home, away = game.get("hls") or {}, game.get("vls") or {}
+    if not home.get("tid") or not away.get("tid"):
+        raise ValueError(f"game {gid} missing hls/vls teams")
+    if not (home.get("pstsg") or []) or not (away.get("pstsg") or []):
+        raise ValueError(f"game {gid} missing player stats")
+    gd = str(game.get("gdte") or schedule_row["game_date"])[:10]
+    hs = team_score(home, schedule_row["home"])
+    aways = team_score(away, schedule_row["away"])
     if hs is None or aways is None:
         raise ValueError(f"game {gid} missing final score")
-    season = schedule_row["season_year"]; stype = schedule_row["season_type"]
-    home_abbr = str(home.get("teamTricode") or schedule_row["home"].get("ta") or "").strip()
-    away_abbr = str(away.get("teamTricode") or schedule_row["away"].get("ta") or "").strip()
+
+    season, stype = schedule_row["season_year"], schedule_row["season_type"]
+    home_abbr = str(home.get("ta") or schedule_row["home"].get("ta") or "").strip()
+    away_abbr = str(away.get("ta") or schedule_row["away"].get("ta") or "").strip()
     teams, teamfacts, playerdims, playerfacts = [], [], [], []
-    for is_home, team, opp_abbr, score, opp_score in ((1, home, away_abbr, hs, aways), (0, away, home_abbr, aways, hs)):
-        tid = int(team["teamId"]); abbr = str(team.get("teamTricode") or "").strip(); tname = team_name(team)
+
+    for is_home, team, opp_abbr, score, opp_score in (
+        (1, home, away_abbr, hs, aways),
+        (0, away, home_abbr, aways, hs),
+    ):
+        tid = int(team["tid"])
+        abbr = str(team.get("ta") or "").strip()
+        tname = team_name_legacy(team)
         teams.append([tid, abbr, tname, gd, gid])
-        ts = team.get("statistics") or {}
+        ts = team.get("tstsg") or {}
+        players = team.get("pstsg") or []
         matchup = f"{abbr} vs. {opp_abbr}" if is_home else f"{abbr} @ {opp_abbr}"
         wl = "W" if score > opp_score else "L"
-        teamfacts.append([gid, tid, season, stype, gd, abbr, tname, matchup, wl, is_home,
-            minutes(ts.get("minutes")), number(ts.get("fieldGoalsMade"), True), number(ts.get("fieldGoalsAttempted"), True), pct(ts,"fieldGoalsPercentage"),
-            number(ts.get("threePointersMade"), True), number(ts.get("threePointersAttempted"), True), pct(ts,"threePointersPercentage"),
-            number(ts.get("freeThrowsMade"), True), number(ts.get("freeThrowsAttempted"), True), pct(ts,"freeThrowsPercentage"),
-            number(ts.get("reboundsOffensive"), True), number(ts.get("reboundsDefensive"), True), number(ts.get("reboundsTotal"), True),
-            number(ts.get("assists"), True), number(ts.get("turnoversTotal", ts.get("turnovers")), True), number(ts.get("steals"), True),
-            number(ts.get("blocks"), True), number(ts.get("blocksReceived"), True), number(ts.get("foulsPersonal"), True), number(ts.get("foulsDrawn"), True),
-            number(ts.get("points"), True), score - opp_score])
-        for p in team.get("players") or []:
-            if not played(p):
+
+        team_minutes = number(first(ts, "min"))
+        if team_minutes is None:
+            team_minutes = sum((legacy_minutes(p) or 0) for p in players)
+
+        fgm, fga = first(ts, "fgm"), first(ts, "fga")
+        tpm, tpa = first(ts, "tpm"), first(ts, "tpa")
+        ftm, fta = first(ts, "ftm"), first(ts, "fta")
+        teamfacts.append([
+            gid, tid, season, stype, gd, abbr, tname, matchup, wl, is_home,
+            team_minutes,
+            number(fgm, True), number(fga, True), ratio(fgm, fga),
+            number(tpm, True), number(tpa, True), ratio(tpm, tpa),
+            number(ftm, True), number(fta, True), ratio(ftm, fta),
+            number(first(ts, "oreb"), True), number(first(ts, "dreb"), True), number(first(ts, "reb"), True),
+            number(first(ts, "ast"), True), number(first(ts, "tov"), True), number(first(ts, "stl"), True),
+            number(first(ts, "blk"), True), number(first(ts, "blka"), True), number(first(ts, "pf"), True),
+            number(first(ts, "pfd"), True), score, score - opp_score,
+        ])
+
+        for p in players:
+            if not played_legacy(p):
                 continue
-            pid = int(p["personId"]); name = full_name(p); ps = p.get("statistics") or {}
-            pts = number(ps.get("points"), True) or 0; reb = number(ps.get("reboundsTotal"), True) or 0; ast = number(ps.get("assists"), True) or 0
-            stl = number(ps.get("steals"), True) or 0; blk = number(ps.get("blocks"), True) or 0; tov = number(ps.get("turnovers"), True) or 0
+            pid = int(p["pid"])
+            name = full_name_legacy(p)
+            pts = number(first(p, "pts"), True) or 0
+            reb = number(first(p, "reb"), True) or 0
+            ast = number(first(p, "ast"), True) or 0
+            stl = number(first(p, "stl"), True) or 0
+            blk = number(first(p, "blk"), True) or 0
+            tov = number(first(p, "tov"), True) or 0
             cats = sum(1 for x in (pts, reb, ast, stl, blk) if x >= 10)
-            fantasy = pts + 1.2*reb + 1.5*ast + 3*stl + 3*blk - tov
+            fantasy = pts + 1.2 * reb + 1.5 * ast + 3 * stl + 3 * blk - tov
+            pf_fgm, pf_fga = first(p, "fgm"), first(p, "fga")
+            pf_tpm, pf_tpa = first(p, "tpm"), first(p, "tpa")
+            pf_ftm, pf_fta = first(p, "ftm"), first(p, "fta")
             playerdims.append([pid, name, tid, abbr, gd, gid])
-            playerfacts.append([gid, pid, season, stype, gd, name, tid, abbr, tname, matchup, wl,
-                minutes(ps.get("minutes")), number(ps.get("fieldGoalsMade"), True), number(ps.get("fieldGoalsAttempted"), True), pct(ps,"fieldGoalsPercentage"),
-                number(ps.get("threePointersMade"), True), number(ps.get("threePointersAttempted"), True), pct(ps,"threePointersPercentage"),
-                number(ps.get("freeThrowsMade"), True), number(ps.get("freeThrowsAttempted"), True), pct(ps,"freeThrowsPercentage"),
-                number(ps.get("reboundsOffensive"), True), number(ps.get("reboundsDefensive"), True), reb, ast, tov, stl, blk,
-                number(ps.get("blocksReceived"), True), number(ps.get("foulsPersonal"), True), number(ps.get("foulsDrawn"), True), pts,
-                number(ps.get("plusMinusPoints")), round(fantasy, 3), 1 if cats >= 2 else 0, 1 if cats >= 3 else 0])
-    grow = [gid, season, stype, gd, int(home["teamId"]), int(away["teamId"]), home_abbr, away_abbr, hs, aways, "FINAL"]
+            playerfacts.append([
+                gid, pid, season, stype, gd, name, tid, abbr, tname, matchup, wl,
+                legacy_minutes(p),
+                number(pf_fgm, True), number(pf_fga, True), ratio(pf_fgm, pf_fga),
+                number(pf_tpm, True), number(pf_tpa, True), ratio(pf_tpm, pf_tpa),
+                number(pf_ftm, True), number(pf_fta, True), ratio(pf_ftm, pf_fta),
+                number(first(p, "oreb"), True), number(first(p, "dreb"), True), reb, ast, tov, stl, blk,
+                number(first(p, "blka"), True), number(first(p, "pf"), True), number(first(p, "pfd"), True), pts,
+                number(first(p, "pm")), round(fantasy, 3), 1 if cats >= 2 else 0, 1 if cats >= 3 else 0,
+            ])
+
+    grow = [gid, season, stype, gd, int(home["tid"]), int(away["tid"]), home_abbr, away_abbr, hs, aways, "FINAL"]
     return teams, grow, teamfacts, playerdims, playerfacts
 
 
@@ -245,7 +270,7 @@ def write_files(sql_dir: Path, season: str, statements: list[str], per_file: int
     files = []
     clean = [s for s in statements if s.strip()]
     for idx, group in enumerate(chunks(clean, per_file), 1):
-        path = sql_dir / f"nba_cdn_{prefix}_{idx:03d}.sql"
+        path = sql_dir / f"nba_data_{prefix}_{idx:03d}.sql"
         path.write_text("PRAGMA foreign_keys = ON;\n" + "\n".join(group), encoding="utf-8")
         files.append(path)
     return files
@@ -292,22 +317,27 @@ def main():
         sched, sched_raw = fetch_json(SCHEDULE_URL.format(year=year), a.timeout, a.attempts)
         (raw_dir / f"schedule_{season}.json").write_bytes(sched_raw)
         games_sched = schedule_games(sched, season, a.include_preseason)
-        if not games_sched: raise RuntimeError(f"no games found for {season}")
-        print(f"{season}: {len(games_sched)} scheduled target games", flush=True)
+        if not games_sched: raise RuntimeError(f"no completed target games found for {season}")
+        print(f"{season}: {len(games_sched)} completed target games", flush=True)
         teams=[]; games=[]; teamfacts=[]; playerdims=[]; playerfacts=[]; failures=[]
         box_hash = hashlib.sha256(); raw_path = raw_dir / f"boxscores_{season}.jsonl.gz"; results = {}
+
         def job(row):
             try:
-                payload, raw = fetch_json(BOX_URL.format(game_id=row["game_id"]), a.timeout, a.attempts)
+                url = BOX_URL.format(year=year, game_id=row["game_id"])
+                payload, raw = fetch_json(url, a.timeout, a.attempts)
                 return row["game_id"], row, payload, raw, None
             except Exception as exc:
                 return row["game_id"], row, None, None, str(exc)
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1,a.workers)) as ex:
             futs=[ex.submit(job,row) for row in games_sched]
             done=0
             for fut in concurrent.futures.as_completed(futs):
                 gid,row,payload,raw,err=fut.result(); results[gid]=(row,payload,raw,err); done+=1
-                if done % 100 == 0 or done == len(futs): print(f"{season}: fetched {done}/{len(futs)}", flush=True)
+                if done % 100 == 0 or done == len(futs):
+                    print(f"{season}: fetched {done}/{len(futs)}", flush=True)
+
         with gzip.open(raw_path,"wt",encoding="utf-8") as gz:
             for row in games_sched:
                 gid=row["game_id"]; _,payload,raw,err=results[gid]
@@ -320,24 +350,30 @@ def main():
                     teams.extend(t); games.append(g); teamfacts.extend(tf); playerdims.extend(pd); playerfacts.extend(pf)
                 except Exception as exc:
                     failures.append({"game_id":gid,"season_type":row["season_type"],"error":f"normalize: {exc}"})
+
         total_failures += len(failures)
         if failures:
             (raw_dir / f"failures_{season}.json").write_text(json.dumps(failures,indent=2,ensure_ascii=False),encoding="utf-8")
+
         manifest=[]; now=datetime.now(timezone.utc).isoformat(); schedule_sha=hashlib.sha256(sched_raw).hexdigest(); box_sha=box_hash.hexdigest()
-        for stype in sorted({g[2] for g in games}):
+        scheduled_types=sorted({r["season_type"] for r in games_sched})
+        for stype in scheduled_types:
             gs=[g for g in games if g[2]==stype]; ids={g[0] for g in gs}; tf=[r for r in teamfacts if r[0] in ids]; pf=[r for r in playerfacts if r[0] in ids]
             failed_type=sum(1 for f in failures if f["season_type"]==stype); dates=[g[3] for g in gs]
-            manifest.append([season,stype,"cdn.nba.com+data.nba.com",len(pf),len(tf),len(gs),min(dates) if dates else None,max(dates) if dates else None,None,None,now,schedule_sha,box_sha,failed_type])
+            manifest.append([season,stype,SOURCE,len(pf),len(tf),len(gs),min(dates) if dates else None,max(dates) if dates else None,None,None,now,schedule_sha,box_sha,failed_type])
             all_summary.append({"season":season,"season_type":stype,"games":len(gs),"team_rows":len(tf),"player_rows":len(pf),"failed_games":failed_type})
+
         statements=season_statements(teams,games,teamfacts,playerdims,playerfacts,manifest,a.statement_rows)
         files=write_files(sql_dir,season,statements,a.statements_per_file)
         print(f"{season}: games={len(games)} team_rows={len(teamfacts)} player_rows={len(playerfacts)} failures={len(failures)} sql_files={len(files)}",flush=True)
-    summary={"generated_at":datetime.now(timezone.utc).isoformat(),"seasons":a.seasons,"total_failures":total_failures,"rows":all_summary}
+
+    summary={"generated_at":datetime.now(timezone.utc).isoformat(),"source":SOURCE,"seasons":a.seasons,"total_failures":total_failures,"rows":all_summary}
     (root/"summary.json").write_text(json.dumps(summary,indent=2,ensure_ascii=False),encoding="utf-8")
     if total_failures > a.allow_failures:
-        raise RuntimeError(f"NBA CDN backfill had {total_failures} failed games; allowed={a.allow_failures}")
+        raise RuntimeError(f"NBA data backfill had {total_failures} failed games; allowed={a.allow_failures}")
     print(json.dumps(summary,indent=2),flush=True)
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
