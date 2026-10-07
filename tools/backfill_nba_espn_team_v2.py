@@ -16,6 +16,7 @@ import backfill_nba_espn_team as importer
 # normalization, which removes suffixes such as II/Jr./III.
 importer.PLAYER_ID_OVERRIDES.update({
     "nathanmensah": 1641877,
+    "natemensah": 1641877,
     "acebailey": 1642846,
     "leakyblack": 1641778,
     "omeryurtseven": 1630209,
