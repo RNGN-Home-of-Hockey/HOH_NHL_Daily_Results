@@ -181,7 +181,18 @@ jobs:
           echo "Uploading ${#files[@]} SQL files"
           for file in "${files[@]}"; do
             echo "IMPORT $file"
-            npx wrangler d1 execute hoh-data-core --remote --file "$file"
+            imported=0
+            for attempt in 1 2 3 4 5; do
+              if npx wrangler d1 execute hoh-data-core --remote --file "$file"; then
+                imported=1
+                break
+              fi
+              delay=$((attempt * 8))
+              echo "D1 import attempt $attempt failed for $file; retrying in ${delay}s"
+              sleep "$delay"
+            done
+            test "$imported" -eq 1 || { echo "D1 import failed after retries: $file"; exit 4; }
+            sleep 3
           done
       - name: Verify NBA coverage and integrity
         shell: bash
