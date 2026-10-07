@@ -1,0 +1,53 @@
+name: Apply HOH Live Center diversity v3
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hoh-live-diversity-v3-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Install live diversity v3 patcher'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Apply live diversity patch
+        run: python3 tools/apply_live_diversity_v3_patch.py
+      - name: Validate targeted live tests
+        run: |
+          set -euo pipefail
+          node --check cloudflare-worker/src/live-context-engine.js
+          node --check cloudflare-worker/src/live-betting-engine.js
+          node --check cloudflare-worker/src/worker-entry.js
+          node --check cloudflare-worker/src/broadcast-dashboard-v2.js
+          node tests/validate_live_market_enrichment.mjs
+          node tests/validate_live_center_stage2.mjs
+      - name: Commit source changes
+        run: |
+          set -euo pipefail
+          git config user.name 'HOH Live Center bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add cloudflare-worker/src/live-context-engine.js cloudflare-worker/src/live-betting-engine.js cloudflare-worker/src/worker-entry.js cloudflare-worker/src/broadcast-dashboard-v2.js tests/validate_live_market_enrichment.mjs tests/validate_live_center_stage2.mjs docs/BROADCAST_CONTROL_ROOM_V2_PLAN.md
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'Diversify live insights beyond shot pressure'
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Push attempt ${attempt} failed; retrying"
+            sleep 2
+          done
+          exit 1
