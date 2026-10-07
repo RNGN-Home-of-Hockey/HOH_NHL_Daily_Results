@@ -1,0 +1,59 @@
+name: Probe NBA Data Game Detail
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-nba-data-gamedetail.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Probe data.nba.com game detail and schedules
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          headers={'User-Agent':'Mozilla/5.0','Accept':'application/json','Referer':'https://www.nba.com/'}
+          urls=[
+            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2024/scores/gamedetail/0022400061_gamedetail.json',
+            'https://data.nba.com/data/v2022/json/mobile_teams/nba/2024/scores/gamedetail/0022400061_gamedetail.json',
+            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2025/league/00_full_schedule.json',
+            'https://data.nba.com/data/v2022/json/mobile_teams/nba/2025/league/00_full_schedule.json',
+          ]
+          good_detail=False
+          for url in urls:
+            print('\nURL',url,flush=True)
+            try:
+              req=urllib.request.Request(url,headers=headers)
+              with urllib.request.urlopen(req,timeout=20) as r:
+                raw=r.read()
+              p=json.loads(raw.decode('utf-8-sig'))
+              print('status=200 bytes=',len(raw),'keys=',list(p)[:10],flush=True)
+              g=p.get('g') or p.get('gs') or {}
+              if 'gamedetail' in url:
+                h=g.get('hls') or {}; v=g.get('vls') or {}
+                print('game keys=',list(g)[:20],flush=True)
+                print('home=',h.get('ta'),h.get('tid'),'players=',len(h.get('pstsg') or []),'teamstats=',list((h.get('tstsg') or {}).keys())[:20],flush=True)
+                print('away=',v.get('ta'),v.get('tid'),'players=',len(v.get('pstsg') or []),flush=True)
+                ps=(h.get('pstsg') or v.get('pstsg') or [{}])[0]
+                print('player_keys=',list(ps.keys())[:50],flush=True)
+                good_detail = good_detail or bool((h.get('pstsg') or []) and (v.get('pstsg') or []))
+              else:
+                games=[]
+                for x in p.get('lscd') or []:
+                  games.extend((x.get('mscd') or {}).get('g') or [])
+                print('schedule_games=',len(games),'first_ids=',[str(x.get('gid') or '') for x in games[:5]],flush=True)
+            except Exception as e:
+              print(type(e).__name__,repr(e),flush=True)
+          if not good_detail:
+            raise SystemExit('No accessible player-level data.nba.com gamedetail endpoint')
+          PY
