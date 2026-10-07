@@ -8,6 +8,7 @@ on:
       - '.github/workflows/backfill-nba-five-seasons.yml'
       - 'tools/backfill_nba_cdn.py'
       - 'tools/backfill_nba_espn.py'
+      - 'tools/backfill_nba_espn_team.py'
       - 'tools/backfill_nba_stats.py'
       - 'migrations/0044_nba_data_core.sql'
       - 'migrations/0045_nba_cdn_manifest.sql'
@@ -60,10 +61,12 @@ jobs:
           g=old.get('g') or {}; hp=len((g.get('hls') or {}).get('pstsg') or []); vp=len((g.get('vls') or {}).get('pstsg') or [])
           directory=get('https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2025/players/00_player_info.json')
           players=((directory.get('pls') or {}).get('pl') or [])
+          team_schedule=get('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/2/schedule?season=2026&seasontype=2')
+          events=team_schedule.get('events') or []
           espn=get('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401809243')
           groups=((espn.get('boxscore') or {}).get('players') or [])
-          print({'legacy_players':hp+vp,'directory_players':len(players),'espn_groups':len(groups)},flush=True)
-          if hp==0 or vp==0 or len(players)<500 or len(groups)!=2: raise SystemExit('NBA source smoke failed')
+          print({'legacy_players':hp+vp,'directory_players':len(players),'team_schedule_events':len(events),'espn_groups':len(groups)},flush=True)
+          if hp==0 or vp==0 or len(players)<500 or len(events)<82 or len(groups)!=2: raise SystemExit('NBA source smoke failed')
           PY
 
   fetch-official:
@@ -118,9 +121,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Fetch ESPN box scores with official NBA identity mapping
+      - name: Fetch complete ESPN team schedules and box scores with NBA identity mapping
         run: |
-          python tools/backfill_nba_espn.py \
+          python tools/backfill_nba_espn_team.py \
             --seasons "${{ matrix.season }}" \
             --output-dir "local-data/nba-data/${{ matrix.season }}" \
             --workers 12 --attempts 5 --timeout 30 \
