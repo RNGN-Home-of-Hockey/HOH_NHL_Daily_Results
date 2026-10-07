@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Probe ESPN summary score structure
+      - name: Probe compact ESPN final score fields
         shell: bash
         run: |
           python - <<'PY'
@@ -26,11 +26,14 @@ jobs:
           for eid in ('401358773','401809936'):
             url=f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={eid}'
             with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=30) as r: p=json.load(r)
-            print('\nEVENT',eid,flush=True)
+            print('EVENT',eid,flush=True)
             comps=((p.get('header') or {}).get('competitions') or [])
-            print('header_comp_count',len(comps),flush=True)
-            if comps:
-              for c in comps[0].get('competitors') or []:
-                print('competitor',json.dumps(c,ensure_ascii=False)[:4000],flush=True)
-            print('box teams',json.dumps((p.get('boxscore') or {}).get('teams') or [],ensure_ascii=False)[:5000],flush=True)
+            for c in (comps[0].get('competitors') if comps else []) or []:
+              print({
+                'homeAway':c.get('homeAway'),
+                'abbr':(c.get('team') or {}).get('abbreviation'),
+                'score':c.get('score'),
+                'score_type':type(c.get('score')).__name__,
+                'winner':c.get('winner'),
+              },flush=True)
           PY
