@@ -18,7 +18,6 @@ export default {
     const url = new URL(request.url);
     if (request.method !== "GET") return json({ ok: false, error: "method_not_allowed" }, 405);
     if (!env.DB) return json({ ok: false, error: "missing_d1_binding" }, 503);
-
     if (url.pathname === "/api/health") return health(env.DB);
     if (url.pathname === "/api/cards") return cards(request, env.DB);
     if (url.pathname === "/" || url.pathname === "/broadcast") return html(APP_HTML);
@@ -85,7 +84,6 @@ async function cards(request, db) {
   const result = await db.prepare(query).bind(season, window, window).all();
   const rows = result.results || [];
   const candidates = [];
-
   for (const row of rows) {
     for (const metric of METRICS) {
       const hits = Number(row[metric.key] || 0);
@@ -112,7 +110,7 @@ async function cards(request, db) {
     }
   }
 
-  candidates.sort((a,b) => b.score - a.score || b.avg_pts - a.avg_pts);
+  candidates.sort((a, b) => b.score - a.score || b.avg_pts - a.avg_pts);
   const seenPlayers = new Set();
   const selected = [];
   for (const candidate of candidates) {
@@ -143,10 +141,7 @@ function json(data, status = 200) {
 
 function html(body) {
   return new Response(body, {
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-    },
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
   });
 }
 
@@ -158,16 +153,13 @@ const APP_HTML = `<!doctype html>
 <title>RNGN NBA Broadcast Lab</title>
 <style>
 :root{--bg:#070707;--panel:#111;--line:#2a2a2a;--text:#f5f5f5;--muted:#9c9c9c;--accent:#ff5a1f;--accent2:#ff8a00}
-*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 75% 0,#23110a 0,#090909 32%,#050505 72%);color:var(--text);font-family:Inter,Arial,sans-serif;min-height:100vh}
-.wrap{max-width:1440px;margin:0 auto;padding:28px 28px 60px}.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-end;border-bottom:1px solid var(--line);padding-bottom:22px}.eyebrow{font-size:12px;letter-spacing:.2em;color:#ff7a3b;font-weight:800}.title{font-size:42px;line-height:.95;font-weight:950;letter-spacing:-.045em;margin:9px 0 0}.sub{color:var(--muted);margin-top:10px;font-size:14px}.status{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.pill{padding:9px 12px;border:1px solid var(--line);border-radius:999px;background:#0b0b0b;font-size:12px;color:#c8c8c8}.pill b{color:#fff}.controls{display:flex;gap:10px;align-items:center;margin:22px 0}.controls select,.controls button{background:#111;color:#fff;border:1px solid #333;border-radius:9px;padding:10px 13px;font-weight:700}.controls button.active{background:#fff;color:#000;border-color:#fff}.meta{margin-left:auto;color:#777;font-size:12px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.card{position:relative;min-height:300px;border:1px solid #2b2b2b;border-radius:18px;overflow:hidden;background:linear-gradient(145deg,#151515,#0a0a0a 72%);padding:22px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 16px 38px rgba(0,0,0,.22)}
-.card:before{content:"";position:absolute;inset:0;background:linear-gradient(125deg,transparent 0 52%,rgba(255,90,31,.16) 100%);pointer-events:none}.team{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:900;letter-spacing:.1em;color:#f0f0f0}.dot{width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 18px rgba(255,90,31,.6)}.player{font-size:25px;font-weight:950;letter-spacing:-.03em;margin-top:14px;max-width:85%}.market{font-size:13px;font-weight:850;letter-spacing:.08em;color:#ff8d56;margin-top:6px}.big{font-size:68px;line-height:.84;font-weight:1000;letter-spacing:-.07em;margin-top:24px}.big small{font-size:20px;letter-spacing:0;margin-left:5px;color:#bbb}.hit{font-size:16px;font-weight:800;margin-top:9px}.foot{display:flex;justify-content:space-between;gap:12px;color:#8d8d8d;font-size:11px;border-top:1px solid #262626;padding-top:14px;margin-top:20px}.empty{grid-column:1/-1;border:1px dashed #333;padding:50px;text-align:center;color:#999;border-radius:16px}.footer{margin-top:24px;color:#686868;font-size:11px}.skeleton{opacity:.4;animation:pulse 1s infinite alternate}@keyframes pulse{to{opacity:.8}}
-@media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:680px){.wrap{padding:20px 14px 40px}.top{display:block}.status{justify-content:flex-start;margin-top:18px}.title{font-size:34px}.grid{grid-template-columns:1fr}.meta{display:none}}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 75% 0,#23110a 0,#090909 32%,#050505 72%);color:var(--text);font-family:Inter,Arial,sans-serif;min-height:100vh}.wrap{max-width:1440px;margin:0 auto;padding:28px 28px 60px}.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-end;border-bottom:1px solid var(--line);padding-bottom:22px}.eyebrow{font-size:12px;letter-spacing:.2em;color:#ff7a3b;font-weight:800}.title{font-size:42px;line-height:.95;font-weight:950;letter-spacing:-.045em;margin:9px 0 0}.sub{color:var(--muted);margin-top:10px;font-size:14px}.status{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.pill{padding:9px 12px;border:1px solid var(--line);border-radius:999px;background:#0b0b0b;font-size:12px;color:#c8c8c8}.pill b{color:#fff}.controls{display:flex;gap:10px;align-items:center;margin:22px 0}.controls select,.controls button{background:#111;color:#fff;border:1px solid #333;border-radius:9px;padding:10px 13px;font-weight:700;cursor:pointer}.controls button.active{background:#fff;color:#000;border-color:#fff}.meta{margin-left:auto;color:#777;font-size:12px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.card{position:relative;min-height:300px;border:1px solid #2b2b2b;border-radius:18px;overflow:hidden;background:linear-gradient(145deg,#151515,#0a0a0a 72%);padding:22px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 16px 38px rgba(0,0,0,.22)}.card:before{content:"";position:absolute;inset:0;background:linear-gradient(125deg,transparent 0 52%,rgba(255,90,31,.16) 100%);pointer-events:none}.team{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:900;letter-spacing:.1em;color:#f0f0f0}.dot{width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 18px rgba(255,90,31,.6)}.player{font-size:25px;font-weight:950;letter-spacing:-.03em;margin-top:14px;max-width:85%}.market{font-size:13px;font-weight:850;letter-spacing:.08em;color:#ff8d56;margin-top:6px}.big{font-size:68px;line-height:.84;font-weight:1000;letter-spacing:-.07em;margin-top:24px}.big small{font-size:20px;letter-spacing:0;margin-left:5px;color:#bbb}.hit{font-size:16px;font-weight:800;margin-top:9px}.foot{display:flex;justify-content:space-between;gap:12px;color:#8d8d8d;font-size:11px;border-top:1px solid #262626;padding-top:14px;margin-top:20px}.empty{grid-column:1/-1;border:1px dashed #333;padding:50px;text-align:center;color:#999;border-radius:16px}.footer{margin-top:24px;color:#686868;font-size:11px}.skeleton{opacity:.4;animation:pulse 1s infinite alternate}@keyframes pulse{to{opacity:.8}}@media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:680px){.wrap{padding:20px 14px 40px}.top{display:block}.status{justify-content:flex-start;margin-top:18px}.title{font-size:34px}.grid{grid-template-columns:1fr}.meta{display:none}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
-    <div><div class="eyebrow">RNGN · NBA DATA CORE</div><div class="title">NBA BROADCAST LAB</div><div class="sub">Отдельный NBA-сервис. Плашки считаются напрямую из nba_* таблиц в D1.</div></div>
+    <div><div class="eyebrow">RNGN · NBA DATA CORE</div><div class="title">NBA BROADCAST LAB</div><div class="sub">Отдельный NBA-сервис. Плашки считаются напрямую из NBA-базы.</div></div>
     <div class="status" id="status"><span class="pill">загрузка базы…</span></div>
   </div>
   <div class="controls">
@@ -176,14 +168,14 @@ const APP_HTML = `<!doctype html>
     <div class="meta" id="meta">—</div>
   </div>
   <div class="grid" id="grid"><div class="empty skeleton">Собираю реальные NBA-плашки…</div></div>
-  <div class="footer">RNGN NBA Broadcast Lab · read-only preview · source: hoh-data-core / nba_* · UI и compute отделены от NHL Worker</div>
+  <div class="footer">RNGN NBA Broadcast Lab · read-only preview · NBA Data Core</div>
 </div>
 <script>
 const grid=document.getElementById('grid'),statusEl=document.getElementById('status'),meta=document.getElementById('meta'),season=document.getElementById('season');
 let windowSize=10;
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-async function health(){try{const r=await fetch('/api/health',{cache:'no-store'}).then(r=>r.json());statusEl.innerHTML=`<span class="pill"><b>${Number(r.games||0).toLocaleString('ru-RU')}</b> игр</span><span class="pill"><b>${Number(r.player_rows||0).toLocaleString('ru-RU')}</b> player rows</span><span class="pill">последняя игра <b>${esc(r.last_game_date||'—')}</b></span>`}catch(e){statusEl.innerHTML='<span class="pill">health error</span>'}}
-async function load(){grid.innerHTML='<div class="empty skeleton">Пересчитываю выборку…</div>';const s=season.value;try{const d=await fetch(`/api/cards?season=${encodeURIComponent(s)}&window=${windowSize}`,{cache:'no-store'}).then(r=>r.json());if(!d.ok)throw new Error(d.error||'api_error');meta.textContent=`${d.overview?.games||0} игр · ${d.overview?.first_game_date||'—'} → ${d.overview?.last_game_date||'—'}`;if(!d.cards?.length){grid.innerHTML='<div class="empty">Нет подходящих карточек</div>';return}grid.innerHTML=d.cards.map(c=>`<article class="card"><div><div class="team"><span class="dot"></span>${esc(c.team_abbr)}</div><div class="player">${esc(c.player_name)}</div><div class="market">${esc(c.market)}</div><div class="big">${esc(c.percent)}<small>%</small></div><div class="hit">${esc(c.hits)} из ${esc(c.sample)} последних матчей</div></div><div class="foot"><span>${esc(c.season)} · L${esc(c.window)}</span><span>последняя: ${esc(c.latest_game_date||'—')}</span></div></article>`).join('')}catch(e){grid.innerHTML=`<div class="empty">Ошибка API: ${esc(e.message)}</div>`}}
+async function health(){try{const r=await fetch('/api/health',{cache:'no-store'}).then(r=>r.json());statusEl.innerHTML='<span class="pill"><b>'+Number(r.games||0).toLocaleString('ru-RU')+'</b> игр</span><span class="pill"><b>'+Number(r.player_rows||0).toLocaleString('ru-RU')+'</b> player rows</span><span class="pill">последняя игра <b>'+esc(r.last_game_date||'—')+'</b></span>'}catch(e){statusEl.innerHTML='<span class="pill">health error</span>'}}
+async function load(){grid.innerHTML='<div class="empty skeleton">Пересчитываю выборку…</div>';const s=season.value;try{const d=await fetch('/api/cards?season='+encodeURIComponent(s)+'&window='+windowSize,{cache:'no-store'}).then(r=>r.json());if(!d.ok)throw new Error(d.error||'api_error');meta.textContent=(d.overview?.games||0)+' игр · '+(d.overview?.first_game_date||'—')+' → '+(d.overview?.last_game_date||'—');if(!d.cards?.length){grid.innerHTML='<div class="empty">Нет подходящих карточек</div>';return}grid.innerHTML=d.cards.map(c=>'<article class="card"><div><div class="team"><span class="dot"></span>'+esc(c.team_abbr)+'</div><div class="player">'+esc(c.player_name)+'</div><div class="market">'+esc(c.market)+'</div><div class="big">'+esc(c.percent)+'<small>%</small></div><div class="hit">'+esc(c.hits)+' из '+esc(c.sample)+' последних матчей</div></div><div class="foot"><span>'+esc(c.season)+' · L'+esc(c.window)+'</span><span>последняя: '+esc(c.latest_game_date||'—')+'</span></div></article>').join('')}catch(e){grid.innerHTML='<div class="empty">Ошибка API: '+esc(e.message)+'</div>'}}
 document.querySelectorAll('[data-w]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-w]').forEach(x=>x.classList.remove('active'));b.classList.add('active');windowSize=Number(b.dataset.w);load()});season.onchange=load;health();load();
 </script>
 </body></html>`;
