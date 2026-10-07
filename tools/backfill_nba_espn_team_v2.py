@@ -2,8 +2,8 @@
 """Production wrapper for complete ESPN-team-schedule NBA backfill.
 
 The wrapper makes official game-ID matching deterministic and supplies canonical
-NBA player IDs for late 2025-26 roster additions absent from the frozen 2025
-legacy player directory. IDs are NBA/G-League identity IDs, not ESPN IDs.
+NBA player IDs for roster additions absent from the season-start legacy player
+directory. IDs are NBA/G-League identity IDs, not ESPN IDs.
 """
 from __future__ import annotations
 
@@ -11,10 +11,11 @@ from datetime import timedelta
 
 import backfill_nba_espn_team as importer
 
-# Players added after the legacy 2025 data.nba.com directory stopped refreshing.
+# Players absent from the legacy season-start data.nba.com directory snapshots.
 # These are canonical NBA/G-League player identity IDs. Keys use the shared canon()
 # normalization, which removes suffixes such as II/Jr./III.
 importer.PLAYER_ID_OVERRIDES.update({
+    "nathanmensah": 1641877,
     "acebailey": 1642846,
     "leakyblack": 1641778,
     "omeryurtseven": 1630209,
