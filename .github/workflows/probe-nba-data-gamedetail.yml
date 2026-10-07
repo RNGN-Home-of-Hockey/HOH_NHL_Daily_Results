@@ -17,20 +17,19 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Probe legacy NBA player directories and rosters
+      - name: Probe ESPN scoreboard limits and adjacent NBA directory
         shell: bash
         run: |
           python - <<'PY'
           import json, urllib.request
-          headers={'User-Agent':'Mozilla/5.0','Accept':'application/json','Referer':'https://www.nba.com/'}
+          headers={'User-Agent':'Mozilla/5.0','Accept':'application/json'}
           urls=[
-            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2025/players/00_player_info.json',
-            'https://data.nba.com/data/v2015/json/mobile_teams/nba/2025/players/00_player_info.json',
-            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2021/players/00_player_info.json',
-            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2025/teams/thunder_roster.json',
-            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2025/teams/rockets_roster.json',
+            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20211101',
+            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20211101&limit=100',
+            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20251105',
+            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20251105&limit=100',
+            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2026/players/00_player_info.json',
           ]
-          useful=0
           for url in urls:
             print('\nURL',url,flush=True)
             try:
@@ -39,22 +38,19 @@ jobs:
                 raw=r.read()
               p=json.loads(raw.decode('utf-8-sig'))
               print('status=200 bytes=',len(raw),'keys=',list(p)[:15],flush=True)
-              candidates=[]
-              for path in [('pls','pl'),('t','pl')]:
-                cur=p
-                for key in path:
-                  cur=cur.get(key) if isinstance(cur,dict) else None
-                if isinstance(cur,list): candidates=cur; break
-              if not candidates:
-                for key in ('pl','players'):
-                  if isinstance(p.get(key),list): candidates=p[key]; break
-              print('players=',len(candidates),flush=True)
-              if candidates:
-                print('sample=',candidates[0],flush=True)
-                print('sample_keys=',list(candidates[0])[:80],flush=True)
-                useful += 1
+              if 'scoreboard' in url:
+                ev=p.get('events') or []
+                print('events=',len(ev),'ids=',[(e.get('id'),e.get('name')) for e in ev],flush=True)
+              else:
+                rows=((p.get('pls') or {}).get('pl') or [])
+                print('players=',len(rows),flush=True)
+                needles=['Edgecombe','Richardson','Jarreau','Pedulla','Malachi Smith','Antetokounmpo','Trevon Scott','Boeheim','Grant Nelson','Sandfort','Okani','Jayson Kent','Williamson']
+                for needle in needles:
+                  hits=[]
+                  for x in rows:
+                    full=(str(x.get('fn') or '')+' '+str(x.get('ln') or '')).strip()
+                    if needle.lower() in full.lower(): hits.append((full,x.get('pid'),x.get('ta'),x.get('s')))
+                  if hits: print(needle,hits,flush=True)
             except Exception as e:
               print(type(e).__name__,repr(e),flush=True)
-          if useful == 0:
-            raise SystemExit('No official legacy NBA player directory/roster worked')
           PY
