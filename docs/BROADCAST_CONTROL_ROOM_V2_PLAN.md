@@ -61,3 +61,16 @@ Goal: make the broadcast dashboard safe for many parallel NHL games/operators an
 - [x] Make live copy concrete: score, exact shot split and time window are visible in the headline/subtitle.
 - [x] Add cache-busting and an automatic watchdog to the OBS overlay so a stuck Browser Source recovers without manual reload.
 - [x] Cover score repaint, live metrics, weak-signal rejection, provider-driven fallback and overlay watchdog with product CI.
+
+
+## P8 — live diversity: periods and pregame context over shot volume
+- [x] Shot pressure can no longer create moneyline or total advice by itself.
+- [x] Keep at most one shot-led featured card; shots are a secondary next-goal signal only.
+- [x] Re-evaluate exact live Winline period-result markets against each team's historical result in that same period.
+- [x] Re-evaluate exact live period totals from both teams' historical P1/P2/P3 goal distributions.
+- [x] Add live team totals from team scoring + opponent conceding history, with current score/time sanity checks.
+- [x] Add live game totals from both teams' recent goal distributions, filtered by the current score and late-game feasibility.
+- [x] Add moneyline only when pregame form + opponent form + current score agree; shots are excluded from this decision.
+- [x] Reprice saved pregame signals against the current live Winline line when the market is still logically relevant.
+- [x] Diversify the top four live cards by origin and label period / pregame / totals / shot-support angles explicitly in the UI.
+- [x] Cover the no-shot-moneyline invariant and period/pregame live mix with mandatory product CI.

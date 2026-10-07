@@ -124,45 +124,28 @@ export function attachLiveWinlineMarkets(snapshot, providerMarkets, options={}) 
 export function buildProviderDrivenLiveCards(snapshot,liveMarkets,existing=[],options={}){
   const game=snapshot?.game||{},ctx=snapshot?.live_context||{},nowMs=resolveLiveNow(options.now),maxAgeMs=Number(options.max_age_ms)||5*60*1000;
   const used=new Set((existing||[]).map(c=>String(c?.market?.market_id||c?.market?.selection_id||"")).filter(Boolean));
-  const five=ctx.recent_5m,ten=ctx.recent_10m,periodCtx=ctx.current_period;
-  const strongFive=five&&five.total>=6&&five.share>=0.74?five:null;
-  const strongTen=ten&&ten.total>=10&&ten.share>=0.70?ten:null;
-  const periodStrong=periodCtx&&periodCtx.total>=10&&periodCtx.share>=0.70?periodCtx:null;
+  const five=ctx.recent_5m,ten=ctx.recent_10m;
+  const pressure=five&&five.total>=8&&five.share>=0.78?five:ten&&ten.total>=10&&ten.share>=0.75?ten:null;
+  if(!pressure)return [];
   const cards=[];
   for(const m of liveMarkets||[]){
     const marketId=String(m?.market_id||m?.selection_id||"");
     if(!marketId||used.has(marketId)||!liveProviderMarketFresh(m,nowMs,maxAgeMs))continue;
     const type=String(m?.market_type||m?.type||"").toLowerCase(),subject=String(m?.subject||"").toUpperCase(),period=String(m?.period||"GAME").toUpperCase();
-    let pressure=null,title="",score=0;
-    if(type==="next_goal_team"){
-      pressure=strongFive?.leader===subject?strongFive:strongTen?.leader===subject?strongTen:null;
-      if(!pressure)continue;
-      title=`${subject}: ${pressure.leader_shots}:${pressure.opponent_shots} ПО БРОСКАМ ЗА ПОСЛЕДНИЕ ${pressure.minutes} МИНУТ`;
-      score=88+Math.min(7,Math.round((pressure.share-.70)*30));
-    }else if(type==="moneyline"){
-      pressure=strongTen?.leader===subject?strongTen:null;
-      if(!pressure)continue;
-      const subjectScore=subject===game.home_tri?Number(game.home_score||0):Number(game.away_score||0),oppScore=subject===game.home_tri?Number(game.away_score||0):Number(game.home_score||0);
-      if(subjectScore<oppScore-1)continue;
-      title=`${subject} ДАВИТ: ${pressure.leader_shots}:${pressure.opponent_shots} ПО БРОСКАМ ЗА 10 МИНУТ ПРИ СЧЁТЕ ${game.away_score}:${game.home_score}`;
-      score=subjectScore<oppScore?86:subjectScore===oppScore?89:91;
-    }else if(/^period_[123]_result$/.test(type)){
-      const expected=`P${Number(game.period_number||0)}`;
-      if(period!==expected||periodStrong?.leader!==subject)continue;
-      pressure=periodStrong;
-      title=`${subject}: ${pressure.leader_shots}:${pressure.opponent_shots} ПО БРОСКАМ В ${game.period_number}-М ПЕРИОДЕ`;
-      score=87+Math.min(6,Math.round((pressure.share-.70)*25));
-    }else continue;
+    if(type!=="next_goal_team"||pressure.leader!==subject)continue;
+    const score=66+Math.min(6,Math.round((pressure.share-.75)*25));
     const market=providerLiveCardMarket(m,type,subject,period);
     cards.push({
-      id:`live-provider:${game.game_pk}:${marketId}`,type:`live_provider_${type}`,category:"live",kind:"live",timing:"live",score,air_score:score,
-      eyebrow:"LIVE · ТОЧНАЯ ЛИНИЯ",value:`${pressure.leader_shots}:${pressure.opponent_shots}`,title,broadcast_title:title,
-      broadcast_subtitle:`Счёт ${game.away_tri} ${game.away_score}:${game.home_score} ${game.home_tri} · ${pressure.minutes?`отрезок ${pressure.minutes} мин`:`${game.period_number}-й период`}`,
-      explanation:`Текущая линия Winline сопоставлена с сильным live-отрезком: ${pressure.leader} ${pressure.leader_shots}, ${pressure.opponent} ${pressure.opponent_shots} по броскам в створ.`,
-      evidence:{game_pk:game.game_pk,state:game.game_state,period:game.period_number,time_remaining:game.time_remaining,score:`${game.away_tri} ${game.away_score}:${game.home_score} ${game.home_tri}`,shots_by_team:{[pressure.leader]:pressure.leader_shots,[pressure.opponent]:pressure.opponent_shots},shot_share:pressure.share,window_minutes:pressure.minutes||null,feature_layer:"nhl_live_provider_context_v2"},
-      market,air_reasons:["сильный live-отрезок","точная live-линия"]
+      id:`live-provider:${game.game_pk}:${marketId}`,type:"live_provider_next_goal",category:"live",kind:"live",timing:"live",live_origin:"shot_support",
+      score,air_score:score,air_label:"LIVE · ДОП.",
+      eyebrow:"ДОП. СИГНАЛ · БРОСКИ",value:`${pressure.leader_shots}:${pressure.opponent_shots}`,
+      title:`${subject}: ${pressure.leader_shots}:${pressure.opponent_shots} ПО БРОСКАМ ЗА ПОСЛЕДНИЕ ${pressure.minutes} МИНУТ`,broadcast_title:`${subject}: ${pressure.leader_shots}:${pressure.opponent_shots} ПО БРОСКАМ ЗА ПОСЛЕДНИЕ ${pressure.minutes} МИНУТ`,
+      broadcast_subtitle:`Только дополнительный аргумент для рынка следующего гола · счёт ${game.away_tri} ${game.away_score}:${game.home_score} ${game.home_tri}`,
+      explanation:`Броски используются только как краткосрочный дополнительный сигнал для следующего гола. Из этого преимущества больше не выводится победа в матче или тотал.`,
+      evidence:{game_pk:game.game_pk,state:game.game_state,period:game.period_number,time_remaining:game.time_remaining,score:`${game.away_tri} ${game.away_score}:${game.home_score} ${game.home_tri}`,shots_by_team:{[pressure.leader]:pressure.leader_shots,[pressure.opponent]:pressure.opponent_shots},shot_share:pressure.share,window_minutes:pressure.minutes||null,feature_layer:"nhl_live_shots_secondary_v3"},
+      market,air_reasons:["броски — дополнительный сигнал","только следующий гол","точная live-линия"]
     });
-    used.add(marketId);
+    break;
   }
   return cards;
 }
@@ -184,29 +167,25 @@ export function buildLiveContext(game,shots){
     const counts=teamCounts(rows,game),[leader,leaderShots]=leaderEntry(counts),other=opponent(game,leader),otherShots=Number(counts[other]||0);
     return {minutes,total:rows.length,leader,leader_shots:leaderShots,opponent:other,opponent_shots:otherShots,share:rows.length?round3(leaderShots/rows.length):0};
   };
+  const periods=[1,2,3].map(period=>{
+    const rows=shots.filter(x=>Number(x.period_number)===period),goals=rows.filter(x=>x.event_type==="goal"),goalsByTeam=teamCounts(goals,game),shotCounts=teamCounts(rows,game);
+    return {period,goals_total:goals.length,goals_by_team:goalsByTeam,shot_events:rows.length,shots_by_team:shotCounts};
+  });
   const period=Number(game.period_number||0),periodRows=period?shots.filter(x=>Number(x.period_number)===period):[];
-  const periodCounts=teamCounts(periodRows,game),[periodLeader,periodLeaderShots]=leaderEntry(periodCounts),periodOther=opponent(game,periodLeader);
+  const periodCounts=teamCounts(periodRows,game),[periodLeader,periodLeaderShots]=leaderEntry(periodCounts),periodOther=opponent(game,periodLeader),periodGoals=periods.find(x=>x.period===period)||{goals_total:0,goals_by_team:{}};
   return {
-    recent_5m:windowByMinutes(5),recent_10m:windowByMinutes(10),
-    current_period:{period,total:periodRows.length,leader:periodLeader,leader_shots:periodLeaderShots,opponent:periodOther,opponent_shots:Number(periodCounts[periodOther]||0),share:periodRows.length?round3(periodLeaderShots/periodRows.length):0}
+    recent_5m:windowByMinutes(5),recent_10m:windowByMinutes(10),periods,
+    current_period:{period,total:periodRows.length,leader:periodLeader,leader_shots:periodLeaderShots,opponent:periodOther,opponent_shots:Number(periodCounts[periodOther]||0),share:periodRows.length?round3(periodLeaderShots/periodRows.length):0,goals_total:periodGoals.goals_total,goals_by_team:periodGoals.goals_by_team}
   };
 }
 
 export function buildLiveCards(game, shots) {
   if (!game?.home_tri || !game?.away_tri || !Array.isArray(shots)) return [];
   const cards = [];
-
-  addShotWindowCard(cards, game, shots, 20, 14, "ДАВЛЕНИЕ · ПОСЛЕДНИЕ 20", 92);
-  addShotWindowCard(cards, game, shots, 10, 8, "РЫВОК · ПОСЛЕДНИЕ 10", 88);
-  addRecentMinutesCard(cards, game, shots, 5, 6, 0.72);
-  addCurrentPeriodCard(cards, game, shots);
-  addUnansweredRunCard(cards, game, shots);
-  addScoreStateCards(cards, game, shots);
-  addPeriodTotalPressureCard(cards, game, shots);
-
-  return dedupe(cards)
-    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
-    .slice(0, 6);
+  // V3 policy: shot pressure is never enough for moneyline/totals. Keep at most
+  // one very strong short-horizon signal, and only for the next-goal market.
+  addRecentMinutesCard(cards, game, shots, 10, 10, 0.75);
+  return dedupe(cards).sort((a,b)=>Number(b.score||0)-Number(a.score||0)).slice(0,1);
 }
 
 function addShotWindowCard(cards, game, shots, windowSize, minLeader, eyebrow, baseScore) {
@@ -249,35 +228,26 @@ function addRecentMinutesCard(cards, game, shots, minutes, minShots, minShare) {
   const cutoff = latest.elapsed_seconds - minutes * 60;
   const rows = shots.filter((row) => Number.isFinite(row.elapsed_seconds) && row.elapsed_seconds >= cutoff);
   if (rows.length < minShots) return;
-
   const counts = teamCounts(rows, game);
   const [leader, leaderCount] = leaderEntry(counts);
   const share = leaderCount / rows.length;
   if (share < minShare) return;
   const other = opponent(game, leader);
-
-  cards.push(card({
+  const item=card({
     game,
     id: `live:${game.game_pk}:last${minutes}m:${latest.sort_order || 0}`,
     type: "live_recent_minutes_pressure",
-    score: 90 + Math.min(5, Math.floor((share - minShare) * 20)),
-    eyebrow: `ДАВЛЕНИЕ · ПОСЛЕДНИЕ ${minutes} МИН`,
+    score: 62 + Math.min(8, Math.floor((share - minShare) * 30)),
+    eyebrow: "ДОП. СИГНАЛ · БРОСКИ",
     value: `${leaderCount}:${Number(counts[other] || 0)}`,
     title: `${leader}: ${leaderCount}:${Number(counts[other] || 0)} ПО БРОСКАМ В СТВОР ЗА ПОСЛЕДНИЕ ${minutes} МИНУТ`,
-    explanation: `Последние ${minutes} минут игрового времени: ${leader} ${leaderCount}, ${other} ${Number(counts[other] || 0)} по броскам в створ.`,
-    evidence: {
-      minutes,
-      shots_in_window: rows.length,
-      shots_by_team: counts,
-      share: round3(share),
-    },
-    market: {
-      type: "next_goal_team",
-      subject: leader,
-      side: leader,
-      label: `Следующий гол — ${leader}`,
-    },
-  }));
+    explanation: `Бросковый перевес используется только как вторичный краткосрочный сигнал на следующий гол. Он не превращается в прогноз победы или тотала.`,
+    evidence: {minutes,shots_in_window:rows.length,shots_by_team:counts,share:round3(share),feature_layer:"nhl_live_shots_secondary_v3"},
+    market: {type:"next_goal_team",subject:leader,side:leader,label:`Следующий гол — ${leader}`},
+  });
+  item.live_origin="shot_support";
+  item.air_reasons=["броски — дополнительный сигнал","только следующий гол"];
+  cards.push(item);
 }
 
 function addCurrentPeriodCard(cards, game, shots) {

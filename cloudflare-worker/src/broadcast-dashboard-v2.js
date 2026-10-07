@@ -869,14 +869,21 @@ function applyLiveGameSnapshot(l){if(!l?.game||!currentData)return;currentData.g
 function isLiveGame(){return gameLooksLive(currentData?.game)}
 function isStartedGame(){const s=String(currentData?.game?.game_state||'').toUpperCase();return isLiveGame()||['FINAL','OFF'].includes(s)||Date.now()>=Date.parse(String(currentData?.game?.scheduled_start_utc||''))}
 function renderCombinedCards(){
-  const liveMode=isLiveGame(),featured=[],seen=new Set();
+  const liveMode=isLiveGame(),featured=[],seen=new Set(),originCounts=new Map();
   const primary=liveMode?[...(liveCards||[])].sort((a,b)=>airScore(b)-airScore(a)):featuredCards||[];
-  for(const c of primary){
-    if(!hasRealWinlinePrice(c))continue;
-    const k=cardKey(c);if(seen.has(k))continue;seen.add(k);
-    featured.push({...c,__featured:true});
-    if(featured.length>=4)break;
-  }
+  const tryFeatured=(c,enforceDiversity=true)=>{
+    if(!hasRealWinlinePrice(c))return false;
+    const k=cardKey(c);if(seen.has(k))return false;
+    if(liveMode){
+      const origin=String(c?.live_origin||'live_other'),used=Number(originCounts.get(origin)||0);
+      if(origin==='shot_support'&&used>=1)return false;
+      if(enforceDiversity&&used>=2)return false;
+      originCounts.set(origin,used+1);
+    }
+    seen.add(k);featured.push({...c,__featured:true});return true;
+  };
+  for(const c of primary){tryFeatured(c,true);if(featured.length>=4)break}
+  if(featured.length<4){for(const c of primary){tryFeatured(c,false);if(featured.length>=4)break}}
   const extras=[];
   const pool=liveMode?(liveCards||[]):[...(liveCards||[]),...(historicalCards||[])];
   for(const c of pool){
@@ -885,15 +892,15 @@ function renderCombinedCards(){
     extras.push({...c,__featured:false});
   }
   extras.sort((a,b)=>{
-    const live=Number(b?.kind==='live'||b?.timing==='live')-Number(a?.kind==='live'||a?.timing==='live');
-    if(live)return live;
+    const shot=Number(a?.live_origin==='shot_support')-Number(b?.live_origin==='shot_support');
+    if(shot)return shot;
     return airScore(b)-airScore(a);
   });
   const visible=[...featured,...extras.slice(0,32)];
   renderCards(visible);
   syncQueueSummaryFromCards(selected,visible);
-  const priced=visible.filter(hasRealWinlinePrice).length,sub=document.querySelector('.psub');
-  if(sub)sub.textContent=`4 рекомендуемые · ещё ${Math.max(0,visible.length-featured.length)} вариантов · линий WINLINE: ${priced}/${visible.length}`;
+  const priced=visible.filter(hasRealWinlinePrice).length,shotCount=visible.filter(x=>x?.live_origin==='shot_support').length,sub=document.querySelector('.psub');
+  if(sub)sub.textContent=liveMode?`4 рекомендуемые · ещё ${Math.max(0,visible.length-featured.length)} вариантов · бросковых ${shotCount} · линий WINLINE: ${priced}/${visible.length}`:`4 рекомендуемые · ещё ${Math.max(0,visible.length-featured.length)} вариантов · линий WINLINE: ${priced}/${visible.length}`;
 }
 function cardKey(c){
   return String(c?.id||[c?.insight_type,c?.market?.type,c?.market?.period,c?.market?.subject,c?.market?.side,c?.market?.line].join(':'));
@@ -1058,9 +1065,10 @@ function supportNote(c){
   if(!n)return"";
   return "ЕЩЁ "+n+" "+(n===1?"ФАКТ":n>=2&&n<=4?"ФАКТА":"ФАКТОВ")+" В ОПИСАНИИ";
 }
+function liveCardGroup(c){const origin=String(c?.live_origin||'');if(origin==='shot_support')return'БРОСКИ · ДОП.';if(origin==='pregame_repriced')return'ПРЕДМАТЧЕВЫЙ СИГНАЛ';if(origin.startsWith('period_'))return'СТАТИСТИКА ПО ПЕРИОДАМ';if(origin==='team_total_history'||origin==='game_total_history')return'ГОЛЫ И ТОТАЛЫ';if(origin==='moneyline_history')return'ФОРМА + СЧЁТ';return c?.broadcast_group==='h2h'?'ЛИЧНЫЕ ВСТРЕЧИ':'ФОРМА КОМАНД'}
 function cardSummaryHtml(c){
   const team=cardTeam(c),odds=Number(c?.market?.odds),priced=hasRealWinlinePrice(c),profit=profitParts(odds),score=airScore(c),tone=airTone(score);
-  const group=c?.broadcast_group==='h2h'?'ЛИЧНЫЕ ВСТРЕЧИ':'ФОРМА КОМАНД';
+  const group=liveCardGroup(c);
   const subtitle=simpleSubtitle(c),more=supportNote(c);
   return `<div class="signal">
     <div class="airmeta ${tone}"><b>${score}</b><strong>ДЛЯ ЭФИРА</strong><div><span>${esc(group)}</span></div></div>
@@ -1106,8 +1114,8 @@ function renderCards(cards){
     ?`<details class="queueblock queue-more"><summary><span>ЕЩЁ ${rest.length} ВАРИАНТОВ</span><small>показать</small></summary><div class="cardgrid">${rest.map(x=>cardArticleHtml(x.c,x.i,false)).join('')}</div></details>`
     :'';
   $('#cards').innerHTML=
-    section(isLiveGame()?'LIVE-СИГНАЛЫ':'ФОРМА КОМАНД',form,isLiveGame()?'Жду live-сигналы с актуальной линией':'Не нашлось двух понятных карточек по текущей форме')+
-    section(isLiveGame()?'ЕЩЁ LIVE':'ЛИЧНЫЕ ВСТРЕЧИ',h2h,isLiveGame()?'Пока нет дополнительных live-сигналов':'Недостаточно очных матчей для двух сильных карточек')+
+    section(isLiveGame()?'LIVE · ПЕРИОДЫ И ФОРМА':'ФОРМА КОМАНД',form,isLiveGame()?'Жду live-сигналы с актуальной линией':'Не нашлось двух понятных карточек по текущей форме')+
+    section(isLiveGame()?'LIVE · ДРУГИЕ УГЛЫ':'ЛИЧНЫЕ ВСТРЕЧИ',h2h,isLiveGame()?'Пока нет дополнительных live-сигналов':'Недостаточно очных матчей для двух сильных карточек')+
     more+archive;
   document.querySelectorAll('.showbtn:not([disabled])').forEach(b=>b.onclick=()=>toggleShow(Number(b.dataset.i),b));
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>openCardDetails(Number(b.dataset.detail)));

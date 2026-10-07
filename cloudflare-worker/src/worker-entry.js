@@ -3,6 +3,7 @@ import { getBackfillStatus, runBackfillStep } from "./data-core-backfill.js";
 import { getBackfillJob, runPersistentBackfillTick } from "./data-core-backfill-job.js";
 import { archiveUpcomingBroadcastAnalytics, handleBroadcastRequest, loadBroadcastWinlineMarkets } from "./broadcast-dashboard-v2.js";
 import { buildLiveGameSnapshot, attachLiveWinlineMarkets } from "./live-betting-engine.js";
+import { buildLiveHistoricalContext, mergeLiveInsightCards, summarizeLiveCardMix } from "./live-context-engine.js";
 import { handleControlCenterRequest } from "./control-center.js";
 import { handleTelegramMiniAppRequest } from "./telegram-mini-app.js";
 import { handleTelegramProductBotRequest, pollTelegramCenterUpdates } from "./telegram-product-bot.js";
@@ -326,6 +327,14 @@ async function broadcastLiveRoute(request, env, gamePk) {
         snapshot=attachLiveWinlineMarkets(snapshot,providerMarkets,{
           market_max_age_ms:90*1000,
         });
+        try{
+          const contextCards=await buildLiveHistoricalContext(env.DB,snapshot,providerMarkets,{market_max_age_ms:90*1000});
+          snapshot.cards=mergeLiveInsightCards(contextCards,snapshot.cards||[]);
+          snapshot.live_mix=summarizeLiveCardMix(snapshot.cards);
+        }catch(error){
+          console.error("broadcast live historical context degraded",error);
+          snapshot.live_mix=summarizeLiveCardMix(snapshot.cards||[]);
+        }
         const quoteAt=Date.parse(String(snapshot.provider_live_updated_at||"")),quoteAge=Number.isFinite(quoteAt)?Math.max(0,Math.round((Date.now()-quoteAt)/1000)):null;
         snapshot.monitoring={ui_poll_seconds:15,winline_sync_target_seconds:60,winline_feed_throttle_seconds:45,live_quote_max_age_seconds:90,live_quote_age_seconds:quoteAge,winline_status:quoteAge===null?"no_line":quoteAge<=90?"fresh":"stale"};
       }catch(error){
