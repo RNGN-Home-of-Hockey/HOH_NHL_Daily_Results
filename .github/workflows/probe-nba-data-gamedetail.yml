@@ -17,39 +17,48 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Probe 2025 NBA feed variants
+      - name: Probe ESPN 2025-26 scoreboard and boxscore
         shell: bash
         run: |
           python - <<'PY'
-          import json, urllib.request
-          headers={'User-Agent':'Mozilla/5.0','Accept':'application/json','Referer':'https://www.nba.com/'}
+          import json, urllib.parse, urllib.request
+          headers={'User-Agent':'Mozilla/5.0','Accept':'application/json'}
+          def get(url):
+            req=urllib.request.Request(url,headers=headers)
+            with urllib.request.urlopen(req,timeout=30) as r:
+              raw=r.read()
+            return json.loads(raw.decode('utf-8')),raw
+          base='https://site.api.espn.com/apis/site/v2/sports/basketball/nba'
           urls=[
-            'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2025/scores/gamedetail/0022500001_gamedetail.json',
-            'https://data.nba.com/data/v2015/json/mobile_teams/nba/2025/scores/gamedetail/0022500001_gamedetail.json',
-            'https://data.nba.com/data/10s/v2022/json/mobile_teams/nba/2025/scores/gamedetail/0022500001_gamedetail.json',
-            'https://data.nba.com/data/v2022/json/mobile_teams/nba/2025/scores/gamedetail/0022500001_gamedetail.json',
-            'https://data.nba.com/data/10s/v2022/json/mobile_teams/nba/2025/league/00_full_schedule.json',
-            'https://data.nba.com/data/v2022/json/mobile_teams/nba/2025/league/00_full_schedule.json',
+            base+'/scoreboard?dates=20251021',
+            base+'/scoreboard?dates=20251001-20260630&limit=2000',
           ]
+          event_id=None
           for url in urls:
             print('\nURL',url,flush=True)
             try:
-              req=urllib.request.Request(url,headers=headers)
-              with urllib.request.urlopen(req,timeout=20) as r:
-                raw=r.read()
-              p=json.loads(raw.decode('utf-8-sig'))
-              print('status=200 bytes=',len(raw),'keys=',list(p)[:10],flush=True)
-              if 'gamedetail' in url:
-                g=p.get('g') or p.get('gs') or {}; h=g.get('hls') or {}; v=g.get('vls') or {}
-                print('gid=',g.get('gid'),'status=',g.get('st'),g.get('stt'),'home=',h.get('ta'),'score=',h.get('s'),'players=',len(h.get('pstsg') or []),'away=',v.get('ta'),'score=',v.get('s'),'players=',len(v.get('pstsg') or []),flush=True)
-                if h.get('pstsg'):
-                  print('player_keys=',list(h['pstsg'][0].keys())[:50],flush=True)
-              else:
-                games=[]
-                for x in p.get('lscd') or []:
-                  games.extend((x.get('mscd') or {}).get('g') or [])
-                finals=[g for g in games if str(g.get('st'))=='3' or 'final' in str(g.get('stt') or '').lower()]
-                print('schedule_games=',len(games),'finals=',len(finals),'regular_finals=',sum(1 for g in finals if str(g.get('gid') or '').startswith('002')),flush=True)
+              p,raw=get(url); events=p.get('events') or []
+              print('status=200 bytes=',len(raw),'events=',len(events),'first=',[(e.get('id'),e.get('date'),e.get('name'),((e.get('status') or {}).get('type') or {}).get('state')) for e in events[:3]],flush=True)
+              for e in events:
+                if ((e.get('status') or {}).get('type') or {}).get('state')=='post':
+                  event_id=e.get('id'); break
             except Exception as e:
               print(type(e).__name__,repr(e),flush=True)
+          if not event_id:
+            raise SystemExit('No completed ESPN NBA event found')
+          url=base+'/summary?event='+str(event_id)
+          print('\nSUMMARY',url,flush=True)
+          p,raw=get(url)
+          box=p.get('boxscore') or {}; teams=box.get('teams') or []; groups=box.get('players') or []
+          print('status=200 bytes=',len(raw),'team_rows=',len(teams),'player_groups=',len(groups),flush=True)
+          for g in groups:
+            team=(g.get('team') or {}).get('abbreviation')
+            stats=g.get('statistics') or []
+            print('team=',team,'stat_groups=',len(stats),flush=True)
+            for s in stats[:1]:
+              print('labels=',s.get('labels'),'names=',s.get('names'),'athletes=',len(s.get('athletes') or []),flush=True)
+              if s.get('athletes'):
+                print('athlete_sample=',s['athletes'][0],flush=True)
+          if len(teams)!=2 or not groups:
+            raise SystemExit('ESPN summary missing boxscore')
           PY
