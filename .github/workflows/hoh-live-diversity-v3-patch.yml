@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Install live diversity v3 patcher'
+    if: github.event.head_commit.message == 'Retry live diversity v3 patcher'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,9 @@ jobs:
         with:
           node-version: '24'
       - name: Apply live diversity patch
-        run: python3 tools/apply_live_diversity_v3_patch.py
+        run: |
+          python3 tools/apply_live_diversity_v3_patch.py
+          python3 tools/fix_live_diversity_v3_fixture.py
       - name: Validate targeted live tests
         run: |
           set -euo pipefail
