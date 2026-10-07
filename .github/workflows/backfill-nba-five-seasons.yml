@@ -7,8 +7,10 @@ on:
     paths:
       - '.github/workflows/backfill-nba-five-seasons.yml'
       - 'tools/backfill_nba_cdn.py'
+      - 'tools/backfill_nba_cdn_resilient.py'
       - 'tools/backfill_nba_espn.py'
       - 'tools/backfill_nba_espn_team.py'
+      - 'tools/backfill_nba_espn_team_v2.py'
       - 'tools/backfill_nba_stats.py'
       - 'migrations/0044_nba_data_core.sql'
       - 'migrations/0045_nba_cdn_manifest.sql'
@@ -83,9 +85,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Fetch official NBA season
+      - name: Fetch official NBA season with same-feed fallback
         run: |
-          python tools/backfill_nba_cdn.py \
+          python tools/backfill_nba_cdn_resilient.py \
             --seasons "${{ matrix.season }}" \
             --output-dir "local-data/nba-data/${{ matrix.season }}" \
             --workers 12 --attempts 5 --timeout 30 \
@@ -121,9 +123,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Fetch complete ESPN team schedules and box scores with NBA identity mapping
+      - name: Fetch complete ESPN team schedules and box scores with deterministic NBA identity mapping
         run: |
-          python tools/backfill_nba_espn_team.py \
+          python tools/backfill_nba_espn_team_v2.py \
             --seasons "${{ matrix.season }}" \
             --output-dir "local-data/nba-data/${{ matrix.season }}" \
             --workers 12 --attempts 5 --timeout 30 \
