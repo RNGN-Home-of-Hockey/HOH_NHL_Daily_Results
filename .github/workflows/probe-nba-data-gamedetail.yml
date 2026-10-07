@@ -17,24 +17,16 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Probe ESPN postseason team schedules
+      - name: Confirm ESPN play-in schedule coverage
         shell: bash
         run: |
           python - <<'PY'
           import json, urllib.request
           headers={'User-Agent':'Mozilla/5.0','Accept':'application/json'}
-          urls=[
-            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/bos/schedule?season=2022&seasontype=3',
-            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/gs/schedule?season=2022&seasontype=3',
-            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/okc/schedule?season=2026&seasontype=3',
-            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/ind/schedule?season=2026&seasontype=3',
-          ]
-          for url in urls:
-            print('\nURL',url,flush=True)
-            try:
-              with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=30) as r: raw=r.read()
-              p=json.loads(raw.decode('utf-8-sig')); ev=p.get('events') or []
-              print('events=',len(ev),flush=True)
-              print('rows=',[(e.get('id'),e.get('date'),e.get('name'),(((e.get('competitions') or [{}])[0].get('status') or {}).get('type') or {}).get('state')) for e in ev],flush=True)
-            except Exception as e: print(type(e).__name__,repr(e),flush=True)
+          for team in ('cle','bkn','atl','lac'):
+            url=f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team}/schedule?season=2022&seasontype=3'
+            print('\n',url,flush=True)
+            with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=30) as r: p=json.load(r)
+            ev=p.get('events') or []
+            print('events=',len(ev),[(e.get('id'),e.get('date'),e.get('name')) for e in ev[:8]],flush=True)
           PY
