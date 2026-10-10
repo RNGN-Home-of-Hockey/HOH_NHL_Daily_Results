@@ -126,25 +126,47 @@ export async function loadPlayerGoalsPayload(env, playerId, { now = Date.now() }
   });
 }
 
-// The cover keeper on the highlights server asks which broadcasts have a cover worth saving (games around today).
-export async function loadWantedCovers(env) {
+// The cover keeper on the highlights server asks which broadcasts have a cover worth saving.
+// Without parameters: the games around today (4 days back, 2 ahead). With `since=YYYY-MM-DD` it walks the archive page by page,
+// newest first: each answer carries `next` (a cursor "<start>|<game_pk>") to pass as `before` for the following page.
+const SINCE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CURSOR_RE = /^(\d{4}-\d{2}-\d{2}T[0-9:.]{8,12}Z)\|(\d{6,12})$/;
+const ARCHIVE_START = "2024-01-01";
+
+export async function loadWantedCovers(env, { since = null, before = null, limit = 80, now = Date.now() } = {}) {
   if (!env?.DB) return { ok: false, error: "missing_d1_binding" };
+  const lim = Math.max(1, Math.min(200, Math.floor(Number(limit)) || 80));
+  const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
+  let lower;
+  if (since !== null && since !== undefined && since !== "") {
+    if (!SINCE_RE.test(String(since)) || Number.isNaN(Date.parse(`${since}T00:00:00Z`))) return { ok: false, error: "invalid_since", status: 400 };
+    lower = `${String(since) < ARCHIVE_START ? ARCHIVE_START : since}T00:00:00Z`;
+  } else {
+    lower = iso(now - 4 * 24 * 3600 * 1000);
+  }
+  let upperStart = iso(now + 2 * 24 * 3600 * 1000);
+  let upperPk = 999999999999;
+  if (before !== null && before !== undefined && before !== "") {
+    const m = CURSOR_RE.exec(String(before));
+    if (!m) return { ok: false, error: "invalid_cursor", status: 400 };
+    upperStart = m[1];
+    upperPk = Number(m[2]);
+  }
   const rows = await env.DB.prepare(`
     SELECT g.game_pk,g.game_state,g.scheduled_start_utc,b.source_key
     FROM games g
     JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
     JOIN vk_broadcasts b ON b.source_key=m.source_key
     WHERE b.thumbnail_url IS NOT NULL AND b.thumbnail_url<>''
-      AND g.scheduled_start_utc>=strftime('%Y-%m-%dT%H:%M:%SZ','now','-4 days')
-      AND g.scheduled_start_utc<=strftime('%Y-%m-%dT%H:%M:%SZ','now','+2 days')
-    ORDER BY g.scheduled_start_utc DESC LIMIT 80;
-  `).all();
-  return {
-    ok: true,
-    games: (rows.results || []).map((r) => ({
-      game_pk: Number(r.game_pk), source_key: String(r.source_key), state: String(r.game_state || ""), start: String(r.scheduled_start_utc || ""),
-    })),
-  };
+      AND g.scheduled_start_utc>=?
+      AND (g.scheduled_start_utc<? OR (g.scheduled_start_utc=? AND g.game_pk<?))
+    ORDER BY g.scheduled_start_utc DESC,g.game_pk DESC LIMIT ?;
+  `).bind(lower, upperStart, upperStart, upperPk, lim).all();
+  const games = (rows.results || []).map((r) => ({
+    game_pk: Number(r.game_pk), source_key: String(r.source_key), state: String(r.game_state || ""), start: String(r.scheduled_start_utc || ""),
+  }));
+  const last = games[games.length - 1];
+  return { ok: true, games, next: games.length === lim && last ? `${last.start}|${last.game_pk}` : null };
 }
 
 export async function handleTelegramCenterV26(request, env, path) {
@@ -166,8 +188,9 @@ export async function handleTelegramCenterV26(request, env, path) {
   if (path === COVERS_WANTED_PATH) {
     if (request.method !== "GET") return json({ ok: false, error: "method_not_allowed" }, 405);
     try {
-      const wanted = await loadWantedCovers(env);
-      return json(wanted, wanted.ok ? 200 : 503);
+      const params = new URL(request.url).searchParams;
+      const wanted = await loadWantedCovers(env, { since: params.get("since"), before: params.get("before"), limit: params.get("limit") });
+      return json(wanted, wanted.ok ? 200 : wanted.status || 503);
     } catch (error) {
       console.error("v26 wanted covers failed", error);
       return json({ ok: false, error: "covers_wanted_failed" }, 500);

@@ -635,13 +635,39 @@ const SEASON_LANDINGS = new Map([
   // route: the cover keeper on the highlights server asks which broadcasts have a cover to save
   const rows = [{ game_pk: 2026020069, game_state: "OFF", scheduled_start_utc: "2026-10-10T02:00:00Z", source_key: "vk_a" }];
   let sql = "";
-  const env = { DB: { prepare: (q) => { sql = q; return { all: async () => ({ results: rows }) }; } } };
+  let args = [];
+  const env = { DB: { prepare: (q) => { sql = q; return { bind: (...a) => { args = a; return { all: async () => ({ results: rows }) }; } }; } } };
   const path = "/api/telegram-center-v26/covers/wanted";
   const ok = await handleTelegramCenterV26(new Request("https://x.test" + path), env, path);
   assert.equal(ok.status, 200);
-  assert.deepEqual(await ok.json(), { ok: true, games: [{ game_pk: 2026020069, source_key: "vk_a", state: "OFF", start: "2026-10-10T02:00:00Z" }] });
+  assert.deepEqual(await ok.json(), { ok: true, games: [{ game_pk: 2026020069, source_key: "vk_a", state: "OFF", start: "2026-10-10T02:00:00Z" }], next: null });
   assert.match(sql, /game_vk_broadcasts/);
   assert.match(sql, /thumbnail_url IS NOT NULL/);
+  assert.equal(args.length, 5, "the window and the page size are bound, not pasted into the query");
+  assert.equal(args[4], 80, "default page size");
+  const day = 24 * 3600 * 1000;
+  assert.ok(Date.parse(args[0]) < Date.now() - 3 * day && Date.parse(args[0]) > Date.now() - 5 * day, "by default: from four days back");
+  assert.ok(Date.parse(args[1]) > Date.now() + day, "to two days ahead");
+
+  // the archive walk: since + limit, newest first, a cursor for the next page
+  const page = Array.from({ length: 3 }, (_, i) => ({ game_pk: 2026020300 - i, game_state: "OFF", scheduled_start_utc: "2026-10-06T23:00:00Z", source_key: `vk_${i}` }));
+  rows.splice(0, rows.length, ...page);
+  const first = await (await handleTelegramCenterV26(new Request(`https://x.test${path}?since=2024-09-01&limit=3`), env, path)).json();
+  assert.equal(args[0], "2024-09-01T00:00:00Z");
+  assert.equal(args[4], 3);
+  assert.equal(first.games.length, 3);
+  assert.equal(first.next, "2026-10-06T23:00:00Z|2026020298", "a full page hands out a cursor (start time and game id: many games start together)");
+  await handleTelegramCenterV26(new Request(`https://x.test${path}?since=2024-09-01&limit=3&before=${encodeURIComponent(first.next)}`), env, path);
+  assert.deepEqual(args.slice(1, 4), ["2026-10-06T23:00:00Z", "2026-10-06T23:00:00Z", 2026020298], "the next page starts right after the cursor");
+  rows.splice(0, rows.length, page[0]);
+  assert.equal((await (await handleTelegramCenterV26(new Request(`https://x.test${path}?since=2024-09-01&limit=3`), env, path)).json()).next, null, "a short page is the last one");
+  await handleTelegramCenterV26(new Request(`https://x.test${path}?since=2020-01-01&limit=9999`), env, path);
+  assert.equal(args[0], "2024-01-01T00:00:00Z", "nothing before the archive starts");
+  assert.equal(args[4], 200, "a page is at most 200 games");
+  for (const bad of ["since=yesterday", "since=2024-13-45", "since=2024-09-01&before=x", "before=2026-10-06T23:00:00Z%7C1%27%3B"]) {
+    const res = await handleTelegramCenterV26(new Request(`https://x.test${path}?${bad}`), env, path);
+    assert.equal(res.status, 400, `bad parameter refused: ${bad}`);
+  }
   assert.equal((await handleTelegramCenterV26(new Request("https://x.test" + path, { method: "POST" }), env, path)).status, 405);
   assert.equal((await handleTelegramCenterV26(new Request("https://x.test" + path), {}, path)).status, 503, "no database: a clear error");
 }
