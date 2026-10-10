@@ -136,6 +136,88 @@ function matchClip(indexGame, goal) {
     num(c?.home_score) === num(goal.homeScore)) || null;
 }
 
+// ---- goals of one player (every clip in the index where this player scored) ------------------------------------------
+
+const plain = (name) =>
+  String(name || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]/g, "");
+
+const clockSeconds = (value) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(value || ""));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+const mmss = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+
+// NHL game ids: 2026 | 02 regular season / 03 playoffs | number. Regular season: OT is 5 minutes and the 5th period is the shootout.
+function periodOfClip(gamePk, number) {
+  const playoffs = Math.floor(gamePk / 10000) % 100 === 3;
+  if (number <= 3) return { period: periodInfo({ number, periodType: "REG" }), length: 1200 };
+  if (playoffs) return { period: periodInfo({ number, periodType: "OT" }), length: 1200 };
+  if (number === 4) return { period: periodInfo({ number, periodType: "OT" }), length: 300 };
+  return { period: periodInfo({ number, periodType: "SO" }), length: null };
+}
+
+const isoDate = (yyyymmdd) => {
+  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(String(yyyymmdd || ""));
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+};
+
+export function buildPlayerGoalsPayload({ playerId, nameEn = null, nameRu = null, index = null, indexOk = false, clipsBase = DEFAULT_CLIPS_BASE }) {
+  const games = indexOk && Array.isArray(index?.games) ? index.games : [];
+  const wanted = plain(nameEn);
+  const seen = new Set();
+  const found = [];
+  let since = null;
+  for (const game of games) {
+    const pk = num(game?.game_pk);
+    const date = isoDate(game?.date);
+    if (date && (!since || date < since)) since = date;
+    if (!pk) continue;
+    for (const c of game.goals || []) {
+      const byId = num(c?.scorer_id) === playerId;
+      const byName = num(c?.scorer_id) === null && wanted && plain(c?.scorer) === wanted;
+      if (!byId && !byName) continue;
+      const key = `${pk}:${num(c?.event_id)}`;
+      if (seen.has(key)) continue;
+      const clip = clipFrom(c, clipsBase);
+      if (!clip) continue;
+      seen.add(key);
+      const { period, length } = periodOfClip(pk, num(c?.period) ?? 0);
+      const remaining = clockSeconds(c?.time_remaining);
+      const elapsed = length !== null && remaining !== null ? Math.max(0, length - remaining) : null;
+      const team = text(c?.team) || null;
+      found.push({
+        game_pk: pk,
+        date,
+        away: text(game.away) || null,
+        home: text(game.home) || null,
+        kind: game.kind === "vod" ? "vod" : "live",
+        event_id: num(c?.event_id),
+        period,
+        time: elapsed === null ? null : mmss(elapsed),
+        team,
+        opponent: team && team === text(game.away) ? text(game.home) || null : text(game.away) || null,
+        score_after: { away: num(c?.away_score), home: num(c?.home_score) },
+        clip,
+        _order: [period.number, elapsed ?? 99999],
+      });
+    }
+  }
+  found.sort((a, b) =>
+    String(b.date || "").localeCompare(String(a.date || "")) || b.game_pk - a.game_pk || a._order[0] - b._order[0] || a._order[1] - b._order[1]);
+  for (const g of found) delete g._order;
+  return {
+    ok: true,
+    version: 1,
+    player: { id: playerId, name_en: nameEn || null, name_ru: nameRu || null },
+    server_ok: Boolean(indexOk),
+    since,
+    games: new Set(found.map((g) => g.game_pk)).size,
+    total: found.length,
+    goals: found,
+  };
+}
+
 export function buildGoalsPayload({ gamePk, landing, index = null, indexOk = false, names = null, now = Date.now(), clipsBase = DEFAULT_CLIPS_BASE }) {
   const state = stateInfo(landing);
   const startMs = Date.parse(String(landing?.startTimeUTC || ""));

@@ -18,10 +18,6 @@ export function goalsScreenApp() {
     H.esc
       ? H.esc(v)
       : String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const store = {
-    get(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } },
-    set(key, value) { try { window.localStorage.setItem(key, value); } catch (e) { /* storage may be blocked */ } },
-  };
   const mb = (bytes) => (bytes ? Math.max(1, Math.round(bytes / 1e6)) + " МБ" : "");
   const full = (p) => (p && (p.name_ru || p.name_en)) || "Игрок";
   const surname = (p) => {
@@ -37,10 +33,6 @@ export function goalsScreenApp() {
     if (c === "PPD" || c === "SUSP" || c === "CAN") return "postponed";
     return "upcoming";
   };
-  const slowNetwork = () => {
-    const c = navigator.connection;
-    return Boolean(c && (c.saveData === true || /(^|-)2g$|^3g$/.test(String(c.effectiveType || ""))));
-  };
 
   const state = {};
   S.state = state;
@@ -49,7 +41,8 @@ export function goalsScreenApp() {
     Object.assign(state, {
       gamePk, ctx: ctx || {}, game: null, extra: null, payload: null, tab: "goals",
       openEvent: null, special: null, revealed: false, fresh: new Map(), seen: null, openedAt: Date.now(), timer: null, busy: false,
-      quality: store.get("hoh-v26-quality") === "light" ? "light" : slowNetwork() ? "light" : "orig",
+      // every goal opens in the light version (about 10 MB); the original is one tap away and applies to this screen only
+      quality: "light",
     });
   }
   const phase = () => (state.payload && state.payload.state && state.payload.state.phase) || phaseOfCode(state.game && state.game.game_state);
@@ -122,6 +115,15 @@ html.v15Light .v26Match{--v26-card:#ffffff;--v26-card2:#f1f2f7;--v26-line:#e2e4e
 .v26Meta small{font-size:11px;color:var(--v26-muted);font-weight:700}
 .v26Meta span{font-size:14px;font-weight:700;color:var(--v26-text)}
 .v26Vk{display:block;text-align:center;text-decoration:none;background:var(--v26-accent);color:#fff;border-radius:12px;padding:12px;font-size:14px;font-weight:800}
+.v26PgBtn{display:flex!important;align-items:center;justify-content:center;gap:8px}
+.v26PgBtn svg{width:15px;height:15px;fill:currentColor}
+.v26PgHero{background:var(--v26-card);border:1px solid var(--v26-line);border-radius:16px;padding:14px 12px;display:grid;gap:4px}
+.v26PgHero b{font-size:18px;font-weight:800;color:var(--v26-text)}
+.v26PgHero span{font-size:13px;color:var(--v26-muted);font-weight:600}
+.v26GameHead{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:0;background:none;color:var(--v26-text);font:inherit;padding:8px 2px 0;cursor:pointer;text-align:left}
+.v26GameHead span{font-size:12px;color:var(--v26-muted);font-weight:700}
+.v26GameHead b{font-size:14px;font-weight:800;flex:1}
+.v26GameHead i{font-style:normal;font-size:12px;color:var(--v26-lav);font-weight:700}
 `;
     document.head.appendChild(style);
   }
@@ -252,17 +254,16 @@ html.v15Light .v26Match{--v26-card:#ffffff;--v26-card2:#f1f2f7;--v26-line:#e2e4e
     return goal && goal.clip && goal.clip.state === "ready" ? goal : null;
   }
 
-  function srcOf(clip) {
-    return state.quality === "light" && clip.light_url ? clip.light_url : clip.orig_url;
+  function srcOf(clip, quality = state.quality) {
+    return quality === "light" && clip.light_url ? clip.light_url : clip.orig_url;
   }
 
-  function playerHtml(clip, label) {
+  function playerHtml(clip, label, quality = state.quality, qAttr = "data-q") {
     const hasLight = Boolean(clip.light_url);
-    const quality = hasLight
-      ? `<span class="v26Q"><button data-q="orig" class="${state.quality === "orig" ? "on" : ""}">Оригинал${clip.orig_bytes ? " · " + mb(clip.orig_bytes) : ""}</button><button data-q="light" class="${state.quality === "light" ? "on" : ""}">Лёгкая${clip.light_bytes ? " · " + mb(clip.light_bytes) : ""}</button></span>`
+    const switcher = hasLight
+      ? `<span class="v26Q"><button ${qAttr}="orig" class="${quality === "orig" ? "on" : ""}">Оригинал${clip.orig_bytes ? " · " + mb(clip.orig_bytes) : ""}</button><button ${qAttr}="light" class="${quality === "light" ? "on" : ""}">Лёгкая${clip.light_bytes ? " · " + mb(clip.light_bytes) : ""}</button></span>`
       : "";
-    const note = state.quality === "light" && slowNetwork() ? " · лёгкая версия из-за медленной сети" : "";
-    return `<div class="v26Player"><video controls playsinline webkit-playsinline preload="metadata"${clip.poster_url ? ` poster="${esc(clip.poster_url)}"` : ""} src="${esc(srcOf(clip))}"></video><div class="v26Bar"><span>${esc(label)}${esc(note)}</span>${quality}</div><div class="v26Err" hidden></div></div>`;
+    return `<div class="v26Player"><video controls playsinline webkit-playsinline preload="metadata"${clip.poster_url ? ` poster="${esc(clip.poster_url)}"` : ""} src="${esc(srcOf(clip, quality))}"></video><div class="v26Bar"><span>${esc(label)}</span>${switcher}</div><div class="v26Err" hidden></div></div>`;
   }
 
   function currentClip() {
@@ -305,7 +306,6 @@ html.v15Light .v26Match{--v26-card:#ffffff;--v26-card2:#f1f2f7;--v26-line:#e2e4e
 
   function setQuality(q) {
     state.quality = q === "light" ? "light" : "orig";
-    store.set("hoh-v26-quality", state.quality);
     const video = document.querySelector(".v26Player video");
     const cur = currentClip();
     document.querySelectorAll(".v26Q button").forEach((b) => b.classList.toggle("on", b.dataset.q === state.quality));
@@ -357,6 +357,7 @@ html.v15Light .v26Match{--v26-card:#ffffff;--v26-card2:#f1f2f7;--v26-line:#e2e4e
     stopPolling();
     H.state.returnTo = null;
     const ctx = state.ctx || {};
+    if (typeof ctx.returnTo === "function") return ctx.returnTo();
     if (ctx.playerId && H.openPlayer) return H.openPlayer(ctx.playerId);
     if (ctx.teamTri && H.openTeam) return H.openTeam(ctx.teamTri);
     return H.goBack();
@@ -492,6 +493,183 @@ html.v15Light .v26Match{--v26-card:#ffffff;--v26-card2:#f1f2f7;--v26-line:#e2e4e
     if (document.visibilityState === "visible" && document.getElementById("v26Root") && state.timer) tick();
   });
 
+  // ---- goals of one player: a page reached from the player profile ------------------------------------------------
+  const pg = { id: null, payload: null, openKey: null, quality: "light", revealed: false, failed: false };
+  S.pg = pg;
+  const pgKey = (g) => `${g.game_pk}:${g.event_id}`;
+  const pgGoal = (key) => (pg.payload && pg.payload.goals.find((g) => pgKey(g) === key)) || null;
+
+  function dayText(iso, withYear) {
+    const d = new Date(`${iso}T12:00:00Z`);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("ru-RU", withYear ? { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" } : { day: "numeric", month: "long", timeZone: "UTC" });
+  }
+
+  function pgGoalHtml(g) {
+    const key = pgKey(g);
+    const open = pg.openKey === key;
+    const sa = g.score_after || {};
+    const where = g.team && g.home ? (g.team === g.home ? "дома" : "в гостях") : "";
+    const play = `<button class="v26Play${open ? " on" : ""}" data-pg-play="${esc(key)}" aria-label="${open ? "Закрыть видео" : "Смотреть гол"}">${PLAY_SVG}</button>`;
+    return `<div class="v26Goal" data-pg-goal="${esc(key)}"><div class="v26Row"><div class="v26When"><small>${esc(g.period.short_ru)}</small><b>${esc(g.time || "")}</b></div><div class="v26Who"><div class="v26WhoTop"><span class="v26Tri">${esc(g.team || "")}</span>${where ? `<span class="v26Tag">${esc(where)}</span>` : ""}</div><div class="v26Assist">Счёт после гола ${esc(sa.away)}:${esc(sa.home)}</div></div><div class="v26Right">${play}</div></div><div data-pg-slot="${esc(key)}"></div></div>`;
+  }
+
+  function pgBodyHtml() {
+    const p = pg.payload;
+    if (!p) return '<div class="v26Note">Голы игрока временно недоступны.<button class="v26Big" data-pg-retry="1">Обновить</button></div>';
+    if (!p.server_ok) return '<div class="v26Note">Видео временно недоступно. Попробуйте чуть позже.<button class="v26Big" data-pg-retry="1">Обновить</button></div>';
+    if (noSpoilers() && !pg.revealed) {
+      return '<div class="v26Note">Включён режим «без спойлеров». Голы игрока скрыты.<button class="v26Big" data-pg-reveal="1">Показать голы</button></div>';
+    }
+    if (!p.goals.length) {
+      return `<div class="v26Note">Роликов с голами этого игрока пока нет.${p.since ? ` Видео в базе с ${esc(dayText(p.since))}.` : ""}</div>`;
+    }
+    let html = "";
+    let lastGame = null;
+    for (const g of p.goals) {
+      if (g.game_pk !== lastGame) {
+        lastGame = g.game_pk;
+        html += `<button class="v26GameHead" data-pg-game="${esc(g.game_pk)}"><span>${esc(dayText(g.date))}</span><b>${esc(g.away || "")} — ${esc(g.home || "")}</b><i>Матч ›</i></button>`;
+      }
+      html += pgGoalHtml(g);
+    }
+    return `<div class="v26List">${html}</div>`;
+  }
+
+  function pgHeroHtml() {
+    const p = pg.payload;
+    const name = (p && p.player && (p.player.name_ru || p.player.name_en)) || "Игрок";
+    let line = "";
+    if (p && p.server_ok && !(noSpoilers() && !pg.revealed)) {
+      line = p.total ? `Голов с видео: ${p.total} · матчей: ${p.games}` : "Пока без роликов";
+      if (p.since) line += ` · видео в базе с ${dayText(p.since)}`;
+    }
+    return `<div class="v26PgHero"><b>${esc(name)}</b>${line ? `<span>${esc(line)}</span>` : ""}</div>`;
+  }
+
+  function pgPaint() {
+    const root = document.getElementById("v26PgRoot");
+    if (!root) return;
+    removePlayer();
+    const hero = root.querySelector("#v26PgHero");
+    const body = root.querySelector("#v26PgBody");
+    if (hero) hero.innerHTML = pgHeroHtml();
+    if (body) body.innerHTML = pgBodyHtml();
+    if (pg.openKey && pgGoal(pg.openKey)) pgMount(pg.openKey, false);
+    else pg.openKey = null;
+  }
+
+  function pgMount(key, autoplay) {
+    const goal = pgGoal(key);
+    const slot = document.querySelector(`[data-pg-slot="${String(key).replace(/"/g, "")}"]`);
+    if (!goal || !slot) return;
+    removePlayer();
+    slot.innerHTML = playerHtml(goal.clip, `${dayText(goal.date)} · ${goal.away || ""} — ${goal.home || ""}`, pg.quality, "data-pg-q");
+    const video = slot.querySelector("video");
+    video.addEventListener("error", () => {
+      const err = slot.querySelector(".v26Err");
+      if (err) {
+        err.hidden = false;
+        err.textContent = pg.quality === "orig" && goal.clip.light_url ? "Не удалось загрузить оригинал. Попробуйте лёгкую версию." : "Не удалось загрузить видео. Проверьте соединение.";
+      }
+    });
+    if (autoplay) {
+      const p = video.play();
+      if (p && typeof p.catch === "function") p.catch(() => { /* the user can press play */ });
+    }
+  }
+
+  function pgSetQuality(q) {
+    pg.quality = q === "light" ? "light" : "orig";
+    const video = document.querySelector(".v26Player video");
+    const goal = pgGoal(pg.openKey);
+    document.querySelectorAll(".v26Q button").forEach((b) => b.classList.toggle("on", b.dataset.pgQ === pg.quality));
+    if (!video || !goal) return;
+    const t = video.currentTime;
+    const wasPlaying = !video.paused;
+    video.src = srcOf(goal.clip, pg.quality);
+    const err = document.querySelector(".v26Player .v26Err");
+    if (err) err.hidden = true;
+    video.addEventListener("loadedmetadata", () => {
+      try { video.currentTime = t; } catch (e) { /* ignore */ }
+      if (wasPlaying) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
+    }, { once: true });
+  }
+
+  function pgBack() {
+    const v23 = window.HOHV23;
+    if (v23 && typeof v23.renderMain === "function" && v23.current) return v23.renderMain(v23.current);
+    return H.goBack();
+  }
+
+  function pgClick(event) {
+    const target = event.target.closest("[data-pg-play],[data-pg-q],[data-pg-game],[data-pg-reveal],[data-pg-retry]");
+    if (!target) return;
+    if (target.dataset.pgPlay) {
+      const key = target.dataset.pgPlay;
+      const closing = pg.openKey === key;
+      pg.openKey = closing ? null : key;
+      document.querySelectorAll(".v26Play.on").forEach((b) => b.classList.remove("on"));
+      removePlayer();
+      if (!closing) { target.classList.add("on"); pgMount(key, true); }
+      return;
+    }
+    if (target.dataset.pgQ) { pgSetQuality(target.dataset.pgQ); return; }
+    if (target.dataset.pgReveal) { pg.revealed = true; pgPaint(); return; }
+    if (target.dataset.pgRetry) { openPlayerGoals(pg.id); return; }
+    if (target.dataset.pgGame) {
+      const id = pg.id;
+      H.openGameV26(Number(target.dataset.pgGame), { returnTab: H.currentTab() || "players", returnTo: () => openPlayerGoals(id) });
+    }
+  }
+
+  async function openPlayerGoals(playerId) {
+    playerId = Number(playerId);
+    if (!playerId) return;
+    css();
+    Object.assign(pg, { id: playerId, payload: null, openKey: null, quality: "light", revealed: false });
+    H.state.profile = true;
+    const root = H.view();
+    if (!root) return;
+    root.innerHTML = '<div class="v15Loading">Загрузка голов…</div>';
+    try {
+      const res = await H.api(`${API}/players/${playerId}/goals`);
+      if (res && res.ok !== false) pg.payload = res;
+    } catch (e) { console.warn("v26 player goals failed", e); }
+    root.innerHTML = `<div class="v26Match" id="v26PgRoot">${H.backRow("Голы игрока")}<div id="v26PgHero"></div><div id="v26PgBody"></div></div>`;
+    const backButton = document.getElementById("v15Back");
+    if (backButton) backButton.onclick = pgBack;
+    document.getElementById("v26PgRoot").addEventListener("click", pgClick);
+    pgPaint();
+  }
+
+  // The player profile belongs to another layer (v23). It keeps its own context in window.HOHV23.current and replaces the whole
+  // page on every render, so a light observer on the page container adds the "Голы игрока" button after each render.
+  function decoratePlayerPage() {
+    const profile = document.querySelector(".v23PlayerProfile");
+    if (!profile || profile.querySelector(".v26PgBtn")) return;
+    const ctx = window.HOHV23 && window.HOHV23.current;
+    const id = ctx && ctx.p && Number(ctx.p.player_id);
+    const anchor = profile.querySelector("#v23AllStats");
+    if (!id || !anchor) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "v23AllStatsBtn v26PgBtn";
+    button.innerHTML = `${PLAY_SVG}Голы игрока · видео`;
+    button.addEventListener("click", () => openPlayerGoals(id));
+    anchor.insertAdjacentElement("afterend", button);
+    css();
+  }
+  const view = H.view && H.view();
+  if (view && typeof MutationObserver === "function") {
+    new MutationObserver(decoratePlayerPage).observe(view, { childList: true });
+    decoratePlayerPage();
+  }
+  window.addEventListener("hoh-spoilers-change", () => {
+    if (document.getElementById("v26PgRoot")) pgPaint();
+  });
+
   S.tick = tick;
   H.openGameV26 = openMatch;
+  H.openPlayerGoalsV26 = openPlayerGoals;
 }

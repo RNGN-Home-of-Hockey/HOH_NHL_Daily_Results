@@ -1,10 +1,11 @@
 // Live Center v26: goals of a game (with clips from the highlights server), the match-screen script,
 // and the embedded Inter font that makes every device render the app the same way.
-import { buildGoalsPayload, playerIdsOf, DEFAULT_CLIPS_BASE } from "./telegram-center-v26-goals-data.js";
+import { buildGoalsPayload, buildPlayerGoalsPayload, playerIdsOf, DEFAULT_CLIPS_BASE } from "./telegram-center-v26-goals-data.js";
 import { goalsScreenApp } from "./telegram-center-v26-goals-ui.js";
 
 const NHL_LANDING = (gamePk) => `https://api-web.nhle.com/v1/gamecenter/${gamePk}/landing`;
 const GOALS_PATH = /^\/api\/telegram-center-v26\/games\/(\d{1,12})\/goals$/;
+const PLAYER_GOALS_PATH = /^\/api\/telegram-center-v26\/players\/(\d{1,12})\/goals$/;
 const FONT_PATH = /^\/telegram-app\/fonts\/(inter-(?:cyrillic-ext|cyrillic|latin-ext|latin)-wght-normal\.woff2)$/;
 export const FONT_VERSION = "5.3.0";
 
@@ -76,7 +77,37 @@ export async function loadGoalsPayload(env, gamePk, { now = Date.now() } = {}) {
   });
 }
 
+async function loadPlayerNames(db, playerId) {
+  const row = await db.prepare("SELECT full_name_en,full_name_ru FROM players WHERE player_id=?").bind(playerId).first();
+  return { nameEn: row?.full_name_en ? String(row.full_name_en) : null, nameRu: row?.full_name_ru ? String(row.full_name_ru) : null };
+}
+
+export async function loadPlayerGoalsPayload(env, playerId) {
+  const base = String(env?.HOH_CLIPS_BASE || "").trim() || DEFAULT_CLIPS_BASE;
+  const [indexResult, namesResult] = await Promise.allSettled([
+    fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 }),
+    env?.DB ? loadPlayerNames(env.DB, playerId) : Promise.resolve({ nameEn: null, nameRu: null }),
+  ]);
+  if (namesResult.status === "rejected") console.error("v26 player names failed", namesResult.reason);
+  const names = namesResult.status === "fulfilled" ? namesResult.value : { nameEn: null, nameRu: null };
+  const index = indexResult.status === "fulfilled" ? indexResult.value : null;
+  return buildPlayerGoalsPayload({ playerId, ...names, index, indexOk: Boolean(index && Array.isArray(index.games)), clipsBase: base });
+}
+
 export async function handleTelegramCenterV26(request, env, path) {
+  const playerGoalsMatch = PLAYER_GOALS_PATH.exec(path);
+  if (playerGoalsMatch) {
+    if (request.method !== "GET") return json({ ok: false, error: "method_not_allowed" }, 405);
+    const playerId = Number(playerGoalsMatch[1]);
+    if (!Number.isSafeInteger(playerId) || playerId <= 0) return json({ ok: false, error: "invalid_player_id" }, 400);
+    try {
+      return json(await loadPlayerGoalsPayload(env, playerId));
+    } catch (error) {
+      console.error("v26 player goals failed", error);
+      return json({ ok: false, error: "player_goals_failed" }, 500);
+    }
+  }
+
   const goalsMatch = GOALS_PATH.exec(path);
   if (goalsMatch) {
     if (request.method !== "GET") return json({ ok: false, error: "method_not_allowed" }, 405);

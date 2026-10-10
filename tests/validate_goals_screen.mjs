@@ -1,7 +1,7 @@
 // Live Center match screen: goals with scorers/assists, clips played inside the app, LIVE updates, no-spoilers.
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import { buildGoalsPayload, playerIdsOf, periodInfo, phaseOf } from "../cloudflare-worker/src/telegram-center-v26-goals-data.js";
+import { buildGoalsPayload, buildPlayerGoalsPayload, playerIdsOf, periodInfo, phaseOf } from "../cloudflare-worker/src/telegram-center-v26-goals-data.js";
 import { handleTelegramCenterV26, FONT_CSS, FONT_PRELOAD_LINKS } from "../cloudflare-worker/src/telegram-center-v26-goals.js";
 import { handleTeamCurrentRequest } from "../cloudflare-worker/src/team-current-routes.js";
 import { handleTelegramCenterV19Ui } from "../cloudflare-worker/src/telegram-center-v19-ui.js";
@@ -219,21 +219,22 @@ const text = (el) => String(el?.textContent || "").replace(/\s+/g, " ").trim();
   assert.match(text(doc.querySelector(".v26List")), /Все голы матча одним роликом/);
   assert.match(text(doc.querySelector(".v26List")), /Концовка матча/);
 
-  // play the first goal inside the app: original by default
+  // play the first goal inside the app: the light version by default, always
   rows[0].querySelector(".v26Play").click();
   let video = doc.querySelector(".v26Player video");
   assert.ok(video, "player opens under the goal");
-  assert.equal(video.getAttribute("src"), `${BASE}/live/20261010/phi-bos/a.mp4`);
+  assert.equal(video.getAttribute("src"), `${BASE}/tg/live/20261010/phi-bos/a.mp4`, "light version first");
   assert.equal(video.getAttribute("poster"), `${BASE}/live/20261010/phi-bos/a.jpg`);
   assert.equal(video.__played, true, "playback starts from the tap");
   assert.equal(doc.querySelectorAll(".v26Player").length, 1);
   assert.ok(video.closest('[data-slot="405"]'), "player sits in the row of that goal");
   assert.match(text(doc.querySelector(".v26Q")), /Оригинал · 36 МБ/);
   assert.match(text(doc.querySelector(".v26Q")), /Лёгкая · 11 МБ/);
-  // light version
-  doc.querySelector('.v26Q [data-q="light"]').click();
-  assert.equal(doc.querySelector(".v26Player video").getAttribute("src"), `${BASE}/tg/live/20261010/phi-bos/a.mp4`);
-  assert.equal(window.localStorage.getItem("hoh-v26-quality"), "light", "the choice is remembered");
+  assert.equal(doc.querySelector(".v26Q .on").dataset.q, "light");
+  // original on request
+  doc.querySelector('.v26Q [data-q="orig"]').click();
+  assert.equal(doc.querySelector(".v26Player video").getAttribute("src"), `${BASE}/live/20261010/phi-bos/a.mp4`);
+  assert.equal(window.localStorage.getItem("hoh-v26-quality"), null, "the choice is not stored for the next visit");
   // another goal: one player at a time; this clip has no light copy
   doc.querySelector('[data-goal="407"] .v26Play').click();
   assert.equal(doc.querySelectorAll(".v26Player").length, 1);
@@ -243,11 +244,18 @@ const text = (el) => String(el?.textContent || "").replace(/\s+/g, " ").trim();
   // tapping the same button closes it
   doc.querySelector('[data-goal="407"] .v26Play').click();
   assert.ok(!doc.querySelector("video"));
-  // compilations
+  // compilations follow the choice made on this screen
   doc.querySelector('[data-special="all_goals"]').click();
-  assert.equal(doc.querySelector("#v26Special video").getAttribute("src"), `${BASE}/tg/live/20261010/phi-bos/ALL.mp4`, "the remembered light choice applies to compilations too");
+  assert.equal(doc.querySelector("#v26Special video").getAttribute("src"), `${BASE}/live/20261010/phi-bos/ALL.mp4`, "the original chosen on this screen applies to compilations too");
+  doc.querySelector('#v26Special [data-q="light"]').click();
+  assert.equal(doc.querySelector("#v26Special video").getAttribute("src"), `${BASE}/tg/live/20261010/phi-bos/ALL.mp4`);
   doc.querySelector('[data-special="all_goals"]').click();
   assert.ok(!doc.querySelector("video"));
+  // a fresh visit to a match starts with the light version again
+  await H.openGameV26(123, { returnTab: "games" });
+  doc.querySelector('[data-goal="405"] .v26Play').click();
+  assert.equal(doc.querySelector(".v26Player video").getAttribute("src"), `${BASE}/tg/live/20261010/phi-bos/a.mp4`, "every new visit starts light");
+  doc.querySelector('[data-goal="405"] .v26Play').click();
 
   // players and teams are clickable
   doc.querySelector('[data-goal="405"] .v26Link').click();
@@ -429,6 +437,191 @@ const text = (el) => String(el?.textContent || "").replace(/\s+/g, " ").trim();
   await classic.window.HOHV15.openGameV19(79, {});
   assert.ok(classic.apiCalls.some((u) => u.includes("/games/79")), "without the new screen nothing changes");
   for (const x of [handed, fallback, classic]) x.window.close();
+}
+
+// ---- 5) goals of one player -------------------------------------------------------------------------------------------------
+const goalOf = (eventId, period, remaining, away, home, scorer, scorerId, team, path) => ({ event_id: eventId, period, time_remaining: remaining, away_score: away, home_score: home, scorer, scorer_id: scorerId, team, ...clip(path) });
+const PIDX = {
+  version: 1,
+  games: [
+    { game_pk: 2026020044, date: "20261006", kind: "vod", away: "NSH", home: "TOR", goals: [
+      goalOf(144, 1, "12:47", 1, 0, "Steven Stamkos", 8474564, "NSH", "vod/20261006/nsh-tor/a.mp4"),
+      goalOf(1120, 4, "00:14", 4, 5, "Auston Matthews", 8479318, "TOR", "vod/20261006/nsh-tor/b.mp4"),
+    ] },
+    { game_pk: 2026020044, date: "20261006", kind: "live", away: "NSH", home: "TOR", goals: [goalOf(144, 1, "12:47", 1, 0, "Steven Stamkos", 8474564, "NSH", "live/20261006/nsh-tor/a.mp4")] },
+    { game_pk: 2026020046, date: "20261006", kind: "vod", away: "OTT", home: "DET", goals: [
+      goalOf(85, 1, "17:16", 1, 0, "Tim Stützle", null, "OTT", "vod/20261006/ott-det/a.mp4"),
+      goalOf(99, 1, "16:44", 1, 1, "Alex DeBrincat", null, "DET", "vod/20261006/ott-det/b.mp4"),
+    ] },
+    { game_pk: 2026020068, date: "20261009", kind: "live", away: "PIT", home: "CBJ", goals: [
+      goalOf(474, 5, "00:00", 2, 3, "Kent Johnson", 8482660, "CBJ", "live/20261009/pit-cbj/a.mp4"),
+      goalOf(175, 1, "09:08", 0, 1, "Damon Severson", 8476923, "CBJ", "live/20261009/pit-cbj/b.mp4"),
+    ] },
+    { game_pk: 2026020070, date: "20261010", kind: "live", away: "AAA", home: "BBB", goals: [goalOf(7, 1, "10:00", 1, 0, "Steven Stamkos", 999, "AAA", "live/20261010/aaa-bbb/a.mp4")] },
+    { game_pk: 2026030111, date: "20270420", kind: "live", away: "NSH", home: "VGK", goals: [goalOf(900, 4, "16:00", 2, 3, "Steven Stamkos", 8474564, "NSH", "live/20270420/nsh-vgk/a.mp4")] },
+  ],
+};
+{
+  const stamkos = buildPlayerGoalsPayload({ playerId: 8474564, nameEn: "Steven Stamkos", nameRu: "Стивен Стэмкос", index: PIDX, indexOk: true, clipsBase: BASE });
+  assert.equal(stamkos.total, 2, "the same goal listed twice is counted once");
+  assert.equal(stamkos.games, 2);
+  assert.equal(stamkos.since, "2026-10-06", "first day of the video base");
+  assert.deepEqual(stamkos.goals.map((g) => g.game_pk), [2026030111, 2026020044], "newest game first");
+  const [playoff, regular] = stamkos.goals;
+  assert.equal(regular.time, "07:13", "elapsed time, not the time left");
+  assert.equal(regular.opponent, "TOR");
+  assert.equal(regular.team, "NSH");
+  assert.deepEqual(regular.score_after, { away: 1, home: 0 });
+  assert.equal(regular.clip.orig_url, `${BASE}/vod/20261006/nsh-tor/a.mp4`);
+  assert.equal(regular.clip.state, "ready");
+  assert.deepEqual([playoff.period.short_ru, playoff.time], ["ОТ", "04:00"], "a playoff overtime lasts 20 minutes");
+  assert.equal(stamkos.player.name_ru, "Стивен Стэмкос");
+
+  const matthews = buildPlayerGoalsPayload({ playerId: 8479318, index: PIDX, indexOk: true, clipsBase: BASE });
+  assert.deepEqual([matthews.goals[0].period.short_ru, matthews.goals[0].time], ["ОТ", "04:46"], "regular-season overtime: five minutes");
+  const shootout = buildPlayerGoalsPayload({ playerId: 8482660, index: PIDX, indexOk: true, clipsBase: BASE });
+  assert.deepEqual([shootout.goals[0].period.short_ru, shootout.goals[0].time], ["Б", null], "shootout: no clock");
+
+  const byName = buildPlayerGoalsPayload({ playerId: 8482116, nameEn: "Tim Stutzle", index: PIDX, indexOk: true, clipsBase: BASE });
+  assert.equal(byName.total, 1, "clips without a player id are matched by name, accents ignored");
+  assert.equal(byName.goals[0].time, "02:44");
+  assert.equal(buildPlayerGoalsPayload({ playerId: 8482116, index: PIDX, indexOk: true, clipsBase: BASE }).total, 0, "no name, no id: nothing is guessed");
+  assert.equal(buildPlayerGoalsPayload({ playerId: 1, nameEn: "Nobody Atall", index: PIDX, indexOk: true, clipsBase: BASE }).total, 0);
+  const down = buildPlayerGoalsPayload({ playerId: 8474564, nameEn: "Steven Stamkos", index: null, indexOk: false, clipsBase: BASE });
+  assert.deepEqual([down.server_ok, down.total, down.since], [false, 0, null]);
+}
+{
+  const db = { prepare: () => ({ bind: (id) => ({ first: async () => (id === 8474564 ? { full_name_en: "Steven Stamkos", full_name_ru: "Стивен Стэмкос" } : null) }) }) };
+  const env = { DB: db, HOH_CLIPS_BASE: BASE };
+  globalThis.fetch = async (url) => (String(url).endsWith("/index.json") ? new Response(JSON.stringify(PIDX), { status: 200 }) : new Response("no", { status: 500 }));
+  const path = "/api/telegram-center-v26/players/8474564/goals";
+  const ok = await handleTelegramCenterV26(new Request("https://x.test" + path), env, path);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get("cache-control"), "no-store");
+  const body = await ok.json();
+  assert.equal(body.player.name_ru, "Стивен Стэмкос", "player name comes from the players table");
+  assert.equal(body.total, 2);
+  assert.equal((await handleTelegramCenterV26(new Request("https://x.test/a", { method: "POST" }), env, path)).status, 405);
+  assert.equal((await handleTelegramCenterV26(new Request("https://x.test/a"), env, "/api/telegram-center-v26/players/abc/goals")), null, "only numeric ids are routed");
+  globalThis.fetch = async () => new Response("no", { status: 502 });
+  const offline = await (await handleTelegramCenterV26(new Request("https://x.test" + path), env, path)).json();
+  assert.deepEqual([offline.ok, offline.server_ok, offline.total], [true, false, 0], "clip server down: the page still answers");
+  globalThis.fetch = realFetch;
+}
+
+const settle = (ms = 25) => new Promise((resolve) => setTimeout(resolve, ms));
+function makeProfile({ payload, fail = false } = {}) {
+  const made = makeScreen();
+  const { window, doc, H } = made;
+  const api = H.api;
+  const seen = [];
+  H.api = async (url) => {
+    if (url.includes("/api/telegram-center-v26/players/")) {
+      seen.push(url);
+      if (fail) throw new Error("HTTP 500");
+      return payload;
+    }
+    return api(url);
+  };
+  const rendered = [];
+  const profileHtml = '<div class="v15Profile v23PlayerProfile"><h1>Игрок</h1><button class="v23AllStatsBtn" id="v23AllStats">Вся статистика игрока</button><div class="v23Trend">тренд</div></div>';
+  window.HOHV23 = {
+    current: { p: { player_id: 8474564, full_name_ru: "Стивен Стэмкос" } },
+    renderMain: (ctx) => { rendered.push(ctx); doc.getElementById("view").innerHTML = profileHtml; },
+  };
+  const render = () => { doc.getElementById("view").innerHTML = profileHtml; };
+  return { ...made, seen, rendered, render };
+}
+{
+  const payload = buildPlayerGoalsPayload({ playerId: 8474564, nameEn: "Steven Stamkos", nameRu: "Стивен Стэмкос", index: PIDX, indexOk: true, clipsBase: BASE });
+  const { window, doc, seen, rendered, render } = makeProfile({ payload });
+  render();
+  await settle();
+  const button = doc.querySelector(".v26PgBtn");
+  assert.ok(button, "the player profile gets a goals button after it is drawn");
+  assert.equal(button.previousElementSibling.id, "v23AllStats", "right under the full statistics button");
+  assert.equal(doc.querySelectorAll(".v26PgBtn").length, 1);
+  render();
+  await settle();
+  assert.equal(doc.querySelectorAll(".v26PgBtn").length, 1, "re-rendering the profile does not stack buttons");
+
+  doc.querySelector(".v26PgBtn").click();
+  await settle();
+  assert.deepEqual(seen, ["/api/telegram-center-v26/players/8474564/goals"]);
+  assert.match(text(doc.querySelector("#v26PgHero")), /Стивен Стэмкос/);
+  assert.match(text(doc.querySelector("#v26PgHero")), /Голов с видео: 2 · матчей: 2 · видео в базе с 6 октября/);
+  assert.deepEqual([...doc.querySelectorAll(".v26GameHead span")].map(text), ["20 апреля", "6 октября"]);
+  assert.deepEqual([...doc.querySelectorAll(".v26GameHead b")].map(text), ["NSH — VGK", "NSH — TOR"]);
+  const rows = [...doc.querySelectorAll("[data-pg-goal]")];
+  assert.equal(rows.length, 2);
+  assert.match(text(rows[1]), /1-й\s*07:13/);
+  assert.match(text(rows[1]), /NSH.*в гостях.*Счёт после гола 1:0/);
+  assert.match(text(rows[0]), /ОТ\s*04:00/);
+  assert.ok(!/\sdata-(player|team|tab)=/.test(doc.getElementById("v26PgRoot").innerHTML), "no attributes that the global handlers swallow");
+
+  // the same inline player as in the match: light version first, original on request
+  rows[1].querySelector(".v26Play").click();
+  const video = doc.querySelector(".v26Player video");
+  assert.equal(video.getAttribute("src"), `${BASE}/tg/vod/20261006/nsh-tor/a.mp4`);
+  assert.equal(video.__played, true);
+  assert.ok(video.closest('[data-pg-slot="2026020044:144"]'));
+  doc.querySelector('.v26Q [data-pg-q="orig"]').click();
+  assert.equal(doc.querySelector(".v26Player video").getAttribute("src"), `${BASE}/vod/20261006/nsh-tor/a.mp4`);
+  doc.querySelector('[data-pg-goal="2026030111:900"] .v26Play').click();
+  assert.equal(doc.querySelectorAll(".v26Player").length, 1, "one player at a time");
+  assert.equal(doc.querySelector(".v26Player video").getAttribute("src"), `${BASE}/live/20270420/nsh-vgk/a.mp4`, "the original chosen on this page stays");
+  doc.querySelector('[data-pg-goal="2026030111:900"] .v26Play').click();
+  assert.ok(!doc.querySelector("video"), "tapping again closes it");
+
+  // a game header opens the match, and the match's back button returns to this list
+  doc.querySelector('[data-pg-game="2026020044"]').click();
+  await settle();
+  assert.ok(doc.getElementById("v26Root") && !doc.getElementById("v26PgRoot"), "the match screen is open");
+  doc.getElementById("v15Back").click();
+  await settle();
+  assert.ok(doc.getElementById("v26PgRoot"), "back from the match returns to the player's goals");
+  assert.equal(doc.querySelectorAll("[data-pg-goal]").length, 2);
+
+  // back from the list returns to the profile without reloading it
+  doc.getElementById("v15Back").click();
+  assert.equal(rendered.length, 1, "the profile layer redraws the profile it already holds");
+  assert.equal(rendered[0], window.HOHV23.current);
+  await settle();
+  assert.equal(doc.querySelectorAll(".v26PgBtn").length, 1, "and the goals button comes back with it");
+  window.close();
+}
+{
+  // no video yet, spoilers hidden, failures: every state says something understandable
+  const empty = buildPlayerGoalsPayload({ playerId: 5, nameEn: "Nobody Atall", index: PIDX, indexOk: true, clipsBase: BASE });
+  const a = makeProfile({ payload: empty });
+  a.render(); await settle();
+  a.doc.querySelector(".v26PgBtn").click(); await settle();
+  assert.match(text(a.doc.querySelector("#v26PgBody")), /Роликов с голами этого игрока пока нет\. Видео в базе с 6 октября\./);
+  a.window.close();
+
+  const payload = buildPlayerGoalsPayload({ playerId: 8474564, nameEn: "Steven Stamkos", index: PIDX, indexOk: true, clipsBase: BASE });
+  const b = makeProfile({ payload });
+  b.window.HOHNoSpoilers = () => true;
+  b.render(); await settle();
+  b.doc.querySelector(".v26PgBtn").click(); await settle();
+  assert.ok(!b.doc.querySelector("[data-pg-goal]"), "goals are hidden in no-spoilers mode");
+  assert.ok(!/Голов с видео/.test(text(b.doc.querySelector("#v26PgHero"))), "and so is the count");
+  b.doc.querySelector("[data-pg-reveal]").click();
+  assert.equal(b.doc.querySelectorAll("[data-pg-goal]").length, 2);
+  b.window.close();
+
+  const c = makeProfile({ payload: null, fail: true });
+  c.render(); await settle();
+  c.doc.querySelector(".v26PgBtn").click(); await settle();
+  assert.match(text(c.doc.querySelector("#v26PgBody")), /Голы игрока временно недоступны/);
+  assert.ok(c.doc.querySelector("[data-pg-retry]"));
+  c.window.close();
+
+  const d = makeProfile({ payload: buildPlayerGoalsPayload({ playerId: 8474564, index: null, indexOk: false, clipsBase: BASE }) });
+  d.render(); await settle();
+  d.doc.querySelector(".v26PgBtn").click(); await settle();
+  assert.match(text(d.doc.querySelector("#v26PgBody")), /Видео временно недоступно/);
+  d.window.close();
 }
 
 console.log("GOALS_SCREEN_OK");
