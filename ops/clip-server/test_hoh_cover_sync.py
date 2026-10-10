@@ -127,6 +127,75 @@ class SyncTests(unittest.TestCase):
             self.assertEqual(open(os.path.join(tmp, "2026020001.jpg"), "rb").read()[-1:], b"2")
 
 
+class BackfillTests(unittest.TestCase):
+    """The one-off walk through the archive: pages newest first, resumable, gentle."""
+
+    def pages(self, *pages):
+        calls = []
+
+        def fetch(url, timeout=25, limit=0):
+            calls.append(url)
+            if "/covers/wanted" in url:
+                number = len([c for c in calls if "/covers/wanted" in c]) - 1
+                return 200, "application/json", json.dumps(pages[number]).encode()
+            return 200, "image/jpeg", JPEG
+
+        return fetch, calls
+
+    def page(self, rows, next_cursor=None):
+        return {"ok": True, "games": [{"game_pk": pk, "source_key": key, "state": "OFF", "start": "2026-10-06T23:00:00Z"} for pk, key in rows], "next": next_cursor}
+
+    def test_walks_every_page_and_keeps_what_it_has(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            open(os.path.join(tmp, "2026020002.jpg"), "wb").write(b"already here")
+            fetch, calls = self.pages(
+                self.page([(2026020003, "vk_c"), (2026020002, "vk_b")], "2026-10-06T23:00:00Z|2026020002"),
+                self.page([(2026020001, "vk_a")], None),
+            )
+            sleeps = []
+            stats = cs.backfill(fetch=fetch, out_dir=tmp, shrinker=lambda d: b"\xff\xd8\xff" + b"s" * 2000, pause=0.5, sleep=sleeps.append, log=lambda m: None)
+            self.assertEqual(stats, {"pages": 2, "games": 3, "have": 1, "saved": 2, "failed": 0})
+            self.assertEqual(sorted(os.listdir(tmp)), ["2026020001.jpg", "2026020002.jpg", "2026020003.jpg"])
+            self.assertEqual(open(os.path.join(tmp, "2026020002.jpg"), "rb").read(), b"already here", "an existing cover is not downloaded again")
+            self.assertIn("since=2024-09-01&limit=100", calls[0])
+            self.assertIn("before=2026-10-06T23%3A00%3A00Z%7C2026020002", [c for c in calls if "/covers/wanted" in c][1], "the second page starts at the cursor")
+            self.assertEqual(sleeps, [0.5, 0.5], "a pause after each download, none for covers already kept")
+
+    def test_a_second_run_downloads_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            args = dict(out_dir=tmp, shrinker=lambda d: b"\xff\xd8\xff" + b"s" * 2000, pause=0, sleep=lambda s: None, log=lambda m: None)
+            fetch, _ = self.pages(self.page([(2026020001, "vk_a")]))
+            self.assertEqual(cs.backfill(fetch=fetch, **args)["saved"], 1)
+            fetch, calls = self.pages(self.page([(2026020001, "vk_a")]))
+            again = cs.backfill(fetch=fetch, **args)
+            self.assertEqual((again["saved"], again["have"]), (0, 1))
+            self.assertEqual(len([c for c in calls if "vk-cover" in c]), 0)
+
+    def test_dead_covers_are_counted_not_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            def fetch(url, timeout=25, limit=0):
+                if "/covers/wanted" in url:
+                    return 200, "application/json", json.dumps(self.page([(2026020001, "vk_a"), (2026020002, "vk_b"), (2026020003, "vk_c")])).encode()
+                if "vk_a" in url:
+                    raise OSError("HTTP 404")
+                if "vk_b" in url:
+                    return 200, "text/html", b"<html>" + b"x" * 5000
+                return 200, "image/jpeg", JPEG
+            stats = cs.backfill(fetch=fetch, out_dir=tmp, shrinker=lambda d: b"\xff\xd8\xff" + b"s" * 2000, pause=0, sleep=lambda s: None, log=lambda m: None)
+            self.assertEqual((stats["saved"], stats["failed"]), (1, 2))
+            self.assertEqual(os.listdir(tmp), ["2026020003.jpg"])
+
+    def test_bad_input_and_bad_cursors_stop_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                cs.backfill(since="yesterday", out_dir=tmp)
+            fetch, calls = self.pages(self.page([(2026020001, "vk_a")], "not a cursor at all"), self.page([(2026020009, "vk_z")]))
+            stats = cs.backfill(fetch=fetch, out_dir=tmp, shrinker=lambda d: b"\xff\xd8\xff" + b"s" * 2000, pause=0, sleep=lambda s: None, log=lambda m: None)
+            self.assertEqual(stats["pages"], 1, "a cursor that does not look like one ends the walk instead of being sent back")
+            with self.assertRaises(RuntimeError):
+                cs.backfill(fetch=lambda url, timeout=25, limit=0: (503, "application/json", b"{}"), out_dir=tmp)
+
+
 class IndexCoversTests(unittest.TestCase):
     def test_covers_listed_in_the_index(self):
         with tempfile.TemporaryDirectory() as tmp:

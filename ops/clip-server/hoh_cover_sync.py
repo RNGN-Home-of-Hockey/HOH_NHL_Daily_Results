@@ -35,6 +35,8 @@ MAX_SOURCE_BYTES = 6 * 1024 * 1024
 MIN_RESULT_BYTES = 1500
 FINAL_STATES = {"OFF", "FINAL"}
 KEY_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,100}$")
+CURSOR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[0-9:.]{8,12}Z\|\d{6,12}$")
+SINCE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 UA = "HOH-Cover-Keeper/1"
 
 
@@ -144,7 +146,62 @@ def sync(fetch=_get, out_dir=OUT_DIR, shrinker=shrink, now=None):
     return {"saved": saved, "skipped": skipped, "failed": failed, "wanted": len(wanted)}
 
 
+def backfill(fetch=_get, out_dir=OUT_DIR, since="2024-09-01", shrinker=shrink, pause=0.7, sleep=time.sleep, page_size=100, log=print):
+    """Walk the whole archive (newest first) and keep a cover for every game that has none yet.
+
+    Safe to stop and start again: a game that already has a cover is skipped. The pause between downloads keeps the Worker calm.
+    """
+    if not SINCE_RE.match(since):
+        raise ValueError("since must look like 2024-09-01")
+    stats = {"pages": 0, "games": 0, "have": 0, "saved": 0, "failed": 0}
+    before = None
+    while True:
+        url = f"{WORKER}/api/telegram-center-v26/covers/wanted?since={since}&limit={page_size}"
+        if before:
+            url += "&before=" + urllib.parse.quote(before, safe="")
+        status, _, body = fetch(url, 30, 4_000_000)
+        if status != 200:
+            raise RuntimeError(f"wanted_http_{status}")
+        payload = json.loads(body.decode("utf-8"))
+        games = parse_wanted(payload)
+        stats["pages"] += 1
+        for pk, key, _state in games:
+            stats["games"] += 1
+            path = os.path.join(out_dir, f"{pk}.jpg")
+            try:
+                if os.stat(path).st_size > 0:
+                    stats["have"] += 1
+                    continue
+            except OSError:
+                pass
+            try:
+                code, ctype, data = fetch(f"{WORKER}/api/telegram-center-media/vk-cover?source_key={urllib.parse.quote(key, safe='')}")
+            except Exception:
+                stats["failed"] += 1
+                sleep(pause)
+                continue
+            jpeg = shrinker(data) if code == 200 and looks_like_image(ctype, data) else None
+            if jpeg is None:
+                stats["failed"] += 1
+            else:
+                save(out_dir, pk, jpeg)
+                stats["saved"] += 1
+            if stats["games"] % 25 == 0:
+                log("hoh_cover_backfill: " + ", ".join(f"{k}={v}" for k, v in stats.items()))
+            sleep(pause)
+        cursor = payload.get("next") if isinstance(payload, dict) else None
+        if not games or not isinstance(cursor, str) or not CURSOR_RE.match(cursor):
+            break
+        before = cursor
+    return stats
+
+
 def main():
+    if "--backfill" in sys.argv:
+        args = [a for a in sys.argv[1:] if a != "--backfill"]
+        stats = backfill(since=args[0] if args else "2024-09-01")
+        print("hoh_cover_backfill finished: " + ", ".join(f"{k}={v}" for k, v in stats.items()))
+        return 0
     try:
         result = sync()
     except Exception as error:  # the timer runs again in two minutes; never crash loudly on a network hiccup
