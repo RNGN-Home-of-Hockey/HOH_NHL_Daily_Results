@@ -117,8 +117,9 @@ function version(){document.querySelectorAll('.v15Version,.v19Version').forEach(
 css();placeEye();mountMine();normalizePlayers();version();H.decorateHomeOdds?.();
 me(true).then(d=>{const p=d?.profile,stored=localStorage.getItem('hoh-center-theme');if(!stored)H.setTheme?.('light');if(p?.exists)window.HOHSetNoSpoilers?.(Boolean(p.no_spoilers));syncSettingsButton()}).catch(()=>{});
 window.addEventListener('hoh-spoilers-change',async e=>{const enabled=Boolean(e.detail?.enabled);try{lastProfile=await H.api(API+'/me',{method:'PUT',body:JSON.stringify({no_spoilers:enabled})})}catch{}});
-const obs=new MutationObserver(()=>{requestAnimationFrame(()=>{placeEye();mountMine();normalizePlayers();version();H.decorateHomeOdds?.();syncSettingsButton()})});
-obs.observe(document.documentElement,{childList:true,subtree:true});
+let obsQueued=false;const obsRoot=document.documentElement;
+const obs=new MutationObserver(()=>{if(obsQueued)return;obsQueued=true;requestAnimationFrame(()=>{obsQueued=false;obs.disconnect();try{placeEye();mountMine();normalizePlayers();version();H.decorateHomeOdds?.();syncSettingsButton()}finally{obs.takeRecords();obs.observe(obsRoot,{childList:true,subtree:true})}})});
+obs.observe(obsRoot,{childList:true,subtree:true});
 document.addEventListener('click',e=>{
   const player=e.target.closest?.('[data-v15-player],[data-player],[data-v2-player]');
   if(player&&!player.closest('.v19PlayerProfile')&&typeof H.openPlayer==='function'){

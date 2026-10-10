@@ -8,3 +8,6 @@ __pycache__/
 # Local logs / temp
 *.log
 .tmp/
+
+# Node dependencies (wrangler, jsdom for UI tests)
+node_modules/

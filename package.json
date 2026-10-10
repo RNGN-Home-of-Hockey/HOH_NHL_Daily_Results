@@ -7,6 +7,7 @@
     "cf:tail": "wrangler tail"
   },
   "devDependencies": {
+    "jsdom": "^30.1.2",
     "wrangler": "^4.0.0"
   }
 }

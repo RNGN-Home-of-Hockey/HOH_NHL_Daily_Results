@@ -1,4 +1,6 @@
 const VK_COVER_PATH="/api/telegram-center-media/vk-cover";
+// A missing cover is remembered for a few minutes so a client that keeps asking cannot hammer the Worker.
+const MISSING_COVER_CACHE="public, max-age=300";
 const ALLOWED_HOSTS=[
   "vkvideo.ru",
   "vk.com",
@@ -27,7 +29,7 @@ export async function handleTelegramCenterMediaProxy(request,env,path){
       console.error("vk cover lookup failed",error);
       return json({ok:false,error:"cover_lookup_failed"},503);
     }
-    if(!raw)return json({ok:false,error:"cover_not_found"},404);
+    if(!raw)return json({ok:false,error:"cover_not_found"},404,MISSING_COVER_CACHE);
   }
   const normalized=normalizeSource(raw);
   let source;
@@ -52,7 +54,7 @@ export async function handleTelegramCenterMediaProxy(request,env,path){
     if(finalUrl.protocol!=="https:"||finalUrl.username||finalUrl.password||(!trusted&&!allowedHost(finalUrl.hostname))){
       return json({ok:false,error:"redirect_not_allowed",host:safeHost(finalUrl.hostname)},502);
     }
-    if(!upstream.ok)return json({ok:false,error:"upstream_image_failed",status:upstream.status,host:safeHost(finalUrl.hostname)},upstream.status===404?404:502);
+    if(!upstream.ok)return json({ok:false,error:"upstream_image_failed",status:upstream.status,host:safeHost(finalUrl.hostname)},upstream.status===404?404:502,upstream.status===404?MISSING_COVER_CACHE:undefined);
     const type=String(upstream.headers.get("content-type")||"").toLowerCase();
     if(!type.startsWith("image/"))return json({ok:false,error:"upstream_not_image",content_type:type.split(";")[0]||null,host:safeHost(finalUrl.hostname)},502);
     const headers=new Headers();
@@ -80,4 +82,4 @@ function allowedHost(hostname){
 function safeHost(hostname){
   return String(hostname||"").toLowerCase().replace(/\.$/,"").slice(0,253);
 }
-function json(payload,status=200){return new Response(JSON.stringify(payload),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}})}
+function json(payload,status=200,cacheControl="no-store"){return new Response(JSON.stringify(payload),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":cacheControl||"no-store","X-Content-Type-Options":"nosniff"}})}

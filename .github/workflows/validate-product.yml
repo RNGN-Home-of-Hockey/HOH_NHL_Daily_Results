@@ -212,6 +212,11 @@ jobs:
           console.log('ROUTE_CONTRACTS_OK');
           JS
 
+      - name: Live Center home screen does not redraw forever
+        run: |
+          npm install --no-audit --no-fund
+          node tests/validate_center_home_loop.mjs
+
       - name: Kaprizov historical season smoke
         run: |
           node --input-type=module <<'JS'
