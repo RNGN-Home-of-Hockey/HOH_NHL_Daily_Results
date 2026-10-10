@@ -1,0 +1,11 @@
+[Unit]
+Description=Record the free disk space every hour
+
+[Timer]
+OnBootSec=2min
+OnCalendar=hourly
+Persistent=true
+Unit=hoh-disk-watch.service
+
+[Install]
+WantedBy=timers.target

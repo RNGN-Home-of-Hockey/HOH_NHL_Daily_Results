@@ -1,0 +1,8 @@
+[Unit]
+Description=HoH disk watch (appends the free space to a log file)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /usr/local/lib/hoh-clips/hoh_disk_watch.sh
+Nice=19
+IOSchedulingClass=idle
