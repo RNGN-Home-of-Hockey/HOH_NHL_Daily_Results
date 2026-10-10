@@ -1,0 +1,17 @@
+[Unit]
+Description=HoH cover keeper (saves small copies of the VK broadcast covers)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=hohclips
+Group=hohclips
+ExecStart=/usr/bin/python3 /usr/local/lib/hoh-clips/hoh_cover_sync.py
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/hoh-highlights/public_clips
+TimeoutStartSec=120

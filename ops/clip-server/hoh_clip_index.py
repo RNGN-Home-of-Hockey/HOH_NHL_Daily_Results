@@ -23,11 +23,13 @@ from datetime import datetime, timezone
 
 TREES = (("vod", "/opt/hoh-highlights/clips_vod"), ("live", "/opt/hoh-highlights/clips_live"))
 OUT = "/opt/hoh-highlights/public_clips/index.json"
+COVERS_DIR = "/opt/hoh-highlights/public_clips/covers"
 INDEX_VERSION = 1
 
 DAY_RE = re.compile(r"^\d{8}$")
 GAME_RE = re.compile(r"^[a-z0-9-]{3,24}$")
 FILE_RE = re.compile(r"^[A-Za-z0-9._+-]{1,120}\.mp4$")
+COVER_RE = re.compile(r"^(\d{8,12})\.jpg$")
 
 
 def _safe_clip_name(name):
@@ -129,7 +131,28 @@ def build_game(kind, day, game, game_dir):
     }
 
 
-def build_index(trees=TREES):
+def build_covers(covers_dir=COVERS_DIR):
+    """Small cover pictures of the VK broadcasts kept by hoh_cover_sync.py: {game_pk: {path, bytes, mtime}}."""
+    covers = {}
+    try:
+        names = sorted(os.listdir(covers_dir))
+    except OSError:
+        return covers
+    for name in names:
+        m = COVER_RE.match(name)
+        if not m:
+            continue
+        try:
+            st = os.stat(os.path.join(covers_dir, name))
+        except OSError:
+            continue
+        if st.st_size <= 0:
+            continue
+        covers[m.group(1)] = {"path": f"covers/{name}", "bytes": st.st_size, "mtime": int(st.st_mtime)}
+    return covers
+
+
+def build_index(trees=TREES, covers_dir=COVERS_DIR):
     games = []
     for kind, root in trees:
         try:
@@ -154,6 +177,7 @@ def build_index(trees=TREES):
         "version": INDEX_VERSION,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "games": games,
+        "covers": build_covers(covers_dir),
     }
 
 

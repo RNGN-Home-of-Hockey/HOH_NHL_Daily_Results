@@ -63,5 +63,17 @@
 		respond 404
 	}
 
+	# Cover pictures of the VK broadcasts kept by hoh_cover_sync.py: only covers/<game_pk>.jpg (the ?v= in the URL changes with the picture).
+	handle_path /covers/* {
+		root * /opt/hoh-highlights/public_clips/covers
+		@cover path_regexp ^/\d{8,12}\.jpg$
+		handle @cover {
+			header Cache-Control "public, max-age=3600"
+			header Access-Control-Allow-Origin "*"
+			file_server
+		}
+		respond 404
+	}
+
 	respond 404
 }

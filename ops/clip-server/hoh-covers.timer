@@ -1,0 +1,11 @@
+[Unit]
+Description=Look for new VK broadcast covers every two minutes
+
+[Timer]
+OnBootSec=60s
+OnUnitInactiveSec=2min
+AccuracySec=10s
+Unit=hoh-covers.service
+
+[Install]
+WantedBy=timers.target
