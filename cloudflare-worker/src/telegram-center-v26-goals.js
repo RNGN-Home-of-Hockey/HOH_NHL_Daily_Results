@@ -2,6 +2,7 @@
 // and the embedded Inter font that makes every device render the app the same way.
 import { buildGoalsPayload, buildPlayerSeasonPayload, playerIdsOf, DEFAULT_CLIPS_BASE } from "./telegram-center-v26-goals-data.js";
 import { goalsScreenApp } from "./telegram-center-v26-goals-ui.js";
+import { loadCoverUrls } from "./telegram-center-v26-covers.js";
 
 const NHL_LANDING = (gamePk) => `https://api-web.nhle.com/v1/gamecenter/${gamePk}/landing`;
 const NHL_GAME_LOG = (playerId, season, type) => `https://api-web.nhle.com/v1/player/${playerId}/game-log/${season}/${type}`;
@@ -64,9 +65,10 @@ async function loadNames(db, ids) {
 
 export async function loadGoalsPayload(env, gamePk, { now = Date.now() } = {}) {
   const base = String(env?.HOH_CLIPS_BASE || "").trim() || DEFAULT_CLIPS_BASE;
-  const [landingResult, indexResult] = await Promise.allSettled([
+  const [landingResult, indexResult, coversResult] = await Promise.allSettled([
     fetchJson(NHL_LANDING(gamePk), { ttl: 8, timeoutMs: 6000 }),
     fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 }),
+    loadCoverUrls(env),
   ]);
   if (landingResult.status !== "fulfilled") return { ok: false, error: "nhl_unavailable", status: 502 };
   const landing = landingResult.value;
@@ -77,6 +79,7 @@ export async function loadGoalsPayload(env, gamePk, { now = Date.now() } = {}) {
   const index = indexResult.status === "fulfilled" ? indexResult.value : null;
   return buildGoalsPayload({
     gamePk, landing, index, indexOk: Boolean(index && Array.isArray(index.games)), names, now, clipsBase: base,
+    covers: coversResult.status === "fulfilled" ? coversResult.value : null,
   });
 }
 

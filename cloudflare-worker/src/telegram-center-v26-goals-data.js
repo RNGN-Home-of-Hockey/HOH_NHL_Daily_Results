@@ -157,7 +157,7 @@ function coverUrlOf(index, indexOk, gamePk, base) {
   return `${clipUrl(base, entry.path)}?v=${v}`;
 }
 
-export function buildGoalsPayload({ gamePk, landing, index = null, indexOk = false, names = null, now = Date.now(), clipsBase = DEFAULT_CLIPS_BASE }) {
+export function buildGoalsPayload({ gamePk, landing, index = null, indexOk = false, names = null, now = Date.now(), clipsBase = DEFAULT_CLIPS_BASE, covers = null }) {
   const state = stateInfo(landing);
   const startMs = Date.parse(String(landing?.startTimeUTC || ""));
   const recentlyStarted = Number.isFinite(startMs) && now - startMs < CLIP_PENDING_WINDOW_MS;
@@ -202,7 +202,8 @@ export function buildGoalsPayload({ gamePk, landing, index = null, indexOk = fal
       home: { tri: text(landing?.homeTeam?.abbrev) || null, score: num(landing?.homeTeam?.score), shots: num(landing?.homeTeam?.sog) },
     },
     result: regulationResult(landing),
-    cover_url: coverUrlOf(index, indexOk, gamePk, clipsBase),
+    // covers.json is the source (it lists every cover ever kept); the copy in index.json is the older way and stays as a fallback
+    cover_url: (covers && covers[String(gamePk)]) || coverUrlOf(index, indexOk, gamePk, clipsBase),
     goals,
     clips: {
       server_ok: Boolean(indexOk),

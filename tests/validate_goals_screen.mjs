@@ -78,6 +78,12 @@ const INDEX = {
   assert.equal(p.cover_url, `${BASE}/covers/123.jpg?v=1760000000`, "cover kept on our server");
   assert.deepEqual(playerIdsOf(landing()).sort(), [8473419, 8477956, 8478398, 8480727]);
 
+  // covers.json (every cover ever kept) wins over the older copy listed in index.json; a game it does not list falls back to the index
+  const fromList = buildGoalsPayload({ gamePk: 123, landing: landing(), index: INDEX, indexOk: true, names: NAMES, now: NOW, clipsBase: BASE, covers: { 123: `${BASE}/covers/123.jpg?v=9` } });
+  assert.equal(fromList.cover_url, `${BASE}/covers/123.jpg?v=9`);
+  assert.equal(buildGoalsPayload({ gamePk: 123, landing: landing(), index: INDEX, indexOk: true, names: NAMES, now: NOW, clipsBase: BASE, covers: { 999: "x" } }).cover_url, `${BASE}/covers/123.jpg?v=1760000000`);
+  assert.equal(buildGoalsPayload({ gamePk: 124, landing: landing(), index: null, indexOk: false, now: NOW, clipsBase: BASE, covers: { 124: `${BASE}/covers/124.jpg?v=2` } }).cover_url, `${BASE}/covers/124.jpg?v=2`, "a cover is shown even when the goals index is down");
+
   const noServer = buildGoalsPayload({ gamePk: 123, landing: landing(), index: null, indexOk: false, now: NOW, clipsBase: BASE });
   assert.ok(noServer.goals.every((g) => g.clip.state === "none"), "server down: no fake 'pending' spinners");
   assert.equal(noServer.clips.server_ok, false);
@@ -114,6 +120,7 @@ function stubFetch({ landingOk = true, indexOk = true } = {}) {
     const u = String(url);
     if (u.includes("api-web.nhle.com")) return landingOk ? new Response(JSON.stringify(landing()), { status: 200 }) : new Response("no", { status: 503 });
     if (u.endsWith("/index.json")) return indexOk ? new Response(JSON.stringify(INDEX), { status: 200 }) : new Response("no", { status: 502 });
+    if (u.endsWith("/covers.json")) return indexOk ? new Response(JSON.stringify({ version: 1, covers: { 123: 7 } }), { status: 200 }) : new Response("no", { status: 502 });
     return new Response("unexpected " + u, { status: 500 });
   };
 }
@@ -127,7 +134,7 @@ function stubFetch({ landingOk = true, indexOk = true } = {}) {
   const body = await ok.json();
   assert.equal(body.goals[0].scorer.name_ru, "Давид Пастрняк", "Russian names come from the players table");
   assert.equal(body.goals[0].clip.url, `${BASE}/tg/live/20261010/phi-bos/a.mp4`);
-  assert.equal(body.cover_url, `${BASE}/covers/123.jpg?v=1760000000`);
+  assert.equal(body.cover_url, `${BASE}/covers/123.jpg?v=7`, "the route reads covers.json from the clip server");
   stubFetch({ indexOk: false });
   const noClips = await (await handleTelegramCenterV26(new Request("https://x.test/a"), env, "/api/telegram-center-v26/games/123/goals")).json();
   assert.equal(noClips.clips.server_ok, false, "clip server down does not break the goals");

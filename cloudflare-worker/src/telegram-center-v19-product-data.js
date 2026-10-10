@@ -1,4 +1,5 @@
 import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
+import { loadCoverUrls } from "./telegram-center-v26-covers.js";
 
 const API = "/api/telegram-center-v19";
 const FINAL_STATES = new Set(["FINAL", "OFF"]);
@@ -74,6 +75,8 @@ async function broadcasts(request, env) {
       ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC;
     `).bind(from,to).all();
     const games=(rows.results||[]).map(decorateArchiveGame);
+    const coverUrls=await loadCoverUrls(env);
+    for(const g of games)g.cover_url=coverUrls[String(g.game_pk)]||null;
     await hydrateMissingBroadcastCovers(env.DB,games,20);
     const map=new Map();
     for(const g of games){const d=map.get(g.calendar_date)||{date:g.calendar_date,count:0,regular:0,playoffs:0,preseason:0,vk:0};d.count++;if(g.game_type===3)d.playoffs++;else if(g.game_type===2)d.regular++;else if(g.game_type===1)d.preseason++;if(g.vk)d.vk++;map.set(g.calendar_date,d)}
@@ -121,6 +124,7 @@ async function featuredGame(request,env){
     const special=text=>{const s=String(text||"").toLowerCase(),defs=[["winter classic","Зимняя классика"],["stadium series","Stadium Series"],["heritage classic","Heritage Classic"],["global series","Global Series"],["outdoor","Матч под открытым небом"],["classic","Специальный матч NHL"]];return defs.find(([k])=>s.includes(k))?.[1]||null};
     const scored=games.map(g=>{const a=st.get(g.away.tri)||{},h=st.get(g.home.tri)||{},aw=Number(a.games_played)>0?Number(a.wins||0)/Number(a.games_played):0,hw=Number(h.games_played)>0?Number(h.wins||0)/Number(h.games_played):0,followers=(fol.get(g.away.tri)||0)+(fol.get(g.home.tri)||0),sp=special([g.venue_name,g.vk?.title].filter(Boolean).join(" ")),ov=overrides[String(g.game_pk)]||null,rankQ=(a.league_rank?33-Number(a.league_rank):0)+(h.league_rank?33-Number(h.league_rank):0);const score=(ov?10000:0)+(sp?2000:0)+(g.game_type===3?500:0)+(aw+hw)*240+Math.log2(1+followers)*55+rankQ*2+(g.vk?20:0);return{g,score,aw,hw,followers,sp,ov}});
     scored.sort((a,b)=>b.score-a.score||String(a.g.scheduled_start_utc).localeCompare(String(b.g.scheduled_start_utc)));
+    const coverUrls=await loadCoverUrls(env);
     const best=scored[0],g=best.g,away=g.away.name_ru||g.away.name_en||g.away.tri,home=g.home.name_ru||g.home.name_en||g.home.tri,avg=(best.aw+best.hw)/2;
     let reason=best.ov?.description||best.ov?.reason||best.sp||"";
     if(!reason&&g.game_type===3)reason="Главная пара дня в плей-офф.";
@@ -129,7 +133,7 @@ async function featuredGame(request,env){
     if(!reason)reason="Главный матч игрового дня по сочетанию силы команд и турнирного контекста.";
     const vkUrl=best.ov?.vk_url||g.vk?.web_url||g.vk?.app_url||"https://vkvideo.ru/@nhl_home_of_hockey/lives";
     const cover=best.ov?.cover_url||g.vk?.thumbnail_url||null;
-    return json({ok:true,date,featured:{...g,title:best.ov?.title||away+" — "+home,description:reason,vk_url:vkUrl,thumbnail_url:cover,selection_score:Math.round(best.score),signals:{special:best.sp||null,followers:best.followers,away_win_pct:best.aw||null,home_win_pct:best.hw||null,manual:Boolean(best.ov)}}});
+    return json({ok:true,date,featured:{...g,title:best.ov?.title||away+" — "+home,description:reason,vk_url:vkUrl,thumbnail_url:cover,cover_url:best.ov?.cover_url?null:(coverUrls[String(g.game_pk)]||null),selection_score:Math.round(best.score),signals:{special:best.sp||null,followers:best.followers,away_win_pct:best.aw||null,home_win_pct:best.hw||null,manual:Boolean(best.ov)}}});
   }catch(error){return json({ok:false,error:"featured_game_failed",detail:errorText(error)},503)}
 }
 

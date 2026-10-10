@@ -236,5 +236,122 @@ const livePayload = (away, home, label, code = "LIVE", phase = "live") => ({ ok:
   assert.match(v23, /addEventListener\('hoh-spoilers-change',\(\)=>\{if\(STATE\.current&&document\.querySelector\('\.v23PlayerProfile:not\(\.v23StatsPage\)'\)\)renderMain\(STATE\.current\)\}\)/, "and the profile redraws when the switch is flipped");
 }
 
+// ---- 6) our mini covers: the Worker publishes them, lists and the match of the day show them -----------------------------------
+import { coverUrlsFrom, loadCoverUrls, clipsBaseOf } from "../cloudflare-worker/src/telegram-center-v26-covers.js";
+import { handleTelegramCenterV19ProductData } from "../cloudflare-worker/src/telegram-center-v19-product-data.js";
+
+{
+  const base = "https://clips.test";
+  assert.deepEqual(coverUrlsFrom({ version: 1, covers: { 2026020069: 1791656387, abc: 5, 2026020070: "x", "12x": 1 } }, base), {
+    2026020069: `${base}/covers/2026020069.jpg?v=1791656387`, 2026020070: `${base}/covers/2026020070.jpg?v=0`,
+  }, "only numeric game ids, a broken version becomes 0");
+  assert.deepEqual(coverUrlsFrom(null, base), {});
+  assert.deepEqual(coverUrlsFrom({ covers: "no" }, base), {});
+  assert.equal(clipsBaseOf({ HOH_CLIPS_BASE: " https://other.test/ " }), "https://other.test");
+  assert.match(clipsBaseOf({}), /^https:\/\//);
+
+  const realFetch = globalThis.fetch;
+  const env = { HOH_CLIPS_BASE: base };
+  let asked = "";
+  globalThis.fetch = async (url) => { asked = String(url); return new Response(JSON.stringify({ version: 1, covers: { 2026020100: 123 } }), { status: 200 }); };
+  assert.deepEqual(await loadCoverUrls(env), { 2026020100: `${base}/covers/2026020100.jpg?v=123` });
+  assert.equal(asked, `${base}/covers.json`);
+  globalThis.fetch = async () => new Response("no", { status: 502 });
+  assert.deepEqual(await loadCoverUrls(env), {}, "clip server answers an error: no mini covers");
+  globalThis.fetch = async () => { throw new Error("offline"); };
+  assert.deepEqual(await loadCoverUrls(env), {}, "clip server down: no mini covers, no failure");
+  globalThis.fetch = async () => new Response("not json", { status: 200 });
+  assert.deepEqual(await loadCoverUrls(env), {}, "a broken file is ignored");
+
+  // the lists carry cover_url next to the VK picture
+  const archiveRow = (pk, key) => ({
+    calendar_date: "2026-10-10", game_pk: pk, season_id: "20262027", game_type: 2, scheduled_start_utc: "2026-10-10T17:00:00Z", game_state: "LIVE", home_tri: "BOS", away_tri: "PHI",
+    home_score: 2, away_score: 1, period_type: "REG", venue_name: "TD Garden", home_name_en: "Boston", home_name_ru: "Бостон", away_name_en: "Philadelphia", away_name_ru: "Филадельфия",
+    source_key: key, vk_title: "t", vk_url: "https://vkvideo.ru/video-1_" + pk, vk_thumbnail: key ? "https://sun9-1.userapi.com/c.jpg" : null,
+  });
+  const db = (rows) => ({ prepare: () => ({ bind: () => ({ all: async () => ({ results: rows }), first: async () => null }), all: async () => ({ results: [] }) }) });
+  globalThis.fetch = async () => new Response(JSON.stringify({ version: 1, covers: { 2026020100: 123 } }), { status: 200 });
+  const listEnv = { HOH_CLIPS_BASE: base, DB: db([archiveRow(2026020100, "vk1"), archiveRow(2026020101, "vk2")]) };
+  const list = await (await handleTelegramCenterV19ProductData(new Request("https://x.test/api/telegram-center-v19/broadcasts?from=2026-10-10&to=2026-10-10"), listEnv, "/api/telegram-center-v19/broadcasts")).json();
+  assert.equal(list.ok, true);
+  assert.equal(list.games.find((g) => g.game_pk === 2026020100).cover_url, `${base}/covers/2026020100.jpg?v=123`);
+  assert.equal(list.games.find((g) => g.game_pk === 2026020101).cover_url, null, "a game without a kept cover keeps the VK picture only");
+  assert.ok(list.games.every((g) => g.vk && g.vk.thumbnail_url), "the VK picture is still there as the second choice");
+  globalThis.fetch = async () => { throw new Error("offline"); };
+  const offline = await (await handleTelegramCenterV19ProductData(new Request("https://x.test/api/telegram-center-v19/broadcasts?from=2026-10-10&to=2026-10-10"), listEnv, "/api/telegram-center-v19/broadcasts")).json();
+  assert.equal(offline.ok, true, "clip server down: the list still loads");
+  assert.ok(offline.games.every((g) => g.cover_url === null));
+
+  // the match of the day
+  const featRow = { ...archiveRow(2026020100, "vk1"), vk_app_url: null, vk_status: "live", winline_event_id: null, winline_p1: null, winline_x: null, winline_p2: null, home_logo: null, away_logo: null };
+  globalThis.fetch = async () => new Response(JSON.stringify({ version: 1, covers: { 2026020100: 123 } }), { status: 200 });
+  const featEnv = { HOH_CLIPS_BASE: base, DB: db([featRow]) };
+  const feat = await (await handleTelegramCenterV19ProductData(new Request("https://x.test/api/telegram-center-v19/featured?date=2026-10-10"), featEnv, "/api/telegram-center-v19/featured")).json();
+  assert.equal(feat.ok, true);
+  assert.equal(feat.featured.cover_url, `${base}/covers/2026020100.jpg?v=123`);
+  assert.equal(feat.featured.thumbnail_url, "https://sun9-1.userapi.com/c.jpg", "the VK picture stays as the second choice");
+  globalThis.fetch = realFetch;
+}
+
+{
+  // Matches tab: mini cover → VK picture → logos, and a score for a game that is on
+  const dom = new JSDOM('<!doctype html><body><nav id="tabs"><button class="tab active" data-tab="games"></button><button class="tab" data-tab="teams"></button></nav><main id="view"></main></body>',
+    { url: "https://example.test/telegram-app-v24", pretendToBeVisual: true, runScripts: "outside-only" });
+  const { window } = dom;
+  const d = new Date();
+  const today = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const mk = (pk, state, extra) => ({
+    calendar_date: today, game_pk: pk, game_type: 2, is_playoff: false, scheduled_start_utc: new Date().toISOString(), game_state: state, home_score: 2, away_score: 1, period_type: "REG",
+    home: { tri: "BOS", name_ru: "Бостон", logo: "https://l.test/BOS.svg" }, away: { tri: "PHI", name_ru: "Филадельфия", logo: "https://l.test/PHI.svg" },
+    vk: null, winline: null, historical_odds: null, cover_url: null, ...extra,
+  });
+  const vk = (n) => ({ source_key: "vk" + n, web_url: "https://vkvideo.ru/video-1_" + n, thumbnail_url: "https://sun9-1.userapi.com/c" + n + ".jpg" });
+  const games = [
+    mk(1, "LIVE", { vk: vk(1), cover_url: "https://clips.test/covers/1.jpg?v=5" }),
+    mk(2, "OFF", { vk: vk(2), period_type: "OT", home_score: 3, away_score: 4 }),
+    mk(3, "FUT", {}),
+  ];
+  window.HOHV15 = {
+    esc, state: { profile: false }, currentTab: () => "games", tabsVisible: () => true, view: () => window.document.getElementById("view"), V2: "/v2",
+    api: async (url) => (url.includes("/api/telegram-center-v19/broadcasts") ? { ok: true, days: [{ date: today, count: 3 }], games } : { ok: true }),
+    teamLogo: () => "",
+  };
+  window.Telegram = { WebApp: { openLink() {} } };
+  window.eval(v19);
+  window.document.querySelector('.tab[data-tab="broadcasts"]').click();
+  await tick(60);
+  const doc = window.document;
+  const card = (pk) => doc.querySelector(`[data-v19-game="${pk}"]`);
+  assert.equal(card(1).querySelector(".v19Thumb img").getAttribute("src"), "https://clips.test/covers/1.jpg?v=5", "our mini cover first");
+  assert.equal(card(2).querySelector(".v19Thumb img").getAttribute("src"), "/api/telegram-center-media/vk-cover?source_key=vk2", "no mini cover: the VK picture");
+  assert.ok(card(3).querySelector(".v19ThumbTeams"), "no picture at all: the logos");
+  assert.deepEqual([1, 2, 3].map((pk) => text(card(pk).querySelector(".v19CardScore"))), ["1 : 2", "4 : 3 ОТ", "—"], "a game that is on shows its score; a game that has not started shows a dash");
+  assert.match(text(card(1).querySelector("small")), /1 : 2 · /);
+  // our cover fails: the VK picture takes its place; then the logos; and nothing is retried in a loop
+  card(1).querySelector(".v19Thumb img").dispatchEvent(new window.Event("error"));
+  assert.equal(card(1).querySelector(".v19Thumb img").getAttribute("src"), "/api/telegram-center-media/vk-cover?source_key=vk1");
+  card(1).querySelector(".v19Thumb img").dispatchEvent(new window.Event("error"));
+  assert.ok(card(1).querySelector(".v19ThumbTeams") && !card(1).querySelector(".v19Thumb img[src*=covers]"));
+  window.close();
+}
+
+{
+  // the match of the day: mini cover → VK picture → the logos
+  const base = { ...FEATURED_BASE, thumbnail_url: "https://sun9-1.userapi.com/cover.jpg", vk: { source_key: "vk9" }, cover_url: "https://clips.test/covers/9.jpg?v=3" };
+  const { window, doc } = makeHome({ featured: base });
+  await tick(320);
+  const img = () => doc.querySelector(".v25FeaturedCover img");
+  assert.equal(img().getAttribute("src"), "https://clips.test/covers/9.jpg?v=3", "our mini cover first");
+  img().dispatchEvent(new window.Event("error"));
+  assert.equal(img().getAttribute("src"), "/api/telegram-center-media/vk-cover?source_key=vk9", "then the VK picture");
+  img().dispatchEvent(new window.Event("error"));
+  assert.ok(!img() && doc.querySelector(".v25FeaturedTeams"), "then the logos");
+  window.close();
+  const plain = makeHome({ featured: { ...FEATURED_BASE, thumbnail_url: null, vk: null, cover_url: null } });
+  await tick(320);
+  assert.ok(plain.doc.querySelector(".v25FeaturedTeams") && !plain.doc.querySelector(".v25FeaturedCover"), "no cover anywhere: the logos");
+  plain.window.close();
+}
+
 console.log("APP_POLISH_OK");
 process.exit(0);
