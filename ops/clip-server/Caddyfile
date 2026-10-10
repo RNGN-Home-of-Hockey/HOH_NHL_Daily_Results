@@ -1,0 +1,67 @@
+# HoH clip server: read-only static files over HTTPS on :443.
+#
+# nginx keeps :80 and the RTMP ingest (:1935). This process never touches them and nothing here reloads nginx.
+# The certificate comes from Let's Encrypt through the TLS-ALPN challenge on :443 (the HTTP challenge would need :80).
+# The host name is a free "IP in the name" address; when a real domain appears only this one line changes.
+{
+	admin off
+	auto_https disable_redirects
+	http_port 8081
+	https_port 443
+	servers {
+		protocols h1 h2
+	}
+}
+
+72-56-13-100.sslip.io {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+
+	handle /health {
+		header Cache-Control "no-store"
+		respond "ok" 200
+	}
+
+	# The public goals index written every 30 s by hoh_clip_index.py (no secrets in it).
+	handle /index.json {
+		root * /opt/hoh-highlights/public_clips
+		header Cache-Control "public, max-age=15"
+		header Access-Control-Allow-Origin "*"
+		file_server
+	}
+
+	# Clip files: only <date>/<game>/<clip>.mp4, <date>/<game>/tg/<clip>.mp4 and <date>/<game>/_thumbs/<clip>.jpg.
+	# Everything else in those folders (manifest.json, _work, raw recordings) answers 404. Range requests work.
+	handle_path /live/* {
+		root * /opt/hoh-highlights/clips_live
+		@clip path_regexp ^/\d\d\d\d\d\d\d\d/[a-z0-9-]+/((tg/)?[A-Za-z0-9._+-]+\.mp4|_thumbs/[A-Za-z0-9._+-]+\.jpg)$
+		handle @clip {
+			header Cache-Control "public, max-age=3600"
+			header Access-Control-Allow-Origin "*"
+			file_server
+		}
+		respond 404
+	}
+
+	handle_path /vod/* {
+		root * /opt/hoh-highlights/clips_vod
+		@clip path_regexp ^/\d\d\d\d\d\d\d\d/[a-z0-9-]+/((tg/)?[A-Za-z0-9._+-]+\.mp4|_thumbs/[A-Za-z0-9._+-]+\.jpg)$
+		handle @clip {
+			header Cache-Control "public, max-age=3600"
+			header Access-Control-Allow-Origin "*"
+			file_server
+		}
+		respond 404
+	}
+
+	respond 404
+}

@@ -1,0 +1,15 @@
+[Unit]
+Description=HoH clip index (publishes public_clips/index.json)
+
+[Service]
+Type=oneshot
+User=hohclips
+Group=hohclips
+ExecStart=/usr/bin/python3 /usr/local/lib/hoh-clips/hoh_clip_index.py
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/hoh-highlights/public_clips
+ReadOnlyPaths=/opt/hoh-highlights/clips_live /opt/hoh-highlights/clips_vod

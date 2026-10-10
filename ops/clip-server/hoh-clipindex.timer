@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the HoH clip index every 30 seconds
+
+[Timer]
+OnBootSec=20s
+OnUnitInactiveSec=30s
+AccuracySec=5s
+Unit=hoh-clipindex.service
+
+[Install]
+WantedBy=timers.target

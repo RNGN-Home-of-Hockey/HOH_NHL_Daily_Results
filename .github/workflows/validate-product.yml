@@ -12,6 +12,7 @@ on:
       - 'migrations/**'
       - 'tools/**'
       - 'tests/**'
+      - 'ops/clip-server/**'
       - 'wrangler.jsonc'
       - 'package.json'
       - '.github/workflows/validate-product.yml'
@@ -27,6 +28,7 @@ on:
       - 'migrations/**'
       - 'tools/**'
       - 'tests/**'
+      - 'ops/clip-server/**'
       - 'state/center_player_pronunciations_eliteprospects.json'
       - 'state/hoh_youtube_media.json'
       - 'wrangler.jsonc'
@@ -78,6 +80,9 @@ jobs:
           assert compact.ranks(sample, 'metric', True) == {'CCC': 1, 'BBB': 2, 'AAA': 3}
           print('RANK_INVARIANT_OK')
           PY
+
+      - name: Clip server index (goals index published by the highlights server)
+        run: python -m unittest discover -s ops/clip-server -v
 
       - name: Migration chain
         run: |

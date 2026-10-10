@@ -1,0 +1,30 @@
+[Unit]
+Description=HoH clip server (Caddy: HTTPS :443, read-only clip files)
+Documentation=https://caddyserver.com/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hohclips
+Group=hohclips
+ExecStart=/usr/local/bin/hoh-caddy run --config /etc/hoh-clips/Caddyfile --adapter caddyfile
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=10s
+LimitNOFILE=1048576
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/hoh-clips
+ReadOnlyPaths=/opt/hoh-highlights/clips_live /opt/hoh-highlights/clips_vod /opt/hoh-highlights/public_clips /etc/hoh-clips
+Environment=XDG_DATA_HOME=/var/lib/hoh-clips/data
+Environment=XDG_CONFIG_HOME=/var/lib/hoh-clips/config
+
+[Install]
+WantedBy=multi-user.target
