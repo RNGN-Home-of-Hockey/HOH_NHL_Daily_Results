@@ -1,9 +1,12 @@
 // Live Center v26: goals of a game (with clips from the highlights server), the match-screen script,
 // and the embedded Inter font that makes every device render the app the same way.
-import { buildGoalsPayload, buildPlayerGoalsPayload, playerIdsOf, DEFAULT_CLIPS_BASE } from "./telegram-center-v26-goals-data.js";
+import { buildGoalsPayload, buildPlayerSeasonPayload, playerIdsOf, DEFAULT_CLIPS_BASE } from "./telegram-center-v26-goals-data.js";
 import { goalsScreenApp } from "./telegram-center-v26-goals-ui.js";
 
 const NHL_LANDING = (gamePk) => `https://api-web.nhle.com/v1/gamecenter/${gamePk}/landing`;
+const NHL_GAME_LOG = (playerId, season, type) => `https://api-web.nhle.com/v1/player/${playerId}/game-log/${season}/${type}`;
+const COVERS_WANTED_PATH = "/api/telegram-center-v26/covers/wanted";
+const PLAYER_GAMES_LIMIT = 45;
 const GOALS_PATH = /^\/api\/telegram-center-v26\/games\/(\d{1,12})\/goals$/;
 const PLAYER_GOALS_PATH = /^\/api\/telegram-center-v26\/players\/(\d{1,12})\/goals$/;
 const FONT_PATH = /^\/telegram-app\/fonts\/(inter-(?:cyrillic-ext|cyrillic|latin-ext|latin)-wght-normal\.woff2)$/;
@@ -82,16 +85,66 @@ async function loadPlayerNames(db, playerId) {
   return { nameEn: row?.full_name_en ? String(row.full_name_en) : null, nameRu: row?.full_name_ru ? String(row.full_name_ru) : null };
 }
 
-export async function loadPlayerGoalsPayload(env, playerId) {
+// NHL season id from a date: the 2026-27 season is "20262027"; from September on the new season counts.
+export function seasonIdOf(now = Date.now()) {
+  const d = new Date(now);
+  const y = d.getUTCFullYear();
+  return d.getUTCMonth() >= 8 ? `${y}${y + 1}` : `${y - 1}${y}`;
+}
+
+// Every goal of the player in the season (regular season and playoffs): the NHL game log says in which games he scored,
+// the landing feed of each of those games says when and how. Finished games are cached for an hour, recent ones for seconds.
+export async function loadPlayerGoalsPayload(env, playerId, { now = Date.now() } = {}) {
   const base = String(env?.HOH_CLIPS_BASE || "").trim() || DEFAULT_CLIPS_BASE;
-  const [indexResult, namesResult] = await Promise.allSettled([
+  const season = seasonIdOf(now);
+  const [regular, playoffs, indexResult, namesResult] = await Promise.allSettled([
+    fetchJson(NHL_GAME_LOG(playerId, season, 2), { ttl: 60, timeoutMs: 6000 }),
+    fetchJson(NHL_GAME_LOG(playerId, season, 3), { ttl: 60, timeoutMs: 6000 }),
     fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 }),
     env?.DB ? loadPlayerNames(env.DB, playerId) : Promise.resolve({ nameEn: null, nameRu: null }),
   ]);
+  if (regular.status !== "fulfilled") return { ok: false, error: "nhl_unavailable", status: 502 };
   if (namesResult.status === "rejected") console.error("v26 player names failed", namesResult.reason);
   const names = namesResult.status === "fulfilled" ? namesResult.value : { nameEn: null, nameRu: null };
   const index = indexResult.status === "fulfilled" ? indexResult.value : null;
-  return buildPlayerGoalsPayload({ playerId, ...names, index, indexOk: Boolean(index && Array.isArray(index.games)), clipsBase: base });
+  const log = [...(regular.value?.gameLog || []), ...(playoffs.status === "fulfilled" ? playoffs.value?.gameLog || [] : [])];
+  const scoring = log
+    .filter((r) => Number(r?.goals) > 0)
+    .sort((a, b) => String(b.gameDate || "").localeCompare(String(a.gameDate || "")) || Number(b.gameId) - Number(a.gameId));
+  const wanted = scoring.slice(0, PLAYER_GAMES_LIMIT);
+  const landings = new Map();
+  const recentFrom = new Date(now - 2 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  for (let i = 0; i < wanted.length; i += 12) {
+    const chunk = wanted.slice(i, i + 12);
+    const results = await Promise.allSettled(chunk.map((r) =>
+      fetchJson(NHL_LANDING(r.gameId), { ttl: String(r.gameDate || "") >= recentFrom ? 8 : 3600, timeoutMs: 6000 })));
+    results.forEach((res, k) => { if (res.status === "fulfilled" && res.value) landings.set(Number(chunk[k].gameId), res.value); });
+  }
+  return buildPlayerSeasonPayload({
+    playerId, names, season, log: wanted, landings, index, indexOk: Boolean(index && Array.isArray(index.games)),
+    clipsBase: base, now, truncated: scoring.length > wanted.length,
+  });
+}
+
+// The cover keeper on the highlights server asks which broadcasts have a cover worth saving (games around today).
+export async function loadWantedCovers(env) {
+  if (!env?.DB) return { ok: false, error: "missing_d1_binding" };
+  const rows = await env.DB.prepare(`
+    SELECT g.game_pk,g.game_state,g.scheduled_start_utc,b.source_key
+    FROM games g
+    JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
+    JOIN vk_broadcasts b ON b.source_key=m.source_key
+    WHERE b.thumbnail_url IS NOT NULL AND b.thumbnail_url<>''
+      AND g.scheduled_start_utc>=strftime('%Y-%m-%dT%H:%M:%SZ','now','-4 days')
+      AND g.scheduled_start_utc<=strftime('%Y-%m-%dT%H:%M:%SZ','now','+2 days')
+    ORDER BY g.scheduled_start_utc DESC LIMIT 80;
+  `).all();
+  return {
+    ok: true,
+    games: (rows.results || []).map((r) => ({
+      game_pk: Number(r.game_pk), source_key: String(r.source_key), state: String(r.game_state || ""), start: String(r.scheduled_start_utc || ""),
+    })),
+  };
 }
 
 export async function handleTelegramCenterV26(request, env, path) {
@@ -101,10 +154,23 @@ export async function handleTelegramCenterV26(request, env, path) {
     const playerId = Number(playerGoalsMatch[1]);
     if (!Number.isSafeInteger(playerId) || playerId <= 0) return json({ ok: false, error: "invalid_player_id" }, 400);
     try {
-      return json(await loadPlayerGoalsPayload(env, playerId));
+      const payload = await loadPlayerGoalsPayload(env, playerId);
+      if (payload.ok === false) return json({ ok: false, error: payload.error }, payload.status || 502);
+      return json(payload);
     } catch (error) {
       console.error("v26 player goals failed", error);
       return json({ ok: false, error: "player_goals_failed" }, 500);
+    }
+  }
+
+  if (path === COVERS_WANTED_PATH) {
+    if (request.method !== "GET") return json({ ok: false, error: "method_not_allowed" }, 405);
+    try {
+      const wanted = await loadWantedCovers(env);
+      return json(wanted, wanted.ok ? 200 : 503);
+    } catch (error) {
+      console.error("v26 wanted covers failed", error);
+      return json({ ok: false, error: "covers_wanted_failed" }, 500);
     }
   }
 
