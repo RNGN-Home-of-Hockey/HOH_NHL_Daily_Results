@@ -1,4 +1,5 @@
 import { normalizeWinlineMarket } from "./winline-market-adapter.js";
+import { regulationBasisRow } from "./regulation-basis.js";
 
 export async function buildH2HBroadcastInsights(db,game,providerMarkets=[]){
   if(!db||!game?.scheduled_start_utc||!game?.away_tri||!game?.home_tri)return[];
@@ -41,7 +42,7 @@ export async function buildH2HBroadcastInsights(db,game,providerMarkets=[]){
     LEFT JOIN event_period e3a ON e3a.game_pk=f.game_pk AND e3a.period_number=3 AND e3a.team_tri=f.opponent_tri
     ORDER BY f.scheduled_start_utc DESC,f.game_pk DESC;
   `).bind(game.away_tri,game.home_tri,game.scheduled_start_utc).all();
-  const rows=(result?.results||[]).map(prepareH2HRow);
+  const rows=(result?.results||[]).map(r=>regulationBasisRow(prepareH2HRow(r)));
   if(rows.length<3)return[];
   const markets=dedupe((providerMarkets||[]).filter(m=>!(m?.is_live===true||Number(m?.is_live||0)===1)).map(normalizeWinlineMarket).filter(Boolean));
   const out=[];

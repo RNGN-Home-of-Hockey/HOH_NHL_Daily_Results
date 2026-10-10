@@ -1,5 +1,6 @@
 import { applyWinlineMarkets } from "./winline-market-adapter.js";
 import { loadBroadcastPregameArchive } from "./broadcast-insight-history.js";
+import { regulationBasisRows } from "./regulation-basis.js";
 
 const MIN_SAMPLE=8;
 const MIN_ODDS=1.50;
@@ -31,7 +32,7 @@ export async function buildLiveHistoricalContext(db,snapshot,providerMarkets,opt
 function recentFeatures(db,team,gamePk){
   return db.prepare(`
     SELECT game_pk,scheduled_start_utc,is_home,final_win,final_goals_for,final_goals_against,
-           final_goal_diff,total_goals,p1_goals_for,p1_goals_against,
+           final_goal_diff,total_goals,regulation_goals_for,regulation_goals_against,p1_goals_for,p1_goals_against,
            p2_goals_for,p2_goals_against,p3_goals_for,p3_goals_against
     FROM team_game_features
     WHERE team_tri=? AND game_pk<>?
@@ -42,7 +43,7 @@ function recentFeatures(db,team,gamePk){
 
 export function buildProviderHistoryCards(snapshot,providerMarkets,rowsByTeamInput,options={}){
   const game=snapshot?.game||{},nowMs=resolveNow(options.now),maxAgeMs=finitePositive(options.market_max_age_ms,90_000);
-  const rowsByTeam=rowsByTeamInput instanceof Map?rowsByTeamInput:new Map(Object.entries(rowsByTeamInput||{}));
+  const rowsByTeam=new Map([...(rowsByTeamInput instanceof Map?rowsByTeamInput:new Map(Object.entries(rowsByTeamInput||{}))).entries()].map(([team,rows])=>[team,regulationBasisRows(rows)]));
   const cards=[];
   for(const raw of providerMarkets||[]){
     if(!freshLiveMarket(raw,nowMs,maxAgeMs))continue;

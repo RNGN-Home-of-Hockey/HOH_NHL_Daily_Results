@@ -17,7 +17,12 @@ export function buildCommentatorBrief(card={},game={}){
 }
 function numberPoint(card,e){
   const hits=n(e.hits),sample=n(e.decisions??e.sample??e.games),rate=n(e.hit_rate);
-  if(hits!==null&&sample!==null)return Math.round(hits)+" из "+Math.round(sample)+(rate!==null?" · "+Math.round(rate*100)+"%":"");
+  if(hits!==null&&sample!==null){
+    // keep the freshest games next to the long number: "13 из 20 · 65% · последние 8: 2 из 8"
+    const recent=e.recent_form,recentHits=n(recent?.hits),recentDecisions=n(recent?.decisions);
+    const form=recentHits!==null&&recentDecisions!==null&&recentDecisions>0?" · последние "+Math.round(recentDecisions)+": "+Math.round(recentHits)+" из "+Math.round(recentDecisions):"";
+    return Math.round(hits)+" из "+Math.round(sample)+(rate!==null?" · "+Math.round(rate*100)+"%":"")+form;
+  }
   const rank=n(e.team_rank??e.rank);
   if(rank!==null)return "№"+Math.round(rank)+" в НХЛ";
   const pp=n(e.pp_pct);if(pp!==null)return Math.round(pp*100)+"% реализации большинства";

@@ -1,5 +1,6 @@
 import { withDemoOdds } from "./demo-winline-odds.js";
 import { applyTeamGrammar, lastGamesPhrase } from "./team-russian-grammar.js";
+import { regulationBasisRows } from "./regulation-basis.js";
 
 const HISTORY_LIMIT = 200;
 const STANDARD_WINDOWS = [5, 10, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200];
@@ -37,8 +38,8 @@ export async function buildUniversalMarketInsights(db, game) {
 export function evaluateUniversalMarketRows(game, rowsByTeam) {
   const away = game.away_tri;
   const home = game.home_tri;
-  const awayRows = rowsByTeam?.[away] || [];
-  const homeRows = rowsByTeam?.[home] || [];
+  const awayRows = regulationBasisRows(rowsByTeam?.[away] || []);
+  const homeRows = regulationBasisRows(rowsByTeam?.[home] || []);
   if (!awayRows.length || !homeRows.length) return [];
 
   const candidates = [];

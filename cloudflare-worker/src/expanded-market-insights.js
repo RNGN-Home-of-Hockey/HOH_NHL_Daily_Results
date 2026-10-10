@@ -1,3 +1,4 @@
+import { regulationBasisRows } from "./regulation-basis.js";
 
 const WINDOWS=[10,20];
 const TOTAL_LINES=[4.5,5.5,6.5,7.5];
@@ -8,7 +9,7 @@ export async function buildExpandedMarketInsights(db,game){
     recent(db,game.away_tri,game.scheduled_start_utc),
     recent(db,game.home_tri,game.scheduled_start_utc),
   ]);
-  const map=new Map([[game.away_tri,awayR.results||[]],[game.home_tri,homeR.results||[]]]);
+  const map=new Map([[game.away_tri,regulationBasisRows(awayR.results||[])],[game.home_tri,regulationBasisRows(homeR.results||[])]]);
   const out=[];
   for(const team of [game.away_tri,game.home_tri]){
     const rows=map.get(team)||[];
@@ -28,7 +29,7 @@ function recent(db,team,before){
   return db.prepare(`
     SELECT f.game_pk,f.team_tri,f.opponent_tri,f.is_home,
            f.final_goals_for,f.final_goals_against,f.total_goals,f.final_goal_diff,f.final_win,
-           f.regulation_result,f.regulation_goal_diff,
+           f.regulation_goals_for,f.regulation_goals_against,f.regulation_result,f.regulation_goal_diff,
            f.p1_goals_for,f.p1_goals_against,f.p2_goals_for,f.p2_goals_against,f.p3_goals_for,f.p3_goals_against,
            f.score_after_p1_diff,f.score_after_p2_diff,f.first_goal_for
     FROM team_game_features f

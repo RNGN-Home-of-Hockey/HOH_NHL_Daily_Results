@@ -1,4 +1,5 @@
 import { withDemoOdds } from "./demo-winline-odds.js";
+import { regulationBasisRows } from "./regulation-basis.js";
 import { applyTeamGrammar } from "./team-russian-grammar.js";
 
 const VENUE_WINDOWS = [5, 10, 20];
@@ -15,10 +16,10 @@ export async function buildMarketSplitInsights(db, game) {
   const [venueR, h2hR] = await db.batch([
     db.prepare(`
       SELECT game_pk,team_tri,opponent_tri,scheduled_start_utc,is_home,
-             final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win
+             final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,regulation_goals_for,regulation_goals_against
       FROM (
         SELECT game_pk,team_tri,opponent_tri,scheduled_start_utc,is_home,
-               final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,
+               final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,regulation_goals_for,regulation_goals_against,
                ROW_NUMBER() OVER (PARTITION BY team_tri ORDER BY scheduled_start_utc DESC,game_pk DESC) AS rn
         FROM team_game_features
         WHERE scheduled_start_utc<?
@@ -29,7 +30,7 @@ export async function buildMarketSplitInsights(db, game) {
     `).bind(game.scheduled_start_utc, game.away_tri, game.home_tri),
     db.prepare(`
       SELECT game_pk,team_tri,opponent_tri,scheduled_start_utc,is_home,
-             final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win
+             final_goals_for,final_goals_against,total_goals,final_goal_diff,final_win,regulation_goals_for,regulation_goals_against
       FROM team_game_features
       WHERE team_tri=? AND opponent_tri=? AND scheduled_start_utc<?
       ORDER BY scheduled_start_utc DESC,game_pk DESC
@@ -50,8 +51,8 @@ export async function buildMarketSplitInsights(db, game) {
 }
 
 export function evaluateVenueMarketSplits(game, rowsByTeam) {
-  const awayRows = rowsByTeam?.[game.away_tri] || [];
-  const homeRows = rowsByTeam?.[game.home_tri] || [];
+  const awayRows = regulationBasisRows(rowsByTeam?.[game.away_tri] || []);
+  const homeRows = regulationBasisRows(rowsByTeam?.[game.home_tri] || []);
   if (!awayRows.length || !homeRows.length) return [];
 
   const candidates = [];
@@ -93,9 +94,10 @@ export function evaluateVenueMarketSplits(game, rowsByTeam) {
 export function evaluateH2HMarketSplits(game, awayPerspectiveRows) {
   if (!Array.isArray(awayPerspectiveRows) || awayPerspectiveRows.length < 4) return [];
   const candidates = [];
+  const regulationRows = regulationBasisRows(awayPerspectiveRows);
 
   for (const window of H2H_WINDOWS) {
-    const sample = awayPerspectiveRows.slice(0, window);
+    const sample = regulationRows.slice(0, window);
     if (sample.length < window) continue;
     const threshold = H2H_MIN_RATE.get(window);
 
@@ -154,7 +156,7 @@ export function evaluateH2HMarketSplits(game, awayPerspectiveRows) {
           eyebrow: `H2H · ${team} · ФОРА`,
           value: `${stat.hits}/${window}`,
           title: `${team} закрыл фору ${signedLine(line)} в ${stat.hits} из последних ${window} очных матчей`,
-          explanation: `Фора рассчитана по фактической финальной разнице шайб в очных матчах.`,
+          explanation: `Фора рассчитана по разнице шайб в основное время очных матчей (без овертайма и буллитов).`,
           evidence: { window, split: "h2h", team, ...evidenceStats(stat, sample) },
           market: { type: "handicap", subject: team, side: team, line, label: `${team} ${signedLine(line)}` },
         }));
@@ -285,20 +287,32 @@ function splitCard({ game, category, type, score, eyebrow, value, title, explana
   };
 }
 
+// rows are newest first, so the first RECENT_FORM_GAMES rows are the latest games.
+const RECENT_FORM_GAMES = 8;
+
 function rateStats(rows, predicate) {
-  const hits = rows.reduce((sum, row) => sum + (predicate(row) ? 1 : 0), 0);
+  const flags = rows.map((row) => (predicate(row) ? 1 : 0));
+  const hits = flags.reduce((sum, flag) => sum + flag, 0);
   const n = rows.length;
-  return { hits, n, rate: n ? hits / n : 0, wilson90: wilsonLower(hits, n) };
+  const recentN = Math.min(RECENT_FORM_GAMES, n);
+  const recentHits = flags.slice(0, recentN).reduce((sum, flag) => sum + flag, 0);
+  return { hits, n, rate: n ? hits / n : 0, wilson90: wilsonLower(hits, n), recentHits, recentN };
 }
 
 function evidenceStats(stat, rows) {
-  return {
+  const out = {
     hits: stat.hits,
     sample: stat.n,
     hit_rate: stat.rate,
     wilson90_lower: stat.wilson90,
     game_pks: rows.map((r) => Number(r.game_pk)),
   };
+  // A long sample can hide a cold streak ("13 of 20", but 6 of the misses were in the last 8):
+  // keep the latest games next to the long number.
+  if (stat.recentN === RECENT_FORM_GAMES && stat.n > RECENT_FORM_GAMES) {
+    out.recent_form = { window: RECENT_FORM_GAMES, hits: stat.recentHits, decisions: RECENT_FORM_GAMES };
+  }
+  return out;
 }
 
 function venueSingleScore(stat, window) {

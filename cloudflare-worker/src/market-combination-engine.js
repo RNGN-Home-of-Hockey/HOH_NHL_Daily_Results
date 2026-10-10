@@ -11,11 +11,12 @@ export function buildMarketCombinationInsights(insights,providerMarkets,game,opt
   for(const market of markets){
     const rows=atoms.map(a=>({a,n:compat(a,market)})).filter(x=>x.n>=35)
       .sort((x,y)=>y.n-x.n||y.a.score-x.a.score).slice(0,MAX_ATOMS);
-    for(let i=0;i<Math.min(MAX_SINGLES,rows.length);i++)out.push(single(game,market,rows[i],i));
+    for(let i=0;i<Math.min(MAX_SINGLES,rows.length);i++){const c=single(game,market,rows[i],i);if(c)out.push(c)}
     let pairs=0;
     for(let i=0;i<rows.length&&pairs<MAX_PAIRS;i++)for(let j=i+1;j<rows.length&&pairs<MAX_PAIRS;j++){
       if(!independent(rows[i].a,rows[j].a)||!agrees(rows[i].a,rows[j].a,market))continue;
-      out.push(pair(game,market,rows[i],rows[j],pairs++));
+      const c=pair(game,market,rows[i],rows[j],pairs);
+      if(c){out.push(c);pairs++}
     }
   }
   return dedupe(out).sort((a,b)=>Number(b.score||0)-Number(a.score||0));
@@ -66,6 +67,9 @@ function compat(a,m){
 function single(game,m,row,i){
   const a=row.a,label=labelFor(m),score=clip(Math.round(a.score*.62+row.n*.48));
   const targetFrequencyVerified=exactAtomMarket(a,m);
+  // A hit rate belongs to the market it was measured on. "BOS scored 4 or less in 15 of 20 home games" says nothing
+  // about the game total, so a rate-bearing fact is never presented as the history of a different market.
+  if(!targetFrequencyVerified&&claimsFrequency(a))return null;
   return {
     id:String(game.game_pk)+":combo:s:"+key(m)+":"+safe(a.id)+":"+i,insight_type:"market_combination_single",category:"market_combination",
     kind:"history",timing:"pregame",score,eyebrow:"WINLINE × DATA CORE",value:a.value||label,title:a.title||label,
@@ -79,6 +83,7 @@ function pair(game,m,ar,br,i){
   const a=ar.a,b=br.a,primary=primaryAtomForMarket(a,b,m),support=primary===a?b:a,label=labelFor(m);
   const score=clip(Math.round(Math.min(a.score,b.score)*.50+((ar.n+br.n)/2)*.42+15));
   const targetFrequencyVerified=exactAtomMarket(primary,m);
+  if(!targetFrequencyVerified&&claimsFrequency(primary))return null;
   return {
     id:String(game.game_pk)+":combo:p:"+key(m)+":"+safe(a.id)+":"+safe(b.id)+":"+i,insight_type:"market_combination_pair",category:"market_combination",
     kind:"history",timing:"pregame",score,eyebrow:"WINLINE × DATA CORE",value:primary.value||label,title:primary.title||label,
@@ -104,6 +109,7 @@ function primaryAtomForMarket(a,b,m){
 function exactAtomMarket(a,m){
   return atomMarketKey(a)===key(m);
 }
+function claimsFrequency(a){return a?.hit!==null&&a?.hit!==undefined}
 function atomMarketKey(a){
   if(!a)return"";
   return [a.type||"unknown",a.period||"GAME",a.subject||"all",a.side||"none",a.line===null||a.line===undefined?"none":Number(a.line).toFixed(2)].join(":");
@@ -158,7 +164,7 @@ function cross(a,t){
 function opponentUseful(a,t){return t==="team_total"?/defen|goalie|xga|sa60|opponent/.test(a.category+" "+a.metric+" "+a.evidence?.role):["moneyline","handicap","game_total"].includes(t)}
 function asMarket(m){return {type:m.market_type,period:m.period,subject:m.subject,side:m.side,line:m.line,label:labelFor(m),odds:m.odds,provider:m.provider,odds_is_demo:false,odds_source:"provider_live",event_id:m.event_id,market_id:m.market_id,selection_id:m.selection_id,updated_at:m.updated_at,deeplink:m.deeplink}}
 function labelFor(m){
-  const t=String(m.market_type||""),s=m.subject?String(m.subject):"",l=num(m.line),x=l===null?"":lineText(l),period=String(m.period||"GAME").toUpperCase(),p=period==="P1"?"1-Й ПЕРИОД · ":period==="P2"?"2-Й ПЕРИОД · ":period==="P3"?"3-Й ПЕРИОД · ":period==="REG"?"60 МИНУТ · ":"";
+  const t=String(m.market_type||""),s=m.subject?String(m.subject):"",l=num(m.line),x=l===null?"":(t==="handicap"?lineText(l):plainLineText(l)),period=String(m.period||"GAME").toUpperCase(),p=period==="P1"?"1-Й ПЕРИОД · ":period==="P2"?"2-Й ПЕРИОД · ":period==="P3"?"3-Й ПЕРИОД · ":period==="REG"?"60 МИНУТ · ":"";
   if(t==="moneyline")return (p+"ПОБЕДА "+(s||String(m.side||"").toUpperCase())).trim();
   if(t==="handicap")return (p+s+" ФОРА "+x).trim();
   if(t==="team_total")return (p+s+" "+(m.side==="over"?"ТОТАЛ КОМАНДЫ БОЛЬШЕ":"ТОТАЛ КОМАНДЫ МЕНЬШЕ")+" "+x).trim();
@@ -186,4 +192,6 @@ function up(v){return String(v||"").trim().toUpperCase()} function obj(v){return
 function clone(v){if(!v)return{};if(typeof structuredClone==="function")return structuredClone(v);return JSON.parse(JSON.stringify(v))}
 function join(...xs){return xs.filter(Boolean).join(" ")} function safe(v){return String(v||"x").replace(/[^a-zA-Z0-9_-]+/g,"_").slice(0,80)}
 function clip(v){return Math.max(0,Math.min(99,v))} function lineText(v){const s=(Math.round(Number(v)*100)/100).toString().replace(".",",");return Number(v)>0?"+"+s:s}
+// Totals are never signed ("МЕНЬШЕ 4,5", not "МЕНЬШЕ +4,5"); only handicap lines carry a sign.
+function plainLineText(v){return (Math.round(Number(v)*100)/100).toString().replace(".",",")}
 function dedupe(cards){const seen=new Set(),out=[];for(const c of cards){const k=String(c.id||"");if(k&&seen.has(k))continue;if(k)seen.add(k);out.push(c)}return out}

@@ -1,5 +1,6 @@
 
 import { normalizeWinlineMarket } from "./winline-market-adapter.js";
+import { regulationGoalsFromScoreboard } from "./regulation-basis.js";
 
 const WINDOWS=[10,20,40];
 const MAX_HISTORY=80;
@@ -108,10 +109,12 @@ function prepareHistoryRows(rows,team,game){
     if(raw?.team_tri&&String(raw.team_tri).toUpperCase()!==String(team||"").toUpperCase())continue;
     seen.add(pk);
     const periodCheck=verifyRawPeriods(raw),finalCheck=verifyRawFinal(raw);
+    const reg=regulationView(raw,periodCheck,finalCheck),streak=streakEligibility(raw,game);
     const prepared={...raw,
-      __streak_eligible:!game?.season_id||!raw?.season_id||String(raw.season_id)===String(game.season_id),
+      __streak_eligible:streak.eligible,__streak_prev_season:streak.previousSeason,
       __period_verified:periodCheck.ok,__period_validation:periodCheck.reason,
-      __final_verified:finalCheck.ok,__final_validation:finalCheck.reason
+      __final_verified:finalCheck.ok,__final_validation:finalCheck.reason,
+      __reg_verified:reg.ok,__reg_validation:reg.reason,__reg_gf:reg.gf,__reg_ga:reg.ga
     };
     if(finalCheck.ok){
       prepared.final_goals_for=finalCheck.gf;prepared.final_goals_against=finalCheck.ga;
@@ -165,10 +168,52 @@ function marketNeedsVerifiedPeriods(m){
   const type=String(m?.market_type||""),period=String(m?.period||"GAME").toUpperCase();
   return period==="REG"||/^P[123]$/.test(period)||/^period_[123]_result$/.test(type)||type==="highest_scoring_period"||type==="win_all_periods";
 }
+// The outright winner (Money Line) is settled on the scoreboard result, overtime and shootout included.
 function marketNeedsVerifiedFinal(m){
   const type=String(m?.market_type||""),period=String(m?.period||"GAME").toUpperCase();
   if(period!=="GAME")return false;
-  return ["game_total","team_total","handicap","moneyline","both_teams_score","team_goal_bucket","result_total_combo"].includes(type);
+  return ["moneyline","result_total_combo"].includes(type);
+}
+// Totals, team totals, handicaps, "both teams to score" and goal buckets settle on regulation time (60 minutes).
+function marketNeedsRegulationGoals(m){
+  const type=String(m?.market_type||""),period=String(m?.period||"GAME").toUpperCase();
+  if(period!=="GAME"&&period!=="REG")return false;
+  return ["game_total","team_total","handicap","both_teams_score","team_goal_bucket","result_total_combo"].includes(type);
+}
+function verifiedRegulationWindow(m,game,rowsByTeam,window){
+  if(!marketNeedsRegulationGoals(m))return true;
+  const subject=String(m?.subject||"").toUpperCase();
+  const sets=subject&&rowsByTeam?.[subject]
+    ?[(rowsByTeam[subject]||[]).slice(0,window)]
+    :[(rowsByTeam?.[game.away_tri]||[]).slice(0,window),(rowsByTeam?.[game.home_tri]||[]).slice(0,window)];
+  return sets.length>0&&sets.every(sample=>sample.length>=Math.min(8,window)&&sample.every(row=>row.__reg_verified===true));
+}
+// Regulation-time goals of one game, verified two independent ways when both are available:
+// (a) the regulation columns checked against period scores, goal events and the feature row,
+// (b) the scoreboard result minus the single overtime / shootout goal of the winner.
+function regulationView(raw,periodCheck,finalCheck){
+  const cols={gf:finite(raw?.regulation_goals_for),ga:finite(raw?.regulation_goals_against)};
+  const fromColumns=periodCheck?.ok&&cols.gf!==null&&cols.ga!==null&&cols.gf>=0&&cols.ga>=0?cols:null;
+  const fromScoreboard=finalCheck?.ok?regulationGoalsFromScoreboard(finalCheck.gf,finalCheck.ga,raw?.raw_game_period_type):null;
+  if(fromColumns&&fromScoreboard){
+    if(fromColumns.gf!==fromScoreboard.gf||fromColumns.ga!==fromScoreboard.ga)return {ok:false,reason:"regulation_scoreboard_mismatch",gf:null,ga:null};
+    return {ok:true,reason:"period_scores+goal_events+scoreboard",gf:cols.gf,ga:cols.ga};
+  }
+  if(fromColumns)return {ok:true,reason:"period_scores+goal_events+feature+regulation",gf:cols.gf,ga:cols.ga};
+  if(fromScoreboard)return {ok:true,reason:"scoreboard_minus_overtime_goal",gf:fromScoreboard.gf,ga:fromScoreboard.ga};
+  return {ok:false,reason:"regulation_not_verifiable",gf:null,ga:null};
+}
+function regView(row){return row?.__reg_verified===true&&Number.isFinite(row.__reg_gf)&&Number.isFinite(row.__reg_ga)?{gf:row.__reg_gf,ga:row.__reg_ga}:null}
+// A run of wins that began last season is still one run: the previous season (regular season and playoffs,
+// never preseason) counts towards the streak.
+function streakEligibility(raw,game){
+  if(!game?.season_id||!raw?.season_id)return {eligible:true,previousSeason:false};
+  const current=String(game.season_id),season=String(raw.season_id);
+  if(season===current)return {eligible:true,previousSeason:false};
+  const start=Number(current.slice(0,4));
+  const previous=Number.isFinite(start)?String(start-1)+String(start):"";
+  if(season===previous&&Number(raw.game_type)!==1)return {eligible:true,previousSeason:true};
+  return {eligible:false,previousSeason:false};
 }
 function verifiedFinalWindow(m,game,rowsByTeam,window){
   if(!marketNeedsVerifiedFinal(m))return true;
@@ -198,7 +243,7 @@ function validFinalRow(row){
 
 function evaluateMarket(m,game,rowsByTeam,window){
   const type=String(m.market_type||"");
-  if(!verifiedFinalWindow(m,game,rowsByTeam,window)||!verifiedPeriodWindow(m,game,rowsByTeam,window))return null;
+  if(!verifiedFinalWindow(m,game,rowsByTeam,window)||!verifiedRegulationWindow(m,game,rowsByTeam,window)||!verifiedPeriodWindow(m,game,rowsByTeam,window))return null;
   const period=String(m.period||"GAME");
   const side=String(m.side||"").toLowerCase();
   const subject=String(m.subject||"").toUpperCase()||null;
@@ -272,7 +317,8 @@ function evaluateMarket(m,game,rowsByTeam,window){
 
   if(type==="both_teams_score"){
     return combinedTeamSlices(game,rowsByTeam,window,row=>{
-      const yes=Number(row.final_goals_for)>=1&&Number(row.final_goals_against)>=1;
+      const g=regView(row);if(!g)return null;
+      const yes=g.gf>=1&&g.ga>=1;
       return side==="yes"?(yes?"win":"loss"):side==="no"?(yes?"loss":"win"):null;
     });
   }
@@ -316,8 +362,8 @@ function evaluateMarket(m,game,rowsByTeam,window){
   if(type==="result_total_combo"&&subject&&rowsByTeam[subject]&&line!==null){
     return oneTeamSlice(rowsByTeam[subject],window,row=>{
       if(Number(row.final_win)!==1)return "loss";
-      const total=Number(row.total_goals);
-      return settleTotal(total,side,line);
+      const g=regView(row);if(!g)return null;
+      return settleTotal(g.gf+g.ga,side,line);
     });
   }
 
@@ -356,15 +402,17 @@ function combinedTeamSlices(game,rowsByTeam,window,settler){
 }
 
 function aggregate(rows,settler,extra={}){
-  let hits=0,losses=0,pushes=0,current_streak=0,streakOpen=true;
+  let hits=0,losses=0,pushes=0,current_streak=0,streakOpen=true,streak_cross_season=false,recentHits=0,recentDecisions=0;
   const game_pks=[],streak_game_pks=[];
   for(const row of rows){
     const result=settler(row);
     if(result===null||result===undefined){if(streakOpen)streakOpen=false;continue;}
     game_pks.push(Number(row.game_pk));
+    // rows are newest first: the first 8 decided games are the latest form
+    if((result==="win"||result==="loss")&&recentDecisions<8){recentDecisions++;if(result==="win")recentHits++;}
     if(result==="win"){
       hits++;
-      if(streakOpen&&row.__streak_eligible===true){current_streak++;streak_game_pks.push(Number(row.game_pk));}
+      if(streakOpen&&row.__streak_eligible===true){current_streak++;streak_game_pks.push(Number(row.game_pk));if(row.__streak_prev_season===true)streak_cross_season=true;}
       else if(streakOpen)streakOpen=false;
     }else if(result==="push"){
       pushes++;
@@ -376,7 +424,9 @@ function aggregate(rows,settler,extra={}){
   }
   const decisions=hits+losses,sample=hits+losses+pushes;
   if(!sample||!decisions)return null;
-  return {hits,losses,pushes,decisions,sample,rate:hits/decisions,current_streak,streak_verified:current_streak>0&&streak_game_pks.length===current_streak,streak_game_pks,game_pks,...extra};
+  return {hits,losses,pushes,decisions,sample,rate:hits/decisions,current_streak,streak_verified:current_streak>0&&streak_game_pks.length===current_streak,streak_game_pks,streak_cross_season,game_pks,
+    // only meaningful for one team's own games (a combined two-team slice has no single "latest 8")
+    recent_form:extra.perspectives===1&&decisions>8&&recentDecisions===8?{window:8,hits:recentHits,decisions:8}:null,...extra};
 }
 
 function makeCard(game,m,r,window){
@@ -404,7 +454,11 @@ function makeCard(game,m,r,window){
       current_streak:r.current_streak||0,
       streak_verified:r.streak_verified===true,
       streak_game_pks:r.streak_game_pks||[],
-      stats_validation:"exact_market_v6_final_goal_events",
+      streak_cross_season:r.streak_cross_season===true,
+      ...(r.recent_form?{recent_form:r.recent_form}:{}),
+      stats_validation:"exact_market_v7_regulation_goal_events",
+      goal_basis:marketNeedsRegulationGoals(m)?"regulation":"scoreboard",
+      regulation_data_verified:marketNeedsRegulationGoals(m)?true:null,
       final_data_verified:marketNeedsVerifiedFinal(m)?true:null,
       final_validation:marketNeedsVerifiedFinal(m)?"games+goal_events+feature_final":null,
       period_data_verified:marketNeedsVerifiedPeriods(m)?r.period_data_verified===true:null,
@@ -514,19 +568,17 @@ function marketLabel(m){
 }
 
 function periodTotal(row,period){
-  if(period==="GAME"||period==="REG")return finite(row.total_goals);
+  if(period==="GAME"||period==="REG"){const g=regView(row);return g?g.gf+g.ga:null}
   const p=periodNumber(period);if(!p)return null;
   const gf=finite(row[`p${p}_goals_for`]),ga=finite(row[`p${p}_goals_against`]);
   return gf===null||ga===null?null:gf+ga;
 }
 function periodGoalsFor(row,period){
-  if(period==="GAME")return finite(row.final_goals_for);
-  if(period==="REG")return finite(row.regulation_goals_for);
+  if(period==="GAME"||period==="REG"){const g=regView(row);return g?g.gf:null}
   const p=periodNumber(period);return p?finite(row[`p${p}_goals_for`]):null;
 }
 function periodGoalDiff(row,period){
-  if(period==="GAME")return finite(row.final_goal_diff);
-  if(period==="REG")return finite(row.regulation_goal_diff);
+  if(period==="GAME"||period==="REG"){const g=regView(row);return g?g.gf-g.ga:null}
   const p=periodNumber(period);if(!p)return null;
   const gf=finite(row[`p${p}_goals_for`]),ga=finite(row[`p${p}_goals_against`]);
   return gf===null||ga===null?null:gf-ga;

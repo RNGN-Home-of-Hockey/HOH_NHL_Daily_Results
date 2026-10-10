@@ -267,6 +267,15 @@ export function annotateAirUtility(input, game=null) {
     Math.max(0,Number(card?.evidence?.combination_support_count||0)-1),
     Array.isArray(card?.evidence?.supporting_signals)?card.evidence.supporting_signals.length:0
   );
+  // The long number can hide a cold streak: "13 of 20", but most misses came in the latest 8 games.
+  const recentForm=card?.evidence?.recent_form;
+  if(recentForm&&Number(recentForm.decisions)>=8&&Number.isFinite(hitRate)){
+    const recentRate=Number(recentForm.hits)/Number(recentForm.decisions);
+    const drop=hitRate-recentRate;
+    if(drop>=0.35){score-=14;reasons.push(["свежая форма резко хуже",-14]);}
+    else if(drop>=0.2){score-=8;reasons.push(["свежая форма хуже",-8]);}
+    else if(recentRate-hitRate>=0.2){score+=2;reasons.push(["свежая форма лучше",2]);}
+  }
   if(card?.evidence?.multi_window_confirmed){score+=5;reasons.push(["форма и длинный отрезок совпадают",5]);}
   if(card?.evidence?.venue_confirmed){score+=3;reasons.push(["дом/выезд подтверждает",3]);}
   if(independentSupport>=1){
@@ -341,6 +350,7 @@ export function annotateAirUtility(input, game=null) {
     stats_consistent:stats.consistent,
     target_market_frequency_verified:card?.evidence?.market_combination===true?card?.evidence?.target_market_frequency_verified===true:null,
     price_history_suspicious:priceHistorySuspicious,
+    recent_form:recentForm&&Number(recentForm.decisions)>=8?{window:Number(recentForm.window)||8,hits:Number(recentForm.hits),decisions:Number(recentForm.decisions)}:null,
   };
   const frequencyClaim=hasFrequencyClaim(card);
   const frequencyCapable=Number.isFinite(hitRate)&&sample>0;

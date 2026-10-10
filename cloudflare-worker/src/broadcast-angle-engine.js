@@ -185,7 +185,14 @@ function addHistory(out,e,m,p={}){
   }
   if(push>0)put(out,"history_push","integer_line",`${label} — ${Math.round(hits)} ПОБЕД И ${Math.round(push)} ВОЗВРАТА`,`${Math.round(dec)} РЕШЁННЫХ ИСХОДОВ`,h2h?72:89,"целая линия с возвратами");
   const streak=n(e.current_streak);
-  if(streak>=3&&e.streak_verified===true)put(out,"streak","streak",`${label} ПРОХОДИТ ${Math.round(streak)} МАТЧА ПОДРЯД`,"ТЕКУЩАЯ СЕРИЯ",h2h?76:97,"проверенная серия по той же линии");
+  if(streak>=3&&e.streak_verified===true)put(out,"streak","streak",`${label} ПРОХОДИТ ${Math.round(streak)} ${ruMatchesWord(streak)} ПОДРЯД`,e.streak_cross_season===true?"ТЕКУЩАЯ СЕРИЯ · С УЧЁТОМ ПРОШЛОГО СЕЗОНА":"ТЕКУЩАЯ СЕРИЯ",h2h?76:97,"проверенная серия по той же линии");
+}
+function ruMatchesWord(v){
+  const n=Math.abs(Math.round(Number(v)||0)),last=n%10,tens=n%100;
+  if(tens>=11&&tens<=14)return "МАТЧЕЙ";
+  if(last===1)return "МАТЧ";
+  if(last>=2&&last<=4)return "МАТЧА";
+  return "МАТЧЕЙ";
 }
 function addRanks(out,p,m){
   if(!p?.team||n(p.teamRank)===null)return;

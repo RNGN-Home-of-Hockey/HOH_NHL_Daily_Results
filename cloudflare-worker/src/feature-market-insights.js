@@ -1,5 +1,6 @@
 import { withDemoOdds } from "./demo-winline-odds.js";
 import { applyTeamGrammar } from "./team-russian-grammar.js";
+import { regulationBasisRows } from "./regulation-basis.js";
 
 const MIN_CORE_SAMPLE = 8;
 
@@ -29,8 +30,8 @@ export async function buildFeatureMarketInsights(db, game) {
   ]);
 
   const rowsByTeam = new Map([
-    [game.away_tri, awayRowsR.results || []],
-    [game.home_tri, homeRowsR.results || []],
+    [game.away_tri, regulationBasisRows(awayRowsR.results || [])],
+    [game.home_tri, regulationBasisRows(homeRowsR.results || [])],
   ]);
   const currentByTeam = new Map((currentR.results || []).map((row) => [row.team_tri, row]));
   const out = [];

@@ -1,3 +1,5 @@
+import { regulationBasisRows } from "./regulation-basis.js";
+
 const GAME_TOTAL_LINES = [4.5,5.5,6.5,7.5];
 const TEAM_TOTAL_LINES = [1.5,2.5,3.5,4.5];
 const HANDICAPS = [-2.5,-1.5,1.5,2.5];
@@ -25,14 +27,14 @@ export async function evaluateMarketLines(db, game, options = {}) {
 async function loadTeamWindow(db,team,window,before) {
   const sql = before ? `
     SELECT game_pk,scheduled_start_utc,opponent_tri,is_home,final_goals_for,final_goals_against,
-           total_goals,final_goal_diff,final_win
+           total_goals,final_goal_diff,final_win,regulation_goals_for,regulation_goals_against
     FROM team_game_features
     WHERE team_tri=? AND game_type IN (2,3) AND scheduled_start_utc<?
     ORDER BY scheduled_start_utc DESC,game_pk DESC
     LIMIT ?;
   ` : `
     SELECT game_pk,scheduled_start_utc,opponent_tri,is_home,final_goals_for,final_goals_against,
-           total_goals,final_goal_diff,final_win
+           total_goals,final_goal_diff,final_win,regulation_goals_for,regulation_goals_against
     FROM team_game_features
     WHERE team_tri=? AND game_type IN (2,3)
     ORDER BY scheduled_start_utc DESC,game_pk DESC
@@ -40,7 +42,7 @@ async function loadTeamWindow(db,team,window,before) {
   `;
   const statement = before ? db.prepare(sql).bind(team,before,window) : db.prepare(sql).bind(team,window);
   const result = await statement.all();
-  return result.results || [];
+  return regulationBasisRows(result.results || []);
 }
 
 function gameTotals(game,home,away) {
