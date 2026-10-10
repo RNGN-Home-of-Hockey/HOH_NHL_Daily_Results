@@ -46,6 +46,14 @@ async function gamesForDate(request,env){
   }catch(error){return json({ok:false,error:"schedule_fetch_failed",detail:errorText(error)},503)}
 }
 
+export function officialOrder(a,b){
+  const ra=a.division_rank,rb=b.division_rank;
+  if(ra&&rb)return ra-rb;
+  if(ra)return -1;
+  if(rb)return 1;
+  return b.pts-a.pts||a.gp-b.gp||b.w-a.w||(a.name||"").localeCompare(b.name||"","ru");
+}
+
 async function standings(env){
   const season=currentSeasonId();
   const teamRows=await env.DB.prepare(`SELECT tri_code,name_en,name_ru,logo_url FROM teams WHERE COALESCE(active,1)=1;`).all();
@@ -67,7 +75,7 @@ async function standings(env){
         const inPlayoff=gp>0&&Boolean(clinch||(divisionRank&&divisionRank<=3)||(divisionRank&&divisionRank>3&&wildcardRank&&wildcardRank<=2)||(!wildcardRank&&conferenceRank&&conferenceRank<=8));
         const inRace=gp>0&&!inPlayoff&&Boolean((divisionRank&&divisionRank>3&&wildcardRank&&wildcardRank<=4)||(!wildcardRank&&conferenceRank&&conferenceRank<=10));
         return {tri,name:t.name_ru||t.name_en||tri,logo:t.logo_url||teamLogo(tri),gp,w:n(r?.wins)||0,l:n(r?.losses)||0,otl:n(r?.otLosses)||0,pts:n(r?.points)||0,division_rank:divisionRank,conference_rank:conferenceRank,wildcard_rank:wildcardRank,clinch_indicator:clinch||null,playoff_status:inPlayoff?"playoff":inRace?"race":null};
-      }).sort((a,b)=>b.pts-a.pts||b.w-a.w||(a.name||"").localeCompare(b.name||"","ru"));
+      }).sort(officialOrder);
       divisions.push({key:divKey,title:div.title,rows});
     }
     conferences.push({key:confKey,title:conf.title,divisions});
