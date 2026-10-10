@@ -213,6 +213,22 @@ class IndexCoversTests(unittest.TestCase):
             self.assertIsInstance(entry["mtime"], int)
             self.assertEqual(hoh_clip_index.build_index(trees=(), covers_dir=os.path.join(tmp, "missing"))["covers"], {}, "no folder yet is fine")
 
+    def test_compact_covers_file_for_the_worker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            covers = os.path.join(tmp, "covers")
+            os.makedirs(covers)
+            open(os.path.join(covers, "2026020069.jpg"), "wb").write(JPEG)
+            open(os.path.join(covers, "2024020001.jpg"), "wb").write(JPEG)
+            index = hoh_clip_index.build_index(trees=(), covers_dir=covers)
+            doc = hoh_clip_index.covers_doc(index["covers"])
+            self.assertEqual(doc["version"], 1)
+            self.assertEqual(sorted(doc["covers"]), ["2024020001", "2026020069"])
+            self.assertTrue(all(isinstance(v, int) for v in doc["covers"].values()), "only the picture version, the Worker builds the address")
+            out = os.path.join(tmp, "covers.json")
+            self.assertTrue(hoh_clip_index.write_index(doc, out))
+            self.assertFalse(hoh_clip_index.write_index(doc, out), "unchanged: nothing is rewritten")
+            self.assertEqual(json.load(open(out)), doc)
+
 
 if __name__ == "__main__":
     unittest.main()

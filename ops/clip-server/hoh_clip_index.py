@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 TREES = (("vod", "/opt/hoh-highlights/clips_vod"), ("live", "/opt/hoh-highlights/clips_live"))
 OUT = "/opt/hoh-highlights/public_clips/index.json"
 COVERS_DIR = "/opt/hoh-highlights/public_clips/covers"
+COVERS_JSON = "/opt/hoh-highlights/public_clips/covers.json"
 INDEX_VERSION = 1
 
 DAY_RE = re.compile(r"^\d{8}$")
@@ -210,9 +211,15 @@ def write_index(index, out_path=OUT):
     return True
 
 
+def covers_doc(covers):
+    """The small file the Worker reads on every list request: {game_pk: mtime}. The picture is covers/<game_pk>.jpg."""
+    return {"version": 1, "covers": {pk: entry["mtime"] for pk, entry in sorted(covers.items())}}
+
+
 def main():
     index = build_index()
     changed = write_index(index)
+    write_index(covers_doc(index["covers"]), COVERS_JSON)
     goals = sum(len(g["goals"]) for g in index["games"])
     print(f"hoh_clip_index: {len(index['games'])} games, {goals} goals, {'written' if changed else 'unchanged'}")
     return 0
