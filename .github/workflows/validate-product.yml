@@ -216,6 +216,7 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           node tests/validate_center_home_loop.mjs
+          node tests/validate_goals_screen.mjs
 
       - name: Kaprizov historical season smoke
         run: |

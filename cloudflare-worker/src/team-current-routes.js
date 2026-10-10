@@ -54,8 +54,12 @@ import { handleTelegramNotificationPreferencesUi } from "./telegram-notification
 import { handleTelegramMatchupPreviewUi } from "./telegram-matchup-preview-ui.js";
 import { handleMatchupCenterRequest } from "./matchup-center.js";
 import { handleBroadcastOperatorRequest } from "./broadcast-operator.js";
+import { handleTelegramCenterV26, FONT_PRELOAD_LINKS } from "./telegram-center-v26-goals.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
+  const centerV26Response = await handleTelegramCenterV26(request, env, path);
+  if (centerV26Response) return centerV26Response;
+
   if (path === "/telegram-app/goalie-bg.webp" && request.method === "GET" && env.ASSETS?.fetch) {
     return env.ASSETS.fetch(request);
   }
@@ -150,6 +154,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
     body = body.replace('<span class="v8">V8</span>', '<span class="v8">V24.8.0</span>');
     if (!body.includes('/telegram-app/v8-brand.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v8-brand.css?build=24.8.0"></head>');
     if (!body.includes('/telegram-app/v9.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v9.css?build=24.8.0"></head>');
+    body = body.replace('</head>', FONT_PRELOAD_LINKS + '<link rel="stylesheet" href="/telegram-app/hoh-font.css?v=26.0"></head>');
     body = body.replace('</body>', '<script>window.HOH_CANONICAL_PLAYER_UI="V24";window.HOH_MINI_APP_BUILD="24.8.0";</script></body>');
     for (const src of [
       "/telegram-app/v9.js?build=24.8.0",
@@ -161,6 +166,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       "/telegram-app/v22.js?build=24.8.0",
       "/telegram-app/v23-player.js?build=24.8.0",
       "/telegram-app/v24-visual.js?build=24.8.0",
+      "/telegram-app/v26-goals.js?build=26.0",
       "/telegram-app/game-follow.js?build=25.0.1",
       "/telegram-app/preferences.js?build=25.0.1"
     ]) body = body.replace('</body>', '<script src="'+src+'"></script></body>');
