@@ -1,8 +1,8 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
-  "eliteprospects_audio_matched": 556,
-  "eliteprospects_profiles_resolved": 749,
-  "matched": 564,
+  "eliteprospects_audio_matched": 557,
+  "eliteprospects_profiles_resolved": 750,
+  "matched": 565,
   "nhl_audio_fallback_matched": 8,
   "players": {
     "8470613": {
@@ -9869,6 +9869,29 @@
       "shoots_catches": "R",
       "sweater_number": 12,
       "team_tri": "ANA",
+      "upstream_verified": true,
+      "weight_kg": 95
+    },
+    "8482121": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8482121.mp3",
+      "birth_country": "USA",
+      "birth_date": "2002-01-08",
+      "eliteprospects_id": "342192",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Dylan%20Peterson",
+      "eliteprospects_slug": "dylan-peterson",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/342192/dylan-peterson",
+      "first_name": "Dylan",
+      "full_name_en": "Dylan Peterson",
+      "height_cm": 193,
+      "last_name": "Peterson",
+      "player_id": 8482121,
+      "position_code": "C",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dylan-peterson.mp3",
+      "shoots_catches": "R",
+      "sweater_number": 32,
+      "team_tri": "STL",
       "upstream_verified": true,
       "weight_kg": 95
     },
@@ -25366,6 +25389,29 @@
       "upstream_verified": true,
       "weight_kg": 95
     },
+    "8482121": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8482121.mp3",
+      "birth_country": "USA",
+      "birth_date": "2002-01-08",
+      "eliteprospects_id": "342192",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Dylan%20Peterson",
+      "eliteprospects_slug": "dylan-peterson",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/342192/dylan-peterson",
+      "first_name": "Dylan",
+      "full_name_en": "Dylan Peterson",
+      "height_cm": 193,
+      "last_name": "Peterson",
+      "player_id": 8482121,
+      "position_code": "C",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dylan-peterson.mp3",
+      "shoots_catches": "R",
+      "sweater_number": 32,
+      "team_tri": "STL",
+      "upstream_verified": true,
+      "weight_kg": 95
+    },
     "8482122": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8482122.mp3",
@@ -30362,7 +30408,7 @@
       "weight_kg": 92
     }
   },
-  "roster_players": 774,
+  "roster_players": 775,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
