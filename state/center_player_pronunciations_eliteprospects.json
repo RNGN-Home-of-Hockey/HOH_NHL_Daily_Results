@@ -2,8 +2,8 @@
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
   "eliteprospects_audio_matched": 559,
   "eliteprospects_profiles_resolved": 753,
-  "matched": 567,
-  "nhl_audio_fallback_matched": 8,
+  "matched": 568,
+  "nhl_audio_fallback_matched": 9,
   "players": {
     "8470613": {
       "audio_cached": true,
@@ -12655,6 +12655,29 @@
       "upstream_verified": true,
       "weight_kg": 90
     },
+    "8484786": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8484786.mp3",
+      "birth_country": "CAN",
+      "birth_date": "2006-04-24",
+      "eliteprospects_id": "677590",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Cole%20Beaudoin",
+      "eliteprospects_slug": "cole-beaudoin",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/677590/cole-beaudoin",
+      "first_name": "Cole",
+      "full_name_en": "Cole Beaudoin",
+      "height_cm": 188,
+      "last_name": "Beaudoin",
+      "player_id": 8484786,
+      "position_code": "C",
+      "pronunciation_source": "nhl.com_team_pronunciation_guide",
+      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/vdpeoyjoyczt4s0xvk4w.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 53,
+      "team_tri": "NYR",
+      "upstream_verified": true,
+      "weight_kg": 96
+    },
     "8484790": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8484790.mp3",
@@ -24397,7 +24420,7 @@
       "pronunciation_available": false,
       "reason": "no_verified_audio",
       "shoots_catches": "L",
-      "sweater_number": 38,
+      "sweater_number": 3,
       "team_tri": "NSH",
       "weight_kg": 94
     },
@@ -29731,7 +29754,8 @@
       "weight_kg": 94
     },
     "8484786": {
-      "audio_cached": false,
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8484786.mp3",
       "birth_country": "CAN",
       "birth_date": "2006-04-24",
       "eliteprospects_id": "677590",
@@ -29744,11 +29768,12 @@
       "last_name": "Beaudoin",
       "player_id": 8484786,
       "position_code": "C",
-      "pronunciation_available": false,
-      "reason": "no_verified_audio",
+      "pronunciation_source": "nhl.com_team_pronunciation_guide",
+      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/vdpeoyjoyczt4s0xvk4w.mp3",
       "shoots_catches": "L",
       "sweater_number": 53,
       "team_tri": "NYR",
+      "upstream_verified": true,
       "weight_kg": 96
     },
     "8484790": {
@@ -32831,7 +32856,7 @@
       "pronunciation_available": false,
       "reason": "no_verified_audio",
       "shoots_catches": "L",
-      "sweater_number": 38,
+      "sweater_number": 3,
       "team_tri": "NSH",
       "weight_kg": 94
     },
@@ -33002,27 +33027,6 @@
       "sweater_number": 48,
       "team_tri": "NYI",
       "weight_kg": 88
-    },
-    {
-      "audio_cached": false,
-      "birth_country": "CAN",
-      "birth_date": "2006-04-24",
-      "eliteprospects_id": "677590",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Cole%20Beaudoin",
-      "eliteprospects_slug": "cole-beaudoin",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/677590/cole-beaudoin",
-      "first_name": "Cole",
-      "full_name_en": "Cole Beaudoin",
-      "height_cm": 188,
-      "last_name": "Beaudoin",
-      "player_id": 8484786,
-      "position_code": "C",
-      "pronunciation_available": false,
-      "reason": "no_verified_audio",
-      "shoots_catches": "L",
-      "sweater_number": 53,
-      "team_tri": "NYR",
-      "weight_kg": 96
     },
     {
       "audio_cached": false,
