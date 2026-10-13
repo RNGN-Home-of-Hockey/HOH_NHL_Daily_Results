@@ -185,22 +185,23 @@ const layerOf = (ctx) => ctx.document.getElementById("hohSil");
   assert.match(css, /mask-image:var\(--sil-img\)/, "a flat shape: the picture is a mask, not a photo");
   assert.match(css, /#hohSil\.on\{opacity:var\(--sil-op\)\}/);
   const op = Number(/html\{--sil-a:[^;]+;--sil-b:[^;]+;--sil-op:([\d.]+)\}/.exec(css)[1]);
-  assert.ok(op >= 0.35 && op <= 0.55, `clearly seen, still a background (${op})`);
+  // seen behind the blocks, but quieter than the information in front of them (the owner: «чуть менее заметные»)
+  assert.ok(op >= 0.25 && op <= 0.4, `a background, not a second picture (${op})`);
   const darkOp = Number(/html:not\(\.v15Light\)\{--sil-a:[^;]+;--sil-b:[^;]+;--sil-op:([\d.]+)\}/.exec(css)[1]);
-  assert.ok(darkOp >= 0.28 && darkOp <= 0.5, `and in the dark theme (${darkOp})`);
-  // the player is seen behind the blocks: while the silhouettes are on, the glass of the cards is thin and nearly not blurred
+  assert.ok(darkOp >= 0.2 && darkOp <= 0.35, `and in the dark theme (${darkOp})`);
+  // the player is seen behind the blocks: while the silhouettes are on, the glass of the cards is lighter and only slightly blurred
   const alphaOf = (re, what) => {
     const m = re.exec(css);
     assert.ok(m, `${what}: set while the silhouettes are on`);
     const a = Number(m[1]);
-    assert.ok(a >= 0.3 && a <= 0.5, `${what}: see-through enough for the player behind, solid enough for the text (${a})`);
+    assert.ok(a >= 0.45 && a <= 0.65, `${what}: see-through enough for the player behind, solid enough for the text (${a})`);
   };
   alphaOf(/html\.hohSil\{--hoh-glass-light:rgba\(255,255,255,([\d.]+)\);/, "the cards of every tab, light");
   alphaOf(/html\.hohSil\{[^}]*--hoh-glass-dark:rgba\(14,16,24,([\d.]+)\);/, "the cards of every tab, dark");
-  assert.match(css, /html\.hohSil\{[^}]*--hoh-blur:blur\(1\.5px\)\}/, "and nearly not blurred");
+  assert.match(css, /html\.hohSil\{[^}]*--hoh-blur:blur\(2\.5px\)\}/, "and only slightly blurred");
   alphaOf(/html\.hohSil\.v15Light \.v27Home,[^{]*\{--c-card:rgba\(255,255,255,([\d.]+)\)/, "the blocks of the home page, light");
   alphaOf(/html\.hohSil:not\(\.v15Light\) \.v27Home,[^{]*\{--c-card:rgba\(16,18,26,([\d.]+)\)/, "the blocks of the home page, dark");
-  assert.match(css, /html\.hohSil :is\(\.v27Hero,\.v27NewsList,\.v27Article,\.v27Settings\)\{-webkit-backdrop-filter:blur\(1\.5px\);backdrop-filter:blur\(1\.5px\)\}/, "the match of the day is not frosted");
+  assert.match(css, /html\.hohSil :is\(\.v27Hero,\.v27NewsList,\.v27Article,\.v27Settings\)\{-webkit-backdrop-filter:blur\(2\.5px\);backdrop-filter:blur\(2\.5px\)\}/, "the match of the day is only slightly frosted");
   assert.match(css, /#hohSil\{position:fixed;z-index:0;top:7vh;bottom:-1vh;/, "tall: from the top block down to the bottom");
   assert.match(css, /html:not\(\.v15Light\)\{--sil-a:[^;]+;--sil-b:[^;]+;--sil-op:[\d.]+\}/, "its own colours in the dark theme");
   assert.match(css, /html\.hohSil body:before\{background-image:linear-gradient\([^)]*\)[^;]*!important/, "the old goalie photo gives way to a plain tint");

@@ -40,18 +40,18 @@ export function backdropApp() {
     const style = document.createElement("style");
     style.id = "v28css";
     style.textContent = `
-html{--sil-a:#6d32e8;--sil-b:#b597ff;--sil-op:.48}
-html:not(.v15Light){--sil-a:#d4c6ff;--sil-b:#7a5ae6;--sil-op:.4}
+html{--sil-a:#6d32e8;--sil-b:#b597ff;--sil-op:.32}
+html:not(.v15Light){--sil-a:#d4c6ff;--sil-b:#7a5ae6;--sil-op:.28}
 #hohSil{position:fixed;z-index:0;top:7vh;bottom:-1vh;width:min(150vw,880px);pointer-events:none;opacity:0;transition:opacity .6s ease;background:linear-gradient(165deg,var(--sil-a),var(--sil-b));-webkit-mask-image:var(--sil-img);mask-image:var(--sil-img);-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:contain;mask-size:contain}
 #hohSil[data-side="right"]{right:-14vw;-webkit-mask-position:right 38%;mask-position:right 38%}
 #hohSil[data-side="left"]{left:-14vw;-webkit-mask-position:left 38%;mask-position:left 38%}
 #hohSil.on{opacity:var(--sil-op)}
 html:not(.hohSil) #hohSil{display:none}
 html.hohSil .app{background:transparent!important}
-html.hohSil{--hoh-glass-light:rgba(255,255,255,.44);--hoh-glass-light-strong:rgba(255,255,255,.6);--hoh-glass-dark:rgba(14,16,24,.46);--hoh-glass-dark-strong:rgba(10,12,19,.62);--hoh-blur:blur(1.5px)}
-html.hohSil.v15Light .v27Home,html.hohSil.v15Light .v27NewsPage,html.hohSil.v15Light .v27Settings{--c-card:rgba(255,255,255,.42);--c-card2:rgba(241,242,247,.42)}
-html.hohSil:not(.v15Light) .v27Home,html.hohSil:not(.v15Light) .v27NewsPage,html.hohSil:not(.v15Light) .v27Settings{--c-card:rgba(16,18,26,.44);--c-card2:rgba(23,26,36,.44)}
-html.hohSil :is(.v27Hero,.v27NewsList,.v27Article,.v27Settings){-webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px)}
+html.hohSil{--hoh-glass-light:rgba(255,255,255,.58);--hoh-glass-light-strong:rgba(255,255,255,.7);--hoh-glass-dark:rgba(14,16,24,.6);--hoh-glass-dark-strong:rgba(10,12,19,.72);--hoh-blur:blur(2.5px)}
+html.hohSil.v15Light .v27Home,html.hohSil.v15Light .v27NewsPage,html.hohSil.v15Light .v27Settings{--c-card:rgba(255,255,255,.56);--c-card2:rgba(241,242,247,.56)}
+html.hohSil:not(.v15Light) .v27Home,html.hohSil:not(.v15Light) .v27NewsPage,html.hohSil:not(.v15Light) .v27Settings{--c-card:rgba(16,18,26,.58);--c-card2:rgba(23,26,36,.58)}
+html.hohSil :is(.v27Hero,.v27NewsList,.v27Article,.v27Settings){-webkit-backdrop-filter:blur(2.5px);backdrop-filter:blur(2.5px)}
 html.hohSil body:before{background-image:linear-gradient(135deg,rgba(190,163,234,.66),rgba(226,217,244,.5) 47%,rgba(241,237,247,.64))!important;background-size:auto!important;background-blend-mode:normal!important;filter:none!important;opacity:.62!important;transform:none!important}
 html.hohSil:not(.v15Light) body:before{background-image:linear-gradient(135deg,rgba(86,60,123,.8),rgba(28,26,43,.74) 48%,rgba(8,10,17,.9))!important;opacity:.7!important}
 .playerRow .playerSortValue{display:flex!important;flex-direction:column;align-items:flex-end;justify-content:center;gap:1px;min-width:50px;color:#5b21b6!important;font-weight:900!important;line-height:1}
