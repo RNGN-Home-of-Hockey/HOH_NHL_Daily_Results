@@ -221,6 +221,7 @@ jobs:
           node tests/validate_home_v27.mjs
           node tests/validate_home_followups.mjs
           node tests/validate_backdrop.mjs
+          node tests/validate_predictions.mjs
 
       - name: Kaprizov historical season smoke
         run: |

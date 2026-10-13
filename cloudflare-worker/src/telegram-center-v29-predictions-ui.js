@@ -1,0 +1,532 @@
+// Live Center v29: the game of the fans on the screen.
+//   - "Кто победит?" with the Winline odds of the winner including overtime on both buttons, before and after the pick:
+//     in the match of the day (.v29Slot in the hero of the home page), in the match screen, and as the list of the night
+//     in the "predict" section of the home page;
+//   - "Твой профиль" (level, points, progress to the next level) and the table of the best fans on the "Мои" screen.
+//
+// This function is serialized (predictionsApp.toString()) and served as /telegram-app/v29-predict.js, so it must be
+// self-contained: no imports and no references to anything outside of its own body.
+export function predictionsApp() {
+  const H = window.HOHV15;
+  if (!H || window.HOHV29) return;
+  const S = (window.HOHV29 = { version: "29.0" });
+  const API = "/api/telegram-center-v29";
+  const LIST_SHORT = 5;
+  const BOARD_SHORT = 10;
+  const REFRESH_MS = 60000;
+
+  const st = {
+    games: new Map(), slate: null, slateAt: 0, slateTried: 0, slateBusy: false, missing: new Map(),
+    me: null, meAt: 0, meBusy: false,
+    boards: new Map(), period: "week", boardBusy: new Set(), boardOpen: false,
+    listOpen: false, rulesOpen: false, pending: new Set(), want: new Set(), wantTimer: null,
+  };
+  const painted = new WeakMap(); // element -> the html it shows, so a redraw happens only when something changed
+
+  const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const noSpoilers = () => typeof window.HOHNoSpoilers === "function" && Boolean(window.HOHNoSpoilers());
+  const inTelegram = () => Boolean(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+  const fmtOdds = (v) => (Number(v) > 1 ? Number(v).toFixed(2) : "");
+  const fmtXp = (v) => String(Math.max(0, Math.floor(Number(v) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const clock = (iso) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  };
+  const dayWord = (date) => {
+    const d = new Date(`${date}T12:00:00Z`);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" });
+  };
+  const LEVELS = [["Новичок", 0], ["Болельщик", 100], ["Знаток", 500], ["Мастер", 2000], ["Легенда", 5000]];
+  const MEDAL = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.2"/><path d="M8.6 13.2 7 21l5-2.6 5 2.6-1.6-7.8"/></svg>';
+
+  // ---- styles ----------------------------------------------------------------------------------------------------------------
+  function css() {
+    if (document.getElementById("v29css")) return;
+    const style = document.createElement("style");
+    style.id = "v29css";
+    style.textContent = `
+.v29Vote,.v29Sec,.v29Me{--v29-line:#d9dbe6;--v29-btn:rgba(255,255,255,.72);--v29-text:#0c0d14;--v29-muted:#686c7e;--v29-odd:#5b21b6;--v29-odd-bg:rgba(122,61,240,.1);--v29-pick:#7a3df0;--v29-bar:rgba(122,61,240,.13);--v29-win:#17a06b;--v29-card:rgba(255,255,255,.82)}
+html:not(.v15Light) :is(.v29Vote,.v29Sec,.v29Me){--v29-line:#30334a;--v29-btn:rgba(22,24,34,.72);--v29-text:#f7f7fb;--v29-muted:#9094a8;--v29-odd:#d9ccff;--v29-odd-bg:rgba(203,188,255,.13);--v29-pick:#b58aff;--v29-bar:rgba(181,138,255,.16);--v29-win:#62e6ae;--v29-card:rgba(16,18,26,.8)}
+html.hohSil.v15Light .v29Me{--v29-card:rgba(255,255,255,.55)}
+html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
+.v29Vote{display:grid;gap:8px;color:var(--v29-text)}
+.v29Q{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.v29Q b{font-size:14px;font-weight:800}
+.v29Q span{font-size:11px;color:var(--v29-muted);font-weight:600;text-align:right}
+.v29Btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.v29Btn{position:relative;overflow:hidden;display:flex;align-items:center;gap:5px;min-width:0;min-height:44px;padding:6px 8px;border-radius:12px;border:1.5px solid var(--v29-line);background:var(--v29-btn);color:inherit;font:inherit;cursor:pointer;text-align:left}
+.v29Btn>*{position:relative;z-index:1}
+.v29Btn img{width:22px;height:22px;object-fit:contain;flex:0 0 auto}
+.v29Btn .v29Nm{display:grid;min-width:0;line-height:1.15}
+.v29Btn .v29T{display:flex;align-items:center;gap:3px;white-space:nowrap}
+.v29Btn b{font-size:14px;font-weight:800}
+.v29Btn .v29Tick{font-style:normal;font-weight:900;font-size:13px;color:var(--v29-pick)}
+.v29Btn .v29Pc{font-size:11px;font-weight:700;color:var(--v29-muted)}
+.v29Btn .v29Odd{flex:0 0 auto;margin-left:auto;font-size:13px;font-weight:800;color:var(--v29-odd);background:var(--v29-odd-bg);padding:2px 6px;border-radius:7px;white-space:nowrap}
+.v29Btn .v29Share{position:absolute;z-index:0;left:0;top:0;bottom:0;background:var(--v29-bar)}
+.v29Btn.mine{border-color:var(--v29-pick);box-shadow:0 0 0 2px rgba(122,61,240,.16)}
+.v29Btn.won{border-color:var(--v29-win)}
+.v29Btn[disabled]{cursor:default}
+.v29Btn.busy{opacity:.6}
+.v29Line{font-size:12px;font-weight:600;color:var(--v29-muted)}
+.v29Line.ok{color:var(--v29-win)}
+.v29Vote.compact{gap:5px}
+.v27Hero .v29Slot{margin-top:2px}
+.v29MatchSlot{margin:10px 0;padding:12px;border:1px solid var(--v26-line,#282b38);border-radius:16px;background:var(--v26-card,rgba(16,18,26,.8))}
+.v29Sec{display:grid;gap:10px;color:var(--v29-text)}
+.v29List{display:grid;border:1px solid var(--c-line,var(--v29-line));border-radius:16px;background:var(--c-card,var(--v29-card));overflow:hidden}
+.v29Row{display:grid;grid-template-columns:50px minmax(0,1fr);gap:8px;align-items:start;padding:10px 12px;border-top:1px solid var(--c-line,var(--v29-line))}
+.v29Row:first-child{border-top:0}
+.v29Time{display:grid;gap:2px;padding:6px 0 0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.v29Time b{font-size:14px;font-weight:800}
+.v29Time small{font-size:10.5px;color:var(--v29-muted);font-weight:600}
+.v29Note{font-size:12px;color:var(--v29-muted);font-weight:600;line-height:1.35}
+.v29Last{font-size:13px;font-weight:700;padding:9px 12px;border-radius:12px;background:var(--v29-odd-bg);color:var(--v29-odd)}
+.v29More,.v29Link{justify-self:start;padding:0;border:0;background:none;color:var(--v29-pick);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.v29Me{display:grid;gap:12px;margin:0 0 12px;color:var(--v29-text)}
+.v29Card{padding:16px;border:1px solid var(--v29-line);border-radius:20px;background:var(--v29-card);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.v29Prof{display:grid;gap:10px}
+.v29Prof .k{font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--v29-muted);font-weight:600}
+.v29Prof .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.v29Prof .lvl{display:block;font-size:26px;font-weight:800;line-height:1.1}
+.v29Prof .note{display:block;margin-top:4px;font-size:14px;color:var(--v29-muted)}
+.v29Badge{flex:0 0 auto;display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:var(--v29-odd-bg);color:var(--v29-odd)}
+.v29Badge svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linejoin:round;stroke-linecap:round}
+.v29Prof .xp{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.v29Prof .xp b{font-size:20px;font-weight:800}
+.v29Prof .xp span{font-size:13px;color:var(--v29-muted);text-align:right}
+.v29Bar{height:8px;border-radius:99px;background:var(--v29-odd-bg);overflow:hidden}
+.v29Bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#7a3df0,#ff5a00)}
+.v29Stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.v29Stats div{display:grid;gap:2px;padding:8px 10px;border-radius:12px;background:var(--v29-odd-bg)}
+.v29Stats b{font-size:17px;font-weight:800}
+.v29Stats span{font-size:11px;color:var(--v29-muted);font-weight:600}
+.v29Opt{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:600}
+.v29Sw{position:relative;flex:0 0 auto;width:44px;height:26px;border-radius:99px;border:0;background:var(--v29-line);cursor:pointer;padding:0}
+.v29Sw i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s}
+.v29Sw.on{background:#ff5a00}
+.v29Sw.on i{left:21px}
+.v29Rules{display:grid;gap:4px;font-size:12.5px;line-height:1.4;color:var(--v29-muted)}
+.v29Board{display:grid;gap:10px}
+.v29Board .head{display:grid;gap:10px}
+.v29Board .head b{font-size:16px;font-weight:800}
+.v29Seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--v29-line);border-radius:99px;overflow:hidden}
+.v29Seg button{padding:6px 8px;border:0;background:none;color:var(--v29-muted);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.v29Seg button.on{background:var(--v29-pick);color:#fff}
+.v29Board ol{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.v29Board li{display:grid;grid-template-columns:28px 32px minmax(0,1fr) auto;align-items:center;gap:8px;padding:6px 4px;border-radius:12px}
+.v29Board li.me{background:var(--v29-odd-bg)}
+.v29Board li.gap{display:block;text-align:center;color:var(--v29-muted);padding:0}
+.v29Board .n{font-size:13px;font-weight:800;color:var(--v29-muted);text-align:center}
+.v29Board .av{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;overflow:hidden;background:var(--v29-odd-bg);color:var(--v29-odd);font-weight:800;font-size:13px}
+.v29Board .av img{width:100%;height:100%;object-fit:cover}
+.v29Board .nm{min-width:0;display:grid}
+.v29Board .nm span{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v29Board .nm small{font-size:11px;color:var(--v29-muted);font-weight:600}
+.v29Board li b{font-size:14px;font-weight:800;white-space:nowrap}
+.v29Empty{font-size:13px;color:var(--v29-muted)}
+`;
+    document.head.appendChild(style);
+  }
+
+  // ---- the vote ----------------------------------------------------------------------------------------------------------------
+  function lineOf(g) {
+    const my = g.my;
+    const tri = my && g[my.pick] ? g[my.pick].tri : "";
+    if (g.open) {
+      if (st.pending.has(g.game_pk)) return { text: "Сохраняем…" };
+      if (my) return { text: `Ваш выбор: ${tri} · можно поменять до ${clock(g.start)}` };
+      return { text: g.votes && g.votes.total ? `Проголосовали: ${g.votes.total}` : "Выберите, кто победит" };
+    }
+    if (noSpoilers()) return { text: "Итог скрыт: режим без спойлеров" };
+    if (g.settled && g.settled.winner === "void") return { text: "Матч не состоялся — прогнозы без очков" };
+    if (g.settled && my && my.result) return my.result === "win" ? { text: `✓ Угадали · +${my.xp} XP`, ok: true } : { text: `Не угадали · +${my.xp} XP` };
+    if (g.settled) return { text: "Матч завершён" };
+    return { text: my ? `Матч идёт · ваш выбор ${tri}` : "Прогнозы закрыты — матч начался" };
+  }
+
+  function voteHtml(g, compact) {
+    if (!g) return "";
+    const hide = !g.open && noSpoilers();
+    const total = g.votes ? Number(g.votes.total) || 0 : 0;
+    const split = !hide && g.votes && g.votes.home != null && total > 0;
+    const winner = !hide && g.settled && g.settled.winner !== "void" ? g.settled.winner : null;
+    const side = (k) => {
+      const t = g[k] || {};
+      const odds = g.odds ? fmtOdds(g.odds[k]) : "";
+      const mine = Boolean(g.my && g.my.pick === k);
+      const share = split ? Math.round((100 * (Number(g.votes[k]) || 0)) / total) : null;
+      const cls = `v29Btn${mine ? " mine" : ""}${winner === k ? " won" : ""}${st.pending.has(g.game_pk) ? " busy" : ""}`;
+      // the share of the fans goes under the name, so the odds always keep their place on the right
+      return `<button type="button" class="${cls}" data-v29-pick="${k}" data-v29-game="${esc(g.game_pk)}"${g.open ? "" : " disabled"} aria-pressed="${mine}" aria-label="${esc(`${t.name_ru || t.tri}${odds ? `, коэффициент ${odds}` : ""}`)}">${share != null ? `<span class="v29Share" style="width:${share}%"></span>` : ""}<img src="${esc(t.logo)}" alt=""><span class="v29Nm"><span class="v29T"><b>${esc(t.tri)}</b>${mine ? '<i class="v29Tick">✓</i>' : ""}</span>${share != null ? `<small class="v29Pc">${share}%</small>` : ""}</span>${odds ? `<span class="v29Odd">${odds}</span>` : ""}</button>`;
+    };
+    const line = lineOf(g);
+    const head = compact ? "" : `<div class="v29Q"><b>Кто победит?</b><span>с ОТ и буллитами${g.odds ? " · кэфы Winline" : ""}</span></div>`;
+    return `<div class="v29Vote${compact ? " compact" : ""}">${head}<div class="v29Btns">${side("away")}${side("home")}</div><div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div></div>`;
+  }
+
+  // the hero of the home page asks for its html while it is drawn, so the vote is there from the first frame
+  S.slotHtml = (pk) => {
+    const g = st.games.get(Number(pk));
+    if (!g) {
+      want(Number(pk));
+      return "";
+    }
+    return voteHtml(g, false);
+  };
+
+  function setGame(g) {
+    if (!g || !g.game_pk) return;
+    st.games.set(Number(g.game_pk), g);
+    if (st.slate && Array.isArray(st.slate.games)) {
+      const i = st.slate.games.findIndex((x) => Number(x.game_pk) === Number(g.game_pk));
+      if (i >= 0) st.slate.games[i] = g;
+    }
+  }
+
+  // ---- the list of the night on the home page --------------------------------------------------------------------------------
+  function stateWord(g) {
+    if (g.open) return "";
+    if (g.settled) return g.settled.winner === "void" ? "не сыгран" : "завершён";
+    return "идёт";
+  }
+
+  function sectionHtml() {
+    const s = st.slate;
+    if (!s || !Array.isArray(s.games) || !s.games.length) return "";
+    const list = st.listOpen ? s.games : s.games.slice(0, LIST_SHORT);
+    const picked = s.games.filter((g) => g.my).length;
+    const last = s.last && !noSpoilers() ? `<div class="v29Last">Прошлый игровой день: угадано ${s.last.correct} из ${s.last.total} · +${fmtXp(s.last.xp)} XP</div>` : "";
+    const rows = list.map((g) => `<div class="v29Row"><button type="button" class="v29Time" data-v29-open="${esc(g.game_pk)}"><b>${esc(clock(g.start))}</b><small>${esc(stateWord(g))}</small></button>${voteHtml(g, true)}</div>`).join("");
+    const more = s.games.length > LIST_SHORT ? `<button type="button" class="v29More" data-v29-more>${st.listOpen ? "Свернуть" : `Все матчи (${s.games.length})`}</button>` : "";
+    const guest = s.signed_in ? "" : '<div class="v29Note">Голосовать можно в приложении, открытом из Telegram-бота.</div>';
+    return `<div class="v29Sec"><div class="v27Head"><b>Кто победит? · ${esc(dayWord(s.date))}</b><small>${picked} из ${s.games.length}</small></div>${last}<div class="v29Note">Победа с учётом ОТ и буллитов · кэфы Winline · прогноз можно менять до начала матча</div>${guest}<div class="v29List">${rows}</div>${more}<button type="button" class="v29Link" data-v29-me>Мой профиль и рейтинг болельщиков →</button></div>`;
+  }
+
+  function paintSection() {
+    const box = document.querySelector('.v27Home [data-sec="predict"]');
+    if (!box) return;
+    // a failed load is not asked again on every redraw of the page: the minute refresh does it
+    if (!st.slate && !st.slateBusy && Date.now() - st.slateTried > REFRESH_MS) loadSlate();
+    const html = sectionHtml();
+    if (painted.get(box) === html) return;
+    box.innerHTML = html;
+    box.hidden = !html;
+    painted.set(box, html);
+  }
+
+  // ---- the slots: the match of the day and the match screen ------------------------------------------------------------------
+  function mountMatch() {
+    const root = document.getElementById("v26Root");
+    if (!root) return;
+    const pk = Number(window.HOHV26 && window.HOHV26.state && window.HOHV26.state.gamePk);
+    if (!pk) return;
+    let slot = document.getElementById("v29Match");
+    if (slot && Number(slot.dataset.v29Game) !== pk) {
+      slot.remove();
+      slot = null;
+    }
+    if (slot) return;
+    slot = document.createElement("div");
+    slot.id = "v29Match";
+    slot.className = "v29Slot v29MatchSlot";
+    slot.dataset.v29Game = String(pk);
+    const head = document.getElementById("v26Head");
+    if (head) head.after(slot);
+    else root.appendChild(slot);
+  }
+
+  function paintSlots() {
+    document.querySelectorAll(".v29Slot[data-v29-game]").forEach((slot) => {
+      const pk = Number(slot.dataset.v29Game);
+      const g = st.games.get(pk);
+      if (!g) {
+        want(pk);
+        return;
+      }
+      const html = voteHtml(g, false);
+      if (painted.get(slot) === html && slot.innerHTML) return;
+      slot.innerHTML = html;
+      painted.set(slot, html);
+    });
+  }
+
+  function want(pk) {
+    if (!pk || st.games.has(pk)) return;
+    // a game the server does not know in the game (a preseason game, a wrong id): not asked again for a minute
+    if (Date.now() - (st.missing.get(pk) || 0) < REFRESH_MS) return;
+    st.want.add(pk);
+    if (st.wantTimer) return;
+    st.wantTimer = setTimeout(() => {
+      st.wantTimer = null;
+      const ids = [...st.want];
+      st.want.clear();
+      if (ids.length) loadGames(ids);
+    }, 40);
+  }
+
+  // ---- "Мои": the profile of the player and the table ------------------------------------------------------------------------
+  const onMine = () => !H.state.profile && ["follows", "mine"].includes(H.currentTab()) && H.tabsVisible();
+
+  function profileHtml() {
+    const m = st.me;
+    if (!m) return '<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="v29Empty">Загрузка…</div></div>';
+    if (m.guest) return '<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="v29Empty">Прогнозы, очки и рейтинг доступны в приложении, открытом из Telegram-бота.</div></div>';
+    const lv = m.level;
+    const toNext = lv.next ? `До уровня «${esc(lv.next.name)}»: ${fmtXp(lv.to_next)} XP` : "Высший уровень";
+    const week = m.ranks && m.ranks.week;
+    const acc = m.stats.accuracy == null ? "—" : `${m.stats.accuracy}%`;
+    const rules = st.rulesOpen
+      ? `<div class="v29Rules"><span>+1 XP — за каждый прогноз на сыгранный матч</span><span>+10 XP — угадали победителя (с учётом ОТ и буллитов)</span><span>+10 XP сверху — угадали победу андердога (кэф Winline на момент начала от 2.10 и выше)</span><span>+5 XP сверху — угадали, а этот исход выбрали меньше 30% болельщиков (от 10 голосов)</span><span>Уровни: ${LEVELS.map(([n, x]) => `${n} ${fmtXp(x)}`).join(" · ")} XP</span></div>`
+      : "";
+    const nick = m.has_nick ? "" : `<div class="v29Note">В рейтинге вы «${esc(m.label)}». Задайте ник в «Профиль и комментарии», чтобы вас узнавали.</div>`;
+    return `<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="top"><div><b class="lvl">${esc(lv.name)}</b><span class="note">${esc(lv.note)}</span></div><span class="v29Badge">${MEDAL}</span></div><div class="xp"><b>${fmtXp(lv.xp)} XP</b><span>${toNext}</span></div><div class="v29Bar"><i style="width:${Math.round(lv.progress * 100)}%"></i></div><div class="v29Stats"><div><b>${m.stats.total}</b><span>прогнозов</span></div><div><b>${acc}</b><span>угадано</span></div><div><b>${week ? `#${week.rank}` : "—"}</b><span>место за неделю</span></div></div>${nick}<div class="v29Opt"><span>Утренний итог прогнозов в боте</span><button type="button" class="v29Sw${m.prefs.morning_digest ? " on" : ""}" role="switch" aria-checked="${m.prefs.morning_digest}" aria-label="Утренний итог прогнозов в боте" data-v29-digest><i></i></button></div><button type="button" class="v29More" data-v29-rules>${st.rulesOpen ? "Скрыть правила" : "Как начисляются очки"}</button>${rules}</div>`;
+  }
+
+  function boardHtml() {
+    const b = st.boards.get(st.period);
+    const seg = [["week", "Неделя"], ["month", "Месяц"], ["season", "Сезон"]].map(([k, t]) => `<button type="button" data-v29-period="${k}"${st.period === k ? ' class="on"' : ""}>${t}</button>`).join("");
+    let body;
+    if (!b) body = '<div class="v29Empty">Загрузка…</div>';
+    else if (!b.rows.length) body = '<div class="v29Empty">Пока никого нет — сделайте прогноз, и после матча здесь появятся очки.</div>';
+    else {
+      const me = b.me;
+      const rows = st.boardOpen ? b.rows : b.rows.slice(0, BOARD_SHORT);
+      const row = (r, isMe) => `<li${isMe ? ' class="me"' : ""}><span class="n">${r.rank}</span><span class="av">${r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(String(r.label || "?").replace(/^@/, "").slice(0, 1).toUpperCase())}</span><span class="nm"><span>${esc(r.label)}</span><small>${esc(r.level)} · угадано ${r.correct} из ${r.total}</small></span><b>${fmtXp(r.xp)} XP</b></li>`;
+      let html = rows.map((r) => row(r, Boolean(me && me.rank === r.rank))).join("");
+      if (me && me.rank > rows.length) html += `<li class="gap">…</li>${row({ rank: me.rank, label: st.me && !st.me.guest ? st.me.label : "Вы", avatar_url: null, level: st.me && st.me.level ? st.me.level.name : "", correct: me.correct, total: me.total, xp: me.xp }, true)}`;
+      const more = b.rows.length > BOARD_SHORT ? `<button type="button" class="v29More" data-v29-board-more>${st.boardOpen ? "Свернуть" : `Весь рейтинг (${b.rows.length})`}</button>` : "";
+      body = `<ol>${html}</ol>${more}`;
+    }
+    return `<div class="v29Card v29Board"><div class="head"><b>Рейтинг болельщиков</b><span class="v29Seg">${seg}</span></div>${body}</div>`;
+  }
+
+  function paintMe() {
+    const box = document.getElementById("v29Me");
+    if (!box) return;
+    const html = profileHtml() + boardHtml();
+    if (painted.get(box) === html) return;
+    box.innerHTML = html;
+    painted.set(box, html);
+  }
+
+  function mountMe() {
+    const view = H.view();
+    if (!view) return;
+    let box = view.querySelector(":scope > #v29Me");
+    if (!onMine()) {
+      if (box) box.remove();
+      return;
+    }
+    if (!box) {
+      box = document.createElement("section");
+      box.id = "v29Me";
+      box.className = "v29Me";
+      view.prepend(box);
+    }
+    if (!st.meBusy && (!st.me || Date.now() - st.meAt > REFRESH_MS)) loadMe();
+    const b = st.boards.get(st.period);
+    if (!st.boardBusy.has(st.period) && (!b || Date.now() - b.at > REFRESH_MS)) loadBoard(st.period);
+    paintMe();
+  }
+
+  function paintAll() {
+    paintSection();
+    paintSlots();
+    paintMe();
+  }
+
+  function mountAll() {
+    mountMatch();
+    mountMe();
+    paintSection();
+    paintSlots();
+  }
+
+  // ---- loading -----------------------------------------------------------------------------------------------------------------
+  async function loadSlate() {
+    if (st.slateBusy) return;
+    st.slateBusy = true;
+    st.slateTried = Date.now();
+    try {
+      const d = await H.api(`${API}/slate`);
+      if (d && d.ok !== false) {
+        st.slate = d;
+        st.slateAt = Date.now();
+        for (const g of d.games || []) st.games.set(Number(g.game_pk), g);
+      }
+    } catch (e) {
+      // the list stays hidden; the next refresh tries again
+    } finally {
+      st.slateBusy = false;
+      paintAll();
+    }
+  }
+
+  async function loadGames(ids) {
+    const now = Date.now();
+    try {
+      const d = await H.api(`${API}/games?ids=${ids.join(",")}`);
+      for (const g of (d && d.games) || []) setGame(g);
+    } catch (e) {
+      // no vote block for these games this time
+    }
+    for (const id of ids) if (!st.games.has(id)) st.missing.set(id, now);
+    paintAll();
+  }
+
+  async function loadMe() {
+    st.meBusy = true;
+    try {
+      const d = await H.api(`${API}/me`);
+      st.me = d && d.ok !== false ? d : { guest: true };
+    } catch (e) {
+      st.me = { guest: true };
+    } finally {
+      st.meAt = Date.now();
+      st.meBusy = false;
+      paintMe();
+    }
+  }
+
+  async function loadBoard(period) {
+    st.boardBusy.add(period);
+    try {
+      const d = await H.api(`${API}/leaderboard?period=${period}`);
+      if (d && d.ok !== false) st.boards.set(period, { rows: d.rows || [], me: d.me || null, players: d.players || 0, at: Date.now() });
+    } catch (e) {
+      if (!st.boards.has(period)) st.boards.set(period, { rows: [], me: null, players: 0, at: Date.now() });
+    } finally {
+      st.boardBusy.delete(period);
+      paintMe();
+    }
+  }
+
+  function errorText(error) {
+    const code = String((error && error.message) || error || "");
+    if (/voting_closed/.test(code)) return "Матч уже начался — прогнозы на него закрыты.";
+    if (/expired/.test(code)) return "Сессия устарела: закройте приложение и откройте его снова из Telegram-бота.";
+    if (/missing_telegram_init_data|guest|signature|init_data/.test(code)) return "Голосовать можно в приложении, открытом из Telegram-бота.";
+    return "Не удалось сохранить прогноз. Попробуйте ещё раз.";
+  }
+
+  async function vote(pk, side) {
+    const g = st.games.get(pk);
+    if (!g || !g.open || st.pending.has(pk)) return;
+    if (g.my && g.my.pick === side) return;
+    if (!inTelegram()) {
+      alert("Голосовать можно в приложении, открытом из Telegram-бота.");
+      return;
+    }
+    const before = g;
+    setGame({ ...g, my: { pick: side, result: null, xp: null } });
+    st.pending.add(pk);
+    paintAll();
+    try {
+      const d = await H.api(`${API}/predictions`, { method: "POST", body: JSON.stringify({ game_pk: pk, pick: side }) });
+      if (d && d.game) setGame(d.game);
+      if (st.slate) st.slate.signed_in = true; // the server took the vote: the person is signed in
+      st.meAt = 0;
+      window.dispatchEvent(new Event("hoh-predictions-change"));
+    } catch (error) {
+      setGame(before);
+      alert(errorText(error));
+      if (/voting_closed/.test(String(error && error.message))) loadGames([pk]);
+    } finally {
+      st.pending.delete(pk);
+      paintAll();
+    }
+  }
+
+  async function toggleDigest() {
+    if (!st.me || st.me.guest) return;
+    const next = !st.me.prefs.morning_digest;
+    st.me = { ...st.me, prefs: { ...st.me.prefs, morning_digest: next } };
+    paintMe();
+    try {
+      await H.api(`${API}/me`, { method: "PUT", body: JSON.stringify({ morning_digest: next }) });
+    } catch (error) {
+      st.me = { ...st.me, prefs: { ...st.me.prefs, morning_digest: !next } };
+      paintMe();
+      alert("Не удалось сохранить настройку. Попробуйте ещё раз.");
+    }
+  }
+
+  // ---- clicks: caught before the cards under them (the hero opens the match, the match screen has its own handler) -------------
+  document.addEventListener("click", (e) => {
+    const el = e.target && e.target.closest && e.target.closest("[data-v29-pick],[data-v29-more],[data-v29-open],[data-v29-me],[data-v29-period],[data-v29-digest],[data-v29-rules],[data-v29-board-more]");
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const d = el.dataset;
+    if (d.v29Pick) vote(Number(d.v29Game), d.v29Pick);
+    else if (d.v29More !== undefined) {
+      st.listOpen = !st.listOpen;
+      paintSection();
+    } else if (d.v29Open) {
+      if (typeof H.openGameV19 === "function") H.openGameV19(Number(d.v29Open), { returnTab: H.currentTab() });
+    } else if (d.v29Me !== undefined) {
+      const tab = document.querySelector('.tab[data-tab="follows"]');
+      if (tab) tab.click();
+      window.scrollTo(0, 0);
+    } else if (d.v29Period) {
+      st.period = d.v29Period;
+      st.boardOpen = false;
+      const b = st.boards.get(st.period);
+      if (!b || Date.now() - b.at > REFRESH_MS) loadBoard(st.period);
+      paintMe();
+    } else if (d.v29Digest !== undefined) toggleDigest();
+    else if (d.v29Rules !== undefined) {
+      st.rulesOpen = !st.rulesOpen;
+      paintMe();
+    } else if (d.v29BoardMore !== undefined) {
+      st.boardOpen = !st.boardOpen;
+      paintMe();
+    }
+  }, true);
+
+  // ---- wiring ------------------------------------------------------------------------------------------------------------------
+  let pending = null;
+  const soon = () => {
+    if (pending) return;
+    pending = setTimeout(() => {
+      pending = null;
+      mountAll();
+    }, 120);
+  };
+  if (typeof MutationObserver === "function" && document.body) new MutationObserver(soon).observe(document.body, { childList: true, subtree: true });
+  const oldRun = H.runCore;
+  H.runCore = function () {
+    const result = typeof oldRun === "function" ? oldRun.apply(this, arguments) : undefined;
+    soon();
+    return result;
+  };
+  window.addEventListener("hoh-spoilers-change", () => {
+    const me = document.getElementById("v29Me");
+    if (me) painted.delete(me);
+    paintAll();
+  });
+  // every minute while the app is visible: the list of the night, the open slots, my profile
+  setInterval(() => {
+    if (document.visibilityState === "hidden") return;
+    if (document.querySelector('.v27Home [data-sec="predict"]')) loadSlate();
+    const ids = [...new Set([...document.querySelectorAll(".v29Slot[data-v29-game]")].map((x) => Number(x.dataset.v29Game)).filter(Boolean))];
+    if (ids.length) loadGames(ids);
+    if (document.getElementById("v29Me")) {
+      loadMe();
+      loadBoard(st.period);
+    }
+  }, REFRESH_MS);
+
+  S.state = st;
+  S.voteHtml = voteHtml;
+  S.refresh = () => {
+    st.slate = null;
+    st.slateTried = 0;
+    st.missing.clear();
+    mountAll();
+  };
+  css();
+  mountAll();
+}

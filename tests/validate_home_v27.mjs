@@ -594,6 +594,12 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.equal(sec(ctx, "russians").style.order, "2", "the Russians come right under the strip");
   assert.equal(sec(ctx, "goals").style.order, "3", "results: the goals come before the match of the day");
   assert.equal(sec(ctx, "hero").style.order, "4");
+  assert.equal(sec(ctx, "predict").style.order, "5", "results: the votes of the night after the match of the day");
+  assert.ok(sec(ctx, "predict").hidden, "the place of the votes stays empty and hidden: the game of the fans (v29) fills it");
+  assert.equal(sec(ctx, "news").style.order, "6");
+  assert.equal(sec(ctx, "videos").style.order, "7");
+  assert.ok(sec(ctx, "hero").querySelector('.v29Slot[data-v29-game="2026020094"]'), "the match of the day has a place for 'Кто победит?'");
+  assert.ok(sec(ctx, "hero").querySelector(".v29Slot").nextElementSibling.matches(".v27Wl"), "right above the Winline odds");
   assert.match(text(sec(ctx, "goals").querySelector(".v27Head")), /Голы вчера|Голы сегодня/);
   assert.match(text(sec(ctx, "goals").querySelector(".v27Head")), /20 роликов/);
   const tiles = [...sec(ctx, "goals").querySelectorAll(".v27Goal")];
@@ -650,7 +656,8 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
     await tick(420);
     assert.equal(sec(ctx, "russians").style.order, "2");
     assert.equal(sec(ctx, "hero").style.order, "3", `${mode}: the match of the day leads after the Russians`);
-    assert.equal(sec(ctx, "goals").style.order, "4");
+    assert.equal(sec(ctx, "predict").style.order, "4", `${mode}: the votes of the night right after it`);
+    assert.equal(sec(ctx, "goals").style.order, "5");
     ctx.window.close();
   }
   // live: the strip says today's games, a red LIVE chip, "Голы в эфире", and the page polls every 15 seconds

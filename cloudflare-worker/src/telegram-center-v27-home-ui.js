@@ -493,8 +493,11 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
         : `<div class="v27HeroMid">${lab}<strong>${esc(clock(g.scheduled_start_utc))}</strong><small>${esc(whenWord(g.scheduled_start_utc))}</small></div>`;
     const vkText = live ? "Смотреть матч в VK Видео" : done ? "Смотреть запись в VK Видео" : "Трансляция в VK Видео";
     const vk = esc(g.vk_url || "https://vkvideo.ru/@nhl_home_of_hockey/lives");
-    return `<article class="v27Hero" data-game="${esc(g.game_pk)}">${cover ? `<div class="v27HeroCover"><img src="${esc(cover)}" alt="${esc(`${awayName} — ${homeName}`)}">${live ? badge : ""}</div>` : ""}<div class="v27HeroBody"><div class="v27HeroTeams"><div><img src="${esc(away.logo || "")}" alt=""><span class="nm">${esc(awayName)}</span>${showRecords ? recordHtml(g.away_record) : ""}</div>${mid}<div><img src="${esc(homeTeam.logo || "")}" alt=""><span class="nm">${esc(homeName)}</span>${showRecords ? recordHtml(g.home_record) : ""}</div></div>${winlineHtml(g)}<a class="v27Cta" href="${vk}" target="_blank" rel="noopener"><span>${vkText}</span><span>→</span></a></div></article>`;
+    return `<article class="v27Hero" data-game="${esc(g.game_pk)}">${cover ? `<div class="v27HeroCover"><img src="${esc(cover)}" alt="${esc(`${awayName} — ${homeName}`)}">${live ? badge : ""}</div>` : ""}<div class="v27HeroBody"><div class="v27HeroTeams"><div><img src="${esc(away.logo || "")}" alt=""><span class="nm">${esc(awayName)}</span>${showRecords ? recordHtml(g.away_record) : ""}</div>${mid}<div><img src="${esc(homeTeam.logo || "")}" alt=""><span class="nm">${esc(homeName)}</span>${showRecords ? recordHtml(g.home_record) : ""}</div></div><div class="v29Slot" data-v29-game="${esc(g.game_pk)}">${predictSlot(g.game_pk)}</div>${winlineHtml(g)}<a class="v27Cta" href="${vk}" target="_blank" rel="noopener"><span>${vkText}</span><span>→</span></a></div></article>`;
   }
+
+  // "Кто победит?" of the game of the fans (v29) inside the match of the day; empty until that layer knows the game
+  const predictSlot = (pk) => (window.HOHV29 && typeof window.HOHV29.slotHtml === "function" ? window.HOHV29.slotHtml(pk) : "");
 
   function goalsTitle(gl, today) {
     if (gl.live) return "Голы в эфире";
@@ -565,7 +568,8 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
   }
 
   // ---- painting --------------------------------------------------------------------------------------------------------------
-  const SECTIONS = ["strip", "hero", "goals", "russians", "news", "videos"];
+  // "predict" is filled by the game of the fans (v29): here it only gets its place
+  const SECTIONS = ["strip", "hero", "goals", "russians", "predict", "news", "videos"];
   function build() {
     const el = document.createElement("section");
     el.className = "v27Home";
@@ -591,6 +595,12 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     }
   }
 
+  function orderSec(name, order) {
+    const el = home();
+    const box = el && el.querySelector(`[data-sec="${name}"]`);
+    if (box) box.style.order = String(order);
+  }
+
   const SKEL_STRIP = '<div class="v27Strip">' + '<div class="v27Skel" style="flex:0 0 112px;height:84px"></div>'.repeat(3) + "</div>";
   const SKEL_HERO = '<div class="v27Skel" style="height:300px"></div>';
 
@@ -605,10 +615,12 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     setSec("strip", stripHtml(d), 1);
     setSec("russians", russiansHtml(d), 2);
     setSec("hero", d.featured ? heroHtml(d.featured) : "", results ? 4 : 3);
-    setSec("goals", goalsHtml(d), results ? 3 : 4);
+    // the votes of the night come right after the match of the day
+    orderSec("predict", results ? 5 : 4);
+    setSec("goals", goalsHtml(d), results ? 3 : 5);
   }
-  const paintNews = () => setSec("news", newsHtml(), 5);
-  const paintVideos = () => setSec("videos", videosHtml(), 6);
+  const paintNews = () => setSec("news", newsHtml(), 6);
+  const paintVideos = () => setSec("videos", videosHtml(), 7);
   function paintAll() {
     paintHome();
     paintNews();

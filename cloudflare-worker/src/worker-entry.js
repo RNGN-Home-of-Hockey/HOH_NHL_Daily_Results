@@ -21,6 +21,7 @@ import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
 import { getPostgameIngestionStatus, runPostgameFinalizer } from "./postgame-finalizer.js";
 import { broadcastInsightAnalyticsSummary } from "./broadcast-insight-history.js";
+import { runFanPredictionDigest, runFanPredictionSettlement } from "./telegram-center-v29-predictions.js";
 
 const CANARY_SEASON = "20242025";
 const CANARY_START_DATE = "2024-10-04";
@@ -187,6 +188,19 @@ export default {
           await runPostgameFinalizer(env);
         } catch (error) {
           console.error("scheduled postgame finalizer failed", error);
+        }
+        // the game of the fans: points for the finished games, then the morning message of the bot
+        try {
+          await runFanPredictionSettlement(env);
+        } catch (error) {
+          console.error("scheduled fan prediction settlement failed", error);
+        }
+        if (envFlag(env.FAN_PREDICTIONS_DIGEST_ENABLED, false)) {
+          try {
+            await runFanPredictionDigest(env);
+          } catch (error) {
+            console.error("scheduled fan prediction morning digest failed", error);
+          }
         }
         if (envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
           try {
