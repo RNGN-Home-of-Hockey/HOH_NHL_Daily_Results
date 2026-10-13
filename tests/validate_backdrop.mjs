@@ -25,10 +25,11 @@ const BG_DIR = new URL("../cloudflare-worker/public/telegram-app/bg/", import.me
     assert.ok(b[20] & 0x10, `${name}: with an alpha channel (a silhouette, not a photo with a background)`);
     const w = b.readUIntLE(24, 3) + 1;
     const h = b.readUIntLE(27, 3) + 1;
-    assert.ok(w >= 400 && w <= 1000 && h >= 400 && h <= 1000, `${name}: a sensible size (${w}x${h})`);
-    assert.ok(b.length < 80 * 1024, `${name}: light (${b.length} bytes)`);
+    assert.ok(Math.max(w, h) >= 900, `${name}: sharp on a 3x phone screen, not a thumbnail (${w}x${h})`);
+    assert.ok(Math.max(w, h) <= 1600, `${name}: not bigger than a phone needs (${w}x${h})`);
+    assert.ok(b.length < 400 * 1024, `${name}: one screen loads one picture, under 400 KB (${b.length} bytes)`);
   }
-  assert.ok(total < 700 * 1024, `all of them together stay light (${total} bytes)`);
+  assert.ok(total < 3.5 * 1024 * 1024, `all of them together (${total} bytes)`);
 }
 
 // ---- 2) the routes -----------------------------------------------------------------------------------------------------------------
@@ -178,13 +179,29 @@ const layerOf = (ctx) => ctx.document.getElementById("hohSil");
   const k = ctx.S.choose({ key: "games" }).k;
   assert.equal(layer.dataset.sil, k);
   assert.ok(["left", "right"].includes(layer.dataset.side));
-  assert.equal(layer.style.getPropertyValue("--sil-img"), `url("/telegram-app/bg/${k}.webp?v=1")`, "a picture of our own server");
+  assert.equal(layer.style.getPropertyValue("--sil-img"), `url("/telegram-app/bg/${k}.webp?v=2")`, "a picture of our own server");
   const css = ctx.document.getElementById("v28css").textContent;
   assert.match(css, /#hohSil\{position:fixed;z-index:0;[^}]*pointer-events:none;opacity:0;transition:opacity \.6s/, "fixed, behind, never in the way of a tap, fades in");
   assert.match(css, /mask-image:var\(--sil-img\)/, "a flat shape: the picture is a mask, not a photo");
   assert.match(css, /#hohSil\.on\{opacity:var\(--sil-op\)\}/);
   const op = Number(/html\{--sil-a:[^;]+;--sil-b:[^;]+;--sil-op:([\d.]+)\}/.exec(css)[1]);
-  assert.ok(op > 0.08 && op <= 0.25, `light, not a photo (${op})`);
+  assert.ok(op >= 0.35 && op <= 0.55, `clearly seen, still a background (${op})`);
+  const darkOp = Number(/html:not\(\.v15Light\)\{--sil-a:[^;]+;--sil-b:[^;]+;--sil-op:([\d.]+)\}/.exec(css)[1]);
+  assert.ok(darkOp >= 0.28 && darkOp <= 0.5, `and in the dark theme (${darkOp})`);
+  // the player is seen behind the blocks: while the silhouettes are on, the glass of the cards is thin and nearly not blurred
+  const alphaOf = (re, what) => {
+    const m = re.exec(css);
+    assert.ok(m, `${what}: set while the silhouettes are on`);
+    const a = Number(m[1]);
+    assert.ok(a >= 0.3 && a <= 0.5, `${what}: see-through enough for the player behind, solid enough for the text (${a})`);
+  };
+  alphaOf(/html\.hohSil\{--hoh-glass-light:rgba\(255,255,255,([\d.]+)\);/, "the cards of every tab, light");
+  alphaOf(/html\.hohSil\{[^}]*--hoh-glass-dark:rgba\(14,16,24,([\d.]+)\);/, "the cards of every tab, dark");
+  assert.match(css, /html\.hohSil\{[^}]*--hoh-blur:blur\(1\.5px\)\}/, "and nearly not blurred");
+  alphaOf(/html\.hohSil\.v15Light \.v27Home,[^{]*\{--c-card:rgba\(255,255,255,([\d.]+)\)/, "the blocks of the home page, light");
+  alphaOf(/html\.hohSil:not\(\.v15Light\) \.v27Home,[^{]*\{--c-card:rgba\(16,18,26,([\d.]+)\)/, "the blocks of the home page, dark");
+  assert.match(css, /html\.hohSil :is\(\.v27Hero,\.v27NewsList,\.v27Article,\.v27Settings\)\{-webkit-backdrop-filter:blur\(1\.5px\);backdrop-filter:blur\(1\.5px\)\}/, "the match of the day is not frosted");
+  assert.match(css, /#hohSil\{position:fixed;z-index:0;top:7vh;bottom:-1vh;/, "tall: from the top block down to the bottom");
   assert.match(css, /html:not\(\.v15Light\)\{--sil-a:[^;]+;--sil-b:[^;]+;--sil-op:[\d.]+\}/, "its own colours in the dark theme");
   assert.match(css, /html\.hohSil body:before\{background-image:linear-gradient\([^)]*\)[^;]*!important/, "the old goalie photo gives way to a plain tint");
 

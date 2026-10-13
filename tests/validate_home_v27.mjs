@@ -321,7 +321,11 @@ const BASE = "https://clips.test";
   new Function(source);
   assert.equal((await handleTelegramCenterV27(new Request("https://x.test/telegram-app/v27-home.js", { method: "POST" }), {}, "/telegram-app/v27-home.js")).status, 405);
 
-  // the whole chain with a fake database: the SQL answers, the shared edge cache is used
+  // the whole chain with a fake database: the SQL answers, the shared edge cache is used.
+  // The clock is fixed at 11:00 Moscow time: the results of the night stay on the page until 15:00 Moscow time, so with the
+  // real clock this part failed whenever the tests ran in the afternoon.
+  const realNow = Date.now;
+  Date.now = () => Date.parse("2026-10-13T08:00:00Z");
   const realFetch = globalThis.fetch;
   const realCaches = globalThis.caches;
   const row = (pk, startOffsetH, state, extra = {}) => {
@@ -364,6 +368,7 @@ const BASE = "https://clips.test";
   assert.equal(prepared, afterFirst, "the second visitor within seconds reads nothing from the database");
   globalThis.caches = realCaches;
   globalThis.fetch = realFetch;
+  Date.now = realNow;
 
   // the match of the day with focus=now: a game on beats the rest, a game not finished beats the finished ones
   const featRows = (list) => ({ HOH_CLIPS_BASE: BASE, DB: db(list) });
