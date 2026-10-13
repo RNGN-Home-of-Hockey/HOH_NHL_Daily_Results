@@ -37,7 +37,7 @@ Output (`local-data/epl/normalized/`): `teams.json`, `players.json`, `matches.js
 | Player stats per season (`/stats/player/{id}?comps=1&compSeasons=`) | ~140-190 Opta stats per player-season | 2009/10+ full set (shots, passes, tackles, duels; penalty-area and final-third entries); big chances 2010/11+; touches in opposition box 2011/12+; carries, progressive carries, shot-creating stats 2024/25+ (checked on two veterans, Henderson and Welbeck) | |
 | Team stats per match (`/stats/match/{id}`) | ~110-175 stats per team per match: shots, on target, possession, passes, corners, fouls | 1992/93-2005/06 nothing; 2006/07+ shots, on target, possession, passes, corners; 2016/17+ shots inside/outside the box and touches in the opposition box; 2025/26+ PPDA; 2026/27 carries (one mid-season match sampled per season) | `big_chance_*` keys appear intermittently, probably only when non-zero: do not read absence as "not tracked" |
 | Fantasy Premier League API | season stats, xG/xA, gameweek history, past seasons, injuries, penalty/corner takers | xG/xA from 2022/23; ICT index from 2016/17; defensive contribution from 2024/25 | FPL assists differ from official (FPL counts more); use PL numbers for assists |
-| Understat (`/getLeagueData/EPL/{year}`) | team xG, xGA, npxG, PPDA, deep completions, xPTS per match; player xG/xA/xGChain/xGBuildup/key passes | 2014/15+ (380 matches per season) | third party, terms not reviewed: owner decision before bulk use |
+| Understat (`/getLeagueData/EPL/{year}`) | team xG, xGA, npxG, PPDA, deep completions, xPTS per match; player xG/xA/xGChain/xGBuildup/key passes | 2014/15+ (380 matches per season) | NOT collected: its robots.txt is `User-agent: * / Disallow: /` (checked 2026-10-13). Three one-request format probes were made before that was known; nothing is stored. xG proxy from PL shots in the box etc. instead |
 | Sports.ru club squad pages (`/football/club/<slug>/team/`) | Russian names, birth date, nationality, height (JSON-LD) | 576 players on the 20 squad pages; 565 of 598 PL squad players matched (club + birth date) | answered 502/504 on 2026-10-12, fine on 2026-10-13: retry, never work around |
 | Wikidata | Russian labels (CC0) | fallback only | spelling differs from Sports.ru |
 | Transfermarkt | market values, transfers | not collected | anti-bot challenge (HTTP 202, empty body) and terms reportedly forbid automated access |
@@ -74,9 +74,9 @@ Market type ids seen on EPL / Champions League / Championship pages (`@NP@` is t
 | Cards, sending off | 99, 103 / 104, 661, 1060, 1041, 188 / 675 / 677 |
 | Player to score first / any time / last | 15, 197, 198 |
 
-Player lines: only three market types were seen (first scorer, to score, last scorer; 38 players each, "Выйдет и забьет" = comes on and scores, so substitutes count) and only on the featured match Nottingham Forest - Arsenal (2026-10-18). Not present on Everton - Chelsea, Champions League Arsenal - Lille and Championship Wolves - Bolton. Treat player lines as an optional layer, selected matches only.
+Player lines: three market types (first scorer 15, to score 197, last scorer 198; 38-48 players each; "Выйдет и забьет" = comes on and scores, so substitutes count). The page loads them lazily: they appear in the store only after the "Игроки" tab is opened (and the quick-markets group after "Быстрые"), so a capture must click every tab. Correction of an earlier note: the first probes did not open that tab and wrongly concluded that only one match had player lines. Capture of all 20 listed EPL matches on 2026-10-13 09:50 MSK: the 9 matches of 17-18 October had 114-144 player lines each (~240-270 lines in total), the 11 matches of 19 October and later had none and only ~43 lines (the line list grows as kickoff nears).
 
-Not yet verified: how these lines move in play for an EPL match and which player lines appear on match day. Capture test planned for the live EPL matches of 2026-10-17/18 (store timestamped snapshots, compare feed and site store).
+Not yet verified: how lines move in play for an EPL match and which extra markets appear on match day. Capture test planned for the live EPL matches of 2026-10-17/18 (timestamped snapshots).
 
 ## Insight rule families (football analogy of the NHL engine)
 
@@ -91,9 +91,30 @@ Each candidate = fact + sample + the exact Winline line it maps to + current odd
 
 Ranking is editorial relevance, not probability; no combos from one statistic used twice; odd/even markets get no cards (same policy as NHL).
 
+## Winline capture (`tools/winline_football/`)
+
+`catalogue.mjs` turns the store lines into normalized markets: family, period (FT/1H/2H), scope (match/home/away/player), exact line, outcomes with sides. The template placeholders (`@NP@`, `@1HT@`, `@1`/`@2`, `[a]`) are parsed generically, so the long tail of the ~100 market types per match is classified without listing every id (about 99% of lines get a family). Handicaps: the site stores the absolute size and the favourite flag (`favorite` 1 or 2); the favourite gives the goals. Player lines: `koef` is `"2@ Name/9"` (team index, name, optional number) with one price. `capture.mjs` opens the listing and each event page in the installed Chrome (`playwright-core`, no browser download), clicks every market tab and writes timestamped snapshots to `local-data/epl/winline/snapshots/<time>/` plus `latest.json`. Football is `idSport 1`, the Premier League `idChampionship 1`.
+
+```
+cd tools/winline_football && npm install && npm test        # 9 tests
+node capture.mjs [--championship 1] [--events id,id] [--limit 30] [--pause 2500]
+```
+
+About 12 s per match, one at a time; it stops at once if the site shows a challenge page. Storage on a server (owner will provide one) is the next step: the snapshots are plain JSON files with `captured_at`.
+
+## Team statistics per match (`epl_collect.py teamstats`)
+
+`stats/match/{id}` for every league match since 2016/17 and for matches between 2026/27 clubs since 2006/07 (about 5,000 requests, newest first, resumable) into `normalized/team_match_stats.json` (shots, on target, shots inside/outside the box, box touches, possession, corners, cards, PPDA, big chances, carries... keys the feed does not list for a match are absent).
+
+## Insight engine and operator site
+
+- `tools/epl_insights.py`: rules head-to-head wins / unbeaten run / totals / both teams to score, team scoring form against the exact team-total line, chance creation against this opponent (shots in the box vs the club's usual), league unbeaten run, player-to-score form. Whole-number lines count exact hits as refunds, not wins. Freshness limits: the latest meeting must be within 6 years, form windows look back 14 months, the chance baseline three seasons. One card per fact with the other lines as `alternatives`; at most 2 cards per rule and 12 per match. Score 0-100 = history vs price (Wilson lower bound against the implied probability), sample size, usable price, rule weight: editorial relevance, not a probability. 7 tests in `tests/test_epl_insights.py`.
+- `tools/epl_site_data.py`: Winline snapshot + our data (+ Russian names) into `local-data/epl/site/site.json`.
+- `epl-site/`: static light-theme operator console (match list with prices and best score, tabs Recommendations / all Winline markets / Players / Head-to-head / Form and statistics, "Эфир" queue with a placeholder plate until the Winline plate designs arrive, keyboard: arrows or j/k to switch matches, 1-5 for tabs). `python -I tools/epl_serve.py` serves it locally on 127.0.0.1:8780 with the data folder mounted as `/data/`; on a server serve `epl-site/` and copy `site.json` into its `data/` folder.
+
 ## Plan
 
-1. Done: collector, dataset, Russian names, tests, this document.
+1. Done: collector, dataset, Russian names, tests, this document, Winline capture, insight rules, operator site (local).
 2. Winline football collector: browser-based like the NBA script (Playwright store reader) plus the XML feed; timestamped snapshots so odds history and in-play movement are kept; run in GitHub Actions or on the owner's server. Football tables in D1 under an `epl_` prefix, migration number taken from the current highest at that time.
 3. Football data core in D1 (teams, players, matches, events, lineups, team stats per match, Russian names) and a daily/live sync.
 4. Insight engine: rule families above, evaluators on the exact Winline line, AIR SCORE style editorial score.

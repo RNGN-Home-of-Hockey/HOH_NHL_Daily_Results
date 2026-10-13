@@ -112,6 +112,7 @@ def quick_odds(event: dict) -> dict:
     if btts:
         quick["btts"] = [o["odds"] for o in btts[0]["outcomes"]]
     totals = [m for m in ins.find_markets(event, "total") if m.get("line") is not None and len(m["outcomes"]) == 2]
+    totals = [m for m in totals if m["line"] % 1 == 0.5] or totals  # a half line has no refund: the cleaner headline price
     if totals:
         best = min(totals, key=lambda m: abs(m["outcomes"][0]["odds"] - m["outcomes"][1]["odds"]))
         quick["total"] = {"line": best["line"], "over": best["outcomes"][0]["odds"], "under": best["outcomes"][1]["odds"]}
