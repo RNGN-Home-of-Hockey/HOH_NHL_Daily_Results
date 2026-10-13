@@ -22,9 +22,21 @@ export function homeScreenApp() {
   const MONTHS = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
   const VK_ROOTS = ["vkvideo.ru", "vk.com", "vk.ru", "userapi.com", "vkuser.net", "vk-cdn.net", "vkuserphoto.ru", "vkuserlive.net", "vkuseraudio.net", "vkusercontent.net"];
 
+  const FOLLOWS_TTL_MS = 5 * 60 * 1000;
+  const MAX_PLAYER_LOOKUPS = 8;
+  const store = {
+    get(key) {
+      try { return window.localStorage.getItem(key); } catch (e) { return null; }
+    },
+    set(key, value) {
+      try { window.localStorage.setItem(key, value); } catch (e) { /* private window: the choice is kept until the page closes */ }
+    },
+  };
+
   const st = (S.state = {
     data: null, news: null, newsAt: 0, media: null, mediaAt: 0, busy: false, fails: 0, timer: null, lastAt: 0,
     revealed: false, sections: {}, queue: [], goalIndex: -1, openNewsId: null,
+    follows: null, followsAt: 0, playerTeams: new Map(), mineOnly: store.get("hoh-home-mine") === "1", hintHidden: store.get("hoh-home-hint") === "1",
   });
 
   // ---- helpers ---------------------------------------------------------------------------------------------------------------
@@ -135,6 +147,53 @@ export function homeScreenApp() {
       if (u && !bad.has(u)) return u;
     }
     return "";
+  }
+
+  // ---- my teams and players: the follows of the person -----------------------------------------------------------------------
+  // Only inside Telegram the person is known; anywhere else the list comes back empty and the page stays the same for everybody.
+  const norm = (v) => String(v || "").toLowerCase().replace(/ё/g, "е");
+  const stem = (word) => {
+    const s = norm(word);
+    return s.length >= 7 ? s.slice(0, -2) : s.length === 6 ? s.slice(0, -1) : s;
+  };
+  const followed = () => st.follows && st.follows.ok && (st.follows.teams.size > 0 || st.follows.players.size > 0);
+  function playerTeam(id) {
+    if (st.playerTeams.has(id)) return st.playerTeams.get(id);
+    const found = ((st.data && st.data.russians && st.data.russians.items) || []).find((x) => x.player_id === id);
+    return found ? found.team : null;
+  }
+  function myTeams() {
+    const set = new Set();
+    if (!st.follows) return set;
+    st.follows.teams.forEach((t) => set.add(t));
+    st.follows.players.forEach((name, id) => {
+      const t = playerTeam(id);
+      if (t) set.add(t);
+    });
+    return set;
+  }
+  const isMineGame = (g, teams) => teams.has(String(g.away && g.away.tri).toUpperCase()) || teams.has(String(g.home && g.home.tri).toUpperCase());
+  function mineTokens() {
+    const out = [];
+    if (!st.follows) return out;
+    st.follows.teamNames.forEach((name) => {
+      const words = String(name || "").trim().split(/\s+/);
+      const nick = words[words.length - 1];
+      if (nick && nick.length >= 4) out.push(stem(nick));
+      const city = words.slice(0, -1).join(" ");
+      if (city.length >= 4 && !/^нью-йорк$/i.test(city)) out.push(stem(city));
+    });
+    st.follows.players.forEach((name) => {
+      const longest = String(name || "").trim().split(/\s+/).slice(1).sort((a, b) => b.length - a.length)[0] || "";
+      if (longest.length >= 4) out.push(stem(longest));
+    });
+    return [...new Set(out)];
+  }
+  function newsIsMine(x) {
+    const tokens = mineTokens();
+    if (!tokens.length) return false;
+    const title = norm(x.title);
+    return tokens.some((token) => title.includes(token));
   }
 
   // ---- styles ----------------------------------------------------------------------------------------------------------------
@@ -255,12 +314,32 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
 .v27NCard .t{font-size:15px;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .v27NCard .p{font-size:13px;line-height:1.4;color:var(--c-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .v27NList{display:grid;gap:8px}
+.v27Chip{position:relative}
+.v27Star{position:absolute;right:8px;top:6px;font-style:normal;font-size:12px;line-height:1;color:var(--c-accent)}
+.v27Seg{display:inline-flex;border:1px solid var(--c-line);border-radius:999px;overflow:hidden;background:var(--c-card)}
+.v27Seg button{border:0;background:none;color:var(--c-muted);font:inherit;font-size:12px;font-weight:700;padding:5px 11px;cursor:pointer}
+.v27Seg button.on{background:var(--c-accent);color:#fff}
+.v27Hint{display:flex;align-items:center;gap:6px;margin-top:8px;padding:9px 12px;border:1px dashed var(--c-line);border-radius:12px;font-size:13px;color:var(--c-muted)}
+.v27Hint button[data-v27-follow]{flex:1;border:0;background:none;padding:0;text-align:left;font:inherit;font-size:13px;font-weight:600;color:var(--c-lav);cursor:pointer}
+.v27Hint button[data-v27-hint-close]{border:0;background:none;color:var(--c-muted);font-size:18px;line-height:1;padding:0 4px;cursor:pointer}
+.v27Rus{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;margin:0 -2px;padding:2px 2px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.v27Rus::-webkit-scrollbar{display:none}
+.v27Ru{flex:0 0 84px;scroll-snap-align:start;display:grid;gap:3px;justify-items:center;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer;text-align:center}
+.v27Ru .ph{position:relative;display:grid;place-items:center;width:62px;height:62px;border-radius:50%;background:radial-gradient(circle at 50% 35%,#2b3040,#12141c 80%);border:2px solid var(--c-line);overflow:hidden}
+.v27Ru.mine .ph{border-color:var(--c-accent)}
+.v27Ru .ph img{position:absolute;left:0;bottom:0;width:100%;height:100%;object-fit:cover;object-position:top}
+.v27Ru .ph i{font-style:normal;font-size:20px;font-weight:800;color:#c5c8d6}
+.v27Ru .ph em{position:absolute;right:3px;top:3px;width:9px;height:9px;border-radius:50%;background:var(--c-live);border:2px solid var(--c-card)}
+.v27Ru b{font-size:13px;font-weight:800;line-height:1.15;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.v27Ru .st{font-size:13px;font-weight:700;min-height:16px}
+.v27Ru small{font-size:11px;color:var(--c-muted);font-weight:600}
+.v27Mine{color:var(--c-accent);font-weight:800}
 `;
     document.head.appendChild(style);
   }
 
   // ---- renderers -------------------------------------------------------------------------------------------------------------
-  function chipHtml(g, hide) {
+  function chipHtml(g, hide, mine) {
     const live = g.phase === "live";
     const done = g.phase === "final";
     const away = g.away || {};
@@ -274,7 +353,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
       ? `<b>${hide ? `•${colon}•` : `${n0(g.away_score)}${colon}${n0(g.home_score)}`}</b>`
       : '<b class="dash">—</b>';
     const label = `${away.name_ru || away.tri || ""} — ${homeTeam.name_ru || homeTeam.tri || ""}`;
-    return `<button type="button" class="v27Chip ${live ? "live" : done ? "done" : "up"}" data-v27-game="${esc(g.game_pk)}" aria-label="${esc(label)}"><span class="v27ChipTop">${status}</span><span class="v27ChipMid"><img src="${esc(away.logo || "")}" alt="">${mid}<img src="${esc(homeTeam.logo || "")}" alt=""></span><span class="v27ChipTri">${esc(away.tri || "")} · ${esc(homeTeam.tri || "")}</span></button>`;
+    return `<button type="button" class="v27Chip ${live ? "live" : done ? "done" : "up"}${mine ? " mine" : ""}" data-v27-game="${esc(g.game_pk)}" aria-label="${esc(label)}${mine ? " (ваша команда)" : ""}">${mine ? '<i class="v27Star" aria-hidden="true">★</i>' : ""}<span class="v27ChipTop">${status}</span><span class="v27ChipMid"><img src="${esc(away.logo || "")}" alt="">${mid}<img src="${esc(homeTeam.logo || "")}" alt=""></span><span class="v27ChipTri">${esc(away.tri || "")} · ${esc(homeTeam.tri || "")}</span></button>`;
   }
 
   function stripHtml(d) {
@@ -284,7 +363,49 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     const today = localToday();
     const day = d.strip_day === today ? "сегодня" : shortDate(d.strip_day);
     const caption = d.mode === "results" ? `Итоги · ${day}` : `${day.charAt(0).toUpperCase()}${day.slice(1)} · ${games.length} ${plural(games.length, "матч", "матча", "матчей")}`;
-    return `<div class="v27Head"><b>${esc(caption)}</b><button type="button" data-v27-all="1">Все матчи ›</button></div><div class="v27Strip">${games.map((g) => chipHtml(g, hide)).join("")}<button type="button" class="v27ChipMore" data-v27-all="1">Все матчи</button></div>`;
+    // my games come right after the ones that are on; with "Мои" only they are alone
+    const teams = myTeams();
+    const mineCount = games.filter((g) => isMineGame(g, teams)).length;
+    const onlyMine = st.mineOnly && mineCount > 0;
+    let list = games.map((g) => ({ g, mine: isMineGame(g, teams) }));
+    list.sort((a, b) => (a.g.phase === "live" ? 0 : 1) * 2 + (a.mine ? 0 : 1) - ((b.g.phase === "live" ? 0 : 1) * 2 + (b.mine ? 0 : 1)));
+    if (onlyMine) list = list.filter((x) => x.mine);
+    const right = mineCount > 0
+      ? `<span class="v27Seg"><button type="button" data-v27-seg="all"${onlyMine ? "" : ' class="on"'}>Все</button><button type="button" data-v27-seg="mine"${onlyMine ? ' class="on"' : ""}>★ Мои</button></span>`
+      : '<button type="button" data-v27-all="1">Все матчи ›</button>';
+    const hint = st.follows && st.follows.ok && !followed() && !st.hintHidden
+      ? '<div class="v27Hint"><button type="button" data-v27-follow="1">☆ Выберите любимые команды: их матчи будут первыми</button><button type="button" data-v27-hint-close="1" aria-label="Скрыть">×</button></div>'
+      : "";
+    return `<div class="v27Head"><b>${esc(caption)}</b>${right}</div><div class="v27Strip">${list.map((x) => chipHtml(x.g, hide, x.mine)).join("")}<button type="button" class="v27ChipMore" data-v27-all="1">Все матчи</button></div>${hint}`;
+  }
+
+  function russiansTitle(d) {
+    if (d.mode === "live") return "Русские в игре";
+    if (d.mode === "results") return "Русские: как сыграли";
+    return d.russians.day === localToday() ? "Русские сегодня" : `Русские · ${shortDate(d.russians.day)}`;
+  }
+
+  function russianHtml(p, hide, mine) {
+    const name = p.name_ru || p.name_en || "Игрок";
+    const played = p.phase === "live" || p.phase === "final";
+    let stat = "";
+    if (!played) stat = clock(p.start);
+    else if (p.line && !hide) stat = p.line.kind === "g" ? `${p.line.saves} из ${p.line.shots}` : `${p.line.goals}+${p.line.assists}`;
+    else stat = hide ? "•" : "";
+    const photo = p.photo ? `<img loading="lazy" decoding="async" src="${esc(p.photo)}" alt="">` : "";
+    const initial = surname(name).charAt(0);
+    return `<button type="button" class="v27Ru${mine ? " mine" : ""}" data-v27-ru="${esc(p.player_id)}"><span class="ph"><i>${esc(initial)}</i>${photo}${p.phase === "live" ? "<em></em>" : ""}</span><b>${mine ? "★ " : ""}${esc(surname(name))}</b><span class="st">${esc(stat)}</span><small>${esc(p.team)} ${p.home ? "vs" : "@"} ${esc(p.opp)}</small></button>`;
+  }
+
+  function russiansHtml(d) {
+    const r = d.russians;
+    if (!r || !r.ok || !r.items || !r.items.length) return "";
+    const hide = noSpoilers();
+    const mineIds = st.follows ? st.follows.players : new Map();
+    const items = r.items.map((p) => ({ p, mine: mineIds.has(p.player_id) }));
+    items.sort((a, b) => Number(b.mine) - Number(a.mine));
+    const hasStats = !hide && r.items.some((p) => p.line);
+    return `<div class="v27Head"><b>${esc(russiansTitle(d))}</b>${hasStats ? "<small>голы + передачи</small>" : ""}</div><div class="v27Rus v27Shelf">${items.map((x) => russianHtml(x.p, hide, x.mine)).join("")}</div>`;
   }
 
   function oddHtml(label, value, gamePk) {
@@ -332,14 +453,14 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     return `Голы · ${shortDate(gl.day)}`;
   }
 
-  function tileHtml(t, i) {
+  function tileHtml(t, i, mine) {
     const name = t.scorer_ru || t.scorer_en || "Гол";
     const logo = t.team && t.home && t.team === t.home.tri ? t.home.logo : t.away && t.away.logo;
     const poster = t.poster_url
       ? `<img class="cover" loading="lazy" decoding="async" src="${esc(t.poster_url)}" alt="">`
       : `<span class="logos"><img src="${esc(t.away && t.away.logo)}" alt=""><img src="${esc(t.home && t.home.logo)}" alt=""></span>`;
     const dur = duration(t.duration);
-    return `<button type="button" class="v27Goal" data-v27-goal="${i}" aria-label="Смотреть гол: ${esc(name)}"><span class="v27Poster">${poster}<span class="play">${PLAY_SVG}</span>${dur ? `<em>${dur}</em>` : ""}</span><span class="nm">${esc(surname(name))}</span><span class="sc"><img src="${esc(logo || "")}" alt="">${esc(t.away && t.away.tri)} ${n0(t.away_score)}:${n0(t.home_score)} ${esc(t.home && t.home.tri)}</span><span class="tm">${esc(t.period_short)}${t.time ? ` · ${esc(t.time)}` : ""}</span></button>`;
+    return `<button type="button" class="v27Goal" data-v27-goal="${i}" aria-label="Смотреть гол: ${esc(name)}"><span class="v27Poster">${poster}<span class="play">${PLAY_SVG}</span>${dur ? `<em>${dur}</em>` : ""}</span><span class="nm">${mine ? '<span class="v27Mine">★</span> ' : ""}${esc(surname(name))}</span><span class="sc"><img src="${esc(logo || "")}" alt="">${esc(t.away && t.away.tri)} ${n0(t.away_score)}:${n0(t.home_score)} ${esc(t.home && t.home.tri)}</span><span class="tm">${esc(t.period_short)}${t.time ? ` · ${esc(t.time)}` : ""}</span></button>`;
   }
 
   function goalsHtml(d) {
@@ -350,19 +471,32 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     if (noSpoilers() && !st.revealed) {
       return `<div class="v27Head"><b>${esc(title)}</b></div><div class="v27Note">Включён режим «без спойлеров»: голы и счёт скрыты.<button type="button" data-v27-reveal="1">Показать голы</button></div>`;
     }
-    return `<div class="v27Head"><b>${esc(title)}</b><small>${esc(count)}</small></div><div class="v27Shelf">${gl.items.map(tileHtml).join("")}</div>`;
+    const teams = myTeams();
+    const players = st.follows ? st.follows.players : new Map();
+    const mineTile = (t) => teams.has(String(t.team || "").toUpperCase()) || players.has(t.scorer_id);
+    return `<div class="v27Head"><b>${esc(title)}</b><small>${esc(count)}</small></div><div class="v27Shelf">${gl.items.map((t, i) => tileHtml(t, i, mineTile(t))).join("")}</div>`;
   }
 
-  function newsRowHtml(x) {
+  function newsMetaHtml(x, mine) {
     const c = Number(x.comment_count || 0);
     const badge = x.source_badge ? `<span class="v27Badge">${esc(x.source_badge)}</span>` : "";
-    return `<button type="button" class="v27News" data-v27-news="${esc(x.news_id)}"><span class="v27NTitle">${esc(x.title)}</span><span class="v27NMeta">${badge}<span>${esc(ago(x.published_at || x.created_at))}</span>${c > 0 ? `<span class="cm">${CHAT_SVG}${c}</span>` : ""}</span></button>`;
+    return `<span class="v27NMeta">${mine ? '<span class="v27Mine">★ ваша команда</span>' : ""}${badge}<span>${esc(ago(x.published_at || x.created_at))}</span>${c > 0 ? `<span class="cm">${CHAT_SVG}${c}</span>` : ""}</span>`;
+  }
+
+  function newsRowHtml(x, mine) {
+    return `<button type="button" class="v27News" data-v27-news="${esc(x.news_id)}"><span class="v27NTitle">${esc(x.title)}</span>${newsMetaHtml(x, mine)}</button>`;
+  }
+
+  // the three news of the home page: those about my teams and players first, the newest ones fill the rest
+  function homeNews() {
+    const flagged = (st.news || []).map((x) => ({ x, mine: newsIsMine(x) }));
+    return [...flagged.filter((f) => f.mine), ...flagged.filter((f) => !f.mine)].slice(0, HOME_NEWS_COUNT);
   }
 
   function newsHtml() {
-    const list = (st.news || []).slice(0, HOME_NEWS_COUNT);
+    const list = homeNews();
     if (!list.length) return "";
-    return `<div class="v27Head"><b>Свежее в НХЛ</b><button type="button" data-v27-news-all="1">Все новости ›</button></div><div class="v27NewsList">${list.map(newsRowHtml).join("")}</div>`;
+    return `<div class="v27Head"><b>Свежее в НХЛ</b><button type="button" data-v27-news-all="1">Все новости ›</button></div><div class="v27NewsList">${list.map((f) => newsRowHtml(f.x, f.mine)).join("")}</div>`;
   }
 
   const ruTitle = (title, kind) => {
@@ -381,7 +515,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
   }
 
   // ---- painting --------------------------------------------------------------------------------------------------------------
-  const SECTIONS = ["strip", "hero", "goals", "news", "videos"];
+  const SECTIONS = ["strip", "hero", "goals", "russians", "news", "videos"];
   function build() {
     const el = document.createElement("section");
     el.className = "v27Home";
@@ -421,13 +555,20 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     setSec("strip", stripHtml(d), 1);
     setSec("hero", d.featured ? heroHtml(d.featured) : "", results ? 3 : 2);
     setSec("goals", goalsHtml(d), results ? 2 : 3);
+    setSec("russians", russiansHtml(d), 4);
   }
-  const paintNews = () => setSec("news", newsHtml(), 4);
-  const paintVideos = () => setSec("videos", videosHtml(), 5);
+  const paintNews = () => setSec("news", newsHtml(), 5);
+  const paintVideos = () => setSec("videos", videosHtml(), 6);
   function paintAll() {
     paintHome();
     paintNews();
     paintVideos();
+  }
+  // the follows arrived or changed: everything that depends on "my" is drawn again
+  function paintPersonal() {
+    if (!home()) return;
+    paintHome();
+    paintNews();
   }
 
   // ---- loading ---------------------------------------------------------------------------------------------------------------
@@ -464,17 +605,52 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     if (typeof H.runCore === "function") setTimeout(() => H.runCore(), 0);
   }
 
+  // The follows of the person (teams and players). Not inside Telegram: an empty answer, nothing personal on the page.
+  async function loadFollows(force, homeDone) {
+    if (!force && st.follows && Date.now() - st.followsAt < FOLLOWS_TTL_MS) return;
+    st.followsAt = Date.now();
+    const next = { ok: false, teams: new Set(), teamNames: new Map(), players: new Map() };
+    try {
+      const d = await H.api(`${H.V2 || "/api/telegram-center-v2"}/subscriptions`);
+      if (d && d.ok !== false && Array.isArray(d.subscriptions)) {
+        next.ok = true;
+        for (const s of d.subscriptions) {
+          if (s.subject_type === "team") {
+            const tri = String(s.subject_key || "").toUpperCase();
+            next.teams.add(tri);
+            next.teamNames.set(tri, String(s.name || ""));
+          } else if (s.subject_type === "player") {
+            const id = Number(s.subject_key);
+            if (id) next.players.set(id, String(s.name || ""));
+          }
+        }
+      }
+    } catch (e) { /* no personal part */ }
+    st.follows = next;
+    paintPersonal(); // the teams are known: stars at once
+    // the team of a followed player that is not in the Russians list: asked once, remembered
+    if (homeDone) await homeDone; // the Russians list answers most of the questions
+    const ids =[...next.players.keys()].filter((id) => !playerTeam(id)).slice(0, MAX_PLAYER_LOOKUPS);
+    await Promise.allSettled(ids.map(async (id) => {
+      const d = await H.api(`/api/telegram-center-v17/players/${id}`);
+      const tri = d && d.player && d.player.current_team_tri;
+      if (tri) st.playerTeams.set(id, String(tri).toUpperCase());
+    }));
+  }
+
   async function refresh() {
     if (st.busy || S.failed) return;
     st.busy = true;
     try {
+      const homeDone = loadHome().then(paintHome, () => {
+        st.fails += 1;
+        if (!st.data && st.fails >= 2) giveUp();
+      });
       await Promise.allSettled([
-        loadHome().then(paintHome, () => {
-          st.fails += 1;
-          if (!st.data && st.fails >= 2) giveUp();
-        }),
+        homeDone,
         loadNews().then(paintNews, () => {}),
         loadMedia().then(paintVideos, () => {}),
+        loadFollows(false, homeDone).then(paintPersonal, () => {}),
       ]);
     } finally {
       st.busy = false;
@@ -601,6 +777,28 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
       st.revealed = true;
       return paintHome();
     }
+    const seg = t.closest("[data-v27-seg]");
+    if (seg) {
+      st.mineOnly = seg.dataset.v27Seg === "mine";
+      store.set("hoh-home-mine", st.mineOnly ? "1" : "0");
+      return paintHome();
+    }
+    if (t.closest("[data-v27-follow]")) {
+      const tab = document.querySelector('.tab[data-tab="teams"]');
+      if (tab) tab.click();
+      return;
+    }
+    if (t.closest("[data-v27-hint-close]")) {
+      st.hintHidden = true;
+      store.set("hoh-home-hint", "1");
+      return paintHome();
+    }
+    const ru = t.closest("[data-v27-ru]");
+    if (ru) {
+      const id = Number(ru.dataset.v27Ru);
+      if (id && typeof H.openPlayer === "function") H.openPlayer(id);
+      return;
+    }
     const news = t.closest("[data-v27-news]");
     if (news) return openNews(Number(news.dataset.v27News));
     if (t.closest("[data-v27-news-all]")) return openNews(null);
@@ -629,10 +827,8 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
   }
 
   function cardHtml(x) {
-    const c = Number(x.comment_count || 0);
-    const badge = x.source_badge ? `<span class="v27Badge">${esc(x.source_badge)}</span>` : "";
     const preview = x.body_text ? `<span class="p">${esc(String(x.body_text).replace(/\s+/g, " ").slice(0, 200))}</span>` : "";
-    return `<button type="button" class="v27NCard" data-v27-open="${esc(x.news_id)}"><span class="t">${esc(x.title)}</span>${preview}<span class="v27NMeta">${badge}<span>${esc(ago(x.published_at || x.created_at))}</span>${c > 0 ? `<span class="cm">${CHAT_SVG}${c}</span>` : ""}</span></button>`;
+    return `<button type="button" class="v27NCard" data-v27-open="${esc(x.news_id)}"><span class="t">${esc(x.title)}</span>${preview}${newsMetaHtml(x, newsIsMine(x))}</button>`;
   }
 
   function paintNewsList() {
@@ -741,6 +937,8 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
       paintHome();
     } else if (img.closest(".v27Poster") && img.classList.contains("cover")) {
       img.remove();
+    } else if (img.closest(".v27Ru")) {
+      img.remove(); // the initial letter underneath stays
     }
   }, true);
 

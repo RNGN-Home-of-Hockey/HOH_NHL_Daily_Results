@@ -1,15 +1,17 @@
 // Live Center v27: the home page. One answer for the whole first screen (score strip, match of the day, goal clips) and the script
 // that draws it. News and the YouTube videos keep their own endpoints.
 import { stateInfo, phaseOf, DEFAULT_CLIPS_BASE } from "./telegram-center-v26-goals-data.js";
-import { loadNames, fetchJson } from "./telegram-center-v26-goals.js";
+import { loadNames, fetchJson, seasonIdOf } from "./telegram-center-v26-goals.js";
 import { handleTelegramCenterV19ProductData } from "./telegram-center-v19-product-data.js";
 import { homeScreenApp } from "./telegram-center-v27-home-ui.js";
-import { gameFromRow, buildHomePayload, applyNames, applyHeroLive } from "./telegram-center-v27-home-data.js";
+import { gameFromRow, buildHomePayload, applyNames, applyHeroLive, stripOf } from "./telegram-center-v27-home-data.js";
+import { buildRussians } from "./telegram-center-v27-russians.js";
 
 export const HOME_PATH = "/api/telegram-center-v27/home";
 export const SCRIPT_PATH = "/telegram-app/v27-home.js";
 const FEATURED_PATH = "/api/telegram-center-v19/featured";
 const NHL_LANDING = (gamePk) => `https://api-web.nhle.com/v1/gamecenter/${gamePk}/landing`;
+const NHL_BOX = (gamePk) => `https://api-web.nhle.com/v1/gamecenter/${gamePk}/boxscore`;
 const EDGE_CACHE_SECONDS = 10;
 const BEHIND_MS = 40 * 3600 * 1000;
 const AHEAD_MS = 72 * 3600 * 1000;
@@ -59,7 +61,28 @@ async function loadHeroLive(featured) {
   };
 }
 
+// Russians who play on the day of the strip. Box scores of games that are on (10 s) or finished (1 h) say how they played.
+async function loadRussians(env, dayGames, now) {
+  const tris = [...new Set(dayGames.flatMap((g) => [g.away.tri, g.home.tri]).filter(Boolean))];
+  if (!tris.length) return [];
+  const marks = tris.map(() => "?").join(",");
+  const rows = await env.DB.prepare(`
+    SELECT p.player_id,COALESCE(m.full_name_ru,p.full_name_ru) full_name_ru,p.full_name_en,p.current_team_tri,p.position_code,p.sweater_number
+    FROM players p JOIN player_profile_meta m ON m.player_id=p.player_id
+    WHERE m.primary_country_code='RUS' AND COALESCE(p.active,1)=1 AND p.current_team_tri IN (${marks});
+  `).bind(...tris).all();
+  const players = rows.results || [];
+  if (!players.length) return [];
+  const withRussians = new Set(players.map((p) => String(p.current_team_tri).toUpperCase()));
+  const boxes = new Map();
+  await Promise.allSettled(dayGames
+    .filter((g) => (g.phase === "live" || g.phase === "final") && (withRussians.has(g.away.tri) || withRussians.has(g.home.tri)))
+    .map(async (g) => { boxes.set(g.game_pk, await fetchJson(NHL_BOX(g.game_pk), { ttl: g.phase === "live" ? 10 : 3600, timeoutMs: 5000 })); }));
+  return buildRussians({ games: dayGames, players, boxes, season: seasonIdOf(now) });
+}
+
 const realDeps = {
+  loadRussians,
   loadGames: (env, now) => loadGames(env.DB, now),
   loadFeatured,
   loadIndex: (base) => fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 }),
@@ -75,16 +98,20 @@ export async function loadHomePayload(env, { now = Date.now(), deps = realDeps }
   // the first pass only decides the mood of the page and the day of the match of the day
   const first = buildHomePayload({ games, now });
 
-  const [featuredResult, indexResult] = await Promise.allSettled([
+  const [featuredResult, indexResult, russiansResult] = await Promise.allSettled([
     first.hero_day ? deps.loadFeatured(env, first.hero_day) : Promise.resolve(null),
     deps.loadIndex(base),
+    first.strip_day && deps.loadRussians ? deps.loadRussians(env, stripOf(games, first.strip_day), now) : Promise.resolve([]),
   ]);
+  if (russiansResult.status === "rejected") console.error("v27 russians failed", russiansResult.reason);
   const featured = featuredResult.status === "fulfilled" ? featuredResult.value : null;
   if (featuredResult.status === "rejected") console.error("v27 featured failed", featuredResult.reason);
   const index = indexResult.status === "fulfilled" ? indexResult.value : null;
   const payload = buildHomePayload({
     games, now, featured, index, indexOk: Boolean(index && Array.isArray(index.games)), clipsBase: base,
   });
+
+  payload.russians = { ok: russiansResult.status === "fulfilled", day: first.strip_day, items: russiansResult.status === "fulfilled" ? russiansResult.value : [] };
 
   const ids = [...new Set(payload.goals.items.map((t) => t.scorer_id).filter(Boolean))];
   if (ids.length) {

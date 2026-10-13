@@ -7,6 +7,7 @@ import {
   nhlDateOf, gameFromRow, pickHome, stripOf, periodShort, playedTime, goalMoment, buildGoalTiles, applyNames, applyHeroLive, buildHomePayload,
   GOALS_WINDOW_MS, MAX_TILES, MIN_TILES,
 } from "../cloudflare-worker/src/telegram-center-v27-home-data.js";
+import { buildRussians, statLine, MAX_RUSSIANS } from "../cloudflare-worker/src/telegram-center-v27-russians.js";
 import { handleTelegramCenterV27, loadHomePayload } from "../cloudflare-worker/src/telegram-center-v27-home.js";
 import { handleTeamCurrentRequest } from "../cloudflare-worker/src/team-current-routes.js";
 import { handleTelegramCenterV19ProductData } from "../cloudflare-worker/src/telegram-center-v19-product-data.js";
@@ -180,7 +181,51 @@ const BASE = "https://clips.test";
   assert.equal(applyHeroLive({ games: [], featured: null }, { code: "LIVE" }).featured, null);
 }
 
-// ---- 3) the route ---------------------------------------------------------------------------------------------------------------
+// ---- 2b) Russians of the day ------------------------------------------------------------------------------------------------------
+{
+  const finalGame = game(-5, "OFF", { pk: 51, away: "VGK", home: "MIN", a: 2, h: 4 });
+  const upcomingGame = game(20, "FUT", { pk: 52, away: "SEA", home: "PHI" });
+  const postponed = game(3, "PPD", { pk: 53, away: "COL", home: "DAL" });
+  const p = (id, nameRu, tri, pos = "C") => ({ player_id: id, full_name_ru: nameRu, full_name_en: `En ${id}`, current_team_tri: tri, position_code: pos, sweater_number: id % 100 });
+  const players = [
+    p(1, "Кирилл Капризов", "MIN", "L"), p(2, "Филипп Червяков", "MIN", "G"), p(3, "Иван Баранов", "MIN", "D"), p(4, "Пётр Скрытый", "VGK", "C"),
+    p(5, "Андрей Свечников", "SEA"), p(6, "Матвей Мичков", "PHI"), p(7, "Не Играет", "COL"), p(8, "Пропустил Игру", "MIN"),
+  ];
+  const skater = (id, goals, assists, toi) => ({ playerId: id, goals, assists, points: goals + assists, toi });
+  const box = {
+    playerByGameStats: {
+      awayTeam: { forwards: [skater(4, 0, 0, "00:00")], defense: [], goalies: [] },
+      homeTeam: { forwards: [skater(1, 2, 1, "19:10")], defense: [skater(3, 0, 0, "21:30")], goalies: [{ playerId: 2, toi: "60:00", saves: 27, shotsAgainst: 29, goalsAgainst: 2 }, { playerId: 99, toi: "00:00", saves: 0, shotsAgainst: 0 }] },
+    },
+  };
+  const items = buildRussians({ games: [finalGame, upcomingGame, postponed], players, boxes: new Map([[51, box]]), season: "20262027" });
+  assert.deepEqual(items.map((i) => i.player_id), [1, 3, 2, 5, 6], "who scored first, then the others who played, then the ones whose game is ahead; a postponed game and players who did not skate are left out");
+  const kaprizov = items[0];
+  assert.deepEqual(plain(kaprizov.line), { kind: "s", goals: 2, assists: 1, points: 3, toi: "19:10" });
+  assert.equal(kaprizov.team, "MIN");
+  assert.equal(kaprizov.opp, "VGK");
+  assert.equal(kaprizov.home, true);
+  assert.equal(kaprizov.phase, "final");
+  assert.equal(kaprizov.game_pk, 51);
+  assert.equal(kaprizov.name_ru, "Кирилл Капризов");
+  assert.equal(kaprizov.photo, "https://assets.nhle.com/mugs/nhl/20262027/MIN/1.png");
+  assert.ok(!("rank" in kaprizov) && !("start_ms" in kaprizov), "the internal sorting keys are not published");
+  assert.deepEqual(plain(items.find((i) => i.player_id === 2).line), { kind: "g", saves: 27, shots: 29, goals_against: 2, toi: "60:00" }, "a goalie: saves and shots");
+  assert.equal(items.find((i) => i.player_id === 5).line, null, "a game that has not started: no line yet");
+  assert.equal(items.find((i) => i.player_id === 5).home, false);
+  // no box score for a finished game (the NHL did not answer): the players stay, without a line
+  const noBox = buildRussians({ games: [finalGame], players, boxes: new Map(), season: "20262027" });
+  assert.deepEqual(noBox.map((i) => i.player_id).sort(), [1, 2, 3, 4, 8]);
+  assert.ok(noBox.every((i) => i.line === null));
+  assert.equal(statLine(null), null);
+  assert.equal(statLine({ row: { toi: "00:00" }, goalie: false }), null);
+  // a long day: the list is cut, nobody is lost from the top
+  const crowd = Array.from({ length: 40 }, (_, i) => p(1000 + i, `Игрок ${i}`, "SEA"));
+  assert.equal(buildRussians({ games: [upcomingGame], players: crowd, boxes: {}, season: "20262027" }).length, MAX_RUSSIANS);
+  assert.deepEqual(buildRussians({ games: [], players, boxes: {} }), []);
+}
+
+// ---- 3) the route---------------------------------------------------------------------------------------------------------------
 {
   const calls = [];
   const deps = {
@@ -189,8 +234,11 @@ const BASE = "https://clips.test";
     loadIndex: async (base) => { calls.push(["index", base]); return { games: [{ game_pk: 41, goals: [goal(701, 1, "10:00", 0, 1, 9, "Joel Eriksson Ek", "MIN")] }] }; },
     loadNames: async (_env, ids) => { calls.push(["names", ids]); return new Map([[9, "Юэль Эрикссон Эк"]]); },
     loadHeroLive: async () => { throw new Error("not live"); },
+    loadRussians: async (_env, dayGames) => { calls.push(["russians", dayGames.map((g) => g.game_pk)]); return [{ player_id: 1, team: "VGK" }]; },
   };
   const payload = await loadHomePayload({ HOH_CLIPS_BASE: "https://other.test/" }, { now: NOW, deps });
+  assert.deepEqual(plain(payload.russians), { ok: true, day: payload.strip_day, items: [{ player_id: 1, team: "VGK" }] });
+  assert.deepEqual(calls.find((c) => c[0] === "russians"), ["russians", [41]], "the Russians are looked up for the games of the strip");
   assert.equal(payload.ok, true);
   assert.equal(payload.version, "27.0");
   assert.equal(payload.mode, "results");
@@ -209,6 +257,12 @@ const BASE = "https://clips.test";
   assert.equal(broken.featured, null);
   assert.equal(broken.goals.ok, false);
   assert.equal(broken.games.length, 1);
+  const noRussians = await loadHomePayload({}, { now: NOW, deps: { ...deps, loadRussians: async () => { throw new Error("db"); } } });
+  assert.equal(noRussians.ok, true, "no Russians: the rest of the page is fine");
+  assert.deepEqual(plain(noRussians.russians), { ok: false, day: noRussians.strip_day, items: [] });
+  const oldDeps = { ...deps };
+  delete oldDeps.loadRussians;
+  assert.equal((await loadHomePayload({}, { now: NOW, deps: oldDeps })).russians.ok, true, "callers without a Russians loader get an empty list");
 
   // a live match of the day: the label comes from the NHL feed
   const liveDeps = { ...deps, loadGames: async () => [game(-1, "LIVE", { pk: 43, a: 1, h: 0 })], loadFeatured: async () => ({ game_pk: 43, game_state: "LIVE", away_score: 0, home_score: 0 }), loadHeroLive: async () => ({ code: "LIVE", label: "2-й период · 14:32", away_score: 1, home_score: 1 }) };
@@ -265,6 +319,8 @@ const BASE = "https://clips.test";
   assert.ok(body.games.length >= 1);
   assert.equal(body.featured.game_pk, 7002, "the match of the day is a game that has not finished yet (the home page asks the featured endpoint with focus=now)");
   assert.ok(sqls.some((s) => /FROM games g/.test(s) && /scheduled_start_utc>=\?/.test(s)), "the games of the window are read in one query");
+  assert.ok(sqls.some((s) => /player_profile_meta/.test(s) && /primary_country_code='RUS'/.test(s) && /current_team_tri IN/.test(s)), "the Russians of the teams that play are read in one query");
+  assert.equal(body.russians.ok, true);
   const afterFirst = prepared;
   const second = await handleTelegramCenterV27(new Request("https://x.test/api/telegram-center-v27/home"), env, "/api/telegram-center-v27/home");
   assert.deepEqual(await second.json(), body);
@@ -352,15 +408,27 @@ const featured = (extra = {}) => ({
   away: { tri: "SEA", name_ru: "Сиэтл Кракен", logo: logo("SEA") }, home: { tri: "PHI", name_ru: "Филадельфия Флайерз", logo: logo("PHI") },
   vk_url: "https://vkvideo.ru/video-1_2", thumbnail_url: null, cover_url: null, winline: { event_id: 1, p1: 2.35, x: 4.2, p2: 2.55 }, ...extra,
 });
+const ru = (id, nameRu, team, opp, home, phase, line, extra = {}) => ({
+  player_id: id, name_ru: nameRu, name_en: `En ${id}`, position: "C", number: 9, team, opp, home, game_pk: 3, phase,
+  start: iso(Date.now() + (phase === "upcoming" ? 20 : -6) * HOUR), line, photo: `https://assets.test/${id}.png`, ...extra,
+});
 const homeData = (extra = {}) => ({
   ok: true, version: "27.0", mode: "results", today: localDay(), strip_day: localDay(), hero_day: localDay(),
   games: [chip(1, "FLA", "BUF", "final", 3, 5, -10), chip(2, "OTT", "NJD", "final", 4, 1, -9, "OT"), chip(3, "VGK", "MIN", "final", 2, 4, -8)],
   featured: featured(),
+  russians: {
+    ok: true, day: localDay(),
+    items: [
+      ru(1, "Кирилл Капризов", "MIN", "VGK", true, "final", { kind: "s", goals: 2, assists: 1, points: 3, toi: "19:10" }),
+      ru(2, "Филипп Червяков", "MIN", "VGK", true, "final", { kind: "g", saves: 27, shots: 29, goals_against: 2, toi: "60:00" }),
+      ru(5, "Андрей Свечников", "SEA", "PHI", false, "upcoming", null),
+    ],
+  },
   goals: { ok: true, day: localDay(), live: false, total: 20, items: [tile(11, 3, "Joel Eriksson Ek", "Юэль Эрикссон Эк", "MIN", 3, "18:38", 2, 4), tile(12, 3, "William Karlsson", "", "VGK", 3, "09:25", 2, 3), tile(13, 3, "Rasmus Andersson", "Расмус Андерссон", "VGK", 2, "02:37", 1, 3)] },
   ...extra,
 });
 
-function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}, failHome = false, spoilers = false, tabName = "games" } = {}) {
+function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}, failHome = false, spoilers = false, tabName = "games", follows = null, lookups = {}, stored = {}, followsDelay = 0 } = {}) {
   const dom = new JSDOM(
     `<!doctype html><body><nav id="tabs"><button class="tab active" data-tab="games"></button><button class="tab" data-tab="broadcasts"></button><button class="tab" data-tab="teams"></button></nav>
      <main id="view" class="view"><div class="dateBox">2026-10-13</div><div class="toolbar"></div><div id="gameList"><article class="gameCard" data-game="1"></article></div></main></body>`,
@@ -371,7 +439,8 @@ function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}
   const timers = [];
   const realSetTimeout = window.setTimeout.bind(window);
   window.setTimeout = (fn, ms, ...rest) => { timers.push(ms); return realSetTimeout(fn, ms, ...rest); };
-  const box = { data, news: news.map((n) => ({ ...n })), media, comments, failHome, spoilers };
+  const box = { data, news: news.map((n) => ({ ...n })), media, comments, failHome, spoilers, follows, lookups };
+  const players = [];
   const calls = [];
   const opened = [];
   const posted = [];
@@ -382,12 +451,20 @@ function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}
     tabsVisible: () => document.getElementById("tabs").style.display !== "none",
     backRow: (kind) => `<div class="v15BackRow"><button class="v15Back" id="v15Back">‹</button><div class="v15Kind">${esc(kind)}</div></div>`,
     openGameV19: (pk, ctx) => opened.push({ pk, ctx }),
+    openPlayer: (id) => players.push(id),
     runCore() { H.runs += 1; },
     api: async (url, opt) => {
       calls.push({ url, opt });
       if (url.startsWith("/api/telegram-center-v27/home")) { if (box.failHome) throw new Error("HTTP 500"); return box.data; }
       if (url.startsWith("/api/telegram-center-v20/news/home")) return { ok: true, news: box.news };
       if (url.startsWith("/api/telegram-center-v12/media")) return { ok: true, items: box.media };
+      if (url === "/api/telegram-center-v2/subscriptions") {
+        if (followsDelay) await new Promise((resolve) => setTimeout(resolve, followsDelay));
+        if (box.follows === null) throw new Error("HTTP 401");
+        return { ok: true, subscriptions: box.follows };
+      }
+      const lookup = /^\/api\/telegram-center-v17\/players\/(\d+)$/.exec(url);
+      if (lookup) return { ok: true, player: { player_id: Number(lookup[1]), current_team_tri: box.lookups[lookup[1]] || null } };
       let m = /\/news\/(\d+)\/comments/.exec(url);
       if (m && opt?.method === "POST") { const body = JSON.parse(opt.body).body; posted.push({ id: Number(m[1]), body }); (box.comments[m[1]] = box.comments[m[1]] || []).push({ author: "Я", body, created_at: new Date().toISOString() }); return { ok: true }; }
       if (m) return { ok: true, comments: box.comments[m[1]] || [] };
@@ -410,8 +487,9 @@ function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}
   window.HTMLMediaElement.prototype.play = function play() { this.dispatchEvent(new window.Event("play")); return Promise.resolve(); };
   window.HTMLMediaElement.prototype.pause = function pause() {};
   window.HTMLMediaElement.prototype.load = function load() {};
+  for (const [key, value] of Object.entries(stored)) window.localStorage.setItem(key, value);
   window.eval(v27);
-  return { window, document, H, box, calls, opened, posted, timers, S: window.HOHV27 };
+  return { window, document, H, box, calls, opened, posted, players, timers, S: window.HOHV27 };
 }
 const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${name}"]`);
 
@@ -792,9 +870,9 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   stale.window.close();
 
   // nothing to show: no empty frames
-  const empty = makeHome({ data: homeData({ mode: "idle", games: [], featured: null, goals: { ok: false, day: null, live: false, total: 0, items: [] } }), news: [], media: [] });
+  const empty = makeHome({ data: homeData({ mode: "idle", games: [], featured: null, goals: { ok: false, day: null, live: false, total: 0, items: [] }, russians: { ok: false, day: null, items: [] } }), news: [], media: [] });
   await tick(420);
-  for (const name of ["strip", "hero", "goals", "news", "videos"]) assert.ok(sec(empty, name).hidden, `${name}: hidden when empty`);
+  for (const name of ["strip", "hero", "goals", "russians", "news", "videos"]) assert.ok(sec(empty, name).hidden, `${name}: hidden when empty`);
   empty.window.close();
 }
 
@@ -805,6 +883,172 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   ctx.window.eval(v27);
   assert.equal(ctx.window.HOHV27, before);
   ctx.window.close();
+}
+
+{
+  // Russians: who plays, how they played; the stat is hidden in no-spoilers mode; a tap opens the player
+  const ctx = makeHome();
+  await tick(420);
+  const block = sec(ctx, "russians");
+  assert.ok(!block.hidden);
+  assert.equal(block.style.order, "4", "after the goals and the match of the day, before the news");
+  assert.equal(text(block.querySelector(".v27Head b")), "Русские: как сыграли");
+  assert.match(text(block.querySelector(".v27Head")), /голы \+ передачи/);
+  const chips = [...block.querySelectorAll(".v27Ru")];
+  assert.equal(chips.length, 3);
+  assert.match(text(chips[0]), /Капризов/);
+  assert.match(text(chips[0]), /2\+1/, "goals plus assists");
+  assert.match(text(chips[0]), /MIN vs VGK/);
+  assert.match(text(chips[1]), /27 из 29/, "a goalie: saves out of shots");
+  assert.match(text(chips[2]), /\d\d:\d\d/, "a game ahead: the start time");
+  assert.match(text(chips[2]), /SEA @ PHI/, "away games are marked with @");
+  assert.equal(chips[0].querySelector("img").getAttribute("src"), "https://assets.test/1.png");
+  chips[0].querySelector("img").dispatchEvent(new ctx.window.Event("error"));
+  assert.ok(!chips[0].querySelector("img"), "a picture that does not load leaves the initial letter");
+  assert.equal(text(chips[0].querySelector(".ph i")), "К");
+  chips[1].click();
+  assert.deepEqual(plain(ctx.players), [2], "a tap opens the player page");
+  ctx.box.spoilers = true;
+  ctx.window.dispatchEvent(new ctx.window.Event("hoh-spoilers-change"));
+  const hidden = [...sec(ctx, "russians").querySelectorAll(".v27Ru")].map(text);
+  assert.ok(!hidden.some((t) => /2\+1|27 из 29/.test(t)), "no spoilers: no stats");
+  assert.ok(hidden[0].includes("•"));
+  assert.ok(!/голы \+ передачи/.test(text(sec(ctx, "russians").querySelector(".v27Head"))));
+  ctx.window.close();
+
+  // titles by mood
+  const titles = {};
+  for (const [mode, day] of [["live", localDay()], ["schedule", localDay()], ["schedule", "2026-01-05"]]) {
+    const c = makeHome({ data: homeData({ mode, russians: { ok: true, day, items: homeData().russians.items } }) });
+    await tick(420);
+    titles[`${mode}:${day === localDay() ? "today" : "other"}`] = text(sec(c, "russians").querySelector(".v27Head b"));
+    c.window.close();
+  }
+  assert.deepEqual(titles, { "live:today": "Русские в игре", "schedule:today": "Русские сегодня", "schedule:other": "Русские · 5 янв" });
+  // a live player has a red dot on the photo
+  const liveRu = makeHome({ data: homeData({ mode: "live", russians: { ok: true, day: localDay(), items: [ru(1, "Кирилл Капризов", "MIN", "VGK", true, "live", { kind: "s", goals: 0, assists: 1, points: 1, toi: "10:00" })] } }) });
+  await tick(420);
+  assert.ok(sec(liveRu, "russians").querySelector(".v27Ru .ph em"));
+  liveRu.window.close();
+}
+
+{
+  // "my" part: follows turn on stars, the order of the strip, the "Мои" switch, goals and news about my teams
+  const follows = [
+    { subject_type: "team", subject_key: "MIN", name: "Миннесота Уайлд" },
+    { subject_type: "team", subject_key: "NYR", name: "Нью-Йорк Рейнджерс" },
+    { subject_type: "player", subject_key: "1", name: "Кирилл Капризов" },
+    { subject_type: "player", subject_key: "9", name: "Артемий Панарин" },
+    { subject_type: "player", subject_key: "5", name: "Андрей Свечников" },
+    { subject_type: "group", subject_key: "RUS_NHL", name: "Все россияне в НХЛ" },
+  ];
+  const news = [
+    { news_id: 401, title: "Обычная новость про другой клуб", body_text: null, published_at: iso(Date.now() - 10 * 60000), comment_count: 0 },
+    { news_id: 402, title: "«Рейнджерс» проиграли дома, Панарин остался без очков", body_text: null, published_at: iso(Date.now() - 20 * 60000), comment_count: 0 },
+    { news_id: 403, title: "Нью-Йорк Айлендерс подписали форварда", body_text: null, published_at: iso(Date.now() - 30 * 60000), comment_count: 0 },
+    { news_id: 404, title: "Капризов набрал три очка, «Миннесота» победила", body_text: null, published_at: iso(Date.now() - 40 * 60000), comment_count: 0 },
+    { news_id: 405, title: "Тренер Миннесоты объяснил выбор звена", body_text: null, published_at: iso(Date.now() - 50 * 60000), comment_count: 0 },
+    { news_id: 406, title: "Ещё одна обычная новость", body_text: null, published_at: iso(Date.now() - 60 * 60000), comment_count: 0 },
+  ];
+  const games =[chip(1, "FLA", "BUF", "final", 3, 5, -10), chip(3, "VGK", "MIN", "final", 2, 4, -8), chip(7, "NYR", "TBL", "live", 1, 0, -1), chip(2, "OTT", "NJD", "final", 4, 1, -9, "OT")];
+  const ctx = makeHome({ data: homeData({ mode: "live", games }), news, follows, lookups: { 9: "NYR" }, followsDelay: 120 });
+  await tick(150);
+  assert.ok(!sec(ctx, "strip").querySelector(".v27Star"), "the page is drawn at once, before the follows arrive");
+  await tick(500);
+  const strip = () => [...sec(ctx, "strip").querySelectorAll(".v27Chip")];
+  assert.deepEqual(strip().map((c) => c.dataset.v27Game), ["7", "3", "1", "2"], "on now first (mine), then my games, then the rest in their order");
+  assert.deepEqual(strip().map((c) => c.classList.contains("mine")), [true, true, false, false]);
+  assert.ok(strip()[0].querySelector(".v27Star"), "a star on my game");
+  assert.ok(!strip()[2].querySelector(".v27Star"));
+  assert.ok(sec(ctx, "strip").querySelector(".v27Seg"), "the switch is there");
+  assert.ok(!sec(ctx, "strip").querySelector(".v27Head > [data-v27-all]"), "it takes the place of 'Все матчи' in the header (the strip still ends with it)");
+  assert.ok(sec(ctx, "strip").querySelector(".v27ChipMore"));
+  assert.ok(!sec(ctx, "strip").querySelector(".v27Hint"), "a person who follows does not get the hint");
+  assert.equal(ctx.calls.filter((c) => c.url === "/api/telegram-center-v17/players/9").length, 1, "the team of a followed player who is not in the list is asked once");
+  assert.equal(ctx.calls.filter((c) => c.url === "/api/telegram-center-v17/players/1").length, 0, "a Russian of the list needs no lookup");
+
+  // the switch
+  sec(ctx, "strip").querySelector('[data-v27-seg="mine"]').click();
+  assert.deepEqual(strip().map((c) => c.dataset.v27Game), ["7", "3"], "only my games");
+  assert.ok(sec(ctx, "strip").querySelector('[data-v27-seg="mine"]').classList.contains("on"));
+  assert.equal(ctx.window.localStorage.getItem("hoh-home-mine"), "1", "the choice is remembered");
+  sec(ctx, "strip").querySelector('[data-v27-seg="all"]').click();
+  assert.equal(strip().length, 4);
+  assert.equal(ctx.window.localStorage.getItem("hoh-home-mine"), "0");
+
+  // goals of my teams and players
+  const own = sec(ctx, "goals").querySelectorAll(".v27Goal");
+  assert.ok(own[0].querySelector(".v27Mine"), "a goal of MIN has a star");
+  assert.ok(!own[1].querySelector(".v27Mine"), "a goal of VGK has none");
+  // Russians: the followed one first, with a star
+  const rus = [...sec(ctx, "russians").querySelectorAll(".v27Ru")];
+  assert.ok(rus[0].classList.contains("mine"));
+  assert.match(text(rus[0]), /★ Капризов/);
+  assert.deepEqual(rus.map((r) => r.dataset.v27Ru), ["1", "5", "2"], "the followed ones first (in their own order), then the rest");
+  // news: about my teams first, with a mark; "Нью-Йорк" alone is not enough
+  const rows = [...sec(ctx, "news").querySelectorAll(".v27News")];
+  assert.deepEqual(rows.map((r) => r.dataset.v27News), ["402", "404", "405"], "news about my teams first: a nickname, a surname and another form of a city are found; the newest news only fills the gaps");
+  assert.ok(rows.every((r) => r.querySelector(".v27Mine")));
+  assert.match(text(rows[0].querySelector(".v27Mine")), /ваша команда/);
+  // the news page marks them too; "Нью-Йорк" alone (the Islanders) is not enough
+  rows[2].click();
+  await tick(60);
+  const cards = [...ctx.document.querySelectorAll(".v27NCard")];
+  assert.deepEqual(cards.filter((c) => c.querySelector(".v27Mine")).map((c) => c.dataset.v27Open), ["402", "404"]);
+  assert.ok(!cards.find((c) => c.dataset.v27Open === "403").querySelector(".v27Mine"));
+  ctx.window.close();
+
+  // a restart inside five minutes does not ask for the follows again
+  const again = makeHome({ news, follows, lookups: { 9: "NYR" } });
+  await tick(520);
+  const asked = () => again.calls.filter((c) => c.url === "/api/telegram-center-v2/subscriptions").length;
+  assert.equal(asked(), 1);
+  await again.S.refresh();
+  await again.S.refresh();
+  assert.equal(asked(), 1, "the follows are kept for a few minutes");
+  again.window.close();
+}
+
+{
+  // a person who follows nobody gets a hint, once; outside Telegram nothing personal appears
+  const nobody = makeHome({ follows: [] });
+  await tick(520);
+  const hint = sec(nobody, "strip").querySelector(".v27Hint");
+  assert.ok(hint, "an invitation to choose teams");
+  assert.ok(!sec(nobody, "strip").querySelector(".v27Seg"), "no switch without games of mine");
+  assert.ok(sec(nobody, "strip").querySelector(".v27Head > [data-v27-all]"));
+  let teamsTab = 0;
+  nobody.document.querySelector('.tab[data-tab="teams"]').addEventListener("click", () => { teamsTab += 1; });
+  hint.querySelector("[data-v27-follow]").click();
+  assert.equal(teamsTab, 1, "the invitation leads to the Teams tab");
+  nobody.window.close();
+  const closing = makeHome({ follows: [] });
+  await tick(520);
+  sec(closing, "strip").querySelector("[data-v27-hint-close]").click();
+  assert.ok(!sec(closing, "strip").querySelector(".v27Hint"), "closed");
+  assert.equal(closing.window.localStorage.getItem("hoh-home-hint"), "1", "and it stays closed");
+  closing.window.close();
+
+  const outside = makeHome({ follows: null });
+  await tick(520);
+  assert.ok(!sec(outside, "strip").querySelector(".v27Hint, .v27Seg, .v27Star"), "not signed in: the page is the same for everybody");
+  assert.ok(!sec(outside, "goals").querySelector(".v27Mine"));
+  assert.ok(!sec(outside, "news").querySelector(".v27Mine"));
+  assert.equal(sec(outside, "news").querySelectorAll(".v27News").length, 3);
+  assert.ok(outside.window.HOHV27.owns(), "a failed follows request does not take the page down");
+  outside.window.close();
+
+  // the choice of an earlier visit is read at the start: "Мои" is already on
+  const remembered = makeHome({ follows: [{ subject_type: "team", subject_key: "BUF", name: "Баффало Сэйбрз" }], stored: { "hoh-home-mine": "1", "hoh-home-hint": "1" } });
+  await tick(520);
+  assert.deepEqual([...sec(remembered, "strip").querySelectorAll(".v27Chip")].map((c) => c.dataset.v27Game), ["1"], "only Buffalo's game");
+  remembered.window.close();
+  // the follows say "mine only" but none of my teams plays today: all games are shown, no empty strip
+  const idle = makeHome({ follows: [{ subject_type: "team", subject_key: "SJS", name: "Сан-Хосе Шаркс" }], stored: { "hoh-home-mine": "1" } });
+  await tick(520);
+  assert.equal(sec(idle, "strip").querySelectorAll(".v27Chip").length, 3);
+  assert.ok(!sec(idle, "strip").querySelector(".v27Seg"));
+  idle.window.close();
 }
 
 console.log("home v27 validation passed");
