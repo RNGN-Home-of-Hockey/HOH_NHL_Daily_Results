@@ -33,7 +33,7 @@ export function phaseOf(gameState) {
   return "upcoming";
 }
 
-function stateInfo(landing) {
+export function stateInfo(landing) {
   const phase = phaseOf(landing?.gameState);
   const period = periodInfo(landing?.periodDescriptor);
   const clock = landing?.clock || {};
@@ -107,7 +107,7 @@ function clipUrl(base, path) {
 
 // A clip is one video file: the 1080p copy made for the app (the "light" file on the server). The full-bitrate original stays
 // on the server and is never offered; it is only the fallback when a goal has no app copy yet.
-function clipOf(entry, base) {
+export function clipOf(entry, base) {
   const light = entry?.light?.path ? entry.light : null;
   const file = light || (entry?.orig?.path ? entry.orig : null);
   if (!file) return null;
@@ -120,7 +120,7 @@ function clipOf(entry, base) {
   };
 }
 
-function findIndexGame(index, gamePk) {
+export function findIndexGame(index, gamePk) {
   const games = Array.isArray(index?.games) ? index.games : [];
   // the same game can appear twice (an old VOD cut and a live cut): prefer the one with more goals
   return games

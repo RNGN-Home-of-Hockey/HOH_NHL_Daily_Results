@@ -40,7 +40,7 @@ function json(payload, status = 200) {
   });
 }
 
-async function fetchJson(url, { ttl, timeoutMs }) {
+export async function fetchJson(url, { ttl, timeoutMs }) {
   const response = await fetch(url, {
     headers: { accept: "application/json", "user-agent": "HOH-Live-Center/26" },
     cf: { cacheTtl: ttl, cacheEverything: true },
@@ -50,7 +50,7 @@ async function fetchJson(url, { ttl, timeoutMs }) {
   return response.json();
 }
 
-async function loadNames(db, ids) {
+export async function loadNames(db, ids) {
   const names = new Map();
   for (let i = 0; i < ids.length; i += 80) {
     const chunk = ids.slice(i, i + 80);

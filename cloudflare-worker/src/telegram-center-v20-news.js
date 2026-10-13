@@ -55,7 +55,7 @@ async function homeNews(request,env){
 }
 async function queryHomeNews(db,limit){
   return db.prepare(`
-    SELECT n.news_id,n.title,n.body_text,n.source_badge,n.published_at,n.created_at,
+    SELECT n.news_id,n.title,n.body_text,n.source_badge,n.source_url,n.published_at,n.created_at,
            COUNT(c.comment_id) comment_count
     FROM sports_news n
     LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
@@ -82,7 +82,7 @@ async function playerNews(request,env,playerId){
 
 async function queryPlayerNews(db,playerId,limit){
   return db.prepare(`
-    SELECT n.news_id,n.title,n.body_text,n.source_badge,n.published_at,n.created_at,
+    SELECT n.news_id,n.title,n.body_text,n.source_badge,n.source_url,n.published_at,n.created_at,
            COUNT(c.comment_id) comment_count
     FROM sports_player_news_exact p
     JOIN sports_news n ON n.news_id=p.news_id
@@ -98,7 +98,7 @@ async function newsDetail(env,newsId){
   if(!Number.isSafeInteger(newsId)||newsId<=0)return json({ok:false,error:"invalid_news_id"},400);
   let row;
   try{row=await env.DB.prepare(`
-    SELECT n.news_id,n.title,n.body_text,n.source_badge,n.published_at,n.created_at,
+    SELECT n.news_id,n.title,n.body_text,n.source_badge,n.source_url,n.published_at,n.created_at,
            COUNT(c.comment_id) comment_count
     FROM sports_news n
     LEFT JOIN sports_news_comments c ON c.news_id=n.news_id AND c.deleted=0
