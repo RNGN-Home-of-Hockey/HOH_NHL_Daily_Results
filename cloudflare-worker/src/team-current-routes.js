@@ -56,12 +56,15 @@ import { handleMatchupCenterRequest } from "./matchup-center.js";
 import { handleBroadcastOperatorRequest } from "./broadcast-operator.js";
 import { handleTelegramCenterV26, FONT_PRELOAD_LINKS } from "./telegram-center-v26-goals.js";
 import { handleTelegramCenterV27 } from "./telegram-center-v27-home.js";
+import { handleTelegramCenterV28 } from "./telegram-center-v28-backdrop.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
   const centerV26Response = await handleTelegramCenterV26(request, env, path);
   if (centerV26Response) return centerV26Response;
   const centerV27Response = await handleTelegramCenterV27(request, env, path);
   if (centerV27Response) return centerV27Response;
+  const centerV28Response = await handleTelegramCenterV28(request, env, path);
+  if (centerV28Response) return centerV28Response;
 
   if (path === "/telegram-app/goalie-bg.webp" && request.method === "GET" && env.ASSETS?.fetch) {
     return env.ASSETS.fetch(request);
@@ -171,6 +174,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       "/telegram-app/v24-visual.js?build=24.8.0",
       "/telegram-app/v26-goals.js?build=26.0",
       "/telegram-app/v27-home.js?build=27.0",
+      "/telegram-app/v28-backdrop.js?build=28.0",
       "/telegram-app/game-follow.js?build=25.0.1",
       "/telegram-app/preferences.js?build=25.0.1"
     ]) body = body.replace('</body>', '<script src="'+src+'"></script></body>');

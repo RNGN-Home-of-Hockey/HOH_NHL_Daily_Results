@@ -601,7 +601,11 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.equal(tiles[0].querySelector("img.cover").getAttribute("src"), "https://clips.test/p/11.jpg");
 
   const hero = sec(ctx, "hero");
-  assert.match(text(hero), /Матч дня/);
+  assert.ok(!hero.querySelector(".v27Kicker"), "no separate title line");
+  const heroMid = hero.querySelector(".v27HeroMid");
+  assert.equal(text(heroMid.firstElementChild), "Матч дня", "the words sit in the middle, first");
+  assert.equal(heroMid.firstElementChild.nextElementSibling.tagName, "STRONG", "right above the time");
+  assert.match(css, /\.v27HeroMid \.lab\{[^}]*text-align:center/);
   assert.match(text(hero), /Сиэтл Кракен/);
   assert.match(text(hero), /Филадельфия Флайерз/);
   assert.ok(hero.querySelector(".v27Wl img[alt=WINLINE]"));
@@ -664,7 +668,8 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.match(text(sec(ctx, "strip").querySelector(".v27Head b")), /^(Сегодня|\d+ [а-я]+) · 3 матча$/);
   assert.match(text(sec(ctx, "goals").querySelector(".v27Head")), /Голы в эфире/);
   const hero = sec(ctx, "hero");
-  assert.ok(hero.querySelector(".v27Kicker .v27LiveBadge"), "no cover: the red LIVE sits in the title line");
+  assert.ok(hero.querySelector(".v27HeroMid .v27LiveBadge"), "no cover: the red LIVE sits in the middle, above the score");
+  assert.deepEqual([...hero.querySelector(".v27HeroMid").children].map((x) => x.className || x.tagName), ["lab", "v27LiveBadge", "STRONG", "SMALL"]);
   assert.equal(text(hero.querySelector(".v27HeroMid strong")), "1 : 0");
   assert.equal(text(hero.querySelector(".v27HeroMid small")), "2-й период · 14:32");
   assert.match(text(hero.querySelector(".v27Cta")), /Смотреть матч в VK Видео/);
@@ -677,7 +682,8 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   const cardHero = sec(covered, "hero");
   assert.equal(cardHero.querySelector(".v27HeroCover img").getAttribute("src"), "https://clips.test/covers/1.jpg");
   assert.ok(cardHero.querySelector(".v27HeroCover .v27LiveBadge"));
-  assert.ok(!cardHero.querySelector(".v27Kicker .v27LiveBadge"));
+  assert.ok(!cardHero.querySelector(".v27HeroMid .v27LiveBadge"), "one LIVE only: on the picture");
+  assert.equal(text(cardHero.querySelector(".v27HeroMid .lab")), "Матч дня");
   // the cover fails to load: the card falls back to the logos and remembers the failure
   const img = cardHero.querySelector(".v27HeroCover img");
   img.dispatchEvent(new covered.window.Event("error"));
@@ -1026,8 +1032,18 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.match(text(card), /Русские в НХЛ/);
   assert.match(text(card), /Моя лента/);
   const switches = [...card.querySelectorAll(".v27Sw")];
-  assert.deepEqual(switches.map((b) => b.getAttribute("aria-checked")), ["true", "false"], "the Russians are on, my feed is off");
-  assert.deepEqual(switches.map((b) => b.dataset.v27Pref), ["russians", "mine"]);
+  assert.deepEqual(switches.map((b) => b.getAttribute("aria-checked")), ["true", "false", "true"], "the Russians are on, my feed is off, the silhouettes are on");
+  assert.deepEqual(switches.map((b) => b.dataset.v27Pref), ["russians", "mine", "sil"]);
+  assert.match(text(card), /Силуэты игроков на фоне/);
+  // the silhouettes: switched off and on again, remembered, and the backdrop is told at once
+  let silEvents = 0;
+  ctx.window.addEventListener("hoh-bg-sil-change", () => { silEvents += 1; });
+  switches[2].click();
+  assert.equal(ctx.window.localStorage.getItem("hoh-bg-sil"), "0", "the silhouettes can be switched off");
+  assert.equal(switches[2].getAttribute("aria-checked"), "false");
+  switches[2].click();
+  assert.equal(ctx.window.localStorage.getItem("hoh-bg-sil"), "1");
+  assert.equal(silEvents, 2, "every switch tells the backdrop");
   switches[0].click();
   assert.equal(switches[0].getAttribute("aria-checked"), "false", "the Russians can be switched off");
   assert.ok(!switches[0].classList.contains("on"));
@@ -1292,6 +1308,86 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.equal(sec(idle, "strip").querySelectorAll(".v27Chip").length, 3);
   assert.ok(!sec(idle, "strip").querySelector(".v27Seg"));
   idle.window.close();
+}
+
+{
+  // the arrow at the bottom: there is more below; it fades on the first scroll and does not come back
+  const ctx = makeHome({ prefs: false });
+  const { window, document } = ctx;
+  let pageHeight = 3000;
+  Object.defineProperty(document.documentElement, "scrollHeight", { configurable: true, get: () => pageHeight });
+  let y = 0;
+  Object.defineProperty(window, "scrollY", { configurable: true, get: () => y });
+  const scrolledBy = [];
+  window.scrollBy = (o) => scrolledBy.push(o);
+  const scroll = (to) => { y = to; window.dispatchEvent(new window.Event("scroll")); };
+  await tick(1100);
+  const arrow = document.getElementById("v27More");
+  assert.ok(arrow, "the arrow is on the page");
+  assert.equal(arrow.parentElement, document.body, "outside of the home block: the redraws do not touch it");
+  assert.ok(arrow.classList.contains("on"), "visible at the top of a long home page");
+  assert.equal(arrow.getAttribute("aria-label"), "Ниже есть ещё");
+  const css = document.getElementById("v27css").textContent;
+  assert.match(css, /\.v27More\{[^}]*position:fixed[^}]*opacity:0[^}]*transition:opacity \.45s/, "it fades, it does not jump");
+  assert.match(css, /\.v27More\.on\{opacity:\.92;pointer-events:auto\}/);
+  arrow.click();
+  assert.equal(scrolledBy.length, 1, "a tap scrolls the page");
+  assert.equal(scrolledBy[0].behavior, "smooth");
+  assert.ok(scrolledBy[0].top > 300);
+  scroll(10);
+  assert.ok(arrow.classList.contains("on"), "a few pixels are not a scroll");
+  scroll(80);
+  assert.ok(!arrow.classList.contains("on"), "the person scrolls: the arrow fades");
+  await tick(700);
+  assert.ok(!document.getElementById("v27More"), "and is gone");
+  scroll(0);
+  ctx.S.refresh();
+  await tick(1100);
+  assert.ok(!document.getElementById("v27More"), "back at the top and after a refresh: it does not come back");
+  document.querySelector('.tab[data-tab="teams"]').click();
+  await tick(300);
+  document.querySelector('.tab[data-tab="games"]').click();
+  await tick(1100);
+  assert.ok(!document.getElementById("v27More"), "nor after a tab switch");
+  window.close();
+
+  // a short page: nothing to point at
+  const short = makeHome({ prefs: false });
+  Object.defineProperty(short.document.documentElement, "scrollHeight", { configurable: true, get: () => 700 });
+  await tick(1100);
+  assert.ok(!short.document.querySelector("#v27More.on"), "everything fits: no arrow");
+  short.window.close();
+
+  // another tab: no arrow, and a scroll there does not use it up
+  const other = makeHome({ prefs: false });
+  Object.defineProperty(other.document.documentElement, "scrollHeight", { configurable: true, get: () => 3000 });
+  let oy = 0;
+  Object.defineProperty(other.window, "scrollY", { configurable: true, get: () => oy });
+  await tick(1100);
+  assert.ok(other.document.querySelector("#v27More.on"));
+  other.document.querySelector('.tab[data-tab="teams"]').click();
+  await tick(1100);
+  assert.ok(!other.document.querySelector("#v27More.on"), "on the teams tab the arrow is hidden");
+  oy = 400;
+  other.window.dispatchEvent(new other.window.Event("scroll"));
+  oy = 0;
+  other.document.querySelector('.tab[data-tab="games"]').click();
+  await tick(1100);
+  assert.ok(other.document.querySelector("#v27More.on"), "back home and at the top: it is there again, it was not seen yet");
+  other.window.close();
+}
+
+{
+  // a follow added on the players tab: the stars of the home page follow without waiting for the next poll
+  const follows = [{ subscription_id: 1, subject_type: "team", subject_key: "MIN", name: "Миннесота", current_team_tri: "MIN" }];
+  const ctx = makeHome({ follows: [] });
+  await tick(520);
+  const before = ctx.calls.filter((c) => c.url === "/api/telegram-center-v2/subscriptions").length;
+  ctx.box.follows = follows;
+  ctx.window.dispatchEvent(new ctx.window.Event("hoh-follows-change"));
+  await tick(200);
+  assert.equal(ctx.calls.filter((c) => c.url === "/api/telegram-center-v2/subscriptions").length, before + 1, "the follows are asked again at once");
+  ctx.window.close();
 }
 
 console.log("home v27 validation passed");

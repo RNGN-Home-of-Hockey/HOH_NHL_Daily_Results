@@ -35,12 +35,12 @@ export function homeScreenApp() {
 
   const st = (S.state = {
     data: null, news: null, newsAt: 0, media: null, mediaAt: 0, busy: false, fails: 0, timer: null, lastAt: 0,
-    revealed: false, sections: {}, queue: [], goalIndex: -1, openNewsId: null,
+    revealed: false, sections: {}, queue: [], goalIndex: -1, openNewsId: null, arrowDone: false,
     follows: null, followsAt: 0, playerTeams: new Map(), mineOnly: store.get("hoh-home-mine") === "1", hintHidden: store.get("hoh-home-hint") === "1",
     // what the person switched on in the settings: the home page is the same for everybody until then
-    prefs: { russians: store.get("hoh-home-russians") !== "0", mine: store.get("hoh-home-mine-on") === "1" },
+    prefs: { russians: store.get("hoh-home-russians") !== "0", mine: store.get("hoh-home-mine-on") === "1", sil: store.get("hoh-bg-sil") !== "0" },
   });
-  const PREF_STORE = { russians: "hoh-home-russians", mine: "hoh-home-mine-on" };
+  const PREF_STORE = { russians: "hoh-home-russians", mine: "hoh-home-mine-on", sil: "hoh-bg-sil" };
 
   // ---- helpers ---------------------------------------------------------------------------------------------------------------
   const esc = (v) =>
@@ -223,8 +223,8 @@ export function homeScreenApp() {
     const style = document.createElement("style");
     style.id = "v27css";
     style.textContent = `
-.v27Home{--c-card:#10121a;--c-card2:#171a24;--c-line:#282b38;--c-text:#f7f7fb;--c-muted:#9094a8;--c-accent:#ff5a00;--c-lav:#b58aff;--c-live:#ff4d5e;display:grid;gap:18px;color:var(--c-text);min-width:0;padding-bottom:6px}
-html.v15Light .v27Home,html.v15Light .v27NewsPage{--c-card:#ffffff;--c-card2:#f1f2f7;--c-line:#e2e4ec;--c-text:#0c0d14;--c-muted:#686c7e;--c-lav:#7a3df0;--c-live:#e5243b}
+.v27Home{--c-card:rgba(16,18,26,.8);--c-card2:rgba(23,26,36,.78);--c-line:#282b38;--c-text:#f7f7fb;--c-muted:#9094a8;--c-accent:#ff5a00;--c-lav:#b58aff;--c-live:#ff4d5e;display:grid;gap:18px;color:var(--c-text);min-width:0;padding-bottom:6px}
+html.v15Light .v27Home,html.v15Light .v27NewsPage{--c-card:rgba(255,255,255,.8);--c-card2:rgba(241,242,247,.78);--c-line:#e2e4ec;--c-text:#0c0d14;--c-muted:#686c7e;--c-lav:#7a3df0;--c-live:#e5243b}
 .v27Home>*{min-width:0}
 .v27Home~*{display:none!important}
 .v27Sec[hidden]{display:none}
@@ -253,8 +253,8 @@ html.v15Light .v27Home,html.v15Light .v27NewsPage{--c-card:#ffffff;--c-card2:#f1
 .v27LiveBadge{display:inline-flex;align-items:center;gap:6px;background:#ff2d46;color:#fff;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:800;letter-spacing:.6px}
 .v27HeroCover .v27LiveBadge{position:absolute;left:10px;top:10px}
 .v27HeroBody{padding:12px 12px 12px;display:grid;gap:12px}
-.v27Kicker{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--c-lav)}
-.v27Kicker span{color:var(--c-muted);font-weight:600;letter-spacing:0;text-transform:none;font-size:12px}
+.v27HeroMid .lab{font-size:10.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--c-lav);text-align:center;white-space:nowrap;margin-bottom:2px}
+.v27HeroMid .v27LiveBadge{padding:3px 9px;font-size:11px;gap:5px}
 .v27HeroTeams{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px}
 .v27HeroTeams>div{text-align:center;min-width:0}
 .v27HeroTeams img{width:52px;height:52px;object-fit:contain}
@@ -312,7 +312,7 @@ html.v15Light .v27Wl{border-color:#e4a176;background:#fff7f0}
 .v27OvBtns button.main{background:#ff5a00;border-color:#ff5a00;color:#0d0d0f}
 .v27OvErr{font-size:13px;color:#ff8a8a}
 html.v27OvOpen,html.v27OvOpen body{overflow:hidden}
-.v27NewsPage{--c-card:#10121a;--c-card2:#171a24;--c-line:#282b38;--c-text:#f7f7fb;--c-muted:#9094a8;--c-accent:#ff5a00;--c-lav:#b58aff;--c-live:#ff4d5e;display:grid;gap:14px;color:var(--c-text)}
+.v27NewsPage{--c-card:rgba(16,18,26,.8);--c-card2:rgba(23,26,36,.78);--c-line:#282b38;--c-text:#f7f7fb;--c-muted:#9094a8;--c-accent:#ff5a00;--c-lav:#b58aff;--c-live:#ff4d5e;display:grid;gap:14px;color:var(--c-text)}
 .v27Article{padding:16px;border:1px solid var(--c-line);border-radius:18px;background:var(--c-card);display:grid;gap:10px}
 .v27Article h1{margin:0;font-size:21px;line-height:1.22;font-weight:800}
 .v27Article .dt{font-size:12px;color:var(--c-muted)}
@@ -359,9 +359,16 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
 .v27Ru small{font-size:11px;color:var(--c-muted);font-weight:600}
 .v27Mine{color:var(--c-accent);font-weight:800}
 .v27Cnt{color:var(--c-muted);font-weight:600;font-size:12px}
+.v27Hero,.v27NewsList,.v27Article,.v27Settings{-webkit-backdrop-filter:blur(12px) saturate(120%);backdrop-filter:blur(12px) saturate(120%)}
+.v27More{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:38px;height:38px;margin-left:-19px;padding:0;display:grid;place-items:center;border-radius:50%;border:1px solid rgba(122,61,240,.28);background:rgba(255,255,255,.82);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#6a35d8;box-shadow:0 4px 14px rgba(40,20,90,.14);z-index:50;opacity:0;pointer-events:none;transition:opacity .45s ease;cursor:pointer}
+.v27More.on{opacity:.92;pointer-events:auto}
+.v27More svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;animation:v27Nudge 1.8s ease-in-out infinite}
+@keyframes v27Nudge{0%,100%{transform:translateY(-2px)}50%{transform:translateY(3px)}}
+html:not(.v15Light) .v27More{background:rgba(24,26,36,.82);border-color:rgba(203,188,255,.25);color:#d6c8ff}
+@media (prefers-reduced-motion:reduce){.v27More svg{animation:none}}
 .v27HeroTeams .rec{display:block;margin-top:2px;font-size:12px;font-weight:600;color:var(--c-muted)}
-.v27Settings{--c-card:#10121a;--c-line:#282b38;--c-text:#f7f7fb;--c-muted:#9094a8;--c-accent:#ff5a00;display:grid;gap:10px;margin:0 0 12px;padding:14px;border:1px solid var(--c-line);border-radius:16px;background:var(--c-card);color:var(--c-text)}
-html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--c-muted:#686c7e}
+.v27Settings{--c-card:rgba(16,18,26,.8);--c-line:#282b38;--c-text:#f7f7fb;--c-muted:#9094a8;--c-accent:#ff5a00;display:grid;gap:10px;margin:0 0 12px;padding:14px;border:1px solid var(--c-line);border-radius:16px;background:var(--c-card);color:var(--c-text)}
+html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-text:#0c0d14;--c-muted:#686c7e}
 .v27SetTitle{font-size:15px;font-weight:800}
 .v27SetNote{margin:0;font-size:12px;color:var(--c-muted);line-height:1.4}
 .v27SetRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;border-top:1px solid var(--c-line)}
@@ -478,15 +485,15 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
     const cover = coverSrc(g);
     const badge = '<span class="v27LiveBadge"><i></i>LIVE</span>';
     const finish = done ? (g.period_type === "OT" ? " · ОТ" : g.period_type === "SO" ? " · Б" : "") : "";
+    const lab = '<span class="lab">Матч дня</span>';
     const mid = live
-      ? `<div class="v27HeroMid"><strong>${score}</strong>${g.live_label && !hide ? `<small>${esc(g.live_label)}</small>` : ""}</div>`
+      ? `<div class="v27HeroMid">${lab}${cover ? "" : badge}<strong>${score}</strong>${g.live_label && !hide ? `<small>${esc(g.live_label)}</small>` : ""}</div>`
       : done
-        ? `<div class="v27HeroMid"><strong>${score}</strong><small>ФИНАЛ${finish}</small></div>`
-        : `<div class="v27HeroMid"><strong>${esc(clock(g.scheduled_start_utc))}</strong><small>${esc(whenWord(g.scheduled_start_utc))}</small></div>`;
-    const kickerRight = live ? (cover ? "" : badge) : done ? "Матч завершён" : "";
+        ? `<div class="v27HeroMid">${lab}<strong>${score}</strong><small>ФИНАЛ${finish}</small></div>`
+        : `<div class="v27HeroMid">${lab}<strong>${esc(clock(g.scheduled_start_utc))}</strong><small>${esc(whenWord(g.scheduled_start_utc))}</small></div>`;
     const vkText = live ? "Смотреть матч в VK Видео" : done ? "Смотреть запись в VK Видео" : "Трансляция в VK Видео";
     const vk = esc(g.vk_url || "https://vkvideo.ru/@nhl_home_of_hockey/lives");
-    return `<article class="v27Hero" data-game="${esc(g.game_pk)}">${cover ? `<div class="v27HeroCover"><img src="${esc(cover)}" alt="${esc(`${awayName} — ${homeName}`)}">${live ? badge : ""}</div>` : ""}<div class="v27HeroBody"><div class="v27Kicker">Матч дня${kickerRight ? `<span>${kickerRight}</span>` : ""}</div><div class="v27HeroTeams"><div><img src="${esc(away.logo || "")}" alt=""><span class="nm">${esc(awayName)}</span>${showRecords ? recordHtml(g.away_record) : ""}</div>${mid}<div><img src="${esc(homeTeam.logo || "")}" alt=""><span class="nm">${esc(homeName)}</span>${showRecords ? recordHtml(g.home_record) : ""}</div></div>${winlineHtml(g)}<a class="v27Cta" href="${vk}" target="_blank" rel="noopener"><span>${vkText}</span><span>→</span></a></div></article>`;
+    return `<article class="v27Hero" data-game="${esc(g.game_pk)}">${cover ? `<div class="v27HeroCover"><img src="${esc(cover)}" alt="${esc(`${awayName} — ${homeName}`)}">${live ? badge : ""}</div>` : ""}<div class="v27HeroBody"><div class="v27HeroTeams"><div><img src="${esc(away.logo || "")}" alt=""><span class="nm">${esc(awayName)}</span>${showRecords ? recordHtml(g.away_record) : ""}</div>${mid}<div><img src="${esc(homeTeam.logo || "")}" alt=""><span class="nm">${esc(homeName)}</span>${showRecords ? recordHtml(g.home_record) : ""}</div></div>${winlineHtml(g)}<a class="v27Cta" href="${vk}" target="_blank" rel="noopener"><span>${vkText}</span><span>→</span></a></div></article>`;
   }
 
   function goalsTitle(gl, today) {
@@ -699,6 +706,7 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
     } finally {
       st.busy = false;
       schedule();
+      setTimeout(arrowSync, 300);
     }
   }
 
@@ -714,6 +722,38 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
     }, live ? POLL_LIVE_MS : POLL_IDLE_MS);
   }
 
+  // The arrow lives on the body, outside of the page, so the redraws of the page do not touch it. Once it has been seen and the
+  // person scrolls, it fades out and does not come back until the app is opened again.
+  function arrow() {
+    let el = document.getElementById("v27More");
+    if (!el && !st.arrowDone) {
+      el = document.createElement("button");
+      el.id = "v27More";
+      el.type = "button";
+      el.className = "v27More";
+      el.setAttribute("aria-label", "Ниже есть ещё");
+      el.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+      el.addEventListener("click", () => window.scrollBy({ top: Math.round((window.innerHeight || 600) * 0.8), behavior: "smooth" }));
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+  function arrowSync() {
+    if (st.arrowDone || S.failed) return;
+    const show = Boolean(home()) && homeAllowed() && (document.documentElement.scrollHeight || 0) - (window.innerHeight || 0) > 120 && (window.scrollY || 0) < 24;
+    const el = show ? arrow() : document.getElementById("v27More");
+    if (el) el.classList.toggle("on", show);
+  }
+  window.addEventListener("scroll", () => {
+    if (st.arrowDone || (window.scrollY || 0) < 24) return;
+    const el = document.getElementById("v27More");
+    // a scroll on another tab, before the arrow was ever shown, does not count
+    if (!el || !el.classList.contains("on")) return;
+    st.arrowDone = true;
+    el.classList.remove("on");
+    setTimeout(() => el.remove(), 600);
+  }, { passive: true });
+
   function mount() {
     if (S.failed) return;
     const root = H.view();
@@ -724,6 +764,7 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
       if (existing) existing.remove();
       clearTimeout(st.timer);
       st.timer = null;
+      arrowSync();
       return;
     }
     root.querySelectorAll(":scope > .v15Media, :scope > .v20News, :scope > .v25FeaturedGame, :scope > .mediaShelf, :scope > .v12Media").forEach((x) => x.remove());
@@ -733,12 +774,13 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
       paintAll();
     }
     if (!st.timer && !st.busy && (!st.data || Date.now() - st.lastAt > 5000)) refresh();
+    setTimeout(arrowSync, 700);
   }
 
   // ---- settings: the home page of the person -----------------------------------------------------------------------------------
   function settingsHtml() {
     const row = (key, title, note) => `<div class="v27SetRow"><div><b>${title}</b><span>${note}</span></div><button type="button" class="v27Sw${st.prefs[key] ? " on" : ""}" role="switch" aria-checked="${st.prefs[key] ? "true" : "false"}" aria-label="${title}" data-v27-pref="${key}"><i></i></button></div>`;
-    return `<b class="v27SetTitle">Главная страница</b><p class="v27SetNote">Настройте главную под себя. Включить и выключить можно в любой момент.</p>${row("russians", "Русские в НХЛ", "Блок с российскими игроками дня и их результатами, сразу под списком матчей.")}${row("mine", "Моя лента", "Звёздочка у моих команд и игроков, переключатель «Мои» в списке матчей, новости про мои команды. Нужны подписки на команды или игроков.")}`;
+    return `<b class="v27SetTitle">Главная страница и фон</b><p class="v27SetNote">Настройте главную под себя. Включить и выключить можно в любой момент.</p>${row("russians", "Русские в НХЛ", "Блок с российскими игроками дня и их результатами, сразу под списком матчей.")}${row("mine", "Моя лента", "Звёздочка у моих команд и игроков, переключатель «Мои» в списке матчей, новости про мои команды. Нужны подписки на команды или игроков.")}${row("sil", "Силуэты игроков на фоне", "Лёгкие силуэты настоящих хоккеистов за карточками. Меняются от экрана к экрану и по дням.")}`;
   }
 
   function onSettingsClick(e) {
@@ -751,6 +793,7 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
     sw.classList.toggle("on", st.prefs[key]);
     sw.setAttribute("aria-checked", st.prefs[key] ? "true" : "false");
     st.sections = {};
+    if (key === "sil") window.dispatchEvent(new Event("hoh-bg-sil-change"));
     // "my feed" has just been switched on: the follows are fetched now, so the stars are there when the person is back on the home page
     if (key === "mine" && st.prefs.mine) loadFollows(true).catch(() => {});
   }
@@ -1047,6 +1090,12 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
     setTimeout(mount, 40);
     return result;
   };
+
+  // a follow was added or removed on another screen (the players tab): the stars of the home page follow it
+  window.addEventListener("hoh-follows-change", () => {
+    st.followsAt = 0;
+    if (mineOn() && home()) loadFollows(true).then(paintPersonal, () => {});
+  });
 
   S.mount = mount;
   S.refresh = refresh;
