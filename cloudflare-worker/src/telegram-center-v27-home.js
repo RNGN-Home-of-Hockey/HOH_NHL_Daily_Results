@@ -30,10 +30,13 @@ async function loadGames(db, now) {
     SELECT date(datetime(g.scheduled_start_utc,'-8 hours')) calendar_date,
            g.game_pk,g.game_type,g.scheduled_start_utc,g.game_state,g.home_tri,g.away_tri,g.home_score,g.away_score,g.period_type,
            ht.name_en home_name_en,ht.name_ru home_name_ru,ht.logo_url home_logo,
-           at.name_en away_name_en,at.name_ru away_name_ru,at.logo_url away_logo
+           at.name_en away_name_en,at.name_ru away_name_ru,at.logo_url away_logo,
+           vb.web_url vk_url,vb.app_url vk_app_url
     FROM games g
     LEFT JOIN teams ht ON ht.tri_code=g.home_tri
     LEFT JOIN teams at ON at.tri_code=g.away_tri
+    LEFT JOIN game_vk_broadcasts gvb ON gvb.game_pk=g.game_pk
+    LEFT JOIN vk_broadcasts vb ON vb.source_key=gvb.source_key
     WHERE g.scheduled_start_utc>=? AND g.scheduled_start_utc<? AND g.game_type IN (1,2,3)
     ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC;
   `).bind(iso(now - BEHIND_MS), iso(now + AHEAD_MS)).all();

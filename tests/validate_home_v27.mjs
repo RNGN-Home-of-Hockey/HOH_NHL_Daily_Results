@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { JSDOM } from "jsdom";
 import {
   nhlDateOf, gameFromRow, pickHome, stripOf, periodShort, playedTime, goalMoment, buildGoalTiles, applyNames, applyHeroLive, buildHomePayload,
-  GOALS_WINDOW_MS, MAX_TILES, MIN_TILES,
+  GOALS_WINDOW_MS, MAX_TILES, MIN_TILES, resultsEnd,
 } from "../cloudflare-worker/src/telegram-center-v27-home-data.js";
 import { buildRussians, statLine, MAX_RUSSIANS } from "../cloudflare-worker/src/telegram-center-v27-russians.js";
 import { applyGoalCounts } from "../cloudflare-worker/src/telegram-center-v27-home-data.js";
@@ -85,6 +85,19 @@ const BASE = "https://clips.test";
   // postponed games are ignored
   games = [game(2, "PPD"), game(-4, "OFF", { a: 1, h: 0 })];
   assert.equal(pickHome(games, NOW).mode, "results");
+
+  // the results of the night stay until 12:00 UTC (15:00 Moscow time), then the schedule of the next night
+  const night = Date.parse("2026-10-13T02:00:00Z");
+  const evening = (state, ofH, extra) => game(ofH, state, { base: Date.parse("2026-10-13T00:00:00Z"), ...extra });
+  const nightGames = [evening("OFF", 2, { a: 3, h: 2 }), evening("OFF", 1, { a: 1, h: 0 }), evening("FUT", 23)];
+  assert.equal(pickHome(nightGames, Date.parse("2026-10-13T11:59:00Z")).mode, "results", "before 15:00 Moscow time: last night");
+  assert.equal(pickHome(nightGames, Date.parse("2026-10-13T11:59:00Z")).stripDay, nightGames[0].date);
+  assert.equal(pickHome(nightGames, Date.parse("2026-10-13T12:01:00Z")).mode, "schedule", "after 15:00: the next night");
+  assert.equal(pickHome(nightGames, Date.parse("2026-10-13T12:01:00Z")).stripDay, nightGames[2].date);
+  assert.equal(pickHome(nightGames, Date.parse("2026-10-13T08:00:00Z")).mode, "results", "even in the middle of the morning");
+  assert.equal(resultsEnd(night), Date.parse("2026-10-13T12:00:00Z"));
+  assert.equal(resultsEnd(Date.parse("2026-10-13T23:00:00Z")), Date.parse("2026-10-14T12:00:00Z"), "a game that started in the evening: until noon of the next day");
+  assert.equal(resultsEnd(Date.parse("2026-10-13T12:00:00Z")), Date.parse("2026-10-14T12:00:00Z"), "exactly at the boundary: the next one");
 
   assert.deepEqual(pickHome([], NOW), { mode: "idle", today: nhlDateOf(NOW), stripDay: null, heroDay: null });
   assert.equal(buildHomePayload({ games: [], now: NOW }).games.length, 0);
@@ -331,7 +344,7 @@ const BASE = "https://clips.test";
   };
   const store = new Map();
   globalThis.caches = { default: { match: async (req) => store.get(req.url)?.clone(), put: async (req, res) => { store.set(req.url, res); } } };
-  const env = { DB: db([row(7001, -5, "OFF"), row(7002, 20, "FUT")]) };
+  const env = { DB: db([row(7001, -5, "OFF", { vk_url: "https://vkvideo.ru/video-1_77" }), row(7002, 20, "FUT")]) };
   const first = await handleTelegramCenterV27(new Request("https://x.test/api/telegram-center-v27/home"), env, "/api/telegram-center-v27/home");
   assert.equal(first.status, 200);
   assert.match(first.headers.get("cache-control"), /max-age=10/);
@@ -341,8 +354,10 @@ const BASE = "https://clips.test";
   assert.ok(body.games.length >= 1);
   assert.equal(body.featured.game_pk, 7002, "the match of the day is a game that has not finished yet (the home page asks the featured endpoint with focus=now)");
   assert.ok(sqls.some((s) => /FROM games g/.test(s) && /scheduled_start_utc>=\?/.test(s)), "the games of the window are read in one query");
+  assert.ok(sqls.some((s) => /FROM games g/.test(s) && /LEFT JOIN game_vk_broadcasts gvb ON gvb\.game_pk=g\.game_pk/.test(s) && /LEFT JOIN vk_broadcasts vb ON vb\.source_key=gvb\.source_key/.test(s) && /vb\.web_url vk_url/.test(s)), "with the link to watch of each game");
   assert.ok(sqls.some((s) => /player_profile_meta/.test(s) && /primary_country_code='RUS'/.test(s) && /current_team_tri IN/.test(s)), "the Russians of the teams that play are read in one query");
   assert.equal(body.russians.ok, true);
+  assert.equal(body.games[0].vk_url, "https://vkvideo.ru/video-1_77", "the link to watch reaches the page");
   const afterFirst = prepared;
   const second = await handleTelegramCenterV27(new Request("https://x.test/api/telegram-center-v27/home"), env, "/api/telegram-center-v27/home");
   assert.deepEqual(await second.json(), body);
@@ -440,7 +455,7 @@ const v27 = await (await handleTelegramCenterV27(new Request("https://x.test/tel
 const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const logo = (tri) => `https://l.test/${tri}.svg`;
 const chip = (pk, away, home, phase, a, h, startOffsetH = 2, finish = null) => ({
-  game_pk: pk, date: localDay(), start: iso(Date.now() + startOffsetH * HOUR), state: phase === "live" ? "LIVE" : phase === "final" ? "OFF" : "FUT", phase, is_playoff: false,
+  game_pk: pk, date: localDay(), start: iso(Date.now() + startOffsetH * HOUR), state: phase === "live" ? "LIVE" : phase === "final" ? "OFF" : "FUT", phase, is_playoff: false, vk_url: `https://vkvideo.ru/video-1_${pk}`,
   away: { tri: away, name_ru: `${away} ру`, logo: logo(away) }, home: { tri: home, name_ru: `${home} ру`, logo: logo(home) }, away_score: a, home_score: h, finish,
 });
 const tile = (event, pk, name, nameRu, team, period, time, a, h, extra = {}) => ({
@@ -545,7 +560,7 @@ function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}
   window.HTMLMediaElement.prototype.play = function play() { this.dispatchEvent(new window.Event("play")); return Promise.resolve(); };
   window.HTMLMediaElement.prototype.pause = function pause() {};
   window.HTMLMediaElement.prototype.load = function load() {};
-  const defaults = prefs ? { "hoh-home-russians": "1", "hoh-home-mine-on": "1" } : {};
+  const defaults = prefs ? { "hoh-home-mine-on": "1" } : {};
   for (const [key, value] of Object.entries({ ...defaults, ...stored })) window.localStorage.setItem(key, value);
   window.eval(v27);
   return { window, document, H, box, calls, opened, posted, players, timers, S: window.HOHV27 };
@@ -571,8 +586,9 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.ok(chips[0].querySelectorAll("img").length === 2, "both logos");
   assert.equal(sec(ctx, "strip").querySelectorAll("[data-v27-all]").length, 2, "'Все матчи' in the header and at the end of the strip");
 
-  assert.equal(sec(ctx, "goals").style.order, "2", "results: the goals come before the match of the day");
-  assert.equal(sec(ctx, "hero").style.order, "3");
+  assert.equal(sec(ctx, "russians").style.order, "2", "the Russians come right under the strip");
+  assert.equal(sec(ctx, "goals").style.order, "3", "results: the goals come before the match of the day");
+  assert.equal(sec(ctx, "hero").style.order, "4");
   assert.match(text(sec(ctx, "goals").querySelector(".v27Head")), /Голы вчера|Голы сегодня/);
   assert.match(text(sec(ctx, "goals").querySelector(".v27Head")), /20 роликов/);
   const tiles = [...sec(ctx, "goals").querySelectorAll(".v27Goal")];
@@ -623,8 +639,9 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   for (const mode of ["live", "schedule"]) {
     const ctx = makeHome({ data: homeData({ mode }) });
     await tick(420);
-    assert.equal(sec(ctx, "hero").style.order, "2", `${mode}: the match of the day leads`);
-    assert.equal(sec(ctx, "goals").style.order, "3");
+    assert.equal(sec(ctx, "russians").style.order, "2");
+    assert.equal(sec(ctx, "hero").style.order, "3", `${mode}: the match of the day leads after the Russians`);
+    assert.equal(sec(ctx, "goals").style.order, "4");
     ctx.window.close();
   }
   // live: the strip says today's games, a red LIVE chip, "Голы в эфире", and the page polls every 15 seconds
@@ -987,11 +1004,11 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
 }
 
 {
-  // the default: the home page is the same for everybody; the Russians and "my feed" wait in the settings
+  // the default: the Russians are on, "my feed" waits in the settings
   const follows = [{ subject_type: "team", subject_key: "MIN", name: "Миннесота Уайлд" }];
   const ctx = makeHome({ follows, prefs: false, news: [{ news_id: 1, title: "Миннесота выиграла", published_at: iso(Date.now() - 60000), comment_count: 0 }, ...NEWS] });
   await tick(520);
-  assert.ok(sec(ctx, "russians").hidden, "no Russians block by default");
+  assert.ok(!sec(ctx, "russians").hidden, "the Russians block is on by default");
   assert.ok(!sec(ctx, "strip").querySelector(".v27Star, .v27Seg, .v27Hint"), "no stars, no switch, no hint");
   assert.ok(!sec(ctx, "goals").querySelector(".v27Mine"));
   assert.ok(!sec(ctx, "news").querySelector(".v27Mine"), "news in their usual order");
@@ -1009,12 +1026,12 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.match(text(card), /Русские в НХЛ/);
   assert.match(text(card), /Моя лента/);
   const switches = [...card.querySelectorAll(".v27Sw")];
-  assert.deepEqual(switches.map((b) => b.getAttribute("aria-checked")), ["false", "false"], "both are off");
+  assert.deepEqual(switches.map((b) => b.getAttribute("aria-checked")), ["true", "false"], "the Russians are on, my feed is off");
   assert.deepEqual(switches.map((b) => b.dataset.v27Pref), ["russians", "mine"]);
   switches[0].click();
-  assert.equal(switches[0].getAttribute("aria-checked"), "true");
-  assert.ok(switches[0].classList.contains("on"));
-  assert.equal(ctx.window.localStorage.getItem("hoh-home-russians"), "1", "remembered");
+  assert.equal(switches[0].getAttribute("aria-checked"), "false", "the Russians can be switched off");
+  assert.ok(!switches[0].classList.contains("on"));
+  assert.equal(ctx.window.localStorage.getItem("hoh-home-russians"), "0", "remembered");
   assert.equal(ctx.window.localStorage.getItem("hoh-home-mine-on"), null, "the other one is untouched");
   switches[1].click();
   assert.equal(ctx.window.localStorage.getItem("hoh-home-mine-on"), "1");
@@ -1029,20 +1046,86 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   // back on the home page: what was switched on is there
   ctx.document.querySelector('.tab[data-tab="games"]').click();
   await tick(700);
-  assert.ok(!sec(ctx, "russians").hidden, "the Russians block is on");
-  assert.ok(sec(ctx, "strip").querySelector(".v27Star"), "and the stars of my feed");
+  assert.ok(sec(ctx, "russians").hidden, "the Russians block is off: the person switched it off");
+  assert.ok(sec(ctx, "strip").querySelector(".v27Star"), "and the stars of my feed are on");
   assert.equal(sec(ctx, "news").querySelector(".v27News").dataset.v27News, "1");
   assert.ok(sec(ctx, "news").querySelector(".v27Mine"));
   assert.ok(ctx.calls.filter((c) => c.url === "/api/telegram-center-v2/subscriptions").length >= 1);
   ctx.window.close();
 
-  // a person who switched only the Russians on gets no stars
-  const only = makeHome({ follows, prefs: false, stored: { "hoh-home-russians": "1" } });
+  // a person who changed nothing: the Russians and no stars; one who switched the Russians off: neither
+  const only = makeHome({ follows, prefs: false });
   await tick(520);
   assert.ok(!sec(only, "russians").hidden);
   assert.ok(!sec(only, "strip").querySelector(".v27Star, .v27Seg, .v27Hint"));
   assert.equal(only.calls.filter((c) => c.url === "/api/telegram-center-v2/subscriptions").length, 0);
   only.window.close();
+  const nothing = makeHome({ follows, prefs: false, stored: { "hoh-home-russians": "0" } });
+  await tick(520);
+  assert.ok(sec(nothing, "russians").hidden, "switched off in the settings: gone");
+  nothing.window.close();
+}
+
+{
+  // a game is "mine" for a reason, and the card says which one; a followed player brings his team along
+  const subs = [{ subject_type: "player", subject_key: "1", name: "Кирилл Капризов", current_team_tri: "MIN" }];
+  const ctx = makeHome({ follows: subs });
+  await tick(520);
+  const chips = [...sec(ctx, "strip").querySelectorAll(".v27Chip")];
+  const mine = chips.filter((c) => c.classList.contains("mine"));
+  assert.equal(mine.length, 1, "only the game of his team");
+  assert.equal(mine[0].dataset.v27Game, "3", "VGK — MIN");
+  assert.equal(text(mine[0].querySelector(".v27Why")), "★ Капризов", "the reason is on the card: a player I follow plays here");
+  assert.ok(chips.filter((c) => !c.classList.contains("mine")).every((c) => !c.querySelector(".v27Why")), "other games say nothing");
+  assert.equal(ctx.calls.filter((c) => c.url.startsWith("/api/telegram-center-v17/players/")).length, 0, "the team of the player came with the subscription: no extra questions");
+  ctx.window.close();
+
+  // a player who is not in the list of Russians: his team comes from the subscription alone
+  const stranger = makeHome({ follows: [{ subject_type: "player", subject_key: "5555", name: "Иван Тестов", current_team_tri: "MIN" }] });
+  await tick(520);
+  assert.equal(text(sec(stranger, "strip").querySelector('.v27Chip[data-v27-game="3"] .v27Why')), "★ Тестов");
+  assert.equal(stranger.calls.filter((c) => c.url.startsWith("/api/telegram-center-v17/players/")).length, 0);
+  stranger.window.close();
+
+  // a team I follow is named by its nickname; a team beats a player as the reason
+  const both = makeHome({ follows: [...subs, { subject_type: "team", subject_key: "MIN", name: "Миннесота Уайлд" }, { subject_type: "team", subject_key: "NYR", name: "Нью-Йорк Рейнджерс" }] });
+  await tick(520);
+  assert.equal(text(sec(both, "strip").querySelector('.v27Chip[data-v27-game="3"] .v27Why')), "★ Уайлд");
+  assert.equal(sec(both, "strip").querySelector('.v27Chip[data-v27-game="3"]').getAttribute("aria-label").includes("Уайлд"), true, "and it is read out by screen readers");
+  both.window.close();
+
+  // the game of a player with no known team: nothing starred while the team is unknown
+  const lost = makeHome({ follows: [{ subject_type: "player", subject_key: "777", name: "Иван Иванов" }], lookups: {} });
+  await tick(520);
+  assert.ok(!sec(lost, "strip").querySelector(".v27Why"), "no team, no star");
+  lost.window.close();
+}
+
+{
+  // every game has its own link to watch; it does not open the match screen
+  const ctx = makeHome();
+  await tick(420);
+  const boxes = [...sec(ctx, "strip").querySelectorAll(".v27ChipBox")];
+  assert.equal(boxes.length, 3);
+  const link = boxes[0].querySelector("a.v27Vk");
+  assert.ok(link, "a VK link on the card");
+  assert.equal(link.getAttribute("href"), "https://vkvideo.ru/video-1_1");
+  assert.equal(link.getAttribute("target"), "_blank");
+  assert.match(link.getAttribute("aria-label"), /Запись в VK/, "a finished game: the recording");
+  assert.ok(!boxes[0].querySelector("button a"), "the link is next to the button, not inside it");
+  link.addEventListener("click", (e) => e.preventDefault());
+  link.click();
+  assert.equal(ctx.opened.length, 0, "a tap on VK does not open the match");
+  ctx.window.close();
+
+  const mixed = homeData({ games: [{ ...chip(1, "NYR", "TBL", "live", 1, 0, -1), vk_url: "https://vkvideo.ru/video-1_a" }, { ...chip(2, "COL", "DAL", "upcoming", null, null, 3), vk_url: "javascript:alert(1)" }, { ...chip(3, "FLA", "BUF", "final", 3, 5, -6), vk_url: null }] });
+  const m = makeHome({ data: mixed });
+  await tick(420);
+  const mb = [...sec(m, "strip").querySelectorAll(".v27ChipBox")];
+  assert.match(mb[0].querySelector("a.v27Vk").getAttribute("aria-label"), /Смотреть в VK/, "a game that is on: watch");
+  assert.ok(!mb[1].querySelector("a"), "a link that is not a web link is never put on the page");
+  assert.ok(!mb[2].querySelector("a"), "no link in the data: no badge");
+  m.window.close();
 }
 
 {
@@ -1051,7 +1134,7 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   await tick(420);
   const block = sec(ctx, "russians");
   assert.ok(!block.hidden);
-  assert.equal(block.style.order, "4", "after the goals and the match of the day, before the news");
+  assert.equal(block.style.order, "2", "between the strip and the goals");
   assert.equal(text(block.querySelector(".v27Head b")), "Русские: как сыграли");
   assert.match(text(block.querySelector(".v27Head")), /голы \+ передачи/);
   const chips = [...block.querySelectorAll(".v27Ru")];

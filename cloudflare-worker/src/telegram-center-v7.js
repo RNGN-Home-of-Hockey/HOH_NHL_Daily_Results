@@ -73,8 +73,7 @@ async function standings(env){
         const t=teams[tri]||{tri_code:tri,name_en:tri,name_ru:null,logo_url:null},r=liveMap.get(tri)||null,gp=n(r?.gamesPlayed)||0;
         const divisionRank=gp>0?(n(r?.divisionSequence)||null):null,conferenceRank=gp>0?(n(r?.conferenceSequence)||null):null,wildcardRank=gp>0?(n(r?.wildcardSequence)||null):null,clinch=String(r?.clinchIndicator||"").trim();
         const inPlayoff=gp>0&&Boolean(clinch||(divisionRank&&divisionRank<=3)||(divisionRank&&divisionRank>3&&wildcardRank&&wildcardRank<=2)||(!wildcardRank&&conferenceRank&&conferenceRank<=8));
-        const inRace=gp>0&&!inPlayoff&&Boolean((divisionRank&&divisionRank>3&&wildcardRank&&wildcardRank<=4)||(!wildcardRank&&conferenceRank&&conferenceRank<=10));
-        return {tri,name:t.name_ru||t.name_en||tri,logo:t.logo_url||teamLogo(tri),gp,w:n(r?.wins)||0,l:n(r?.losses)||0,otl:n(r?.otLosses)||0,pts:n(r?.points)||0,division_rank:divisionRank,conference_rank:conferenceRank,wildcard_rank:wildcardRank,clinch_indicator:clinch||null,playoff_status:inPlayoff?"playoff":inRace?"race":null};
+        return {tri,name:t.name_ru||t.name_en||tri,logo:t.logo_url||teamLogo(tri),gp,w:n(r?.wins)||0,l:n(r?.losses)||0,otl:n(r?.otLosses)||0,pts:n(r?.points)||0,division_rank:divisionRank,conference_rank:conferenceRank,wildcard_rank:wildcardRank,clinch_indicator:clinch||null,playoff_status:inPlayoff?"playoff":null};
       }).sort(officialOrder);
       divisions.push({key:divKey,title:div.title,rows});
     }

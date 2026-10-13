@@ -11,8 +11,9 @@ const HOUR = 60 * MIN;
 
 // A game still counts as "ahead" for a few hours after its start: the state in the database can lag behind the real start.
 export const STALE_UPCOMING_MS = 6 * HOUR;
-// The night is "over" for 14 hours after the last finished game started, unless the next game is close.
-export const RESULTS_MAX_AGE_MS = 14 * HOUR;
+// The results of the night stay on the home page until 15:00 Moscow time (12:00 UTC), unless the next game is close:
+// the audience of the app watches the games at night and looks at the results in the morning.
+export const RESULTS_UNTIL_UTC_HOUR = 12;
 export const SOON_MS = 3 * HOUR;
 // Goals of games that started within this time are candidates for the goals shelf.
 export const GOALS_WINDOW_MS = 40 * HOUR;
@@ -53,7 +54,15 @@ export function gameFromRow(row) {
     away_score: num(row.away_score),
     home_score: num(row.home_score),
     finish: finish === "OT" || finish === "SO" ? finish : null,
+    vk_url: row.vk_url || row.vk_app_url || null,
   };
+}
+
+// The first 12:00 UTC after a moment: the end of the results period of a game that started then.
+export function resultsEnd(ms) {
+  const d = new Date(ms);
+  d.setUTCHours(RESULTS_UNTIL_UTC_HOUR, 0, 0, 0);
+  return d.getTime() <= ms ? d.getTime() + 24 * HOUR : d.getTime();
 }
 
 const byStart = (a, b) => a.start_ms - b.start_ms || a.game_pk - b.game_pk;
@@ -75,7 +84,7 @@ export function pickHome(games, now) {
 
   if (live.length) return { mode: "live", today, stripDay: live[0].date, heroDay: live[0].date };
 
-  const nightOver = lastFinal && now - lastFinal.start_ms < RESULTS_MAX_AGE_MS && !(next && next.start_ms - now < SOON_MS);
+  const nightOver = lastFinal && now < resultsEnd(lastFinal.start_ms) && !(next && next.start_ms - now < SOON_MS);
   if (nightOver) {
     const after = ahead.find((g) => g.date > lastFinal.date);
     return { mode: "results", today, stripDay: lastFinal.date, heroDay: after ? after.date : lastFinal.date };
@@ -107,6 +116,7 @@ export function publicGame(g) {
     away_score: g.away_score,
     home_score: g.home_score,
     finish: g.finish,
+    vk_url: g.vk_url,
   };
 }
 

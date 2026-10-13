@@ -38,7 +38,7 @@ export function homeScreenApp() {
     revealed: false, sections: {}, queue: [], goalIndex: -1, openNewsId: null,
     follows: null, followsAt: 0, playerTeams: new Map(), mineOnly: store.get("hoh-home-mine") === "1", hintHidden: store.get("hoh-home-hint") === "1",
     // what the person switched on in the settings: the home page is the same for everybody until then
-    prefs: { russians: store.get("hoh-home-russians") === "1", mine: store.get("hoh-home-mine-on") === "1" },
+    prefs: { russians: store.get("hoh-home-russians") !== "0", mine: store.get("hoh-home-mine-on") === "1" },
   });
   const PREF_STORE = { russians: "hoh-home-russians", mine: "hoh-home-mine-on" };
 
@@ -177,7 +177,23 @@ export function homeScreenApp() {
     });
     return set;
   }
-  const isMineGame = (g, teams) => teams.has(String(g.away && g.away.tri).toUpperCase()) || teams.has(String(g.home && g.home.tri).toUpperCase());
+  const nickOf = (name) => {
+    const words = String(name || "").trim().split(/\s+/);
+    return words[words.length - 1] || "";
+  };
+  // why a game is "mine": a team I follow plays in it, or a player I follow does; the first reason is shown on the card
+  function mineReason(g) {
+    if (!mineOn() || !st.follows) return "";
+    const tris = [g.away && g.away.tri, g.home && g.home.tri].map((t) => String(t || "").toUpperCase());
+    for (const tri of tris) {
+      if (st.follows.teams.has(tri)) return nickOf(st.follows.teamNames.get(tri)) || tri;
+    }
+    for (const [id, name] of st.follows.players) {
+      const tri = playerTeam(id);
+      if (tri && tris.includes(tri)) return surname(name) || name;
+    }
+    return "";
+  }
   function mineTokens() {
     const out = [];
     if (!mineOn() || !st.follows) return out;
@@ -221,7 +237,7 @@ html.v15Light .v27Home,html.v15Light .v27NewsPage{--c-card:#ffffff;--c-card2:#f1
 @keyframes v27Pulse{50%{opacity:.25}}
 .v27Strip,.v27Shelf{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;margin:0 -2px;padding:2px 2px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .v27Strip::-webkit-scrollbar,.v27Shelf::-webkit-scrollbar{display:none}
-.v27Chip{flex:0 0 112px;scroll-snap-align:start;display:grid;gap:5px;justify-items:center;padding:9px 6px 8px;border:1px solid var(--c-line);border-radius:14px;background:var(--c-card);color:inherit;cursor:pointer;font:inherit}
+.v27Chip{display:grid;align-content:start;gap:5px;justify-items:center;padding:9px 6px 8px;border:1px solid var(--c-line);border-radius:14px;background:var(--c-card);color:inherit;cursor:pointer;font:inherit}
 .v27Chip.live{border-color:var(--c-live);background:linear-gradient(180deg,rgba(255,77,94,.12),transparent 70%),var(--c-card)}
 .v27Chip.done{background:var(--c-card2)}
 .v27ChipTop{font-size:11px;font-weight:700;color:var(--c-muted);min-height:14px;display:flex;align-items:center}
@@ -319,8 +335,11 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
 .v27NCard .t{font-size:15px;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .v27NCard .p{font-size:13px;line-height:1.4;color:var(--c-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .v27NList{display:grid;gap:8px}
-.v27Chip{position:relative}
-.v27Star{position:absolute;right:8px;top:6px;font-style:normal;font-size:12px;line-height:1;color:var(--c-accent)}
+.v27Star{font-style:normal;font-size:11px;line-height:1;color:var(--c-accent)}
+.v27ChipBox{flex:0 0 112px;scroll-snap-align:start;position:relative;display:flex}
+.v27ChipBox .v27Chip{flex:1 1 auto;min-width:0}
+.v27Vk{position:absolute;right:6px;top:6px;display:inline-flex;align-items:center;height:16px;padding:0 6px;border-radius:6px;background:#2787f5;color:#fff!important;font-size:10px;font-weight:800;letter-spacing:.3px;text-decoration:none}
+.v27Why{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:700;color:var(--c-accent)}
 .v27Seg{display:inline-flex;border:1px solid var(--c-line);border-radius:999px;overflow:hidden;background:var(--c-card)}
 .v27Seg button{border:0;background:none;color:var(--c-muted);font:inherit;font-size:12px;font-weight:700;padding:5px 11px;cursor:pointer}
 .v27Seg button.on{background:var(--c-accent);color:#fff}
@@ -357,7 +376,7 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
   }
 
   // ---- renderers -------------------------------------------------------------------------------------------------------------
-  function chipHtml(g, hide, mine) {
+  function chipHtml(g, hide, why) {
     const live = g.phase === "live";
     const done = g.phase === "final";
     const away = g.away || {};
@@ -371,7 +390,10 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
       ? `<b>${hide ? `•${colon}•` : `${n0(g.away_score)}${colon}${n0(g.home_score)}`}</b>`
       : '<b class="dash">—</b>';
     const label = `${away.name_ru || away.tri || ""} — ${homeTeam.name_ru || homeTeam.tri || ""}`;
-    return `<button type="button" class="v27Chip ${live ? "live" : done ? "done" : "up"}${mine ? " mine" : ""}" data-v27-game="${esc(g.game_pk)}" aria-label="${esc(label)}${mine ? " (ваша команда)" : ""}">${mine ? '<i class="v27Star" aria-hidden="true">★</i>' : ""}<span class="v27ChipTop">${status}</span><span class="v27ChipMid"><img src="${esc(away.logo || "")}" alt="">${mid}<img src="${esc(homeTeam.logo || "")}" alt=""></span><span class="v27ChipTri">${esc(away.tri || "")} · ${esc(homeTeam.tri || "")}</span></button>`;
+    const vkUrl = webUrl(g.vk_url);
+    const vk = vkUrl ? `<a class="v27Vk" href="${esc(vkUrl)}" target="_blank" rel="noopener" aria-label="${live ? "Смотреть в VK" : done ? "Запись в VK" : "Трансляция в VK"}">VK</a>` : "";
+    const reason = why ? `<span class="v27Why"><i class="v27Star" aria-hidden="true">★</i> ${esc(why)}</span>` : "";
+    return `<div class="v27ChipBox"><button type="button" class="v27Chip ${live ? "live" : done ? "done" : "up"}${why ? " mine" : ""}" data-v27-game="${esc(g.game_pk)}" aria-label="${esc(label)}${why ? ` (${esc(why)})` : ""}"><span class="v27ChipTop">${status}</span><span class="v27ChipMid"><img src="${esc(away.logo || "")}" alt="">${mid}<img src="${esc(homeTeam.logo || "")}" alt=""></span><span class="v27ChipTri">${esc(away.tri || "")} · ${esc(homeTeam.tri || "")}</span>${reason}</button>${vk}</div>`;
   }
 
   function stripHtml(d) {
@@ -382,19 +404,18 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
     const day = d.strip_day === today ? "сегодня" : shortDate(d.strip_day);
     const caption = d.mode === "results" ? `Итоги · ${day}` : `${day.charAt(0).toUpperCase()}${day.slice(1)} · ${games.length} ${plural(games.length, "матч", "матча", "матчей")}`;
     // my games come right after the ones that are on; with "Мои" only they are alone
-    const teams = myTeams();
-    const mineCount = games.filter((g) => isMineGame(g, teams)).length;
+    let list = games.map((g) => ({ g, why: mineReason(g) }));
+    const mineCount = list.filter((x) => x.why).length;
     const onlyMine = st.mineOnly && mineCount > 0;
-    let list = games.map((g) => ({ g, mine: isMineGame(g, teams) }));
-    list.sort((a, b) => (a.g.phase === "live" ? 0 : 1) * 2 + (a.mine ? 0 : 1) - ((b.g.phase === "live" ? 0 : 1) * 2 + (b.mine ? 0 : 1)));
-    if (onlyMine) list = list.filter((x) => x.mine);
+    list.sort((a, b) => (a.g.phase === "live" ? 0 : 1) * 2 + (a.why ? 0 : 1) - ((b.g.phase === "live" ? 0 : 1) * 2 + (b.why ? 0 : 1)));
+    if (onlyMine) list = list.filter((x) => x.why);
     const right = mineCount > 0
       ? `<span class="v27Seg"><button type="button" data-v27-seg="all"${onlyMine ? "" : ' class="on"'}>Все</button><button type="button" data-v27-seg="mine"${onlyMine ? ' class="on"' : ""}>★ Мои</button></span>`
       : '<button type="button" data-v27-all="1">Все матчи ›</button>';
     const hint = mineOn() && st.follows && st.follows.ok && !followed() && !st.hintHidden
       ? '<div class="v27Hint"><button type="button" data-v27-follow="1">☆ Выберите любимые команды: их матчи будут первыми</button><button type="button" data-v27-hint-close="1" aria-label="Скрыть">×</button></div>'
       : "";
-    return `<div class="v27Head"><b>${esc(caption)}</b>${right}</div><div class="v27Strip">${list.map((x) => chipHtml(x.g, hide, x.mine)).join("")}<button type="button" class="v27ChipMore" data-v27-all="1">Все матчи</button></div>${hint}`;
+    return `<div class="v27Head"><b>${esc(caption)}</b>${right}</div><div class="v27Strip">${list.map((x) => chipHtml(x.g, hide, x.why)).join("")}<button type="button" class="v27ChipMore" data-v27-all="1">Все матчи</button></div>${hint}`;
   }
 
   function russiansTitle(d) {
@@ -575,9 +596,9 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
     }
     const results = d.mode === "results";
     setSec("strip", stripHtml(d), 1);
-    setSec("hero", d.featured ? heroHtml(d.featured) : "", results ? 3 : 2);
-    setSec("goals", goalsHtml(d), results ? 2 : 3);
-    setSec("russians", russiansHtml(d), 4);
+    setSec("russians", russiansHtml(d), 2);
+    setSec("hero", d.featured ? heroHtml(d.featured) : "", results ? 4 : 3);
+    setSec("goals", goalsHtml(d), results ? 3 : 4);
   }
   const paintNews = () => setSec("news", newsHtml(), 5);
   const paintVideos = () => setSec("videos", videosHtml(), 6);
@@ -644,6 +665,7 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
           } else if (s.subject_type === "player") {
             const id = Number(s.subject_key);
             if (id) next.players.set(id, String(s.name || ""));
+            if (id && s.current_team_tri) st.playerTeams.set(id, String(s.current_team_tri).toUpperCase());
           }
         }
       }
@@ -716,7 +738,7 @@ html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--
   // ---- settings: the home page of the person -----------------------------------------------------------------------------------
   function settingsHtml() {
     const row = (key, title, note) => `<div class="v27SetRow"><div><b>${title}</b><span>${note}</span></div><button type="button" class="v27Sw${st.prefs[key] ? " on" : ""}" role="switch" aria-checked="${st.prefs[key] ? "true" : "false"}" aria-label="${title}" data-v27-pref="${key}"><i></i></button></div>`;
-    return `<b class="v27SetTitle">Главная страница</b><p class="v27SetNote">Настройте главную под себя. Включить и выключить можно в любой момент.</p>${row("russians", "Русские в НХЛ", "Блок с российскими игроками дня и их результатами.")}${row("mine", "Моя лента", "Звёздочка у моих команд и игроков, переключатель «Мои» в списке матчей, новости про мои команды. Нужны подписки на команды или игроков.")}`;
+    return `<b class="v27SetTitle">Главная страница</b><p class="v27SetNote">Настройте главную под себя. Включить и выключить можно в любой момент.</p>${row("russians", "Русские в НХЛ", "Блок с российскими игроками дня и их результатами, сразу под списком матчей.")}${row("mine", "Моя лента", "Звёздочка у моих команд и игроков, переключатель «Мои» в списке матчей, новости про мои команды. Нужны подписки на команды или игроков.")}`;
   }
 
   function onSettingsClick(e) {

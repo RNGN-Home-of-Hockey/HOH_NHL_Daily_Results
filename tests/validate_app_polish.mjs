@@ -222,8 +222,8 @@ const livePayload = (away, home, label, code = "LIVE", phase = "live") => ({ ok:
   assert.match(v8, /<div class=\\?"gp\\?">'\+esc\(r\.gp\|\|0\)\+'<\/div><div class=\\?"pts\\?">'\+esc\(r\.pts\|\|0\)\+'<\/div>/, "games played and points in two columns");
   assert.ok(!/\+' оч\.<\/div>/.test(v8), "no more 'оч.' in the row");
   assert.match(v8, /grid-template-columns:22px 28px 1fr 34px 40px/);
-  // the players tab opens on Russia
-  assert.match(v8, /playerSort:'salary',playerLimit:10,country:'RUS'/);
+  // the players tab opens on Russia, by points
+  assert.match(v8, /playerSort:'points',playerLimit:10,country:'RUS'/);
 }
 
 // ---- 5) the eye and the gear share the row of the back button; the player's last game honours no-spoilers ---------------------------
