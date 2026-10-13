@@ -12,11 +12,20 @@ export async function resolveVkAccessToken(env,{force=false}={}){
     const cached=await readCachedAccess(env.DB,bootstrapRefresh).catch(()=>null);
     if(cached)return cached;
   }
-  if(!force&&access)return access;
+  // A VK ID key lives one hour. With the refresh credentials the key is renewed here as soon as the cached one runs out; the fixed
+  // VK_ACCESS_TOKEN is only the fallback (before, it was returned first, so the key was renewed only by the deploy's discovery call
+  // and the sync of the channel stopped an hour after the last deploy).
+  if(!force&&access&&!(bootstrapRefresh&&deviceId))return access;
   if(!bootstrapRefresh||!deviceId)throw new Error("missing_vk_refresh_credentials");
   const currentRefresh=env?.DB?await readCurrentRefresh(env.DB,bootstrapRefresh).catch(()=>bootstrapRefresh):bootstrapRefresh;
-  const next=await refreshToken(currentRefresh,deviceId);
-  if(!next?.access_token)throw new Error("vk_refresh_missing_access_token");
+  let next;
+  try{
+    next=await refreshToken(currentRefresh,deviceId);
+    if(!next?.access_token)throw new Error("vk_refresh_missing_access_token");
+  }catch(error){
+    if(!force&&access)return access;
+    throw error;
+  }
   if(env?.DB){
     const exp=new Date(Date.now()+Math.max(60,Number(next.expires_in||3600))*1000).toISOString();
     await writeMeta(env.DB,ACCESS_KEY,await encrypt(String(next.access_token),bootstrapRefresh));

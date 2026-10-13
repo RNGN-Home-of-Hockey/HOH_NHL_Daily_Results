@@ -54,19 +54,6 @@ export async function runVkBroadcastMaintenance(env,{forceBackfill=false}={}) {
   }
 
   try {
-    await env.DB.prepare(`
-      DELETE FROM game_vk_broadcasts
-      WHERE source_key IN (
-        SELECT source_key FROM vk_broadcasts
-        WHERE (duration_seconds IS NOT NULL AND duration_seconds < ?)
-           OR LOWER(title) LIKE '%хайлайт%'
-           OR LOWER(title) LIKE '%highlight%'
-           OR LOWER(title) LIKE '%обзор матча%'
-           OR LOWER(title) LIKE '%лучшие моменты%'
-           OR LOWER(title) LIKE '%best moment%'
-      );
-    `).bind(MIN_CANONICAL_DURATION_SECONDS).run();
-
     const algoMeta=await loadMeta(env.DB,META_ALGO);
     if(String(algoMeta?.meta_value||"")!==BACKFILL_ALGO){
       await saveMeta(env.DB,META_CURSOR,"0");
@@ -75,6 +62,21 @@ export async function runVkBroadcastMaintenance(env,{forceBackfill=false}={}) {
       forceBackfill=true;
     }
     const first=await fetchVkPage(token,0);
+    // Links to short videos and highlights are cleaned only once VK has answered, so a failed sync never unlinks anything.
+    // Duration 0 is a stream that has not started yet, not a short video: its link stays (it used to be dropped and re-made every
+    // run, and lost for good while the sync failed).
+    await env.DB.prepare(`
+      DELETE FROM game_vk_broadcasts
+      WHERE source_key IN (
+        SELECT source_key FROM vk_broadcasts
+        WHERE (duration_seconds > 0 AND duration_seconds < ?)
+           OR LOWER(title) LIKE '%хайлайт%'
+           OR LOWER(title) LIKE '%highlight%'
+           OR LOWER(title) LIKE '%обзор матча%'
+           OR LOWER(title) LIKE '%лучшие моменты%'
+           OR LOWER(title) LIKE '%best moment%'
+      );
+    `).bind(MIN_CANONICAL_DURATION_SECONDS).run();
     const current=await ingestPage(env,first.items||[],{offset:0,mode:"latest"});
 
     const meta=await loadMeta(env.DB,META_CURSOR);
@@ -132,7 +134,8 @@ export async function runVkBroadcastMaintenance(env,{forceBackfill=false}={}) {
         await saveMeta(env.DB,META_LAST_ERROR,"");
         return result;
       } catch (refreshError) {
-        message=errorText(refreshError);
+        // keep VK's own answer first: the caller (maintenance v2) renews the key with the full credentials when it sees it
+        message=`${message} | refresh: ${errorText(refreshError)}`;
       }
     }
     try { await saveMeta(env.DB,META_LAST_ERROR,JSON.stringify({at:new Date().toISOString(),error:message})); } catch {}
