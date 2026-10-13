@@ -367,6 +367,36 @@ const BASE = "https://clips.test";
   const withRecord = (await (await handleTelegramCenterV19ProductData(new Request("https://x.test/api/telegram-center-v19/featured?date=2026-10-12"), { HOH_CLIPS_BASE: BASE, DB: recDb }, "/api/telegram-center-v19/featured")).json()).featured;
   assert.deepEqual(plain(withRecord.away_record), { gp: 6, w: 4, l: 1, otl: 1, pts: 9 }, "PHI (the away side in this fixture) has a record");
   assert.equal(withRecord.home_record, null, "a team without a standings row has none");
+
+  // the table of the NHL is read live: with empty standings snapshots (as in production) every game used to look equally strong and
+  // the first one by time won; now the stronger pair is the match of the day, and the records come from the live table
+  const weak = row(9001, 2, "FUT", { home_tri: "CHI", away_tri: "ANA" });
+  const strong = row(9002, 5, "FUT", { home_tri: "CAR", away_tri: "TBL" });
+  const emptyStandingsDb = { prepare: (sql) => ({ bind: () => ({ all: async () => ({ results: /FROM standings_snapshots|FROM subscriptions/.test(sql) ? [] : [weak, strong] }), first: async () => null }), all: async () => ({ results: [] }) }) };
+  const table = (tri, gp, w, l, otl, pts, rank) => ({ teamAbbrev: { default: tri }, gamesPlayed: gp, wins: w, losses: l, otLosses: otl, points: pts, leagueSequence: rank });
+  let standingsAsked = 0;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("standings/now")) {
+      standingsAsked += 1;
+      return new Response(JSON.stringify({ standings: [table("CAR", 6, 6, 0, 0, 12, 1), table("TBL", 6, 5, 1, 0, 10, 2), table("CHI", 6, 0, 5, 1, 1, 31), table("ANA", 6, 1, 4, 1, 3, 28)] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ version: 1, covers: {} }), { status: 200 });
+  };
+  const askLive = async (db) => (await (await handleTelegramCenterV19ProductData(new Request("https://x.test/api/telegram-center-v19/featured?date=2026-10-12"), { HOH_CLIPS_BASE: BASE, DB: db }, "/api/telegram-center-v19/featured")).json()).featured;
+  const chosen = await askLive(emptyStandingsDb);
+  assert.equal(chosen.game_pk, 9002, "the stronger pair wins although it starts later");
+  assert.ok(standingsAsked >= 1, "the live table is asked for");
+  assert.deepEqual(plain(chosen.home_record), { gp: 6, w: 6, l: 0, otl: 0, pts: 12 }, "records come from the live table when the snapshots are empty");
+  assert.deepEqual(plain(chosen.away_record), { gp: 6, w: 5, l: 1, otl: 0, pts: 10 });
+  assert.ok(chosen.signals.home_win_pct > 0.9, "and the strength of the team is known");
+  // an old row in the database does not hide the live table
+  const staleDb = { prepare: (sql) => ({ bind: () => ({ all: async () => ({ results: /FROM standings_snapshots/.test(sql) ? [{ team_tri: "CAR", games_played: 2, wins: 0, losses: 2, ot_losses: 0, points: 0, league_rank: 30 }] : /FROM subscriptions/.test(sql) ? [] : [weak, strong] }), first: async () => null }), all: async () => ({ results: [] }) }) };
+  assert.equal((await askLive(staleDb)).home_record.w, 6, "the live table is newer than the snapshot");
+  // the NHL does not answer: the old behaviour, the first game by time
+  globalThis.fetch = async (url) => (String(url).includes("standings/now") ? new Response("no", { status: 502 }) : new Response(JSON.stringify({ version: 1, covers: {} }), { status: 200 }));
+  assert.equal((await askLive(emptyStandingsDb)).game_pk, 9001, "no live table and no snapshots: the first game by time, as before");
+  globalThis.fetch = async (url) => { if (String(url).includes("standings/now")) throw new Error("offline"); return new Response(JSON.stringify({ version: 1, covers: {} }), { status: 200 }); };
+  assert.equal((await askLive(emptyStandingsDb)).game_pk, 9001, "the request fails outright: the same");
   globalThis.fetch = realFetch;
 }
 
