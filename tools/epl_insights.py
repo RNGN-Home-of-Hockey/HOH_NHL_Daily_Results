@@ -33,7 +33,7 @@ CHANCE_MIN_MEETINGS = 4
 CHANCE_MIN_BASELINE = 20
 CHANCE_METRICS = (("xg_proxy", "ожидаемых голов (модель)"), ("shots_inside_box", "ударов из штрафной"),
                   ("shots_on_target", "ударов в створ"), ("shots", "ударов"))
-CHANCE_GAP = {"xg_proxy": 0.35, "shots_inside_box": 1.5, "shots_on_target": 1.5, "shots": 2.0}  # absolute difference that counts
+CHANCE_GAP = {"xg_proxy": 0.5, "shots_inside_box": 1.5, "shots_on_target": 1.5, "shots": 2.0}  # absolute difference that counts (xG model: ~3x its 0.18 error of a 6-match average)
 MIN_SCORE = 35
 
 
