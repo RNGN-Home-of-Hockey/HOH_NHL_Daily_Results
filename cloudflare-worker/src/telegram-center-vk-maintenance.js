@@ -172,7 +172,7 @@ async function ingestPage(env,items,{offset,mode}){
       status:String(item?.live_status||item?.type||"recorded"),
       web_url:`https://vkvideo.ru/video${owner}_${id}`,
       app_url:`https://vk.com/video${owner}_${id}`,
-      thumbnail_url:bestImage(item?.image||item?.first_frame||item?.first_frame_160||[]),
+      thumbnail_url:bestImage(item?.image)||bestImage(item?.first_frame)||bestImage(item?.first_frame_160),
       duration_seconds:numOrNull(item?.duration),
       parsed_home_tri:teams[0]||null,parsed_away_tri:teams[1]||null,
       raw_json:JSON.stringify(compactItem(item)),
@@ -217,7 +217,8 @@ async function bulkUpsertBroadcasts(db,records){
     FROM json_each(?) WHERE 1
     ON CONFLICT(source_key) DO UPDATE SET
       title=excluded.title,published_at=COALESCE(excluded.published_at,vk_broadcasts.published_at),scheduled_at=COALESCE(excluded.scheduled_at,vk_broadcasts.scheduled_at),
-      status=excluded.status,web_url=excluded.web_url,app_url=excluded.app_url,thumbnail_url=COALESCE(excluded.thumbnail_url,vk_broadcasts.thumbnail_url),
+      status=excluded.status,web_url=excluded.web_url,app_url=excluded.app_url,
+      thumbnail_url=COALESCE(excluded.thumbnail_url,CASE WHEN vk_broadcasts.thumbnail_url LIKE '%/getVideoPreview?%' THEN NULL ELSE vk_broadcasts.thumbnail_url END),
       duration_seconds=COALESCE(excluded.duration_seconds,vk_broadcasts.duration_seconds),parsed_home_tri=excluded.parsed_home_tri,parsed_away_tri=excluded.parsed_away_tri,
       raw_json=excluded.raw_json,updated_at=CURRENT_TIMESTAMP;
   `).bind(payload).run();
@@ -341,9 +342,14 @@ function parseTitleDate(title,fallback){
   if(m){const month=MONTHS[m[2]];if(month){const d=new Date(Date.UTC(Number(m[3]),month-1,Number(m[1]),0,0,0));if(Number.isFinite(d.getTime()))return d.toISOString()}}
   return fallback||null;
 }
-function bestImage(images){
-  const list=Array.isArray(images)?images:[];if(!list.length)return typeof images==="string"?images:null;
-  return list.slice().sort((a,b)=>(Number(b.width||0)*Number(b.height||0))-(Number(a.width||0)*Number(a.height||0)))[0]?.url||null;
+// While VK has not got a picture of a stream yet, it lists an iv.okcdn.ru "getVideoPreview" link that never opens (404) and its own
+// page shows the grey placeholder. Such a link is not a cover: it is skipped, and a stored one is dropped (see bulkUpsertBroadcasts),
+// so the app shows the team logos and the cover keeper does not spend its tries on it until VK gives the real picture.
+export function isDeadVkPreview(url){return /\/getVideoPreview\?/i.test(String(url||""))}
+export function bestImage(images){
+  const list=Array.isArray(images)?images:typeof images==="string"?[{url:images}]:[];
+  const good=list.filter(x=>x?.url&&!isDeadVkPreview(x.url));
+  return good.sort((a,b)=>(Number(b.width||0)*Number(b.height||0))-(Number(a.width||0)*Number(a.height||0)))[0]?.url||null;
 }
 function compactItem(x){return {id:x?.id,owner_id:x?.owner_id,title:x?.title,date:x?.date,adding_date:x?.adding_date,duration:x?.duration,type:x?.type,live_status:x?.live_status,views:x?.views,player:x?.player}}
 function unixIso(v){const n=Number(v);return Number.isFinite(n)&&n>0?new Date(n*1000).toISOString():null}
