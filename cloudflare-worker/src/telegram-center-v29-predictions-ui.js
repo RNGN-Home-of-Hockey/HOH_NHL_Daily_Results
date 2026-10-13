@@ -1,7 +1,7 @@
 // Live Center v29: the game of the fans on the screen.
-//   - "Кто победит?" with the Winline odds of the winner including overtime on both buttons, before and after the pick:
-//     in the match of the day (.v29Slot in the hero of the home page), in the match screen, and as the list of the night
-//     in the "predict" section of the home page;
+//   - "Кто победит?" (the winner including overtime and the shootout): in the match of the day (.v29Slot in the hero of the home
+//     page) and in the match screen with the question between the two buttons; in every card of the "Матчи" tab, where the games
+//     that are over show how the fans voted. No odds on the buttons: the Winline block under them is the only one (the owner);
 //   - "Твой профиль" (level, points, progress to the next level) and the table of the best fans on the "Мои" screen.
 //
 // This function is serialized (predictionsApp.toString()) and served as /telegram-app/v29-predict.js, so it must be
@@ -11,7 +11,6 @@ export function predictionsApp() {
   if (!H || window.HOHV29) return;
   const S = (window.HOHV29 = { version: "29.0" });
   const API = "/api/telegram-center-v29";
-  const LIST_SHORT = 5;
   const BOARD_SHORT = 10;
   const REFRESH_MS = 60000;
 
@@ -19,23 +18,17 @@ export function predictionsApp() {
     games: new Map(), slate: null, slateAt: 0, slateTried: 0, slateBusy: false, missing: new Map(),
     me: null, meAt: 0, meBusy: false,
     boards: new Map(), period: "week", boardBusy: new Set(), boardOpen: false,
-    listOpen: false, rulesOpen: false, pending: new Set(), want: new Set(), wantTimer: null,
+    rulesOpen: false, pending: new Set(), want: new Set(), wantTimer: null,
   };
   const painted = new WeakMap(); // element -> the html it shows, so a redraw happens only when something changed
 
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const noSpoilers = () => typeof window.HOHNoSpoilers === "function" && Boolean(window.HOHNoSpoilers());
   const inTelegram = () => Boolean(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
-  const fmtOdds = (v) => (Number(v) > 1 ? Number(v).toFixed(2) : "");
   const fmtXp = (v) => String(Math.max(0, Math.floor(Number(v) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   const clock = (iso) => {
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  };
-  const dayWord = (date) => {
-    const d = new Date(`${date}T12:00:00Z`);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" });
   };
   const LEVELS = [["Новичок", 0], ["Болельщик", 100], ["Знаток", 500], ["Мастер", 2000], ["Легенда", 5000]];
   const MEDAL = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.2"/><path d="M8.6 13.2 7 21l5-2.6 5 2.6-1.6-7.8"/></svg>';
@@ -46,15 +39,14 @@ export function predictionsApp() {
     const style = document.createElement("style");
     style.id = "v29css";
     style.textContent = `
-.v29Vote,.v29Sec,.v29Me{--v29-line:#d9dbe6;--v29-btn:rgba(255,255,255,.72);--v29-text:#0c0d14;--v29-muted:#686c7e;--v29-odd:#5b21b6;--v29-odd-bg:rgba(122,61,240,.1);--v29-pick:#7a3df0;--v29-bar:rgba(122,61,240,.13);--v29-win:#17a06b;--v29-card:rgba(255,255,255,.82)}
-html:not(.v15Light) :is(.v29Vote,.v29Sec,.v29Me){--v29-line:#30334a;--v29-btn:rgba(22,24,34,.72);--v29-text:#f7f7fb;--v29-muted:#9094a8;--v29-odd:#d9ccff;--v29-odd-bg:rgba(203,188,255,.13);--v29-pick:#b58aff;--v29-bar:rgba(181,138,255,.16);--v29-win:#62e6ae;--v29-card:rgba(16,18,26,.8)}
+.v29Vote,.v29MatchesHead,.v29Me{--v29-line:#d9dbe6;--v29-btn:rgba(255,255,255,.72);--v29-text:#0c0d14;--v29-muted:#686c7e;--v29-odd:#5b21b6;--v29-odd-bg:rgba(122,61,240,.1);--v29-pick:#7a3df0;--v29-bar:rgba(122,61,240,.13);--v29-win:#17a06b;--v29-card:rgba(255,255,255,.82)}
+html:not(.v15Light) :is(.v29Vote,.v29MatchesHead,.v29Me){--v29-line:#30334a;--v29-btn:rgba(22,24,34,.72);--v29-text:#f7f7fb;--v29-muted:#9094a8;--v29-odd:#d9ccff;--v29-odd-bg:rgba(203,188,255,.13);--v29-pick:#b58aff;--v29-bar:rgba(181,138,255,.16);--v29-win:#62e6ae;--v29-card:rgba(16,18,26,.8)}
 html.hohSil.v15Light .v29Me{--v29-card:rgba(255,255,255,.55)}
 html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 .v29Vote{display:grid;gap:8px;color:var(--v29-text)}
-.v29Q{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-.v29Q b{font-size:14px;font-weight:800}
-.v29Q span{font-size:11px;color:var(--v29-muted);font-weight:600;text-align:right}
 .v29Btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.v29Row3{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px}
+.v29Mid{font-size:12.5px;font-weight:800;line-height:1.15;text-align:center;color:var(--v29-text)}
 .v29Btn{position:relative;overflow:hidden;display:flex;align-items:center;gap:5px;min-width:0;min-height:44px;padding:6px 8px;border-radius:12px;border:1.5px solid var(--v29-line);background:var(--v29-btn);color:inherit;font:inherit;cursor:pointer;text-align:left}
 .v29Btn>*{position:relative;z-index:1}
 .v29Btn img{width:22px;height:22px;object-fit:contain;flex:0 0 auto}
@@ -63,7 +55,6 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 .v29Btn b{font-size:14px;font-weight:800}
 .v29Btn .v29Tick{font-style:normal;font-weight:900;font-size:13px;color:var(--v29-pick)}
 .v29Btn .v29Pc{font-size:11px;font-weight:700;color:var(--v29-muted)}
-.v29Btn .v29Odd{flex:0 0 auto;margin-left:auto;font-size:13px;font-weight:800;color:var(--v29-odd);background:var(--v29-odd-bg);padding:2px 6px;border-radius:7px;white-space:nowrap}
 .v29Btn .v29Share{position:absolute;z-index:0;left:0;top:0;bottom:0;background:var(--v29-bar)}
 .v29Btn.mine{border-color:var(--v29-pick);box-shadow:0 0 0 2px rgba(122,61,240,.16)}
 .v29Btn.won{border-color:var(--v29-win)}
@@ -74,13 +65,10 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 .v29Vote.compact{gap:5px}
 .v27Hero .v29Slot{margin-top:2px}
 .v29MatchSlot{margin:10px 0;padding:12px;border:1px solid var(--v26-line,#282b38);border-radius:16px;background:var(--v26-card,rgba(16,18,26,.8))}
-.v29Sec{display:grid;gap:10px;color:var(--v29-text)}
-.v29List{display:grid;border:1px solid var(--c-line,var(--v29-line));border-radius:16px;background:var(--c-card,var(--v29-card));overflow:hidden}
-.v29Row{display:grid;grid-template-columns:50px minmax(0,1fr);gap:8px;align-items:start;padding:10px 12px;border-top:1px solid var(--c-line,var(--v29-line))}
-.v29Row:first-child{border-top:0}
-.v29Time{display:grid;gap:2px;padding:6px 0 0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
-.v29Time b{font-size:14px;font-weight:800}
-.v29Time small{font-size:10.5px;color:var(--v29-muted);font-weight:600}
+.v29CardSlot{margin-top:8px}
+.v29MatchesHead{display:grid;gap:6px;margin:0 0 10px;padding:12px 14px;border:1px solid var(--v29-line);border-radius:16px;background:var(--v29-card);color:var(--v29-text)}
+.v29MhTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.v29MhTop b{font-size:15px;font-weight:800}
 .v29Note{font-size:12px;color:var(--v29-muted);font-weight:600;line-height:1.35}
 .v29Last{font-size:13px;font-weight:700;padding:9px 12px;border-radius:12px;background:var(--v29-odd-bg);color:var(--v29-odd)}
 .v29More,.v29Link{justify-self:start;padding:0;border:0;background:none;color:var(--v29-pick);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
@@ -137,33 +125,36 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     if (g.open) {
       if (st.pending.has(g.game_pk)) return { text: "Сохраняем…" };
       if (my) return { text: `Ваш выбор: ${tri} · можно поменять до ${clock(g.start)}` };
-      return { text: g.votes && g.votes.total ? `Проголосовали: ${g.votes.total}` : "Выберите, кто победит" };
+      return { text: g.votes && g.votes.total ? `Проголосовали: ${g.votes.total} · с учётом ОТ и буллитов` : "Победа с учётом ОТ и буллитов" };
     }
     if (noSpoilers()) return { text: "Итог скрыт: режим без спойлеров" };
     if (g.settled && g.settled.winner === "void") return { text: "Матч не состоялся — прогнозы без очков" };
     if (g.settled && my && my.result) return my.result === "win" ? { text: `✓ Угадали · +${my.xp} XP`, ok: true } : { text: `Не угадали · +${my.xp} XP` };
-    if (g.settled) return { text: "Матч завершён" };
+    if (g.settled) return { text: g.votes && g.votes.total ? `Как голосовали болельщики · ${g.votes.total}` : "Матч завершён" };
     return { text: my ? `Матч идёт · ваш выбор ${tri}` : "Прогнозы закрыты — матч начался" };
   }
 
-  function voteHtml(g, compact) {
+  // full: the match of the day and the match screen, the question between the buttons; card: the cards of the "Матчи" tab,
+  // where a game that is over and had no votes shows nothing
+  function voteHtml(g, mode) {
     if (!g) return "";
+    const card = mode === "card";
     const hide = !g.open && noSpoilers();
     const total = g.votes ? Number(g.votes.total) || 0 : 0;
+    if (card && !g.open && !g.my && total === 0) return "";
     const split = !hide && g.votes && g.votes.home != null && total > 0;
     const winner = !hide && g.settled && g.settled.winner !== "void" ? g.settled.winner : null;
     const side = (k) => {
       const t = g[k] || {};
-      const odds = g.odds ? fmtOdds(g.odds[k]) : "";
       const mine = Boolean(g.my && g.my.pick === k);
       const share = split ? Math.round((100 * (Number(g.votes[k]) || 0)) / total) : null;
       const cls = `v29Btn${mine ? " mine" : ""}${winner === k ? " won" : ""}${st.pending.has(g.game_pk) ? " busy" : ""}`;
-      // the share of the fans goes under the name, so the odds always keep their place on the right
-      return `<button type="button" class="${cls}" data-v29-pick="${k}" data-v29-game="${esc(g.game_pk)}"${g.open ? "" : " disabled"} aria-pressed="${mine}" aria-label="${esc(`${t.name_ru || t.tri}${odds ? `, коэффициент ${odds}` : ""}`)}">${share != null ? `<span class="v29Share" style="width:${share}%"></span>` : ""}<img src="${esc(t.logo)}" alt=""><span class="v29Nm"><span class="v29T"><b>${esc(t.tri)}</b>${mine ? '<i class="v29Tick">✓</i>' : ""}</span>${share != null ? `<small class="v29Pc">${share}%</small>` : ""}</span>${odds ? `<span class="v29Odd">${odds}</span>` : ""}</button>`;
+      // the share of the fans goes under the name
+      return `<button type="button" class="${cls}" data-v29-pick="${k}" data-v29-game="${esc(g.game_pk)}"${g.open ? "" : " disabled"} aria-pressed="${mine}" aria-label="${esc(t.name_ru || t.tri)}">${share != null ? `<span class="v29Share" style="width:${share}%"></span>` : ""}<img src="${esc(t.logo)}" alt=""><span class="v29Nm"><span class="v29T"><b>${esc(t.tri)}</b>${mine ? '<i class="v29Tick">✓</i>' : ""}</span>${share != null ? `<small class="v29Pc">${share}%</small>` : ""}</span></button>`;
     };
     const line = lineOf(g);
-    const head = compact ? "" : `<div class="v29Q"><b>Кто победит?</b><span>с ОТ и буллитами${g.odds ? " · кэфы Winline" : ""}</span></div>`;
-    return `<div class="v29Vote${compact ? " compact" : ""}">${head}<div class="v29Btns">${side("away")}${side("home")}</div><div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div></div>`;
+    const row = card ? `<div class="v29Btns">${side("away")}${side("home")}</div>` : `<div class="v29Row3">${side("away")}<span class="v29Mid">Кто<br>победит?</span>${side("home")}</div>`;
+    return `<div class="v29Vote${card ? " compact" : ""}">${row}<div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div></div>`;
   }
 
   // the hero of the home page asks for its html while it is drawn, so the vote is there from the first frame
@@ -173,7 +164,7 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
       want(Number(pk));
       return "";
     }
-    return voteHtml(g, false);
+    return voteHtml(g, "full");
   };
 
   function setGame(g) {
@@ -185,35 +176,38 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     }
   }
 
-  // ---- the list of the night on the home page --------------------------------------------------------------------------------
-  function stateWord(g) {
-    if (g.open) return "";
-    if (g.settled) return g.settled.winner === "void" ? "не сыгран" : "завершён";
-    return "идёт";
+  // ---- the tab "Матчи": the vote in every card of the chosen day, how the fans voted in the cards of the games that are over --------
+  function matchesHeadHtml() {
+    const sl = st.slate;
+    const last = sl && sl.last && !noSpoilers() ? `<div class="v29Last">Прошлый игровой день: угадано ${sl.last.correct} из ${sl.last.total} · +${fmtXp(sl.last.xp)} XP</div>` : "";
+    const guest = sl && !sl.signed_in ? " Голосовать можно в приложении, открытом из Telegram-бота." : "";
+    return `<div class="v29MhTop"><b>Кто победит?</b><button type="button" class="v29Link" data-v29-me>Мой профиль и рейтинг →</button></div><div class="v29Note">Голосуйте прямо в карточках матчей: победа с учётом ОТ и буллитов, выбор можно менять до начала матча. У прошедших матчей — как голосовали болельщики.${guest}</div>${last}`;
   }
 
-  function sectionHtml() {
-    const s = st.slate;
-    if (!s || !Array.isArray(s.games) || !s.games.length) return "";
-    const list = st.listOpen ? s.games : s.games.slice(0, LIST_SHORT);
-    const picked = s.games.filter((g) => g.my).length;
-    const last = s.last && !noSpoilers() ? `<div class="v29Last">Прошлый игровой день: угадано ${s.last.correct} из ${s.last.total} · +${fmtXp(s.last.xp)} XP</div>` : "";
-    const rows = list.map((g) => `<div class="v29Row"><button type="button" class="v29Time" data-v29-open="${esc(g.game_pk)}"><b>${esc(clock(g.start))}</b><small>${esc(stateWord(g))}</small></button>${voteHtml(g, true)}</div>`).join("");
-    const more = s.games.length > LIST_SHORT ? `<button type="button" class="v29More" data-v29-more>${st.listOpen ? "Свернуть" : `Все матчи (${s.games.length})`}</button>` : "";
-    const guest = s.signed_in ? "" : '<div class="v29Note">Голосовать можно в приложении, открытом из Telegram-бота.</div>';
-    return `<div class="v29Sec"><div class="v27Head"><b>Кто победит? · ${esc(dayWord(s.date))}</b><small>${picked} из ${s.games.length}</small></div>${last}<div class="v29Note">Победа с учётом ОТ и буллитов · кэфы Winline · прогноз можно менять до начала матча</div>${guest}<div class="v29List">${rows}</div>${more}<button type="button" class="v29Link" data-v29-me>Мой профиль и рейтинг болельщиков →</button></div>`;
-  }
-
-  function paintSection() {
-    const box = document.querySelector('.v27Home [data-sec="predict"]');
-    if (!box) return;
-    // a failed load is not asked again on every redraw of the page: the minute refresh does it
+  function mountCards() {
+    const list = document.querySelector("#view .v19BroadcastList");
+    if (!list) return;
+    list.querySelectorAll(".v19Broadcast[data-v19-game]").forEach((card) => {
+      if (card.querySelector(".v29Slot")) return;
+      const slot = document.createElement("div");
+      slot.className = "v29Slot v29CardSlot";
+      slot.dataset.v29Game = card.dataset.v19Game;
+      slot.hidden = true;
+      (card.querySelector(".v19BroadcastText") || card).appendChild(slot);
+    });
+    let head = document.getElementById("v29MatchesHead");
+    if (!head) {
+      head = document.createElement("div");
+      head.id = "v29MatchesHead";
+      head.className = "v29MatchesHead";
+      list.before(head);
+    }
+    // the summary of the last game day and the hint for guests; a failed load waits for the minute refresh
     if (!st.slate && !st.slateBusy && Date.now() - st.slateTried > REFRESH_MS) loadSlate();
-    const html = sectionHtml();
-    if (painted.get(box) === html) return;
-    box.innerHTML = html;
-    box.hidden = !html;
-    painted.set(box, html);
+    const html = matchesHeadHtml();
+    if (painted.get(head) === html) return;
+    head.innerHTML = html;
+    painted.set(head, html);
   }
 
   // ---- the slots: the match of the day and the match screen ------------------------------------------------------------------
@@ -245,8 +239,9 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
         want(pk);
         return;
       }
-      const html = voteHtml(g, false);
-      if (painted.get(slot) === html && slot.innerHTML) return;
+      const html = voteHtml(g, slot.classList.contains("v29CardSlot") ? "card" : "full");
+      slot.hidden = !html;
+      if (painted.get(slot) === html && (slot.innerHTML || !html)) return;
       slot.innerHTML = html;
       painted.set(slot, html);
     });
@@ -332,15 +327,15 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
   }
 
   function paintAll() {
-    paintSection();
+    mountCards();
     paintSlots();
     paintMe();
   }
 
   function mountAll() {
     mountMatch();
+    mountCards();
     mountMe();
-    paintSection();
     paintSlots();
   }
 
@@ -453,20 +448,15 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     }
   }
 
-  // ---- clicks: caught before the cards under them (the hero opens the match, the match screen has its own handler) -------------
+  // ---- clicks: caught before the cards under them (the hero and the cards of "Матчи" open the match) ---------------------------
   document.addEventListener("click", (e) => {
-    const el = e.target && e.target.closest && e.target.closest("[data-v29-pick],[data-v29-more],[data-v29-open],[data-v29-me],[data-v29-period],[data-v29-digest],[data-v29-rules],[data-v29-board-more]");
+    const el = e.target && e.target.closest && e.target.closest("[data-v29-pick],[data-v29-me],[data-v29-period],[data-v29-digest],[data-v29-rules],[data-v29-board-more]");
     if (!el) return;
     e.preventDefault();
     e.stopPropagation();
     const d = el.dataset;
     if (d.v29Pick) vote(Number(d.v29Game), d.v29Pick);
-    else if (d.v29More !== undefined) {
-      st.listOpen = !st.listOpen;
-      paintSection();
-    } else if (d.v29Open) {
-      if (typeof H.openGameV19 === "function") H.openGameV19(Number(d.v29Open), { returnTab: H.currentTab() });
-    } else if (d.v29Me !== undefined) {
+    else if (d.v29Me !== undefined) {
       const tab = document.querySelector('.tab[data-tab="follows"]');
       if (tab) tab.click();
       window.scrollTo(0, 0);
@@ -507,10 +497,10 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     if (me) painted.delete(me);
     paintAll();
   });
-  // every minute while the app is visible: the list of the night, the open slots, my profile
+  // every minute while the app is visible: the summary of the "Матчи" tab, the votes on the screen, my profile
   setInterval(() => {
     if (document.visibilityState === "hidden") return;
-    if (document.querySelector('.v27Home [data-sec="predict"]')) loadSlate();
+    if (document.getElementById("v29MatchesHead")) loadSlate();
     const ids = [...new Set([...document.querySelectorAll(".v29Slot[data-v29-game]")].map((x) => Number(x.dataset.v29Game)).filter(Boolean))];
     if (ids.length) loadGames(ids);
     if (document.getElementById("v29Me")) {
@@ -521,6 +511,7 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 
   S.state = st;
   S.voteHtml = voteHtml;
+  S.mountAll = mountAll;
   S.refresh = () => {
     st.slate = null;
     st.slateTried = 0;

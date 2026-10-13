@@ -53,7 +53,7 @@ async function broadcasts(request, env) {
              at.name_en away_name_en,at.name_ru away_name_ru,at.logo_url away_logo,
              b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status,
              we.winline_event_id winline_event_id,
-             w1.odds winline_p1, wx.odds winline_x, w2.odds winline_p2,
+             w1.odds winline_p1, wx.odds winline_x, w2.odds winline_p2, w1.subject_key winline_p1_tri, w2.subject_key winline_p2_tri,
              COALESCE(w1.deeplink,wx.deeplink,w2.deeplink,we.deeplink) winline_deeplink,
              ho.home_odds hist_p1,ho.draw_odds hist_x,ho.away_odds hist_p2,
              hof.regulation_result hist_result,ho.source hist_source
@@ -97,7 +97,7 @@ async function featuredGame(request,env){
              ht.name_en home_name_en,ht.name_ru home_name_ru,ht.logo_url home_logo,
              at.name_en away_name_en,at.name_ru away_name_ru,at.logo_url away_logo,
              b.source_key,b.title vk_title,b.web_url vk_url,b.app_url vk_app_url,b.thumbnail_url vk_thumbnail,b.status vk_status,
-             we.winline_event_id winline_event_id,w1.odds winline_p1,wx.odds winline_x,w2.odds winline_p2
+             we.winline_event_id winline_event_id,w1.odds winline_p1,wx.odds winline_x,w2.odds winline_p2,w1.subject_key winline_p1_tri,w2.subject_key winline_p2_tri
       FROM games g
       LEFT JOIN teams ht ON ht.tri_code=g.home_tri LEFT JOIN teams at ON at.tri_code=g.away_tri
       LEFT JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk LEFT JOIN vk_broadcasts b ON b.source_key=m.source_key
@@ -111,7 +111,7 @@ async function featuredGame(request,env){
     const games=(rows.results||[]).map(x=>({calendar_date:x.calendar_date,game_pk:Number(x.game_pk),game_type:Number(x.game_type),scheduled_start_utc:x.scheduled_start_utc,game_state:x.game_state,home_score:x.home_score,away_score:x.away_score,period_type:x.period_type,venue_name:x.venue_name,
       home:{tri:x.home_tri,name_ru:x.home_name_ru,name_en:x.home_name_en,logo:x.home_logo||teamLogo(x.home_tri)},away:{tri:x.away_tri,name_ru:x.away_name_ru,name_en:x.away_name_en,logo:x.away_logo||teamLogo(x.away_tri)},
       vk:x.source_key?{source_key:x.source_key,title:x.vk_title,web_url:x.vk_url,app_url:x.vk_app_url,thumbnail_url:x.vk_thumbnail,status:x.vk_status}:null,
-      winline:[x.winline_p1,x.winline_x,x.winline_p2].some(v=>Number.isFinite(Number(v))&&Number(v)>1)?{event_id:x.winline_event_id,p1:Number(x.winline_p1)||null,x:Number(x.winline_x)||null,p2:Number(x.winline_p2)||null}:null}));
+      winline:[x.winline_p1,x.winline_x,x.winline_p2].some(v=>Number.isFinite(Number(v))&&Number(v)>1)?{event_id:x.winline_event_id,p1:Number(x.winline_p1)||null,x:Number(x.winline_x)||null,p2:Number(x.winline_p2)||null,...winlineSides(x)}:null}));
     await hydrateMissingBroadcastCovers(env.DB,games,20);
     if(!games.length)return json({ok:true,date,featured:null});
     const tris=[...new Set(games.flatMap(g=>[g.home.tri,g.away.tri]).filter(Boolean))],ph=tris.map(()=>"?").join(",");
@@ -428,7 +428,7 @@ function settledOutcome(game,keys){
 function decorateArchiveGame(x){
   const validWinline=[x.winline_p1,x.winline_x,x.winline_p2].every(v=>v!==null&&v!==undefined&&Number.isFinite(Number(v))&&Number(v)>1);
   const validHistorical=[x.hist_p1,x.hist_x,x.hist_p2].every(v=>v!==null&&v!==undefined&&Number.isFinite(Number(v))&&Number(v)>1);
-  const winline=validWinline?{event_id:x.winline_event_id,p1:Number(x.winline_p1),x:Number(x.winline_x),p2:Number(x.winline_p2),deeplink:x.winline_deeplink||null,source:"winline"}:null;
+  const winline=validWinline?{event_id:x.winline_event_id,p1:Number(x.winline_p1),x:Number(x.winline_x),p2:Number(x.winline_p2),...winlineSides(x),deeplink:x.winline_deeplink||null,source:"winline"}:null;
   const historical_odds=validHistorical?{p1:Number(x.hist_p1),x:Number(x.hist_x),p2:Number(x.hist_p2),result:String(x.hist_result||""),source:x.hist_source||"archive"}:null;
   return {calendar_date:x.calendar_date,game_pk:Number(x.game_pk),season_id:x.season_id,game_type:Number(x.game_type),is_playoff:Number(x.game_type)===3,scheduled_start_utc:x.scheduled_start_utc,game_state:x.game_state,home_score:x.home_score,away_score:x.away_score,period_type:x.period_type,venue_name:x.venue_name,
     home:{tri:x.home_tri,name_ru:x.home_name_ru,name_en:x.home_name_en,logo:x.home_logo||teamLogo(x.home_tri)},away:{tri:x.away_tri,name_ru:x.away_name_ru,name_en:x.away_name_en,logo:x.away_logo||teamLogo(x.away_tri)},
@@ -451,6 +451,8 @@ async function liveStandings(){
 function recordOf(x){return x&&Number(x.games_played)>0?{gp:Number(x.games_played),w:Number(x.wins||0),l:Number(x.losses||0),otl:Number(x.ot_losses||0),pts:Number(x.points||0)}:null}
 function cleanDate(v){const s=String(v||"").trim();return /^20\d\d-\d\d-\d\d$/.test(s)?s:""}
 function up(v){return String(v||"").trim().toUpperCase()}
+// "1" of Winline is its first team, almost always the home team but not always: the odds are tied to the teams by their codes
+function winlineSides(x){const p1=Number(x.winline_p1)||null,p2=Number(x.winline_p2)||null,t1=up(x.winline_p1_tri),t2=up(x.winline_p2_tri),home=up(x.home_tri);const p1Home=t1?t1===home:t2?t2!==home:true;return {home:p1Home?p1:p2,away:p1Home?p2:p1}}
 function isMissingVkSchema(error){return /no such table:\s*(vk_broadcasts|game_vk_broadcasts)/i.test(errorText(error))}
 function errorText(error){return String(error?.message||error||"unknown_error")}
 function json(payload,status=200){return new Response(JSON.stringify(payload),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}})}

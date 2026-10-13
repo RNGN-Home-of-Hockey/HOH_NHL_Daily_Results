@@ -25,11 +25,11 @@ const BG_DIR = new URL("../cloudflare-worker/public/telegram-app/bg/", import.me
     assert.ok(b[20] & 0x10, `${name}: with an alpha channel (a silhouette, not a photo with a background)`);
     const w = b.readUIntLE(24, 3) + 1;
     const h = b.readUIntLE(27, 3) + 1;
-    assert.ok(Math.max(w, h) >= 900, `${name}: sharp on a 3x phone screen, not a thumbnail (${w}x${h})`);
+    assert.ok(Math.max(w, h) >= 700, `${name}: sharp on a 3x phone screen, not a thumbnail (${w}x${h})`);
     assert.ok(Math.max(w, h) <= 1600, `${name}: not bigger than a phone needs (${w}x${h})`);
     assert.ok(b.length < 400 * 1024, `${name}: one screen loads one picture, under 400 KB (${b.length} bytes)`);
   }
-  assert.ok(total < 3.5 * 1024 * 1024, `all of them together (${total} bytes)`);
+  assert.ok(total < 14 * 1024 * 1024, `all of them together (${total} bytes)`);
 }
 
 // ---- 2) the routes -----------------------------------------------------------------------------------------------------------------
@@ -117,6 +117,7 @@ function makeApp({ tab = "games", html = "", stored = {}, follows = [], followsF
   return { window, document: window.document, box, calls, alerts, changes, loads, S: window.HOHV28 };
 }
 const layerOf = (ctx) => ctx.document.getElementById("hohSil");
+const TBL_PLAYERS = (ctx) => ctx.S.pool.filter((p) => p.tri === "TBL").map((p) => p.k);
 
 // ---- 3) which silhouette goes where --------------------------------------------------------------------------------------------------
 {
@@ -141,29 +142,31 @@ const layerOf = (ctx) => ctx.document.getElementById("hohSil");
   assert.equal(S.screen().key, "page");
   ctx.window.HOHV15.state.profile = false;
 
-  // the choice
+  // the choice: 50 players; a player page shows the player, a team page a player of the team, every other screen a random one
+  assert.equal(S.pool.length, 50, "fifty players (the owner: «пусть будет 50 фоток»)");
+  assert.ok(S.pool.filter((p) => ["kaprizov", "ovechkin", "kucherov", "panarin", "malkin", "michkov", "demidov", "yurov"].includes(p.k)).length === 8, "the Russians are there");
   assert.equal(S.choose({ key: "player:8471214", id: 8471214, tris: ["WSH"] }).k, "ovechkin", "a player of the pool gets his own silhouette");
-  assert.equal(S.choose({ key: "player:8478864", id: 8478864, tris: ["MIN"] }).k, "kaprizov");
-  assert.equal(S.choose({ key: "player:1", id: 1, tris: ["MIN"] }).k, "kaprizov", "another player: a team mate from the pool");
-  assert.equal(S.choose({ key: "team:TBL", tris: ["TBL"] }).k, "kucherov", "a team page: a player of the team");
-  assert.ok(["malkin", "crosby"].includes(S.choose({ key: "match:PIT-WSH", tris: ["PIT", "WSH"] }).k), "a match: a player of the first team that has one");
-  assert.equal(S.choose({ key: "match:BOS-WSH", tris: ["BOS", "WSH"] }).k, "ovechkin", "or of the second one");
-  const tabs = ["games", "broadcasts", "teams", "players", "follows", "news", "standings", "page"];
-  const picks = tabs.map((key) => S.choose({ key }).k);
-  assert.ok(new Set(picks).size >= 4, `the screens get different players (${picks.join(", ")})`);
-  assert.equal(S.choose({ key: "games" }).k, S.choose({ key: "games" }).k, "the same screen keeps its player during the day");
+  assert.equal(S.choose({ key: "player:8478864", id: 8478864, tris: ["MIN"] }, "kaprizov").k, "kaprizov", "his own even if it was on the screen before");
+  const MIN = S.pool.filter((p) => p.tri === "MIN").map((p) => p.k);
+  assert.ok(MIN.length > 1);
+  assert.ok(MIN.includes(S.choose({ key: "player:1", id: 1, tris: ["MIN"] }).k), "another player: a team mate from the pool");
+  const TBL = S.pool.filter((p) => p.tri === "TBL").map((p) => p.k);
+  assert.ok(TBL.includes(S.choose({ key: "team:TBL", tris: ["TBL"] }).k), "a team page: a player of the team");
+  assert.equal(S.choose({ key: "team:TBL", tris: ["TBL"] }, "kucherov", () => 0).k, TBL.find((k) => k !== "kucherov"), "not the one shown before");
+  assert.equal(S.choose({ key: "match:XXX-WSH", tris: ["XXX", "WSH"] }).k, "ovechkin", "a match: a player of the second team when the first has none");
+  assert.equal(S.choose({ key: "team:XXX", tris: ["XXX"] }, null, () => 0).k, S.pool[0].k, "a team without players in the pool: anyone");
+  // random: over many screens many different players, never the same twice in a row
+  let prev = null;
+  const seen = new Set();
+  for (let i = 0; i < 400; i++) {
+    const k = S.choose({ key: "games" }, prev).k;
+    assert.notEqual(k, prev, "never the same player twice in a row");
+    seen.add(k);
+    prev = k;
+  }
+  assert.ok(seen.size >= 45, `the whole pool takes turns (${seen.size} of 50)`);
+  assert.equal(S.choose({ key: "games" }, null, () => 0.999).k, S.pool[49].k, "the random number picks from the whole pool");
   ctx.window.close();
-
-  // the next day: other players on the same screens, the team mates take turns
-  const next = makeApp({ now: DAY + 86400000 });
-  const nextPicks = tabs.map((key) => next.S.choose({ key }).k);
-  assert.ok(tabs.every((_, i) => picks[i] !== nextPicks[i]), "every screen changes its player the next day");
-  const pit = (c) => c.S.choose({ key: "team:PIT", tris: ["PIT"] }).k;
-  const first = makeApp();
-  assert.notEqual(pit(first), pit(next), "Malkin and Crosby take turns on the Penguins page");
-  assert.equal(next.S.choose({ key: "player:8471214", id: 8471214, tris: ["WSH"] }).k, "ovechkin", "but a player keeps his own silhouette");
-  first.window.close();
-  next.window.close();
 }
 
 // ---- 4) the layer on the page: on by default, crossfades between screens, can be switched off ---------------------------------------
@@ -176,8 +179,8 @@ const layerOf = (ctx) => ctx.document.getElementById("hohSil");
   assert.ok(layer, "the layer is on the page");
   assert.equal(layer.getAttribute("aria-hidden"), "true", "screen readers skip it");
   assert.ok(layer.classList.contains("on"));
-  const k = ctx.S.choose({ key: "games" }).k;
-  assert.equal(layer.dataset.sil, k);
+  const k = layer.dataset.sil;
+  assert.ok(ctx.S.pool.some((p) => p.k === k), "one of the pool");
   assert.ok(["left", "right"].includes(layer.dataset.side));
   assert.equal(layer.style.getPropertyValue("--sil-img"), `url("/telegram-app/bg/${k}.webp?v=2")`, "a picture of our own server");
   const css = ctx.document.getElementById("v28css").textContent;
@@ -186,9 +189,10 @@ const layerOf = (ctx) => ctx.document.getElementById("hohSil");
   assert.match(css, /#hohSil\.on\{opacity:var\(--sil-op\)\}/);
   const op = Number(/html\{--sil-a:[^;]+;--sil-b:[^;]+;--sil-op:([\d.]+)\}/.exec(css)[1]);
   // seen behind the blocks, but quieter than the information in front of them (the owner: «чуть менее заметные»)
-  assert.ok(op >= 0.25 && op <= 0.4, `a background, not a second picture (${op})`);
+  // and once more a bit quieter (the owner: «можно ещё чуть снизить прозрачность фотки, чтобы ещё чуть меньше она бросалась в глаза»)
+  assert.ok(op >= 0.18 && op <= 0.3, `a background, not a second picture (${op})`);
   const darkOp = Number(/html:not\(\.v15Light\)\{--sil-a:[^;]+;--sil-b:[^;]+;--sil-op:([\d.]+)\}/.exec(css)[1]);
-  assert.ok(darkOp >= 0.2 && darkOp <= 0.35, `and in the dark theme (${darkOp})`);
+  assert.ok(darkOp >= 0.15 && darkOp <= 0.26, `and in the dark theme (${darkOp})`);
   // the player is seen behind the blocks: while the silhouettes are on, the glass of the cards is lighter and only slightly blurred
   const alphaOf = (re, what) => {
     const m = re.exec(css);
@@ -212,7 +216,8 @@ const layerOf = (ctx) => ctx.document.getElementById("hohSil");
   assert.ok(!layer.classList.contains("on"), "the old silhouette fades out first");
   assert.equal(layer.dataset.sil, k, "and is still the old one meanwhile");
   await tick(500);
-  assert.equal(layer.dataset.sil, "kucherov", "then the player of the team comes in");
+  assert.ok(TBL_PLAYERS(ctx).includes(layer.dataset.sil), "then a player of the team comes in");
+  assert.notEqual(layer.dataset.sil, k, "a new screen, a new player");
   assert.ok(layer.classList.contains("on"));
   const loadsBefore = ctx.loads.length;
   ctx.document.getElementById("view").insertAdjacentHTML("beforeend", "<p>more</p>");

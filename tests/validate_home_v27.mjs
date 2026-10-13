@@ -594,10 +594,9 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.equal(sec(ctx, "russians").style.order, "2", "the Russians come right under the strip");
   assert.equal(sec(ctx, "goals").style.order, "3", "results: the goals come before the match of the day");
   assert.equal(sec(ctx, "hero").style.order, "4");
-  assert.equal(sec(ctx, "predict").style.order, "5", "results: the votes of the night after the match of the day");
-  assert.ok(sec(ctx, "predict").hidden, "the place of the votes stays empty and hidden: the game of the fans (v29) fills it");
-  assert.equal(sec(ctx, "news").style.order, "6");
-  assert.equal(sec(ctx, "videos").style.order, "7");
+  assert.ok(!sec(ctx, "predict"), "the votes of the night moved to the Матчи tab (the owner)");
+  assert.equal(sec(ctx, "news").style.order, "5");
+  assert.equal(sec(ctx, "videos").style.order, "6");
   assert.ok(sec(ctx, "hero").querySelector('.v29Slot[data-v29-game="2026020094"]'), "the match of the day has a place for 'Кто победит?'");
   assert.ok(sec(ctx, "hero").querySelector(".v29Slot").nextElementSibling.matches(".v27Wl"), "right above the Winline odds");
   assert.match(text(sec(ctx, "goals").querySelector(".v27Head")), /Голы вчера|Голы сегодня/);
@@ -620,7 +619,8 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.match(text(hero), /Сиэтл Кракен/);
   assert.match(text(hero), /Филадельфия Флайерз/);
   assert.ok(hero.querySelector(".v27Wl img[alt=WINLINE]"));
-  assert.deepEqual([...hero.querySelectorAll(".v27Odd")].map((a) => text(a)), ["П12.35", "Н4.20", "П22.55"]);
+  // the odds stand under their teams: the guests (SEA) on the left, the hosts (PHI) on the right; no П1/П2, which is the order of Winline
+  assert.deepEqual([...hero.querySelectorAll(".v27Odd")].map((a) => text(a)), ["SEA2.55", "Ничья4.20", "PHI2.35"]);
   assert.match(hero.querySelector(".v27Odd").getAttribute("href"), /^\/go\/winline\?game_pk=2026020094$/);
   assert.match(text(hero.querySelector(".v27Cta")), /Трансляция в VK Видео/);
   assert.equal(hero.querySelector(".v27Cta").getAttribute("href"), "https://vkvideo.ru/video-1_2");
@@ -650,14 +650,13 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
 }
 
 {
-  // the mood changes the order: live and schedule put the match of the day first
+  // the order is the same in every mood: strip, Russians, goals, match of the day
   for (const mode of ["live", "schedule"]) {
     const ctx = makeHome({ data: homeData({ mode }) });
     await tick(420);
     assert.equal(sec(ctx, "russians").style.order, "2");
-    assert.equal(sec(ctx, "hero").style.order, "3", `${mode}: the match of the day leads after the Russians`);
-    assert.equal(sec(ctx, "predict").style.order, "4", `${mode}: the votes of the night right after it`);
-    assert.equal(sec(ctx, "goals").style.order, "5");
+    assert.equal(sec(ctx, "goals").style.order, "3", `${mode}: the goals between the Russians and the match of the day, in every mood (the owner)`);
+    assert.equal(sec(ctx, "hero").style.order, "4");
     ctx.window.close();
   }
   // live: the strip says today's games, a red LIVE chip, "Голы в эфире", and the page polls every 15 seconds
@@ -1399,6 +1398,14 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   ctx.window.dispatchEvent(new ctx.window.Event("hoh-follows-change"));
   await tick(200);
   assert.equal(ctx.calls.filter((c) => c.url === "/api/telegram-center-v2/subscriptions").length, before + 1, "the follows are asked again at once");
+  ctx.window.close();
+}
+
+{
+  // Winline lists the guests first for this game: the odds still stand under their teams (they come tied to the teams)
+  const ctx = makeHome({ data: homeData({ featured: featured({ winline: { event_id: 1, p1: 2.55, x: 4.2, p2: 2.35, home: 2.35, away: 2.55 } }) }) });
+  await tick(420);
+  assert.deepEqual([...sec(ctx, "hero").querySelectorAll(".v27Odd")].map((a) => text(a)), ["SEA2.55", "Ничья4.20", "PHI2.35"]);
   ctx.window.close();
 }
 

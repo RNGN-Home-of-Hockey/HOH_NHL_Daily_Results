@@ -1,5 +1,5 @@
-// Live Center v28: the backdrop of the whole app (a light silhouette of a real player behind the cards, different on every screen and
-// every day) and two touches of the players tab: a big number on the right and a small follow button next to it.
+// Live Center v28: the backdrop of the whole app (a light silhouette of a real player behind the cards: 50 players, a new random one
+// on every screen) and two touches of the players tab: a big number on the right and a small follow button next to it.
 //
 // This function is serialized (backdropApp.toString()) and served as /telegram-app/v28-backdrop.js, so it must be
 // self-contained: no imports and no references to anything outside of its own body.
@@ -22,6 +22,44 @@ export function backdropApp() {
     { k: "crosby", id: 8471675, tri: "PIT" },
     { k: "mackinnon", id: 8477492, tri: "COL" },
     { k: "matthews", id: 8479318, tri: "TOR" },
+    { k: "chinakhov", id: 8482475, tri: "PIT" },
+    { k: "demidov", id: 8484984, tri: "MTL" },
+    { k: "gavrikov", id: 8478882, tri: "NYR" },
+    { k: "gritsyuk", id: 8481721, tri: "NJD" },
+    { k: "kochetkov", id: 8481611, tri: "CAR" },
+    { k: "mintyukov", id: 8483490, tri: "ANA" },
+    { k: "podkolzin", id: 8481617, tri: "EDM" },
+    { k: "provorov", id: 8478500, tri: "CBJ" },
+    { k: "romanov", id: 8481014, tri: "NYI" },
+    { k: "sorokin", id: 8478009, tri: "NYI" },
+    { k: "yurov", id: 8483525, tri: "MIN" },
+    { k: "zadorov", id: 8477507, tri: "BOS" },
+    { k: "barbashev", id: 8477964, tri: "VGK" },
+    { k: "aho", id: 8478427, tri: "CAR" },
+    { k: "boldy", id: 8481557, tri: "MIN" },
+    { k: "caufield", id: 8481540, tri: "MTL" },
+    { k: "celebrini", id: 8484801, tri: "SJS" },
+    { k: "dahlin", id: 8480839, tri: "BUF" },
+    { k: "eichel", id: 8478403, tri: "VGK" },
+    { k: "fox", id: 8479323, tri: "NYR" },
+    { k: "hedman", id: 8475167, tri: "TBL" },
+    { k: "hellebuyck", id: 8476945, tri: "WPG" },
+    { k: "hintz", id: 8477952, tri: null },
+    { k: "jhughes", id: 8481559, tri: "NJD" },
+    { k: "larkin", id: 8477946, tri: "DET" },
+    { k: "makar", id: 8480069, tri: "COL" },
+    { k: "marner", id: 8478483, tri: "VGK" },
+    { k: "mtkachuk", id: 8479314, tri: "FLA" },
+    { k: "nylander", id: 8477939, tri: "TOR" },
+    { k: "pastrnak", id: 8477956, tri: "BOS" },
+    { k: "pettersson", id: 8480012, tri: "VAN" },
+    { k: "qhughes", id: 8480800, tri: "MIN" },
+    { k: "rantanen", id: 8478420, tri: "DAL" },
+    { k: "raymond", id: 8482078, tri: "DET" },
+    { k: "robertson", id: 8480027, tri: "DAL" },
+    { k: "scheifele", id: 8476460, tri: "WPG" },
+    { k: "stamkos", id: 8474564, tri: "NSH" },
+    { k: "thompson", id: 8479420, tri: "BUF" },
   ];
   const PREF = "hoh-bg-sil";
   const V2 = H.V2 || "/api/telegram-center-v2";
@@ -40,8 +78,8 @@ export function backdropApp() {
     const style = document.createElement("style");
     style.id = "v28css";
     style.textContent = `
-html{--sil-a:#6d32e8;--sil-b:#b597ff;--sil-op:.32}
-html:not(.v15Light){--sil-a:#d4c6ff;--sil-b:#7a5ae6;--sil-op:.28}
+html{--sil-a:#6d32e8;--sil-b:#b597ff;--sil-op:.26}
+html:not(.v15Light){--sil-a:#d4c6ff;--sil-b:#7a5ae6;--sil-op:.22}
 #hohSil{position:fixed;z-index:0;top:7vh;bottom:-1vh;width:min(150vw,880px);pointer-events:none;opacity:0;transition:opacity .6s ease;background:linear-gradient(165deg,var(--sil-a),var(--sil-b));-webkit-mask-image:var(--sil-img);mask-image:var(--sil-img);-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:contain;mask-size:contain}
 #hohSil[data-side="right"]{right:-14vw;-webkit-mask-position:right 38%;mask-position:right 38%}
 #hohSil[data-side="left"]{left:-14vw;-webkit-mask-position:left 38%;mask-position:left 38%}
@@ -69,12 +107,6 @@ html:not(.v15Light) .v28Fol.on{background:#123429;border-color:#347e63;color:#62
   }
 
   // ---- the silhouette --------------------------------------------------------------------------------------------------------
-  const hash = (text) => {
-    let h = 0;
-    for (const ch of String(text)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return h;
-  };
-  const dayIndex = () => Math.floor(Date.now() / 86400000);
   const triOfLogo = (img) => {
     const m = /\/logos\/nhl\/svg\/([A-Z]{2,3})_/.exec((img && img.getAttribute("src")) || "");
     return m ? m[1] : null;
@@ -103,18 +135,27 @@ html:not(.v15Light) .v28Fol.on{background:#123429;border-color:#347e63;color:#62
     return { key: H.currentTab() || "home" };
   }
 
-  function choose(sc) {
+  // A player page shows the player himself, a team or a match a player of that team, any other screen a random one of the 50.
+  // The one on the screen before is never picked again when there is another choice.
+  function choose(sc, prev, random) {
+    const rnd = typeof random === "function" ? random : Math.random;
+    const any = (list) => {
+      const others = list.length > 1 && prev ? list.filter((p) => p.k !== prev) : list;
+      return others[Math.floor(rnd() * others.length) % others.length];
+    };
     const own = sc.id ? POOL.find((p) => p.id === sc.id) : null;
     if (own) return own;
     for (const tri of sc.tris || []) {
       const mates = POOL.filter((p) => p.tri === tri);
-      if (mates.length) return mates[(dayIndex() + hash(sc.key)) % mates.length];
+      if (mates.length) return any(mates);
     }
-    return POOL[(hash(sc.key) + dayIndex()) % POOL.length];
+    return any(POOL);
   }
 
   let layer = null;
   let current = "";
+  // the pick lives as long as the screen: the redraws of the same screen keep it, a new screen gets a new one
+  let shown = { key: null, pick: null, side: "right" };
   function ensureLayer() {
     if (layer && layer.isConnected) return layer;
     layer = document.getElementById("hohSil");
@@ -132,8 +173,9 @@ html:not(.v15Light) .v28Fol.on{background:#123429;border-color:#347e63;color:#62
     if (!enabled()) return;
     const el = ensureLayer();
     const sc = screen();
-    const pick = choose(sc);
-    const side = hash(`${sc.key}:side`) % 2 ? "left" : "right";
+    if (shown.key !== sc.key || !shown.pick) shown = { key: sc.key, pick: choose(sc, shown.pick && shown.pick.k), side: Math.random() < 0.5 ? "left" : "right" };
+    const pick = shown.pick;
+    const side = shown.side;
     const id = `${pick.k}:${side}`;
     if (id === current) return;
     const first = !current;

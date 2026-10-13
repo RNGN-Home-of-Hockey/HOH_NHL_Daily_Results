@@ -105,4 +105,28 @@ const lineOf = (source, start) => {
   dom.window.close();
 }
 
+// ---- 4) Winline odds stand under their teams ----------------------------------------------------------------------------------------
+// "1" of Winline is its first team: almost always the hosts, not always. The odds are tied to the teams by their codes, and the
+// cards show the guests on the left and the hosts on the right, as their titles "TBL — NYR" (the owner saw 3.05 under Tampa).
+{
+  const { handleTelegramCenterV19ProductData } = await import("../cloudflare-worker/src/telegram-center-v19-product-data.js");
+  const row = (pk, p1tri, p2tri, p1, p2) => ({ calendar_date: "2026-10-13", game_pk: pk, season_id: "20262027", game_type: 2, scheduled_start_utc: "2026-10-13T23:15:00Z", game_state: "FUT", home_tri: "NYR", away_tri: "TBL", home_score: 0, away_score: 0, period_type: null, venue_name: null, home_name_ru: "Нью-Йорк", away_name_ru: "Тампа", winline_event_id: "E", winline_p1: p1, winline_x: 4.3, winline_p2: p2, winline_p1_tri: p1tri, winline_p2_tri: p2tri });
+  const sqls = [];
+  const env = { DB: { prepare: (sql) => { sqls.push(sql); return { bind: () => ({ all: async () => ({ results: /FROM games g/.test(sql) ? [row(1, "NYR", "TBL", 3.05, 2.02), row(2, "TBL", "NYR", 2.02, 3.05), row(3, null, null, 3.05, 2.02)] : [] }), first: async () => null }), all: async () => ({ results: [] }), first: async () => null }; } } };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("{}", { status: 404 });
+  const path = "/api/telegram-center-v19/broadcasts";
+  const body = await (await handleTelegramCenterV19ProductData(new Request(`https://x.test${path}?from=2026-10-13&to=2026-10-13`), env, path)).json();
+  globalThis.fetch = realFetch;
+  const w = (pk) => body.games.find((g) => g.game_pk === pk).winline;
+  assert.deepEqual([w(1).home, w(1).away], [3.05, 2.02], "Winline lists the hosts first: NYR 3.05, TBL 2.02");
+  assert.deepEqual([w(2).home, w(2).away], [3.05, 2.02], "Winline lists the guests first: still NYR 3.05, TBL 2.02");
+  assert.deepEqual([w(3).home, w(3).away], [3.05, 2.02], "no codes: the usual order (the first one is the hosts)");
+  assert.ok(sqls.some((s) => /w1\.subject_key winline_p1_tri/.test(s) && /w2\.subject_key winline_p2_tri/.test(s)), "the codes of the teams are read with the odds");
+
+  const v19 = await (await import("../cloudflare-worker/src/telegram-center-v19-ui.js")).handleTelegramCenterV19Ui(new Request("https://x.test/telegram-app/v19.js"), "/telegram-app/v19.js").text();
+  assert.ok(v19.includes("odd(esc(g.away.tri),w.away!=null?w.away:w.p2,win('2'))+odd('Н',w.x,win('X'))+odd(esc(g.home.tri),w.home!=null?w.home:w.p1,win('1'))"), "the cards of «Матчи»: the guests, the draw, the hosts, signed by the teams");
+  assert.ok(!v19.includes("odd('П1',w.p1"), "no П1 on the left any more");
+}
+
 console.log("home follow-ups validation passed");

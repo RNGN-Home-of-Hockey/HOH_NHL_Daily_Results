@@ -216,7 +216,7 @@ html.v15Light .v26Wl{border-color:#e4a176;background:#fff8f2}
       odds[key]
         ? `<a class="v26Odd${result === key ? " won" : ""}" href="${href}" target="_blank" rel="noopener"><small>${label}</small><b>${odds[key].toFixed(2)}</b><i>${esc(tri)}</i></a>`
         : '<span class="v26Odd"><small>' + label + "</small><b>—</b><i></i></span>";
-    return `<div class="v26Wl"><img class="v26WlLogo" src="/broadcast/winline-logo.png?asset=canonical-3" alt="WINLINE">${chip("1", "П1", g.home.tri)}${chip("X", "Н", "ничья")}${chip("2", "П2", g.away.tri)}</div>`;
+    return `<div class="v26Wl"><img class="v26WlLogo" src="/broadcast/winline-logo.png?asset=canonical-3" alt="WINLINE">${chip("2", g.away.tri, "победа")}${chip("X", "Н", "ничья")}${chip("1", g.home.tri, "победа")}</div>`;
   }
 
   function assistsHtml(goal) {

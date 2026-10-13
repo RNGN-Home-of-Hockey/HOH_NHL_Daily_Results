@@ -239,9 +239,10 @@ const text = (el) => String(el?.textContent || "").replace(/\s+/g, " ").trim();
   const wl = doc.querySelector(".v26Wl");
   assert.ok(wl, "Winline panel");
   assert.match(wl.querySelector("img.v26WlLogo").getAttribute("src"), /^\/broadcast\/winline-logo\.png/);
-  assert.deepEqual([...wl.querySelectorAll(".v26Odd small")].map(text), ["П1", "Н", "П2"]);
-  assert.deepEqual([...wl.querySelectorAll(".v26Odd b")].map(text), ["2.20", "4.20", "2.75"]);
-  assert.deepEqual([...wl.querySelectorAll(".v26Odd i")].map(text), ["BOS", "ничья", "PHI"]);
+  // the odds stand under their teams, as in the head of the match: the guests (PHI) on the left, the hosts (BOS) on the right
+  assert.deepEqual([...wl.querySelectorAll(".v26Odd small")].map(text), ["PHI", "Н", "BOS"]);
+  assert.deepEqual([...wl.querySelectorAll(".v26Odd b")].map(text), ["2.75", "4.20", "2.20"]);
+  assert.deepEqual([...wl.querySelectorAll(".v26Odd i")].map(text), ["победа", "ничья", "победа"]);
   assert.equal(wl.querySelectorAll(".won").length, 0);
   assert.equal(wl.querySelector("a").getAttribute("href"), "/go/winline?game_pk=123");
 
@@ -356,15 +357,15 @@ const text = (el) => String(el?.textContent || "").replace(/\s+/g, " ").trim();
   const homeWin = buildGoalsPayload({ gamePk: 123, landing: landing({ state: "OFF", away: 1, home: 2 }), index: INDEX, indexOk: true, names: NAMES, now: Date.parse("2026-10-12T00:00:00Z"), clipsBase: BASE });
   const home = makeScreen({ payload: homeWin });
   await home.H.openGameV26(123, {});
-  assert.match(text(home.doc.querySelector(".v26Wl .won")), /П1.*2\.20/);
+  assert.match(text(home.doc.querySelector(".v26Wl .won")), /BOS.*2\.20/, "the hosts won");
   home.window.close();
 
   // an older game: the closing line and its result come from the archive
   const archive = { ...V19, winline: null, historical_odds: { p1: 2.3, x: 4.3, p2: 2.6, result: "2" } };
   const old = makeScreen({ v19: archive, payload: { ...homeWin, result: null } });
   await old.H.openGameV26(123, {});
-  assert.deepEqual([...old.doc.querySelectorAll(".v26Wl .v26Odd b")].map(text), ["2.30", "4.30", "2.60"]);
-  assert.match(text(old.doc.querySelector(".v26Wl .won")), /П2.*2\.60/);
+  assert.deepEqual([...old.doc.querySelectorAll(".v26Wl .v26Odd b")].map(text), ["2.60", "4.30", "2.30"]);
+  assert.match(text(old.doc.querySelector(".v26Wl .won")), /PHI.*2\.60/, "the guests won");
   old.window.close();
 
   // no-spoilers hides the winner too

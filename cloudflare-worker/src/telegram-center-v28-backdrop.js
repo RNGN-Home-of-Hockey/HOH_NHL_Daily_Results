@@ -3,7 +3,9 @@ import { backdropApp } from "./telegram-center-v28-backdrop-ui.js";
 
 export const SCRIPT_PATH = "/telegram-app/v28-backdrop.js";
 // the names are the files of public/telegram-app/bg and the keys of the pool in the script
-export const SILHOUETTES = ["kaprizov", "ovechkin", "kucherov", "panarin", "malkin", "sergachev", "shesterkin", "svechnikov", "michkov", "crosby", "mackinnon", "matthews"];
+export const SILHOUETTES = [
+  "kaprizov", "ovechkin", "kucherov", "panarin", "malkin", "sergachev", "shesterkin", "svechnikov", "michkov", "crosby", "mackinnon", "matthews", "chinakhov", "demidov", "gavrikov", "gritsyuk", "kochetkov", "mintyukov", "podkolzin", "provorov", "romanov", "sorokin", "yurov", "zadorov", "barbashev", "aho", "boldy", "caufield", "celebrini", "dahlin", "eichel", "fox", "hedman", "hellebuyck", "hintz", "jhughes", "larkin", "makar", "marner", "mtkachuk", "nylander", "pastrnak", "pettersson", "qhughes", "rantanen", "raymond", "robertson", "scheifele", "stamkos", "thompson",
+];
 const BG_PATH = /^\/telegram-app\/bg\/([a-z]{3,20})\.webp$/;
 
 export async function handleTelegramCenterV28(request, env, path) {

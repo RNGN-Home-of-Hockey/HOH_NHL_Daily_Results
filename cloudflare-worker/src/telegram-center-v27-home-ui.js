@@ -460,10 +460,14 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     return `<a class="v27Odd" href="/go/winline?game_pk=${encodeURIComponent(gamePk)}" target="_blank" rel="noopener"><span>${label}</span><b>${n.toFixed(2)}</b></a>`;
   }
 
+  // the odds stand under their teams: the guests on the left, the draw in the middle, the hosts on the right, as the teams above
+  // ("П1" of Winline is its first team, which is not the team on the left here)
   function winlineHtml(g) {
     const w = g.winline;
     if (!w) return "";
-    const odds = [oddHtml("П1", w.p1, g.game_pk), oddHtml("Н", w.x, g.game_pk), oddHtml("П2", w.p2, g.game_pk)].filter(Boolean);
+    const home = w.home != null ? w.home : w.p1;
+    const away = w.away != null ? w.away : w.p2;
+    const odds = [oddHtml(esc((g.away && g.away.tri) || "Гости"), away, g.game_pk), oddHtml("Ничья", w.x, g.game_pk), oddHtml(esc((g.home && g.home.tri) || "Хозяева"), home, g.game_pk)].filter(Boolean);
     return odds.length ? `<div class="v27Wl"><img src="/broadcast/winline-logo.png?asset=canonical-3" alt="WINLINE">${odds.join("")}</div>` : "";
   }
 
@@ -568,8 +572,7 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
   }
 
   // ---- painting --------------------------------------------------------------------------------------------------------------
-  // "predict" is filled by the game of the fans (v29): here it only gets its place
-  const SECTIONS = ["strip", "hero", "goals", "russians", "predict", "news", "videos"];
+  const SECTIONS = ["strip", "hero", "goals", "russians", "news", "videos"];
   function build() {
     const el = document.createElement("section");
     el.className = "v27Home";
@@ -595,12 +598,6 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     }
   }
 
-  function orderSec(name, order) {
-    const el = home();
-    const box = el && el.querySelector(`[data-sec="${name}"]`);
-    if (box) box.style.order = String(order);
-  }
-
   const SKEL_STRIP = '<div class="v27Strip">' + '<div class="v27Skel" style="flex:0 0 112px;height:84px"></div>'.repeat(3) + "</div>";
   const SKEL_HERO = '<div class="v27Skel" style="height:300px"></div>';
 
@@ -611,16 +608,14 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
       setSec("hero", SKEL_HERO, 2);
       return;
     }
-    const results = d.mode === "results";
+    // the goals always come before the match of the day (the owner: «Голы вчера переносим выше, между русские сегодня и матчем дня»)
     setSec("strip", stripHtml(d), 1);
     setSec("russians", russiansHtml(d), 2);
-    setSec("hero", d.featured ? heroHtml(d.featured) : "", results ? 4 : 3);
-    // the votes of the night come right after the match of the day
-    orderSec("predict", results ? 5 : 4);
-    setSec("goals", goalsHtml(d), results ? 3 : 5);
+    setSec("goals", goalsHtml(d), 3);
+    setSec("hero", d.featured ? heroHtml(d.featured) : "", 4);
   }
-  const paintNews = () => setSec("news", newsHtml(), 6);
-  const paintVideos = () => setSec("videos", videosHtml(), 7);
+  const paintNews = () => setSec("news", newsHtml(), 5);
+  const paintVideos = () => setSec("videos", videosHtml(), 6);
   function paintAll() {
     paintHome();
     paintNews();

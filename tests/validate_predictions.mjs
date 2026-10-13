@@ -452,10 +452,23 @@ const START = (h) => new Date(Date.now() + h * 3600000).toISOString();
 const team = (tri) => ({ tri, name_ru: tri, logo: `https://l.test/${tri}.svg` });
 const block = (pk, away, home, extra = {}) => ({ game_pk: pk, date: "2026-10-13", start: START(2), state: "FUT", open: true, away: team(away), home: team(home), odds: { home: 2.3, away: 1.62 }, votes: { total: 7, home: null, away: null }, my: null, settled: null, ...extra });
 
+const HOME_HTML = `<section class="v27Home"><div class="v27Sec" data-sec="hero"><article class="v27Hero" data-game="9002"><div class="v29Slot" data-v29-game="9002"></div></article></div></section>`;
+const card = (pk, title) => `<article class="v19Broadcast" data-v19-game="${pk}"><div class="v19Thumb"></div><div class="v19BroadcastText"><b>${title}</b><div class="v19CardOdds"></div></div></article>`;
+const MATCHES_HTML = `<div class="v19Archive"><section class="v19Cal"></section><div class="v19DateTitle"><b>13 октября</b></div><div class="v19BroadcastList">${card(9004, "BOS — SJS")}${card(9001, "NJD — DET")}${card(9002, "TBL — NYR")}${card(9010, "TBL — NYR")}${card(9011, "MIN — VGK")}</div></div>`;
+
 function makeApp({ tab = "games", games = null, signedIn = true, postError = null, spoilers = false, html = null } = {}) {
-  const dom = new JSDOM(`<!doctype html><html class="v15Light"><head></head><body><nav id="tabs"><button class="tab${tab === "games" ? " active" : ""}" data-tab="games"></button><button class="tab${tab === "follows" ? " active" : ""}" data-tab="follows"></button></nav><main id="view">${html ?? `<section class="v27Home"><div class="v27Sec" data-sec="hero"><article class="v27Hero" data-game="9002"><div class="v29Slot" data-v29-game="9002"></div></article></div><div class="v27Sec" data-sec="predict" hidden></div></section>`}</main></body></html>`, { url: "https://x.test/telegram-app-v24", pretendToBeVisual: true, runScripts: "outside-only" });
+  const dom = new JSDOM(`<!doctype html><html class="v15Light"><head></head><body><nav id="tabs"><button class="tab${tab === "games" ? " active" : ""}" data-tab="games"></button><button class="tab${tab === "broadcasts" ? " active" : ""}" data-tab="broadcasts"></button><button class="tab${tab === "follows" ? " active" : ""}" data-tab="follows"></button></nav><main id="view">${html ?? HOME_HTML}</main></body></html>`, { url: "https://x.test/telegram-app-v24", pretendToBeVisual: true, runScripts: "outside-only" });
   const { window } = dom;
-  const box = { tab, calls: [], alerts: [], opened: [], games: games || [block(9004, "BOS", "SJS", { open: false, state: "LIVE", votes: { total: 3, home: 2, away: 1 } }), block(9001, "NJD", "DET", { odds: { home: 1.92, away: 1.88 } }), block(9002, "TBL", "NYR")] };
+  const box = {
+    tab, calls: [], alerts: [], opened: [],
+    games: games || [
+      block(9004, "BOS", "SJS", { open: false, state: "LIVE", votes: { total: 3, home: 2, away: 1 } }),
+      block(9001, "NJD", "DET", { odds: { home: 1.92, away: 1.88 } }),
+      block(9002, "TBL", "NYR"),
+      block(9010, "TBL", "NYR", { open: false, state: "OFF", votes: { total: 0, home: 0, away: 0 }, settled: { winner: "away", home_xp: 1, away_xp: 21, score: { home: 2, away: 3 } } }),
+      block(9011, "MIN", "VGK", { open: false, state: "OFF", votes: { total: 12, home: 3, away: 9 }, settled: { winner: "home", home_xp: 26, away_xp: 1, score: { home: 4, away: 1 } } }),
+    ],
+  };
   if (signedIn) window.Telegram = { WebApp: { initData: "query_id=AAE&hash=x" } };
   window.alert = (m) => box.alerts.push(m);
   window.scrollTo = () => {};
@@ -472,7 +485,7 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
     openGameV19: (pk, opts) => box.opened.push([pk, opts]),
     api: async (url, opt = {}) => {
       box.calls.push({ url, method: opt.method || "GET", body: opt.body ? JSON.parse(opt.body) : null });
-      if (url.startsWith(`${API}/slate`)) return { ok: true, date: "2026-10-13", signed_in: signedIn, games: box.games.map((g) => ({ ...g })), last: signedIn ? { date: "2026-10-12", total: 2, correct: 1, xp: 27 } : null };
+      if (url.startsWith(`${API}/slate`)) return { ok: true, date: "2026-10-13", signed_in: signedIn, games: box.games.filter((g) => g.open || g.state === "LIVE").map((g) => ({ ...g })), last: signedIn ? { date: "2026-10-12", total: 2, correct: 1, xp: 27 } : null };
       if (url.startsWith(`${API}/games`)) {
         const ids = new URL(`https://x.test${url}`).searchParams.get("ids").split(",").map(Number);
         return { ok: true, games: box.games.filter((g) => ids.includes(g.game_pk)).map((g) => ({ ...g })) };
@@ -499,33 +512,23 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
 }
 
 {
-  // the list of the night and the match of the day
+  // the match of the day: the question between the two buttons, no odds on them (the Winline block under them is the only one)
   const ctx = makeApp();
   const { document } = ctx;
   let heroClicks = 0;
   document.querySelector(".v27Hero").addEventListener("click", () => { heroClicks += 1; });
   await tick(250);
-  const sec = document.querySelector('[data-sec="predict"]');
-  assert.equal(sec.hidden, false, "the section shows itself once it has games");
-  assert.match(text(sec.querySelector(".v27Head")), /^Кто победит\? · 13 октября\s*0 из 3$/);
-  assert.match(text(sec), /Прошлый игровой день: угадано 1 из 2 · \+27 XP/);
-  assert.match(text(sec), /Победа с учётом ОТ и буллитов · кэфы Winline/);
-  const rows = [...sec.querySelectorAll(".v29Row")];
-  assert.equal(rows.length, 3);
-  const njd = rows[1];
-  assert.deepEqual([...njd.querySelectorAll(".v29Btn .v29Odd")].map(text), ["1.88", "1.92"], "the odds are on the buttons before any vote (away, home)");
-  assert.deepEqual([...njd.querySelectorAll(".v29Btn b")].map(text), ["NJD", "DET"]);
-  assert.ok(!/%/.test(text(njd)), "no split before one's own vote");
-  assert.match(text(njd.querySelector(".v29Line")), /Проголосовали: 7/);
-  assert.ok(rows[0].querySelector(".v29Btn").disabled, "a game that is on cannot be voted");
-  assert.match(text(rows[0]), /идёт/);
-  assert.match(text(rows[0]), /67%/, "its split is shown");
-
   const hero = document.querySelector(".v29Slot");
-  assert.match(text(hero.querySelector(".v29Q")), /Кто победит\?\s*с ОТ и буллитами · кэфы Winline/);
-  assert.deepEqual([...hero.querySelectorAll(".v29Btn .v29Odd")].map(text), ["1.62", "2.30"]);
+  const row = hero.querySelector(".v29Row3");
+  assert.ok(row, "one row: button, question, button");
+  assert.deepEqual([...row.children].map((x) => x.className.split(" ")[0]), ["v29Btn", "v29Mid", "v29Btn"]);
+  assert.equal(text(row.querySelector(".v29Mid")), "Ктопобедит?", "the question in the middle (the owner), on two lines");
+  assert.deepEqual([...hero.querySelectorAll(".v29Btn b")].map(text), ["TBL", "NYR"], "the guests on the left, the hosts on the right, as the teams above");
+  assert.ok(!/1\.62|2\.30|кэф/i.test(text(hero)), "no odds on the buttons (the owner: «уберём кэфы на исход с учётом буллитов»)");
+  assert.equal(text(hero.querySelector(".v29Line")), "Проголосовали: 7 · с учётом ОТ и буллитов");
+  assert.ok(!document.querySelector(".v29MatchesHead") && !document.querySelector("[data-sec='predict']"), "no list of the night on the home page any more");
 
-  // a vote from the match of the day: the card under it does not open the match, both places show the pick
+  // a vote from the match of the day: the card under it does not open the match
   hero.querySelector('[data-v29-pick="away"]').click();
   assert.equal(heroClicks, 0, "the tap is the vote, not 'open the match'");
   assert.ok(hero.querySelector('[data-v29-pick="away"]').classList.contains("mine"), "the pick is shown at once");
@@ -534,45 +537,72 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   const post = ctx.box.calls.find((c) => c.method === "POST");
   assert.deepEqual(post.body, { game_pk: 9002, pick: "away" });
   assert.deepEqual([...hero.querySelectorAll(".v29Btn .v29Pc")].map(text), ["88%", "13%"], "after the vote: the split of the fans");
-  assert.deepEqual([...hero.querySelectorAll(".v29Btn .v29Odd")].map(text), ["1.62", "2.30"], "and the odds stay");
-  assert.ok([...hero.querySelectorAll(".v29Btn")].every((b) => b.querySelector(".v29Nm .v29Pc") && b.lastElementChild.matches(".v29Odd")), "the share sits under the name, the odds keep the right edge (they were cut off when everything was on one line)");
+  assert.ok([...hero.querySelectorAll(".v29Btn")].every((b) => b.querySelector(".v29Nm .v29Pc")), "the share sits under the name");
   assert.match(text(hero.querySelector(".v29Line")), /^Ваш выбор: TBL · можно поменять до \d\d:\d\d$/);
-  const row9002 = document.querySelectorAll('[data-sec="predict"] .v29Row')[2];
-  assert.ok(row9002.querySelector('[data-v29-pick="away"]').classList.contains("mine"), "the list of the night shows the same pick");
-  assert.match(text(document.querySelector('[data-sec="predict"] .v27Head')), /1 из 3/);
   hero.querySelector('[data-v29-pick="away"]').click();
   await tick(10);
   assert.equal(ctx.box.calls.filter((c) => c.method === "POST").length, 1, "the same pick again sends nothing");
-
-  // the time opens the match
-  document.querySelectorAll('[data-sec="predict"] .v29Row')[1].querySelector("[data-v29-open]").click();
-  assert.deepEqual(plain(ctx.box.opened), [[9001, { returnTab: "games" }]]);
-  // the link to the profile opens "Мои"
-  let follows = 0;
-  document.querySelector('.tab[data-tab="follows"]').addEventListener("click", () => { follows += 1; });
-  document.querySelector("[data-v29-me]").click();
-  assert.equal(follows, 1);
   ctx.window.close();
 }
 
 {
-  // a long night: five rows, then all of them
-  const many = Array.from({ length: 7 }, (_, i) => block(9100 + i, "TBL", "NYR"));
-  const ctx = makeApp({ games: many });
-  await tick(250);
-  const sec = ctx.document.querySelector('[data-sec="predict"]');
-  assert.equal(sec.querySelectorAll(".v29Row").length, 5);
-  sec.querySelector("[data-v29-more]").click();
-  assert.equal(sec.querySelectorAll(".v29Row").length, 7);
-  assert.equal(text(sec.querySelector("[data-v29-more]")), "Свернуть");
+  // the tab "Матчи": the vote in the cards of the day, how the fans voted in the cards of the games that are over
+  const ctx = makeApp({ tab: "broadcasts", html: MATCHES_HTML });
+  const { document } = ctx;
+  const opened = [];
+  document.querySelectorAll(".v19Broadcast").forEach((c) => c.addEventListener("click", () => opened.push(c.dataset.v19Game)));
+  await tick(300);
+  const head = document.getElementById("v29MatchesHead");
+  assert.ok(head, "a short head above the list");
+  assert.equal(head.nextElementSibling, document.querySelector(".v19BroadcastList"));
+  assert.match(text(head), /^Кто победит\?\s*Мой профиль и рейтинг →/);
+  assert.match(text(head), /Голосуйте прямо в карточках матчей: победа с учётом ОТ и буллитов/);
+  assert.match(text(head), /У прошедших матчей — как голосовали болельщики/);
+  assert.match(text(head), /Прошлый игровой день: угадано 1 из 2 · \+27 XP/);
+  const slotOf = (pk) => document.querySelector(`.v19Broadcast[data-v19-game="${pk}"] .v19BroadcastText > .v29Slot.v29CardSlot`);
+  assert.ok(slotOf(9001) && !slotOf(9001).hidden, "a game ahead: the vote in its card");
+  assert.deepEqual([...slotOf(9001).querySelectorAll(".v29Btn b")].map(text), ["NJD", "DET"]);
+  assert.ok(!slotOf(9001).querySelector(".v29Mid"), "the card is narrow: no question between the buttons, the head says it");
+  assert.ok(!/1\.8|1\.9/.test(text(slotOf(9001))), "no odds in the card vote either");
+  assert.ok(slotOf(9004).querySelector(".v29Btn").disabled, "a game that is on: closed");
+  assert.deepEqual([...slotOf(9004).querySelectorAll(".v29Pc")].map(text), ["33%", "67%"]);
+  assert.ok(slotOf(9010).hidden, "an old game nobody voted on: nothing in its card");
+  const old = slotOf(9011);
+  assert.ok(!old.hidden, "an old game with votes: how the fans voted");
+  assert.deepEqual([...old.querySelectorAll(".v29Pc")].map(text), ["75%", "25%"]);
+  assert.ok(old.querySelector('[data-v29-pick="home"]').classList.contains("won"), "and who won");
+  assert.equal(text(old.querySelector(".v29Line")), "Как голосовали болельщики · 12");
+  // a vote in a card does not open the match; the card itself still does
+  slotOf(9002).querySelector('[data-v29-pick="home"]').click();
+  await tick(30);
+  assert.deepEqual(opened, [], "the vote is not 'open the match'");
+  assert.deepEqual(ctx.box.calls.find((c) => c.method === "POST").body, { game_pk: 9002, pick: "home" });
+  assert.ok(slotOf(9002).querySelector('[data-v29-pick="home"]').classList.contains("mine"));
+  document.querySelector('.v19Broadcast[data-v19-game="9002"] b').click();
+  assert.deepEqual(opened, ["9002"]);
+  // another day: the list is drawn again, the cards get their votes again
+  document.querySelector(".v19BroadcastList").innerHTML = card(9001, "NJD — DET");
+  await tick(300);
+  assert.ok(slotOf(9001) && !slotOf(9001).hidden);
+  assert.equal(document.querySelectorAll("#v29MatchesHead").length, 1, "one head");
+  // the link opens "Мои"
+  let follows = 0;
+  document.querySelector('.tab[data-tab="follows"]').addEventListener("click", () => { follows += 1; });
+  head.querySelector("[data-v29-me]").click();
+  assert.equal(follows, 1);
   ctx.window.close();
+
+  const guest = makeApp({ tab: "broadcasts", html: MATCHES_HTML, signedIn: false });
+  await tick(300);
+  assert.match(text(guest.document.getElementById("v29MatchesHead")), /Голосовать можно в приложении, открытом из Telegram-бота/);
+  assert.ok(!/Прошлый игровой день/.test(text(guest.document.getElementById("v29MatchesHead"))));
+  guest.window.close();
 }
 
 {
   // outside of Telegram: the buttons explain, nothing is sent; a closed vote is refused and the game is asked again
   const guest = makeApp({ signedIn: false });
   await tick(250);
-  assert.match(text(guest.document.querySelector('[data-sec="predict"]')), /Голосовать можно в приложении, открытом из Telegram-бота/);
   guest.document.querySelector('.v29Slot [data-v29-pick="home"]').click();
   await tick(10);
   assert.deepEqual(guest.box.alerts, ["Голосовать можно в приложении, открытом из Telegram-бота."]);
@@ -601,23 +631,23 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
 {
   // no-spoilers: a finished game does not tell who won
   const done = block(9010, "TBL", "NYR", { open: false, state: "OFF", votes: { total: 12, home: 10, away: 2 }, my: { pick: "away", result: "win", xp: 26 }, settled: { winner: "away", home_xp: 1, away_xp: 26, score: { home: 2, away: 3 } } });
-  const open = makeApp({ games: [done] });
-  await tick(250);
-  const row = open.document.querySelector('[data-sec="predict"] .v29Row');
-  assert.match(text(row), /✓ Угадали · \+26 XP/);
-  assert.ok(row.querySelector('[data-v29-pick="away"]').classList.contains("won"));
+  const open = makeApp({ games: [done], tab: "broadcasts", html: MATCHES_HTML });
+  await tick(300);
+  const slot = open.document.querySelector('.v19Broadcast[data-v19-game="9010"] .v29Slot');
+  assert.match(text(slot), /✓ Угадали · \+26 XP/);
+  assert.ok(slot.querySelector('[data-v29-pick="away"]').classList.contains("won"));
   open.window.close();
-  const hidden = makeApp({ games: [done], spoilers: true });
-  await tick(250);
-  const r2 = hidden.document.querySelector('[data-sec="predict"] .v29Row');
-  assert.match(text(r2), /Итог скрыт: режим без спойлеров/);
-  assert.ok(!r2.querySelector(".won") && !/%/.test(text(r2)) && !/XP/.test(text(r2)), "no winner, no split, no points");
-  assert.ok(!/Прошлый игровой день/.test(text(hidden.document.querySelector('[data-sec="predict"]'))), "not even last night's score");
+  const hidden = makeApp({ games: [done], spoilers: true, tab: "broadcasts", html: MATCHES_HTML });
+  await tick(300);
+  const s2 = hidden.document.querySelector('.v19Broadcast[data-v19-game="9010"] .v29Slot');
+  assert.match(text(s2), /Итог скрыт: режим без спойлеров/);
+  assert.ok(!s2.querySelector(".won") && !/%/.test(text(s2)) && !/XP/.test(text(s2)), "no winner, no split, no points");
+  assert.ok(!/Прошлый игровой день/.test(text(hidden.document.getElementById("v29MatchesHead"))), "not even last night's score");
   hidden.window.close();
 }
 
 {
-  // the match screen: the vote right under the head of the match
+  // the match screen: the vote right under the head of the match, the question in the middle
   const ctx = makeApp({ html: '<div class="v15Profile v26Match" id="v26Root"><div id="v15Back"></div><div id="v26Head">head</div><div id="v26Wl"></div><div id="v26Body"></div></div>' });
   ctx.window.HOHV26 = { state: { gamePk: 9001 } };
   ctx.document.getElementById("v26Body").innerHTML = "<p>goals</p>"; // any change of the page
@@ -625,7 +655,9 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   const slot = ctx.document.getElementById("v29Match");
   assert.ok(slot, "the vote is on the match screen");
   assert.equal(ctx.document.getElementById("v26Head").nextElementSibling, slot, "under the head, above the Winline block");
-  assert.deepEqual([...slot.querySelectorAll(".v29Btn .v29Odd")].map(text), ["1.88", "1.92"]);
+  assert.equal(text(slot.querySelector(".v29Mid")), "Ктопобедит?");
+  assert.deepEqual([...slot.querySelectorAll(".v29Btn b")].map(text), ["NJD", "DET"]);
+  assert.ok(!/1\.88|1\.92/.test(text(slot)), "no odds");
   ctx.window.close();
 }
 
