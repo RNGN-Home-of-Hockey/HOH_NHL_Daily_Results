@@ -145,7 +145,7 @@ export function goalMoment(game, goal) {
   return game.start_ms + (before + played) * 1000 + (period - 1) * 17 * MIN;
 }
 
-function tileOf(game, goal, base) {
+function tileOf(game, goal, base, russianIds) {
   const clip = clipOf(goal, base);
   if (!clip || clip.state !== "ready" || !clip.url) return null;
   const team = String(goal.team || "").toUpperCase() || null;
@@ -158,6 +158,8 @@ function tileOf(game, goal, base) {
     team,
     scorer_id: num(goal.scorer_id),
     scorer_ru: null,
+    russian: Boolean(russianIds && russianIds.has(num(goal.scorer_id))),
+    season_goal: null,
     scorer_en: String(goal.scorer || "").trim() || null,
     period: num(goal.period),
     period_short: periodShort(goal.period, game.game_type),
@@ -174,14 +176,14 @@ function tileOf(game, goal, base) {
 
 // The goals shelf: goals with a ready clip from games that are on or finished within the last 40 hours.
 // The newest day with clips comes first; if it has fewer than MIN_TILES goals the day before fills the shelf.
-export function buildGoalTiles({ games, index, indexOk, now, clipsBase = DEFAULT_CLIPS_BASE }) {
+export function buildGoalTiles({ games, index, indexOk, now, clipsBase = DEFAULT_CLIPS_BASE, russianIds = null }) {
   if (!indexOk) return { ok: false, day: null, live: false, total: 0, items: [] };
   const candidates = (games || []).filter((g) => (g.phase === "live" || g.phase === "final") && g.start_ms <= now && now - g.start_ms <= GOALS_WINDOW_MS);
   const all = [];
   for (const game of candidates) {
     const entry = findIndexGame(index, game.game_pk);
     for (const goal of entry?.goals || []) {
-      const tile = tileOf(game, goal, clipsBase);
+      const tile = tileOf(game, goal, clipsBase, russianIds);
       if (tile) all.push(tile);
     }
   }
@@ -192,7 +194,8 @@ export function buildGoalTiles({ games, index, indexOk, now, clipsBase = DEFAULT
     picked.push(...all.filter((t) => t.date === day));
     if (picked.length >= MIN_TILES) break;
   }
-  picked.sort((a, b) => b.moment - a.moment || (b.event_id ?? 0) - (a.event_id ?? 0));
+  // goals of our (Russian) players first, then the rest; the newest first inside each group
+  picked.sort((a, b) => Number(b.russian) - Number(a.russian) || b.moment - a.moment || (b.event_id ?? 0) - (a.event_id ?? 0));
   return {
     ok: true,
     day: days[0],
@@ -200,6 +203,16 @@ export function buildGoalTiles({ games, index, indexOk, now, clipsBase = DEFAULT
     total: picked.length,
     items: picked.slice(0, MAX_TILES).map(({ moment, ...tile }) => tile),
   };
+}
+
+// How many goals the scorer has in the season after this one: key "<game_pk>:<event_id>" -> number.
+export function applyGoalCounts(tiles, counts) {
+  for (const t of tiles.items) {
+    const key = `${t.game_pk}:${t.event_id}`;
+    const n = counts?.get ? counts.get(key) : counts?.[key];
+    if (t.russian && Number.isFinite(Number(n)) && Number(n) > 0) t.season_goal = Number(n);
+  }
+  return tiles;
 }
 
 export function applyNames(tiles, names) {
@@ -228,7 +241,7 @@ export function applyHeroLive(payload, live) {
   return payload;
 }
 
-export function buildHomePayload({ games, now, featured = null, index = null, indexOk = false, clipsBase = DEFAULT_CLIPS_BASE }) {
+export function buildHomePayload({ games, now, featured = null, index = null, indexOk = false, clipsBase = DEFAULT_CLIPS_BASE, russianIds = null }) {
   const pick = pickHome(games, now);
   const strip = pick.stripDay ? stripOf(games, pick.stripDay) : [];
   return {
@@ -241,6 +254,6 @@ export function buildHomePayload({ games, now, featured = null, index = null, in
     hero_day: pick.heroDay,
     games: strip.map(publicGame),
     featured,
-    goals: buildGoalTiles({ games, index, indexOk, now, clipsBase }),
+    goals: buildGoalTiles({ games, index, indexOk, now, clipsBase, russianIds }),
   };
 }

@@ -116,7 +116,7 @@ async function featuredGame(request,env){
     if(!games.length)return json({ok:true,date,featured:null});
     const tris=[...new Set(games.flatMap(g=>[g.home.tri,g.away.tri]).filter(Boolean))],ph=tris.map(()=>"?").join(",");
     const [standings,followers]=await Promise.all([
-      tris.length?env.DB.prepare(`SELECT s.team_tri,s.games_played,s.wins,s.points,s.league_rank FROM standings_snapshots s JOIN (SELECT team_tri,MAX(snapshot_date) md FROM standings_snapshots GROUP BY team_tri) x ON x.team_tri=s.team_tri AND x.md=s.snapshot_date WHERE s.team_tri IN (${ph});`).bind(...tris).all():{results:[]},
+      tris.length?env.DB.prepare(`SELECT s.team_tri,s.games_played,s.wins,s.losses,s.ot_losses,s.points,s.league_rank FROM standings_snapshots s JOIN (SELECT team_tri,MAX(snapshot_date) md FROM standings_snapshots GROUP BY team_tri) x ON x.team_tri=s.team_tri AND x.md=s.snapshot_date WHERE s.team_tri IN (${ph});`).bind(...tris).all():{results:[]},
       tris.length?env.DB.prepare(`SELECT subject_key team_tri,COUNT(*) followers FROM subscriptions WHERE subject_type='team' AND subject_key IN (${ph}) GROUP BY subject_key;`).bind(...tris).all():{results:[]}
     ]);
     const st=new Map((standings.results||[]).map(x=>[x.team_tri,x])),fol=new Map((followers.results||[]).map(x=>[x.team_tri,Number(x.followers||0)]));
@@ -136,7 +136,7 @@ async function featuredGame(request,env){
     if(!reason)reason="Главный матч игрового дня по сочетанию силы команд и турнирного контекста.";
     const vkUrl=best.ov?.vk_url||g.vk?.web_url||g.vk?.app_url||"https://vkvideo.ru/@nhl_home_of_hockey/lives";
     const cover=best.ov?.cover_url||g.vk?.thumbnail_url||null;
-    return json({ok:true,date,featured:{...g,title:best.ov?.title||away+" — "+home,description:reason,vk_url:vkUrl,thumbnail_url:cover,cover_url:best.ov?.cover_url?null:(coverUrls[String(g.game_pk)]||null),selection_score:Math.round(best.score),signals:{special:best.sp||null,followers:best.followers,away_win_pct:best.aw||null,home_win_pct:best.hw||null,manual:Boolean(best.ov)}}});
+    return json({ok:true,date,featured:{...g,title:best.ov?.title||away+" — "+home,description:reason,vk_url:vkUrl,thumbnail_url:cover,cover_url:best.ov?.cover_url?null:(coverUrls[String(g.game_pk)]||null),away_record:recordOf(st.get(g.away.tri)),home_record:recordOf(st.get(g.home.tri)),selection_score:Math.round(best.score),signals:{special:best.sp||null,followers:best.followers,away_win_pct:best.aw||null,home_win_pct:best.hw||null,manual:Boolean(best.ov)}}});
   }catch(error){return json({ok:false,error:"featured_game_failed",detail:errorText(error)},503)}
 }
 
@@ -436,6 +436,8 @@ function decorateArchiveGame(x){
 }
 function decorateGame(x){return {...x,game_pk:Number(x.game_pk),game_type:Number(x.game_type),is_playoff:Number(x.game_type)===3,home:{tri:x.home_tri,name_ru:x.home_name_ru,name_en:x.home_name_en,logo:x.home_logo||teamLogo(x.home_tri)},away:{tri:x.away_tri,name_ru:x.away_name_ru,name_en:x.away_name_en,logo:x.away_logo||teamLogo(x.away_tri)}}}
 function teamLogo(tri){return tri?`https://assets.nhle.com/logos/nhl/svg/${up(tri)}_light.svg`:""}
+// wins-losses-overtime losses and points of a team from the latest standings snapshot (null before its first game)
+function recordOf(x){return x&&Number(x.games_played)>0?{gp:Number(x.games_played),w:Number(x.wins||0),l:Number(x.losses||0),otl:Number(x.ot_losses||0),pts:Number(x.points||0)}:null}
 function cleanDate(v){const s=String(v||"").trim();return /^20\d\d-\d\d-\d\d$/.test(s)?s:""}
 function up(v){return String(v||"").trim().toUpperCase()}
 function isMissingVkSchema(error){return /no such table:\s*(vk_broadcasts|game_vk_broadcasts)/i.test(errorText(error))}

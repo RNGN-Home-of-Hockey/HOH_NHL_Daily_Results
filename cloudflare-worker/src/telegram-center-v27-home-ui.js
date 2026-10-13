@@ -37,7 +37,10 @@ export function homeScreenApp() {
     data: null, news: null, newsAt: 0, media: null, mediaAt: 0, busy: false, fails: 0, timer: null, lastAt: 0,
     revealed: false, sections: {}, queue: [], goalIndex: -1, openNewsId: null,
     follows: null, followsAt: 0, playerTeams: new Map(), mineOnly: store.get("hoh-home-mine") === "1", hintHidden: store.get("hoh-home-hint") === "1",
+    // what the person switched on in the settings: the home page is the same for everybody until then
+    prefs: { russians: store.get("hoh-home-russians") === "1", mine: store.get("hoh-home-mine-on") === "1" },
   });
+  const PREF_STORE = { russians: "hoh-home-russians", mine: "hoh-home-mine-on" };
 
   // ---- helpers ---------------------------------------------------------------------------------------------------------------
   const esc = (v) =>
@@ -156,7 +159,9 @@ export function homeScreenApp() {
     const s = norm(word);
     return s.length >= 7 ? s.slice(0, -2) : s.length === 6 ? s.slice(0, -1) : s;
   };
-  const followed = () => st.follows && st.follows.ok && (st.follows.teams.size > 0 || st.follows.players.size > 0);
+  const mineOn = () => st.prefs.mine === true;
+  const followed = () => mineOn() && st.follows && st.follows.ok && (st.follows.teams.size > 0 || st.follows.players.size > 0);
+  const myPlayers = () => (mineOn() && st.follows ? st.follows.players : new Map());
   function playerTeam(id) {
     if (st.playerTeams.has(id)) return st.playerTeams.get(id);
     const found = ((st.data && st.data.russians && st.data.russians.items) || []).find((x) => x.player_id === id);
@@ -164,7 +169,7 @@ export function homeScreenApp() {
   }
   function myTeams() {
     const set = new Set();
-    if (!st.follows) return set;
+    if (!mineOn() || !st.follows) return set;
     st.follows.teams.forEach((t) => set.add(t));
     st.follows.players.forEach((name, id) => {
       const t = playerTeam(id);
@@ -175,7 +180,7 @@ export function homeScreenApp() {
   const isMineGame = (g, teams) => teams.has(String(g.away && g.away.tri).toUpperCase()) || teams.has(String(g.home && g.home.tri).toUpperCase());
   function mineTokens() {
     const out = [];
-    if (!st.follows) return out;
+    if (!mineOn() || !st.follows) return out;
     st.follows.teamNames.forEach((name) => {
       const words = String(name || "").trim().split(/\s+/);
       const nick = words[words.length - 1];
@@ -334,6 +339,19 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
 .v27Ru .st{font-size:13px;font-weight:700;min-height:16px}
 .v27Ru small{font-size:11px;color:var(--c-muted);font-weight:600}
 .v27Mine{color:var(--c-accent);font-weight:800}
+.v27Cnt{color:var(--c-muted);font-weight:600;font-size:12px}
+.v27HeroTeams .rec{display:block;margin-top:2px;font-size:12px;font-weight:600;color:var(--c-muted)}
+.v27Settings{--c-card:#10121a;--c-line:#282b38;--c-text:#f7f7fb;--c-muted:#9094a8;--c-accent:#ff5a00;display:grid;gap:10px;margin:0 0 12px;padding:14px;border:1px solid var(--c-line);border-radius:16px;background:var(--c-card);color:var(--c-text)}
+html.v15Light .v27Settings{--c-card:#ffffff;--c-line:#e2e4ec;--c-text:#0c0d14;--c-muted:#686c7e}
+.v27SetTitle{font-size:15px;font-weight:800}
+.v27SetNote{margin:0;font-size:12px;color:var(--c-muted);line-height:1.4}
+.v27SetRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;border-top:1px solid var(--c-line)}
+.v27SetRow b{display:block;font-size:14px}
+.v27SetRow span{display:block;font-size:12px;color:var(--c-muted);line-height:1.35;margin-top:2px}
+.v27Sw{flex:0 0 48px;height:28px;border-radius:999px;border:1px solid var(--c-line);background:var(--c-line);position:relative;cursor:pointer;padding:0}
+.v27Sw i{position:absolute;left:2px;top:2px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .15s}
+.v27Sw.on{background:var(--c-accent);border-color:var(--c-accent)}
+.v27Sw.on i{left:22px}
 `;
     document.head.appendChild(style);
   }
@@ -373,7 +391,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     const right = mineCount > 0
       ? `<span class="v27Seg"><button type="button" data-v27-seg="all"${onlyMine ? "" : ' class="on"'}>Все</button><button type="button" data-v27-seg="mine"${onlyMine ? ' class="on"' : ""}>★ Мои</button></span>`
       : '<button type="button" data-v27-all="1">Все матчи ›</button>';
-    const hint = st.follows && st.follows.ok && !followed() && !st.hintHidden
+    const hint = mineOn() && st.follows && st.follows.ok && !followed() && !st.hintHidden
       ? '<div class="v27Hint"><button type="button" data-v27-follow="1">☆ Выберите любимые команды: их матчи будут первыми</button><button type="button" data-v27-hint-close="1" aria-label="Скрыть">×</button></div>'
       : "";
     return `<div class="v27Head"><b>${esc(caption)}</b>${right}</div><div class="v27Strip">${list.map((x) => chipHtml(x.g, hide, x.mine)).join("")}<button type="button" class="v27ChipMore" data-v27-all="1">Все матчи</button></div>${hint}`;
@@ -399,9 +417,9 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
 
   function russiansHtml(d) {
     const r = d.russians;
-    if (!r || !r.ok || !r.items || !r.items.length) return "";
+    if (!st.prefs.russians || !r || !r.ok || !r.items || !r.items.length) return "";
     const hide = noSpoilers();
-    const mineIds = st.follows ? st.follows.players : new Map();
+    const mineIds = myPlayers();
     const items = r.items.map((p) => ({ p, mine: mineIds.has(p.player_id) }));
     items.sort((a, b) => Number(b.mine) - Number(a.mine));
     const hasStats = !hide && r.items.some((p) => p.line);
@@ -421,6 +439,8 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     return odds.length ? `<div class="v27Wl"><img src="/broadcast/winline-logo.png?asset=canonical-3" alt="WINLINE">${odds.join("")}</div>` : "";
   }
 
+  const recordHtml = (r) => (r ? `<span class="rec" title="победы – поражения – поражения в ОТ/Б">(${n0(r.w)}–${n0(r.l)}–${n0(r.otl)})</span>` : "");
+
   function heroHtml(g) {
     if (!g) return "";
     const away = g.away || {};
@@ -432,6 +452,8 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     const done = code === "OFF" || code === "FINAL";
     const hide = noSpoilers();
     const score = hide ? `•${colon}•` : `${n0(g.away_score)}${colon}${n0(g.home_score)}`;
+    // the record moves with the result of a game that is on or finished: hidden in no-spoilers mode
+    const showRecords = !(hide && (live || done));
     const cover = coverSrc(g);
     const badge = '<span class="v27LiveBadge"><i></i>LIVE</span>';
     const finish = done ? (g.period_type === "OT" ? " · ОТ" : g.period_type === "SO" ? " · Б" : "") : "";
@@ -443,7 +465,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     const kickerRight = live ? (cover ? "" : badge) : done ? "Матч завершён" : "";
     const vkText = live ? "Смотреть матч в VK Видео" : done ? "Смотреть запись в VK Видео" : "Трансляция в VK Видео";
     const vk = esc(g.vk_url || "https://vkvideo.ru/@nhl_home_of_hockey/lives");
-    return `<article class="v27Hero" data-game="${esc(g.game_pk)}">${cover ? `<div class="v27HeroCover"><img src="${esc(cover)}" alt="${esc(`${awayName} — ${homeName}`)}">${live ? badge : ""}</div>` : ""}<div class="v27HeroBody"><div class="v27Kicker">Матч дня${kickerRight ? `<span>${kickerRight}</span>` : ""}</div><div class="v27HeroTeams"><div><img src="${esc(away.logo || "")}" alt=""><span class="nm">${esc(awayName)}</span></div>${mid}<div><img src="${esc(homeTeam.logo || "")}" alt=""><span class="nm">${esc(homeName)}</span></div></div>${winlineHtml(g)}<a class="v27Cta" href="${vk}" target="_blank" rel="noopener"><span>${vkText}</span><span>→</span></a></div></article>`;
+    return `<article class="v27Hero" data-game="${esc(g.game_pk)}">${cover ? `<div class="v27HeroCover"><img src="${esc(cover)}" alt="${esc(`${awayName} — ${homeName}`)}">${live ? badge : ""}</div>` : ""}<div class="v27HeroBody"><div class="v27Kicker">Матч дня${kickerRight ? `<span>${kickerRight}</span>` : ""}</div><div class="v27HeroTeams"><div><img src="${esc(away.logo || "")}" alt=""><span class="nm">${esc(awayName)}</span>${showRecords ? recordHtml(g.away_record) : ""}</div>${mid}<div><img src="${esc(homeTeam.logo || "")}" alt=""><span class="nm">${esc(homeName)}</span>${showRecords ? recordHtml(g.home_record) : ""}</div></div>${winlineHtml(g)}<a class="v27Cta" href="${vk}" target="_blank" rel="noopener"><span>${vkText}</span><span>→</span></a></div></article>`;
   }
 
   function goalsTitle(gl, today) {
@@ -460,7 +482,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
       ? `<img class="cover" loading="lazy" decoding="async" src="${esc(t.poster_url)}" alt="">`
       : `<span class="logos"><img src="${esc(t.away && t.away.logo)}" alt=""><img src="${esc(t.home && t.home.logo)}" alt=""></span>`;
     const dur = duration(t.duration);
-    return `<button type="button" class="v27Goal" data-v27-goal="${i}" aria-label="Смотреть гол: ${esc(name)}"><span class="v27Poster">${poster}<span class="play">${PLAY_SVG}</span>${dur ? `<em>${dur}</em>` : ""}</span><span class="nm">${mine ? '<span class="v27Mine">★</span> ' : ""}${esc(surname(name))}</span><span class="sc"><img src="${esc(logo || "")}" alt="">${esc(t.away && t.away.tri)} ${n0(t.away_score)}:${n0(t.home_score)} ${esc(t.home && t.home.tri)}</span><span class="tm">${esc(t.period_short)}${t.time ? ` · ${esc(t.time)}` : ""}</span></button>`;
+    return `<button type="button" class="v27Goal" data-v27-goal="${i}" aria-label="Смотреть гол: ${esc(name)}"><span class="v27Poster">${poster}<span class="play">${PLAY_SVG}</span>${dur ? `<em>${dur}</em>` : ""}</span><span class="nm">${mine ? '<span class="v27Mine">★</span> ' : ""}${esc(surname(name))}${t.season_goal ? ` <span class="v27Cnt">(${t.season_goal}-я)</span>` : ""}</span><span class="sc"><img src="${esc(logo || "")}" alt="">${esc(t.away && t.away.tri)} ${n0(t.away_score)}:${n0(t.home_score)} ${esc(t.home && t.home.tri)}</span><span class="tm">${esc(t.period_short)}${t.time ? ` · ${esc(t.time)}` : ""}</span></button>`;
   }
 
   function goalsHtml(d) {
@@ -472,7 +494,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
       return `<div class="v27Head"><b>${esc(title)}</b></div><div class="v27Note">Включён режим «без спойлеров»: голы и счёт скрыты.<button type="button" data-v27-reveal="1">Показать голы</button></div>`;
     }
     const teams = myTeams();
-    const players = st.follows ? st.follows.players : new Map();
+    const players = myPlayers();
     const mineTile = (t) => teams.has(String(t.team || "").toUpperCase()) || players.has(t.scorer_id);
     return `<div class="v27Head"><b>${esc(title)}</b><small>${esc(count)}</small></div><div class="v27Shelf">${gl.items.map((t, i) => tileHtml(t, i, mineTile(t))).join("")}</div>`;
   }
@@ -650,7 +672,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
         homeDone,
         loadNews().then(paintNews, () => {}),
         loadMedia().then(paintVideos, () => {}),
-        loadFollows(false, homeDone).then(paintPersonal, () => {}),
+        (mineOn() ? loadFollows(false, homeDone) : Promise.resolve()).then(paintPersonal, () => {}),
       ]);
     } finally {
       st.busy = false;
@@ -674,6 +696,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
     if (S.failed) return;
     const root = H.view();
     if (!root) return;
+    mountSettings();
     const existing = home();
     if (!homeAllowed()) {
       if (existing) existing.remove();
@@ -688,6 +711,47 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
       paintAll();
     }
     if (!st.timer && !st.busy && (!st.data || Date.now() - st.lastAt > 5000)) refresh();
+  }
+
+  // ---- settings: the home page of the person -----------------------------------------------------------------------------------
+  function settingsHtml() {
+    const row = (key, title, note) => `<div class="v27SetRow"><div><b>${title}</b><span>${note}</span></div><button type="button" class="v27Sw${st.prefs[key] ? " on" : ""}" role="switch" aria-checked="${st.prefs[key] ? "true" : "false"}" aria-label="${title}" data-v27-pref="${key}"><i></i></button></div>`;
+    return `<b class="v27SetTitle">Главная страница</b><p class="v27SetNote">Настройте главную под себя. Включить и выключить можно в любой момент.</p>${row("russians", "Русские в НХЛ", "Блок с российскими игроками дня и их результатами.")}${row("mine", "Моя лента", "Звёздочка у моих команд и игроков, переключатель «Мои» в списке матчей, новости про мои команды. Нужны подписки на команды или игроков.")}`;
+  }
+
+  function onSettingsClick(e) {
+    const sw = e.target.closest && e.target.closest("[data-v27-pref]");
+    if (!sw) return;
+    const key = sw.dataset.v27Pref;
+    if (!(key in PREF_STORE)) return;
+    st.prefs[key] = !st.prefs[key];
+    store.set(PREF_STORE[key], st.prefs[key] ? "1" : "0");
+    sw.classList.toggle("on", st.prefs[key]);
+    sw.setAttribute("aria-checked", st.prefs[key] ? "true" : "false");
+    st.sections = {};
+    // "my feed" has just been switched on: the follows are fetched now, so the stars are there when the person is back on the home page
+    if (key === "mine" && st.prefs.mine) loadFollows(true).catch(() => {});
+  }
+
+  // the card sits under the theme switch of the "Мои" screen
+  function mountSettings() {
+    const root = H.view();
+    if (!root) return;
+    const tab = H.currentTab();
+    const here = !H.state.profile && (tab === "follows" || tab === "mine") && H.tabsVisible();
+    const card = root.querySelector(":scope > .v27Settings");
+    if (!here) {
+      if (card) card.remove();
+      return;
+    }
+    if (card) return;
+    const el = document.createElement("section");
+    el.className = "v27Settings";
+    el.innerHTML = settingsHtml();
+    el.addEventListener("click", onSettingsClick);
+    const theme = root.querySelector(":scope > #v15Theme");
+    if (theme) theme.after(el);
+    else root.prepend(el);
   }
 
   // ---- goal player -----------------------------------------------------------------------------------------------------------
@@ -707,7 +771,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
   function overlayHtml(t, i, total) {
     const name = t.scorer_ru || t.scorer_en || "Гол";
     const score = `${t.away && t.away.tri} ${n0(t.away_score)}:${n0(t.home_score)} ${t.home && t.home.tri}`;
-    return `<div class="v27OvBox"><div class="v27OvTop"><span>Гол ${i + 1} из ${total}</span><button type="button" data-v27-ov="close" aria-label="Закрыть">✕</button></div><video controls playsinline webkit-playsinline preload="metadata"${t.poster_url ? ` poster="${esc(t.poster_url)}"` : ""} src="${esc(t.clip_url)}"></video><div class="v27OvErr" hidden></div><div class="v27OvInfo"><b>${esc(name)}</b><span>${esc(score)} · ${esc(t.period_short)}${t.time ? ` ${esc(t.time)}` : ""}</span></div><div class="v27OvBtns"><button type="button" data-v27-ov="prev"${i <= 0 ? " disabled" : ""}>‹ Назад</button><button type="button" class="main" data-v27-ov="match">К матчу</button><button type="button" data-v27-ov="next"${i >= total - 1 ? " disabled" : ""}>Дальше ›</button></div></div>`;
+    return `<div class="v27OvBox"><div class="v27OvTop"><span>Гол ${i + 1} из ${total}</span><button type="button" data-v27-ov="close" aria-label="Закрыть">✕</button></div><video controls playsinline webkit-playsinline preload="metadata"${t.poster_url ? ` poster="${esc(t.poster_url)}"` : ""} src="${esc(t.clip_url)}"></video><div class="v27OvErr" hidden></div><div class="v27OvInfo"><b>${esc(name)}</b><span>${esc(score)} · ${esc(t.period_short)}${t.time ? ` ${esc(t.time)}` : ""}${t.season_goal ? ` · ${t.season_goal}-я шайба в сезоне` : ""}</span></div><div class="v27OvBtns"><button type="button" data-v27-ov="prev"${i <= 0 ? " disabled" : ""}>‹ Назад</button><button type="button" class="main" data-v27-ov="match">К матчу</button><button type="button" data-v27-ov="next"${i >= total - 1 ? " disabled" : ""}>Дальше ›</button></div></div>`;
   }
 
   function showGoal(i) {

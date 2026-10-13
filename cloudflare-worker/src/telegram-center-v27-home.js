@@ -4,7 +4,7 @@ import { stateInfo, phaseOf, DEFAULT_CLIPS_BASE } from "./telegram-center-v26-go
 import { loadNames, fetchJson, seasonIdOf } from "./telegram-center-v26-goals.js";
 import { handleTelegramCenterV19ProductData } from "./telegram-center-v19-product-data.js";
 import { homeScreenApp } from "./telegram-center-v27-home-ui.js";
-import { gameFromRow, buildHomePayload, applyNames, applyHeroLive, stripOf } from "./telegram-center-v27-home-data.js";
+import { gameFromRow, buildHomePayload, applyNames, applyGoalCounts, applyHeroLive, stripOf } from "./telegram-center-v27-home-data.js";
 import { buildRussians } from "./telegram-center-v27-russians.js";
 
 export const HOME_PATH = "/api/telegram-center-v27/home";
@@ -81,8 +81,32 @@ async function loadRussians(env, dayGames, now) {
   return buildRussians({ games: dayGames, players, boxes, season: seasonIdOf(now) });
 }
 
+// Ids of all Russian players of the league: their goals go first on the shelf.
+async function loadRussianIds(env) {
+  const rows = await env.DB.prepare("SELECT player_id FROM player_profile_meta WHERE primary_country_code='RUS';").all();
+  return new Set((rows.results || []).map((r) => Number(r.player_id)).filter(Boolean));
+}
+
+// "How many goals in the season" of the Russian scorers: the landing feed of each game says it for every goal (goalsToDate).
+async function loadGoalCounts(tiles) {
+  const counts = new Map();
+  const games = [...new Map(tiles.map((t) => [t.game_pk, t.live])).entries()];
+  await Promise.allSettled(games.map(async ([gamePk, live]) => {
+    const landing = await fetchJson(NHL_LANDING(gamePk), { ttl: live ? 10 : 3600, timeoutMs: 5000 });
+    for (const period of landing?.summary?.scoring || []) {
+      for (const goal of period?.goals || []) {
+        const n = Number(goal?.goalsToDate);
+        if (goal?.eventId != null && Number.isFinite(n)) counts.set(`${gamePk}:${Number(goal.eventId)}`, n);
+      }
+    }
+  }));
+  return counts;
+}
+
 const realDeps = {
   loadRussians,
+  loadRussianIds,
+  loadGoalCounts,
   loadGames: (env, now) => loadGames(env.DB, now),
   loadFeatured,
   loadIndex: (base) => fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 }),
@@ -98,17 +122,20 @@ export async function loadHomePayload(env, { now = Date.now(), deps = realDeps }
   // the first pass only decides the mood of the page and the day of the match of the day
   const first = buildHomePayload({ games, now });
 
-  const [featuredResult, indexResult, russiansResult] = await Promise.allSettled([
+  const [featuredResult, indexResult, russiansResult, idsResult] = await Promise.allSettled([
     first.hero_day ? deps.loadFeatured(env, first.hero_day) : Promise.resolve(null),
     deps.loadIndex(base),
     first.strip_day && deps.loadRussians ? deps.loadRussians(env, stripOf(games, first.strip_day), now) : Promise.resolve([]),
+    deps.loadRussianIds ? deps.loadRussianIds(env) : Promise.resolve(null),
   ]);
+  if (idsResult.status === "rejected") console.error("v27 russian ids failed", idsResult.reason);
   if (russiansResult.status === "rejected") console.error("v27 russians failed", russiansResult.reason);
   const featured = featuredResult.status === "fulfilled" ? featuredResult.value : null;
   if (featuredResult.status === "rejected") console.error("v27 featured failed", featuredResult.reason);
   const index = indexResult.status === "fulfilled" ? indexResult.value : null;
   const payload = buildHomePayload({
     games, now, featured, index, indexOk: Boolean(index && Array.isArray(index.games)), clipsBase: base,
+    russianIds: idsResult.status === "fulfilled" ? idsResult.value : null,
   });
 
   payload.russians = { ok: russiansResult.status === "fulfilled", day: first.strip_day, items: russiansResult.status === "fulfilled" ? russiansResult.value : [] };
@@ -116,6 +143,10 @@ export async function loadHomePayload(env, { now = Date.now(), deps = realDeps }
   const ids = [...new Set(payload.goals.items.map((t) => t.scorer_id).filter(Boolean))];
   if (ids.length) {
     try { applyNames(payload.goals, await deps.loadNames(env, ids)); } catch (error) { console.error("v27 names failed", error); }
+  }
+  const russianTiles = payload.goals.items.filter((t) => t.russian);
+  if (russianTiles.length && deps.loadGoalCounts) {
+    try { applyGoalCounts(payload.goals, await deps.loadGoalCounts(russianTiles)); } catch (error) { console.error("v27 goal counts failed", error); }
   }
   if (featured && phaseOf(featured.game_state) === "live") {
     try { applyHeroLive(payload, await deps.loadHeroLive(featured)); } catch (error) { console.error("v27 live label failed", error); }

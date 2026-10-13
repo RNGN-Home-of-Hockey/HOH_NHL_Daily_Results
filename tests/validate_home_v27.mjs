@@ -8,6 +8,7 @@ import {
   GOALS_WINDOW_MS, MAX_TILES, MIN_TILES,
 } from "../cloudflare-worker/src/telegram-center-v27-home-data.js";
 import { buildRussians, statLine, MAX_RUSSIANS } from "../cloudflare-worker/src/telegram-center-v27-russians.js";
+import { applyGoalCounts } from "../cloudflare-worker/src/telegram-center-v27-home-data.js";
 import { handleTelegramCenterV27, loadHomePayload } from "../cloudflare-worker/src/telegram-center-v27-home.js";
 import { handleTeamCurrentRequest } from "../cloudflare-worker/src/team-current-routes.js";
 import { handleTelegramCenterV19ProductData } from "../cloudflare-worker/src/telegram-center-v19-product-data.js";
@@ -161,6 +162,16 @@ const BASE = "https://clips.test";
   assert.equal(liveShelf.live, true);
   assert.equal(liveShelf.items.length, 1);
 
+  // goals of Russian players go first, then the rest; the newest first inside each group
+  const ruShelf = buildGoalTiles({ games, index, indexOk: true, now: NOW, clipsBase: BASE, russianIds: new Set([4, 1]) });
+  assert.deepEqual(ruShelf.items.map((t) => t.event_id), [101, 201, 102, 202], "Russians (1 and 4) first: the goal of 1 and the goal of 4, then the others");
+  assert.deepEqual(ruShelf.items.map((t) => t.russian), [true, true, false, false]);
+  assert.ok(buildGoalTiles({ games, index, indexOk: true, now: NOW, clipsBase: BASE }).items.every((t) => t.russian === false), "no list of Russians: nothing is marked");
+  // the number of the goal in the season is only for Russians
+  applyGoalCounts(ruShelf, new Map([["21:101", 6], ["21:102", 9], ["22:201", 1]]));
+  assert.deepEqual(ruShelf.items.map((t) => t.season_goal), [6, 1, null, null], "known counts for Russians; a count for someone else is ignored");
+  assert.equal(applyGoalCounts({ items: [{ game_pk: 1, event_id: 2, russian: true, season_goal: null }] }, { "1:2": "x" }).items[0].season_goal, null, "a number that is not a number is ignored");
+
   // the clip server is down: no shelf, no failure
   assert.deepEqual(buildGoalTiles({ games, index: null, indexOk: false, now: NOW }), { ok: false, day: null, live: false, total: 0, items: [] });
   assert.equal(buildGoalTiles({ games: [upcoming], index, indexOk: true, now: NOW }).items.length, 0);
@@ -231,10 +242,12 @@ const BASE = "https://clips.test";
   const deps = {
     loadGames: async () => [game(-5, "OFF", { pk: 41, away: "VGK", home: "MIN", a: 2, h: 3 }), game(20, "FUT", { pk: 42, away: "SEA", home: "PHI" })],
     loadFeatured: async (_env, day) => { calls.push(["featured", day]); return { game_pk: 42, game_state: "FUT", away: { tri: "SEA" }, home: { tri: "PHI" } }; },
-    loadIndex: async (base) => { calls.push(["index", base]); return { games: [{ game_pk: 41, goals: [goal(701, 1, "10:00", 0, 1, 9, "Joel Eriksson Ek", "MIN")] }] }; },
+    loadIndex: async (base) => { calls.push(["index", base]); return { games: [{ game_pk: 41, goals: [goal(701, 1, "10:00", 0, 1, 9, "Joel Eriksson Ek", "MIN"), goal(702, 2, "10:00", 0, 2, 10, "Someone Else", "MIN")] }] }; },
     loadNames: async (_env, ids) => { calls.push(["names", ids]); return new Map([[9, "Юэль Эрикссон Эк"]]); },
     loadHeroLive: async () => { throw new Error("not live"); },
     loadRussians: async (_env, dayGames) => { calls.push(["russians", dayGames.map((g) => g.game_pk)]); return [{ player_id: 1, team: "VGK" }]; },
+    loadRussianIds: async () => new Set([9]),
+    loadGoalCounts: async (tiles) => { calls.push(["counts", tiles.map((t) => t.event_id)]); return new Map([["41:701", 7]]); },
   };
   const payload = await loadHomePayload({ HOH_CLIPS_BASE: "https://other.test/" }, { now: NOW, deps });
   assert.deepEqual(plain(payload.russians), { ok: true, day: payload.strip_day, items: [{ player_id: 1, team: "VGK" }] });
@@ -247,7 +260,11 @@ const BASE = "https://clips.test";
   assert.equal(payload.featured.game_pk, 42);
   assert.deepEqual(calls.find((c) => c[0] === "featured"), ["featured", payload.hero_day], "the match of the day is asked for the day it looks at");
   assert.deepEqual(calls.find((c) => c[0] === "index"), ["index", "https://other.test"], "the clip server base can be changed in the settings");
-  assert.deepEqual(calls.find((c) => c[0] === "names"), ["names", [9]]);
+  assert.deepEqual(calls.find((c) => c[0] === "names"), ["names", [9, 10]], "names of all scorers on the shelf");
+  assert.equal(payload.goals.items[1].russian, false, "the other scorer is not Russian and comes second");
+  assert.equal(payload.goals.items[0].russian, true, "the scorer is in the list of Russians");
+  assert.equal(payload.goals.items[0].season_goal, 7, "and the number of his goal in the season is on the tile");
+  assert.deepEqual(calls.find((c) => c[0] === "counts"), ["counts", [701]], "goal counts are asked only for goals of Russians");
   assert.equal(payload.goals.items[0].scorer_ru, "Юэль Эрикссон Эк");
   assert.equal(payload.goals.items[0].clip_url, "https://other.test/tg/701.mp4");
 
@@ -257,6 +274,11 @@ const BASE = "https://clips.test";
   assert.equal(broken.featured, null);
   assert.equal(broken.goals.ok, false);
   assert.equal(broken.games.length, 1);
+  const noIds = await loadHomePayload({}, { now: NOW, deps: { ...deps, loadRussianIds: async () => { throw new Error("db"); }, loadGoalCounts: async () => { throw new Error("nhl"); } } });
+  assert.equal(noIds.ok, true, "no list of Russians: the shelf is in the usual order");
+  assert.equal(noIds.goals.items[0].russian, false);
+  const noCounts = await loadHomePayload({}, { now: NOW, deps: { ...deps, loadGoalCounts: async () => { throw new Error("nhl"); } } });
+  assert.equal(noCounts.goals.items[0].season_goal, null, "the NHL does not answer: the goal is there without a number");
   const noRussians = await loadHomePayload({}, { now: NOW, deps: { ...deps, loadRussians: async () => { throw new Error("db"); } } });
   assert.equal(noRussians.ok, true, "no Russians: the rest of the page is fine");
   assert.deepEqual(plain(noRussians.russians), { ok: false, day: noRussians.strip_day, items: [] });
@@ -339,6 +361,12 @@ const BASE = "https://clips.test";
   assert.equal((await ask([strongFinal, weakLive, weakSoon], "&focus=now")).game_pk, 8002, "a game that is on");
   assert.equal((await ask([strongFinal, weakSoon], "&focus=now")).game_pk, 8003, "not finished beats finished");
   assert.equal((await ask([strongFinal], "&focus=now")).game_pk, 8001, "only finished games: the strongest of them");
+  // the match of the day carries the record of both teams (wins, losses, overtime losses, points)
+  const recDb = { prepare: (sql) => ({ bind: () => ({ all: async () => ({ results: /FROM standings_snapshots/.test(sql) ? [{ team_tri: "PHI", games_played: 6, wins: 4, losses: 1, ot_losses: 1, points: 9, league_rank: 3 }] : [row(8100, 2, "FUT")] }), first: async () => null }), all: async () => ({ results: [] }) }) };
+  globalThis.fetch = async () => new Response(JSON.stringify({ version: 1, covers: {} }), { status: 200 });
+  const withRecord = (await (await handleTelegramCenterV19ProductData(new Request("https://x.test/api/telegram-center-v19/featured?date=2026-10-12"), { HOH_CLIPS_BASE: BASE, DB: recDb }, "/api/telegram-center-v19/featured")).json()).featured;
+  assert.deepEqual(plain(withRecord.away_record), { gp: 6, w: 4, l: 1, otl: 1, pts: 9 }, "PHI (the away side in this fixture) has a record");
+  assert.equal(withRecord.home_record, null, "a team without a standings row has none");
   globalThis.fetch = realFetch;
 }
 
@@ -386,7 +414,7 @@ const chip = (pk, away, home, phase, a, h, startOffsetH = 2, finish = null) => (
   away: { tri: away, name_ru: `${away} ру`, logo: logo(away) }, home: { tri: home, name_ru: `${home} ру`, logo: logo(home) }, away_score: a, home_score: h, finish,
 });
 const tile = (event, pk, name, nameRu, team, period, time, a, h, extra = {}) => ({
-  game_pk: pk, event_id: event, date: localDay(), live: false, team, scorer_id: event, scorer_ru: nameRu, scorer_en: name, period, period_short: `${period}-й`, time,
+  game_pk: pk, event_id: event, date: localDay(), live: false, russian: false, season_goal: null, team, scorer_id: event, scorer_ru: nameRu, scorer_en: name, period, period_short: `${period}-й`, time,
   away: { tri: "VGK", logo: logo("VGK") }, home: { tri: "MIN", logo: logo("MIN") }, away_score: a, home_score: h, clip_url: `https://clips.test/tg/${event}.mp4`, poster_url: `https://clips.test/p/${event}.jpg`, duration: 44, ...extra,
 });
 const NEWS = [
@@ -428,9 +456,9 @@ const homeData = (extra = {}) => ({
   ...extra,
 });
 
-function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}, failHome = false, spoilers = false, tabName = "games", follows = null, lookups = {}, stored = {}, followsDelay = 0 } = {}) {
+function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}, failHome = false, spoilers = false, tabName = "games", follows = null, lookups = {}, stored = {}, followsDelay = 0, prefs = true } = {}) {
   const dom = new JSDOM(
-    `<!doctype html><body><nav id="tabs"><button class="tab active" data-tab="games"></button><button class="tab" data-tab="broadcasts"></button><button class="tab" data-tab="teams"></button></nav>
+    `<!doctype html><body><nav id="tabs"><button class="tab active" data-tab="games"></button><button class="tab" data-tab="broadcasts"></button><button class="tab" data-tab="teams"></button><button class="tab" data-tab="follows"></button></nav>
      <main id="view" class="view"><div class="dateBox">2026-10-13</div><div class="toolbar"></div><div id="gameList"><article class="gameCard" data-game="1"></article></div></main></body>`,
     { url: "https://example.test/telegram-app-v24", pretendToBeVisual: true, runScripts: "outside-only" },
   );
@@ -476,7 +504,7 @@ function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}
   document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
     H.state.profile = false;
-    view().innerHTML = t.dataset.tab === "games" ? '<div class="toolbar"></div><div id="gameList"></div>' : '<div id="other">tab</div>';
+    view().innerHTML = t.dataset.tab === "games" ? '<div class="toolbar"></div><div id="gameList"></div>' : t.dataset.tab === "follows" ? '<div id="v15Theme">theme</div><div id="other">follows</div>' : '<div id="other">tab</div>';
   }));
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tabName));
   window.HOHNoSpoilers = () => box.spoilers;
@@ -487,7 +515,8 @@ function makeHome({ data = homeData(), news = NEWS, media = MEDIA, comments = {}
   window.HTMLMediaElement.prototype.play = function play() { this.dispatchEvent(new window.Event("play")); return Promise.resolve(); };
   window.HTMLMediaElement.prototype.pause = function pause() {};
   window.HTMLMediaElement.prototype.load = function load() {};
-  for (const [key, value] of Object.entries(stored)) window.localStorage.setItem(key, value);
+  const defaults = prefs ? { "hoh-home-russians": "1", "hoh-home-mine-on": "1" } : {};
+  for (const [key, value] of Object.entries({ ...defaults, ...stored })) window.localStorage.setItem(key, value);
   window.eval(v27);
   return { window, document, H, box, calls, opened, posted, players, timers, S: window.HOHV27 };
 }
@@ -883,6 +912,107 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   ctx.window.eval(v27);
   assert.equal(ctx.window.HOHV27, before);
   ctx.window.close();
+}
+
+{
+  // the match of the day: the record of both teams in brackets (also without a cover), hidden when it would give a result away
+  const rec = (w, l, otl) => ({ gp: w + l + otl, w, l, otl, pts: 2 * w + otl });
+  const upcoming = makeHome({ data: homeData({ featured: featured({ away_record: rec(3, 2, 1), home_record: rec(5, 0, 0) }) }) });
+  await tick(420);
+  const names = [...sec(upcoming, "hero").querySelectorAll(".v27HeroTeams > div")].map(text);
+  assert.match(names[0], /Сиэтл Кракен\(3–2–1\)/);
+  assert.match(names[2], /Филадельфия Флайерз\(5–0–0\)/);
+  assert.equal(sec(upcoming, "hero").querySelector(".rec").getAttribute("title"), "победы – поражения – поражения в ОТ/Б");
+  upcoming.box.spoilers = true;
+  upcoming.window.dispatchEvent(new upcoming.window.Event("hoh-spoilers-change"));
+  assert.ok(sec(upcoming, "hero").querySelector(".rec"), "a game that has not started: the record is no spoiler");
+  upcoming.window.close();
+  const finished = makeHome({ data: homeData({ featured: featured({ game_state: "OFF", away_score: 3, home_score: 2, away_record: rec(4, 2, 1), home_record: rec(5, 1, 0) }) }), spoilers: true });
+  await tick(420);
+  assert.ok(!sec(finished, "hero").querySelector(".rec"), "a finished game in no-spoilers mode: the record would show who won");
+  finished.box.spoilers = false;
+  finished.window.dispatchEvent(new finished.window.Event("hoh-spoilers-change"));
+  assert.ok(sec(finished, "hero").querySelector(".rec"));
+  finished.window.close();
+  const bare = makeHome();
+  await tick(420);
+  assert.ok(!sec(bare, "hero").querySelector(".rec"), "no record in the data: nothing is drawn");
+  bare.window.close();
+}
+
+{
+  // goals of Russian players carry the number of the goal in the season, in the tile and in the player
+  const items = [
+    tile(21, 3, "Kirill Kaprizov", "Кирилл Капризов", "MIN", 2, "10:00", 1, 2, { russian: true, season_goal: 6 }),
+    tile(22, 3, "Josh Doan", "Джош Доан", "BUF", 1, "05:58", 0, 1),
+  ];
+  const ctx = makeHome({ data: homeData({ goals: { ok: true, day: localDay(), live: false, total: 2, items } }) });
+  await tick(420);
+  const tiles = [...sec(ctx, "goals").querySelectorAll(".v27Goal")];
+  assert.equal(text(tiles[0].querySelector(".nm")), "Капризов (6-я)", "the number of the goal in brackets");
+  assert.equal(text(tiles[1].querySelector(".nm")), "Доан", "others have none");
+  tiles[0].click();
+  assert.match(text(ctx.document.getElementById("v27Ov")), /6-я шайба в сезоне/);
+  ctx.window.close();
+}
+
+{
+  // the default: the home page is the same for everybody; the Russians and "my feed" wait in the settings
+  const follows = [{ subject_type: "team", subject_key: "MIN", name: "Миннесота Уайлд" }];
+  const ctx = makeHome({ follows, prefs: false, news: [{ news_id: 1, title: "Миннесота выиграла", published_at: iso(Date.now() - 60000), comment_count: 0 }, ...NEWS] });
+  await tick(520);
+  assert.ok(sec(ctx, "russians").hidden, "no Russians block by default");
+  assert.ok(!sec(ctx, "strip").querySelector(".v27Star, .v27Seg, .v27Hint"), "no stars, no switch, no hint");
+  assert.ok(!sec(ctx, "goals").querySelector(".v27Mine"));
+  assert.ok(!sec(ctx, "news").querySelector(".v27Mine"), "news in their usual order");
+  assert.equal(sec(ctx, "news").querySelector(".v27News").dataset.v27News, "1");
+  assert.equal(ctx.calls.filter((c) => c.url === "/api/telegram-center-v2/subscriptions").length, 0, "the follows are not even asked for");
+  assert.equal(ctx.document.querySelectorAll(".v27Settings").length, 0, "the settings card lives on the Мои screen only");
+
+  // the settings card
+  ctx.document.querySelector('.tab[data-tab="follows"]').click();
+  await tick(250);
+  const card = ctx.document.querySelector("#view > .v27Settings");
+  assert.ok(card, "the card is on the Мои screen");
+  assert.equal(ctx.document.getElementById("v15Theme").nextElementSibling, card, "right under the theme switch");
+  assert.match(text(card), /Главная страница/);
+  assert.match(text(card), /Русские в НХЛ/);
+  assert.match(text(card), /Моя лента/);
+  const switches = [...card.querySelectorAll(".v27Sw")];
+  assert.deepEqual(switches.map((b) => b.getAttribute("aria-checked")), ["false", "false"], "both are off");
+  assert.deepEqual(switches.map((b) => b.dataset.v27Pref), ["russians", "mine"]);
+  switches[0].click();
+  assert.equal(switches[0].getAttribute("aria-checked"), "true");
+  assert.ok(switches[0].classList.contains("on"));
+  assert.equal(ctx.window.localStorage.getItem("hoh-home-russians"), "1", "remembered");
+  assert.equal(ctx.window.localStorage.getItem("hoh-home-mine-on"), null, "the other one is untouched");
+  switches[1].click();
+  assert.equal(ctx.window.localStorage.getItem("hoh-home-mine-on"), "1");
+  switches[1].click();
+  assert.equal(ctx.window.localStorage.getItem("hoh-home-mine-on"), "0", "and off again");
+  switches[1].click();
+  // the card goes away with the tab
+  ctx.document.querySelector('.tab[data-tab="teams"]').click();
+  await tick(250);
+  assert.ok(!ctx.document.querySelector(".v27Settings"));
+
+  // back on the home page: what was switched on is there
+  ctx.document.querySelector('.tab[data-tab="games"]').click();
+  await tick(700);
+  assert.ok(!sec(ctx, "russians").hidden, "the Russians block is on");
+  assert.ok(sec(ctx, "strip").querySelector(".v27Star"), "and the stars of my feed");
+  assert.equal(sec(ctx, "news").querySelector(".v27News").dataset.v27News, "1");
+  assert.ok(sec(ctx, "news").querySelector(".v27Mine"));
+  assert.ok(ctx.calls.filter((c) => c.url === "/api/telegram-center-v2/subscriptions").length >= 1);
+  ctx.window.close();
+
+  // a person who switched only the Russians on gets no stars
+  const only = makeHome({ follows, prefs: false, stored: { "hoh-home-russians": "1" } });
+  await tick(520);
+  assert.ok(!sec(only, "russians").hidden);
+  assert.ok(!sec(only, "strip").querySelector(".v27Star, .v27Seg, .v27Hint"));
+  assert.equal(only.calls.filter((c) => c.url === "/api/telegram-center-v2/subscriptions").length, 0);
+  only.window.close();
 }
 
 {
