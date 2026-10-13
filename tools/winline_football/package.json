@@ -1,0 +1,13 @@
+{
+  "name": "hoh-winline-football",
+  "private": true,
+  "type": "module",
+  "description": "Winline football lines: market catalogue/normalizer and a browser capture of the site's own data store",
+  "scripts": {
+    "test": "node --test test/catalogue.test.mjs",
+    "capture": "node capture.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.55.0"
+  }
+}
