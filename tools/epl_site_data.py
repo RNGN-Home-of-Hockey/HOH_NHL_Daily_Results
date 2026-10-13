@@ -19,8 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import epl_collect as epl  # noqa: E402
 import epl_insights as ins  # noqa: E402
 
-STAT_KEYS = ("shots", "shots_on_target", "shots_inside_box", "touches_in_opp_box", "possession_pct", "corners_won",
+STAT_KEYS = ("xg_proxy", "shots", "shots_on_target", "shots_inside_box", "touches_in_opp_box", "possession_pct", "corners_won",
              "fouls_conceded", "yellow_cards", "ppda")
+AGAINST_KEYS = ("xg_proxy", "shots", "shots_inside_box")
 FORM_LIMIT = 5
 STATS_RECENT = 6
 STATS_BASELINE = 114  # three seasons
@@ -71,7 +72,7 @@ def averages(by_club: dict, stats: dict, club: int, before: str, limit: int) -> 
         if values:
             out[key] = round(sum(values) / len(values), 2)
             out[f"{key}_n"] = len(values)
-    for key in ("shots", "shots_inside_box"):
+    for key in AGAINST_KEYS:
         values = []
         for m in matches:
             opp = m["away" if m["home"]["id"] == club else "home"]["id"]
@@ -151,6 +152,10 @@ def main(argv: list[str] | None = None) -> int:
 
     teams, matches, h2h = load("teams.json"), load("matches.json"), load("h2h.json")
     stats = {int(k): {int(t): v for t, v in per.items()} for k, per in load("team_match_stats.json").items()}
+    if (epl.NORM / "xg_proxy.json").exists():  # our own non-penalty xG model (tools/epl_xg.py)
+        for match_id, per_team in load("xg_proxy.json").items():
+            for team_id, value in per_team.items():
+                stats.setdefault(int(match_id), {}).setdefault(int(team_id), {})["xg_proxy"] = value
     players, people = load("players.json"), load("people.json")
     snapshot = json.loads(Path(args.winline).read_text(encoding="utf-8"))
     names = {t["id"]: t["name_ru"] or t["name"] for t in teams}

@@ -29,12 +29,12 @@ const DETAIL_LABELS = {
   mean_vs_others: 'В среднем против остальных', metric: 'Показатель', goals_by_gameweek: 'Голы по матчам (новые справа)',
 };
 const STAT_ROWS = [
-  ['goals_for', 'Голы забито'], ['goals_against', 'Голы пропущено'], ['shots', 'Удары'], ['shots_on_target', 'В створ'],
+  ['goals_for', 'Голы забито'], ['goals_against', 'Голы пропущено'], ['xg_proxy', 'xG (модель, без пенальти)'], ['shots', 'Удары'], ['shots_on_target', 'В створ'],
   ['shots_inside_box', 'Удары из штрафной'], ['touches_in_opp_box', 'Касания в штрафной соперника'], ['possession_pct', 'Владение, %'],
   ['corners_won', 'Угловые'], ['yellow_cards', 'Жёлтые карточки'], ['ppda', 'PPDA (чем меньше, тем жёстче прессинг)'],
-  ['shots_against', 'Удары соперника'], ['shots_inside_box_against', 'Удары соперника из штрафной'],
+  ['xg_proxy_against', 'xG соперника (модель)'], ['shots_against', 'Удары соперника'], ['shots_inside_box_against', 'Удары соперника из штрафной'],
 ];
-const LOWER_IS_BETTER = new Set(['goals_against', 'ppda', 'shots_against', 'shots_inside_box_against']);
+const LOWER_IS_BETTER = new Set(['goals_against', 'ppda', 'shots_against', 'shots_inside_box_against', 'xg_proxy_against']);
 
 const state = { data: null, selected: null, tab: 'tips', rule: 'Все', minScore: 0, query: '', family: 'all', side: 'all', open: new Set(), queue: loadQueue() };
 

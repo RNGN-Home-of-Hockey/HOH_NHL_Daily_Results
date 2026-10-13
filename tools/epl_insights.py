@@ -31,7 +31,9 @@ FORM_DAYS = 420  # form windows look back about 14 months, never into another er
 BASELINE_DAYS = 1100  # three seasons
 CHANCE_MIN_MEETINGS = 4
 CHANCE_MIN_BASELINE = 20
-CHANCE_METRICS = (("shots_inside_box", "ударов из штрафной"), ("shots_on_target", "ударов в створ"), ("shots", "ударов"))
+CHANCE_METRICS = (("xg_proxy", "ожидаемых голов (модель)"), ("shots_inside_box", "ударов из штрафной"),
+                  ("shots_on_target", "ударов в створ"), ("shots", "ударов"))
+CHANCE_GAP = {"xg_proxy": 0.35, "shots_inside_box": 1.5, "shots_on_target": 1.5, "shots": 2.0}  # absolute difference that counts
 MIN_SCORE = 35
 
 
@@ -267,7 +269,7 @@ def rule_chance_creation(event: dict, ctx: dict) -> list[dict]:
             if mean_base <= 0:
                 continue
             ratio = mean_vs / mean_base
-            gap = 1.5 if key != "shots" else 2.0
+            gap = CHANCE_GAP[key]
             more = ratio >= 1.25 and mean_vs - mean_base >= gap
             fewer = ratio <= 0.75 and mean_base - mean_vs >= gap
             if not (more or fewer):
@@ -280,8 +282,9 @@ def rule_chance_creation(event: dict, ctx: dict) -> list[dict]:
                 if not picked:
                     continue
                 verb = "создаёт гораздо больше моментов" if more else "создаёт гораздо меньше моментов"
-                title = (f"{names[club]} {verb} против {names[other]}: в среднем {mean_vs:.1f} {label} "
-                         f"({len(versus)} матч.) против {mean_base:.1f} в остальных ({len(baseline)})")
+                digits = 2 if key == "xg_proxy" else 1
+                title = (f"{names[club]} {verb} против {names[other]}: в среднем {mean_vs:.{digits}f} {label} "
+                         f"({len(versus)} матч.) против {mean_base:.{digits}f} в остальных ({len(baseline)})")
                 hits = sum(1 for v in versus if (v > mean_base if more else v < mean_base))
                 out.append(make_candidate("chance_creation", title, {"sample": len(versus), "hits": hits, "window": f"{label}: встречи против остальных"},
                                           market, picked, f"Тотал {names[club]} {'больше' if more else 'меньше'} {fmt_line(line)}", weight=0.9,
