@@ -10,6 +10,7 @@ import epl_xg as xg  # noqa: E402
 
 def test_features_treat_missing_counters_as_zero():
     assert xg.features({"goals": 1}) is None  # no shot counter at all: no data, not zero shots
+    assert xg.features({"total_scoring_att": 9}) is None  # shots without the zone split (old seasons): not usable
     assert xg.features({"total_scoring_att": 9, "attempts_ibox": 6, "attempts_obox": 3}) == [0.0, 6.0, 3.0]
     row = xg.features({"total_scoring_att": 9, "attempts_ibox": 6, "attempts_obox": 3, "big_chance_scored": 1, "big_chance_missed": 2})
     assert row == [3.0, 3.0, 3.0]  # big chances come out of the shots inside the box

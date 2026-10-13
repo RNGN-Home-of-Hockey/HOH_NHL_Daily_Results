@@ -33,8 +33,8 @@ HOLDOUT_FROM_SEASON = 2025  # fit on earlier seasons, test on this one and later
 
 def features(raw: dict[str, float]) -> list[float] | None:
     """Shot kinds of one team in one match. A counter the feed does not list is zero; no shot counter = no data."""
-    if "total_scoring_att" not in raw:
-        return None
+    if "total_scoring_att" not in raw or ("attempts_ibox" not in raw and "attempts_obox" not in raw):
+        return None  # no shots listed, or the feed of that era does not split shots by zone (before 2016/17)
     big = raw.get("big_chance_scored", 0.0) + raw.get("big_chance_missed", 0.0)
     inside = raw.get("attempts_ibox", 0.0)
     return [big, max(inside - big, 0.0), raw.get("attempts_obox", 0.0)]
