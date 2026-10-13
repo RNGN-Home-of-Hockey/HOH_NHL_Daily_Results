@@ -27,10 +27,12 @@ import random
 import re
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from itertools import combinations
 from pathlib import Path
 from urllib.parse import urlparse
@@ -53,6 +55,8 @@ EMPTY_RUN_LIMIT = 40  # consecutive empty detail pages that mark the start of th
 # Match events that are goals: G goal, P penalty goal, O own goal. In all three the event's teamId is
 # the side the goal counts for (for an own goal the player belongs to the other club).
 GOAL_EVENTS = ("G", "P", "O")
+# Letters that Unicode decomposition does not turn into plain ASCII.
+LATIN_FIXES = str.maketrans({"ø": "o", "Ø": "O", "æ": "ae", "Æ": "AE", "ß": "ss", "đ": "d", "Đ": "D", "ł": "l", "Ł": "L", "œ": "oe", "ı": "i"})
 
 # Sports.ru club slugs by Premier League club name (2026/27 clubs, checked on the tournament page).
 SPORTS_CLUBS = {
@@ -366,6 +370,92 @@ def summarize_pair(club_a: dict, club_b: dict, pair_matches: list[dict], names: 
     }
 
 
+def normalize_latin(text: str | None) -> str:
+    """Lower-case ASCII words: 'Martin Ødegaard' -> 'martin odegaard'."""
+    text = unicodedata.normalize("NFKD", (text or "").translate(LATIN_FIXES))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def parse_pl_birth(label: str | None) -> str | None:
+    try:
+        return datetime.strptime(label or "", "%d %B %Y").date().isoformat()
+    except ValueError:
+        return None
+
+
+def name_similarity(a: str, b: str) -> float:
+    """0..1, the better of character similarity and the share of common words, so that
+    'gabriel martinelli' fits 'gabriel martinelli silva'."""
+    words_a, words_b = set(a.split()), set(b.split())
+    if not words_a or not words_b:
+        return 0.0
+    return max(SequenceMatcher(None, a, b).ratio(), len(words_a & words_b) / min(len(words_a), len(words_b)))
+
+
+def parse_sportsru_team(html: str) -> dict:
+    """Club name and players (Russian names) from the JSON-LD block of a Sports.ru squad page."""
+    for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S):
+        try:
+            data = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict) and data.get("@type") == "SportsTeam":
+            athletes = []
+            for person in data.get("athlete") or []:
+                url = person.get("url") or ""
+                athletes.append({
+                    "name_ru": (person.get("name") or "").strip() or None, "slug": url.rstrip("/").rsplit("/", 1)[-1], "url": url,
+                    "position_ru": person.get("jobTitle"), "nationality_ru": person.get("nationality"),
+                    "birth_date": person.get("birthDate"), "height": person.get("height"),
+                })
+            return {"club_ru": data.get("name"), "athletes": athletes}
+    return {"club_ru": None, "athletes": []}
+
+
+def russian_surname(full_name: str | None) -> str | None:
+    """'Вирджил ван Дейк' -> 'ван Дейк'; a single word (Бразилия, 'Рафинья') stays as it is."""
+    parts = (full_name or "").split()
+    if not parts:
+        return None
+    return " ".join(parts[1:]) if len(parts) > 1 else parts[0]
+
+
+def match_russian_names(players: list[dict], athletes_by_club: dict[int, list[dict]]) -> dict[int, dict]:
+    """pl_id -> {'athlete', 'match'}. Best pairs first, each Sports.ru player used once:
+    club+birth date+similar name, club+birth date alone when it is unique in the squad (new players
+    have only a number in their Sports.ru address), club+very similar name, then another
+    club+birth date+name (transfers)."""
+    birth_of = {p["pl_id"]: parse_pl_birth(p["birth_date"]) for p in players}
+    players_per_birth = Counter((p["club"]["id"], birth_of[p["pl_id"]]) for p in players if birth_of[p["pl_id"]])
+    athletes_per_birth = Counter((club, a["birth_date"]) for club, athletes in athletes_by_club.items() for a in athletes if a["birth_date"])
+    pairs = []
+    for player in players:
+        latin = normalize_latin(player["name"])
+        birth = birth_of[player["pl_id"]]
+        for club_id, athletes in athletes_by_club.items():
+            for athlete in athletes:
+                sim = name_similarity(latin, normalize_latin(athlete["slug"].replace("-", " ")))
+                same_birth = bool(birth and athlete["birth_date"] == birth)
+                if club_id == player["club"]["id"]:
+                    if same_birth and sim >= 0.34:
+                        pairs.append((3 + sim, "club+birth", player, athlete))
+                    elif same_birth and players_per_birth[(club_id, birth)] == 1 and athletes_per_birth[(club_id, birth)] == 1:
+                        pairs.append((2.5 + sim / 10, "club+birth-only", player, athlete))
+                    elif sim >= 0.85:
+                        pairs.append((2 + sim, "club+name", player, athlete))
+                elif same_birth and sim >= 0.6:
+                    pairs.append((1 + sim, "transfer", player, athlete))
+    matched: dict[int, dict] = {}
+    used: set[str] = set()
+    for _, kind, player, athlete in sorted(pairs, key=lambda pair: -pair[0]):
+        if player["pl_id"] in matched or athlete["url"] in used:
+            continue
+        matched[player["pl_id"]] = {"athlete": athlete, "match": kind}
+        used.add(athlete["url"])
+    return matched
+
+
 # ---------------------------------------------------------------------------------------------
 # Collection stages
 # ---------------------------------------------------------------------------------------------
@@ -490,7 +580,7 @@ def stage_fpl(refresh: bool) -> None:
 
 
 def stage_names(refresh: bool) -> None:
-    """Download Sports.ru club pages. Parsing starts once a page has really been received."""
+    """Download the Sports.ru squad page of every club (names are read from it in `build`)."""
     guard = Guard(limit=2)
     saved = 0
     for team in current_teams():
@@ -499,7 +589,7 @@ def stage_names(refresh: bool) -> None:
             log(f"names: no Sports.ru slug for '{team['name']}'")
             continue
         try:
-            page = guard.attempt(fetch, f"{SPORTS}/football/club/{slug}/", RAW / "sportsru" / f"{slug}.html",
+            page = guard.attempt(fetch, f"{SPORTS}/football/club/{slug}/team/", RAW / "sportsru" / f"team-{slug}.html",
                                  max_age_hours=24 * 7, refresh=refresh, as_text=True)
         except Refused as error:
             log(f"names: Sports.ru refuses requests ({error}); nothing downloaded, not retrying with other tricks")
@@ -599,7 +689,7 @@ def build_players(teams: list[dict], people: dict, all_time: dict) -> tuple[list
             players.append({
                 "pl_id": pid, "opta_id": (entry.get("altIds") or {}).get("opta"),
                 "name": name.get("display"), "first_name": name.get("first"), "last_name": name.get("last"),
-                "name_ru": None, "name_ru_source": None,
+                "name_ru": None, "surname_ru": None, "name_ru_source": None, "name_ru_match": None, "sportsru_url": None,
                 "club": {"id": tid, "name": team["name"], "abbr": (team.get("club") or {}).get("abbr")},
                 "position": (entry.get("info") or {}).get("position"), "position_detail": (entry.get("info") or {}).get("positionInfo"),
                 "shirt_number": to_int((entry.get("info") or {}).get("shirtNum")),
@@ -615,6 +705,34 @@ def build_players(teams: list[dict], people: dict, all_time: dict) -> tuple[list
         "fpl_players": len(fpl["elements"]), "fpl_matched": len(matched_fpl),
         "fpl_unmatched": [f"{e['first_name']} {e['second_name']} ({fpl_team_names.get(e['team'])})" for e in unmatched_fpl[:40]],
     }
+
+
+def apply_russian_names(players: list[dict], teams: list[dict]) -> tuple[dict[int, dict], dict]:
+    """Fill name_ru/surname_ru from the saved Sports.ru squad pages; returns club names and a report."""
+    parsed: dict[int, dict] = {}
+    for team in teams:
+        slug = SPORTS_CLUBS.get(team["name"].lower())
+        path = RAW / "sportsru" / f"team-{slug}.html" if slug else None
+        if path and path.exists():
+            parsed[int(team["id"])] = parse_sportsru_team(path.read_text(encoding="utf-8"))
+    matches = match_russian_names(players, {club: page["athletes"] for club, page in parsed.items()})
+    for player in players:
+        found = matches.get(player["pl_id"])
+        if found:
+            athlete = found["athlete"]
+            player.update({
+                "name_ru": athlete["name_ru"], "surname_ru": russian_surname(athlete["name_ru"]),
+                "name_ru_source": "sports.ru", "name_ru_match": found["match"], "sportsru_url": athlete["url"],
+            })
+    used = {found["athlete"]["url"] for found in matches.values()}
+    on_site = [a for page in parsed.values() for a in page["athletes"]]
+    report = {
+        "squad_pages": len(parsed), "athletes_on_sportsru": len(on_site), "players_matched": len(matches),
+        "by_match": dict(Counter(found["match"] for found in matches.values())),
+        "players_without_name": [f"{p['name']} ({p['club']['name']})" for p in players if not p["name_ru"]][:80],
+        "sportsru_athletes_unused": [f"{a['name_ru']} ({a['slug']})" for a in on_site if a["url"] not in used][:40],
+    }
+    return {club: page["club_ru"] for club, page in parsed.items()}, report
 
 
 def stage_build(_refresh: bool = False) -> None:
@@ -645,7 +763,10 @@ def stage_build(_refresh: bool = False) -> None:
         h2h[f"{a}-{b}"] = summarize_pair(clubs[a], clubs[b], pair_matches, names)
 
     players, fpl_report = build_players(teams, people, all_time)
-    scorer_ids = {g["person_id"] for m in matches for g in m["goals"]}
+    club_names_ru, names_report = apply_russian_names(players, teams)
+    for club_id, club in clubs.items():
+        club["name_ru"] = club_names_ru.get(club_id)
+    scorer_ids ={g["person_id"] for m in matches for g in m["goals"]}
     consistent = sum(1 for m in matches if len(m["goals"]) == m["home"]["score"] + m["away"]["score"])
     scoreless = sum(1 for m in matches if m["home"]["score"] + m["away"]["score"] == 0)
     per_season = Counter(m["season"] for m in matches)
@@ -676,7 +797,7 @@ def stage_build(_refresh: bool = False) -> None:
             "with_russian_name": sum(1 for p in players if p["name_ru"]),
             **fpl_report,
         },
-        "sportsru_pages_saved": len(list((RAW / "sportsru").glob("*.html"))) if (RAW / "sportsru").exists() else 0,
+        "names_ru": names_report,
     }
     write_json(NORM / "teams.json", list(clubs.values()), indent=2)
     write_json(NORM / "matches.json", matches)

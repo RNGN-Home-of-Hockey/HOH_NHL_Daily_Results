@@ -103,6 +103,45 @@ def test_summarize_pair():
     assert empty["played"] == 0 and empty["last_meeting"] is None and empty["form_a_last10_latest_first"] == ""
 
 
+SPORTS_HTML = (
+    '<html><script type="application/ld+json">{"@type":"SportsTeam","name":"Арсенал","athlete":['
+    '{"name":" Мартин Эдегор","url":"https://www.sports.ru/football/person/martin-odegaard/","jobTitle":"полузащитник","birthDate":"1998-12-17"},'
+    '{"name":"Новичок Юный","url":"https://www.sports.ru/football/person/161146779/","birthDate":"2008-02-01"}]}</script></html>'
+)
+
+
+def player(pl_id, name, club, birth):
+    return {"pl_id": pl_id, "name": name, "birth_date": birth, "club": {"id": club}}
+
+
+def test_normalize_and_names():
+    assert epl.normalize_latin("Martin Ødegaard") == "martin odegaard"
+    assert epl.normalize_latin("Sávio  Moreira") == "savio moreira"
+    assert epl.parse_pl_birth("17 December 1998") == "1998-12-17" and epl.parse_pl_birth("soon") is None
+    assert epl.russian_surname(" Вирджил ван Дейк") == "ван Дейк" and epl.russian_surname("Рафинья") == "Рафинья"
+
+
+def test_parse_sportsru_team():
+    team = epl.parse_sportsru_team(SPORTS_HTML)
+    assert team["club_ru"] == "Арсенал" and len(team["athletes"]) == 2
+    assert team["athletes"][0]["name_ru"] == "Мартин Эдегор" and team["athletes"][0]["slug"] == "martin-odegaard"
+    assert epl.parse_sportsru_team("<html></html>") == {"club_ru": None, "athletes": []}
+
+
+def test_match_russian_names():
+    athletes = epl.parse_sportsru_team(SPORTS_HTML)["athletes"]
+    players = [player(1, "Martin Ødegaard", 7, "17 December 1998"), player(2, "Young Kid", 7, "1 February 2008"),
+               player(3, "Someone Else", 7, "5 May 1990")]
+    found = epl.match_russian_names(players, {7: athletes})
+    assert found[1]["match"] == "club+birth" and found[1]["athlete"]["name_ru"] == "Мартин Эдегор"
+    assert found[2]["match"] == "club+birth-only"  # numeric Sports.ru address, birth date unique in the squad
+    assert 3 not in found
+    moved = epl.match_russian_names([player(1, "Martin Odegaard", 9, "17 December 1998")], {7: athletes})
+    assert moved[1]["match"] == "transfer"  # same birth date and name, another club
+    twins = [player(4, "Aa Bb", 7, "1 February 2008"), player(5, "Cc Dd", 7, "1 February 2008")]
+    assert epl.match_russian_names(twins, {7: athletes}) == {}  # two candidates, nothing to tell them apart: no guess
+
+
 def main() -> None:
     for name, function in sorted(globals().items()):
         if name.startswith("test_") and callable(function):
