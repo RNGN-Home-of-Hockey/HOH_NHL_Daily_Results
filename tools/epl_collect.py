@@ -55,6 +55,23 @@ EMPTY_RUN_LIMIT = 40  # consecutive empty detail pages that mark the start of th
 # Match events that are goals: G goal, P penalty goal, O own goal. In all three the event's teamId is
 # the side the goal counts for (for an own goal the player belongs to the other club).
 GOAL_EVENTS = ("G", "P", "O")
+# Team statistics of one match kept in team_match_stats.json: our name -> PL API stat name (153 stats per
+# team per match exist; a stat the feed does not list for a match is simply absent from our dict).
+TEAM_STAT_KEYS = {
+    "shots": "total_scoring_att", "shots_on_target": "ontarget_scoring_att", "shots_off_target": "shot_off_target",
+    "shots_blocked": "blocked_scoring_att", "shots_inside_box": "attempts_ibox", "shots_outside_box": "attempts_obox",
+    "headed_shots": "att_hd_total", "set_piece_shots": "att_setpiece", "fast_break_shots": "att_fastbreak",
+    "possession_pct": "possession_percentage", "passes": "total_pass", "accurate_passes": "accurate_pass",
+    "touches": "touches", "touches_in_opp_box": "touches_in_opp_box", "final_third_entries": "final_third_entries",
+    "box_entries": "pen_area_entries", "corners_won": "won_corners", "crosses": "total_cross",
+    "fouls_won": "fk_foul_won", "fouls_conceded": "fk_foul_lost", "offsides": "total_offside",
+    "yellow_cards": "total_yel_card", "red_cards": "total_red_card", "tackles": "total_tackle",
+    "interceptions": "interception", "clearances": "total_clearance", "ball_recoveries": "ball_recovery",
+    "saves": "saves", "goals_conceded": "goals_conceded", "big_chances_created": "big_chance_created",
+    "big_chances_scored": "big_chance_scored", "big_chances_missed": "big_chance_missed", "ppda": "ppda",
+    "carries": "carries", "progressive_carries": "progressive_carries", "duels_won": "duel_won", "aerials_won": "aerial_won",
+}
+TEAM_STATS_FROM_SEASON = 2016  # all matches from this season; matches between current clubs from 2006
 # Letters that Unicode decomposition does not turn into plain ASCII.
 LATIN_FIXES = str.maketrans({"ø": "o", "Ø": "O", "æ": "ae", "Æ": "AE", "ß": "ss", "đ": "d", "Đ": "D", "ł": "l", "Ł": "L", "œ": "oe", "ı": "i"})
 
@@ -564,6 +581,47 @@ def stage_details(refresh: bool) -> None:
     log(f"details: done, {guard.failures} failed requests")
 
 
+def stage_teamstats(refresh: bool) -> None:
+    """Team statistics of every match that feeds the insights (shots, box touches, possession, PPDA...):
+    all matches since 2016/17, plus matches between 2026/27 clubs since 2006/07 (earlier ones have none)."""
+    clubs = {int(t["id"]) for t in current_teams()}
+    todo = []
+    for match in load_matches():
+        start = int((match["season"] or "0")[:4] or 0)
+        if start >= TEAM_STATS_FROM_SEASON or (start >= 2006 and match["home"]["id"] in clubs and match["away"]["id"] in clubs):
+            todo.append(match)
+    todo.sort(key=lambda m: m["kickoff_utc"] or "", reverse=True)  # newest first
+    folder = RAW / "pulselive" / "match-stats"
+    missing_path = folder / "_missing.txt"
+    missing = set(missing_path.read_text().split()) if missing_path.exists() else set()
+    log(f"teamstats: {len(todo)} matches to check, {len(missing)} known to have none")
+    guard = Guard()
+    for number, match in enumerate(todo, 1):
+        if str(match["id"]) in missing:
+            continue
+        result = guard.attempt(fetch, f"{PL}/stats/match/{match['id']}", folder / f"{match['id']}.json",
+                               headers=PL_HEADERS, refresh=refresh)
+        if result is MISSING:
+            folder.mkdir(parents=True, exist_ok=True)
+            with missing_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"{match['id']}\n")
+        if number % 100 == 0:
+            log(f"teamstats: {number}/{len(todo)}")
+    log(f"teamstats: done, {guard.failures} failed requests")
+
+
+def load_team_stats() -> dict[int, dict[int, dict]]:
+    """match id -> team id -> curated statistics (see TEAM_STAT_KEYS)."""
+    stats: dict[int, dict[int, dict]] = {}
+    for path in (RAW / "pulselive" / "match-stats").glob("[0-9]*.json"):
+        per_team = {}
+        for team_id, block in (load_json(path).get("data") or {}).items():
+            raw = {s["name"]: s["value"] for s in block.get("M") or []}
+            per_team[int(team_id)] = {ours: numeric(raw[theirs]) for ours, theirs in TEAM_STAT_KEYS.items() if theirs in raw}
+        stats[int(path.stem)] = per_team
+    return stats
+
+
 def stage_fpl(refresh: bool) -> None:
     bootstrap = fetch(f"{FPL}/bootstrap-static/", RAW / "fpl" / "bootstrap-static.json", max_age_hours=6, refresh=refresh)
     fetch(f"{FPL}/fixtures/", RAW / "fpl" / "fixtures.json", max_age_hours=6, refresh=refresh)
@@ -763,6 +821,7 @@ def stage_build(_refresh: bool = False) -> None:
         h2h[f"{a}-{b}"] = summarize_pair(clubs[a], clubs[b], pair_matches, names)
 
     players, fpl_report = build_players(teams, people, all_time)
+    team_stats = load_team_stats()
     club_names_ru, names_report = apply_russian_names(players, teams)
     for club_id, club in clubs.items():
         club["name_ru"] = club_names_ru.get(club_id)
@@ -770,6 +829,7 @@ def stage_build(_refresh: bool = False) -> None:
     consistent = sum(1 for m in matches if len(m["goals"]) == m["home"]["score"] + m["away"]["score"])
     scoreless = sum(1 for m in matches if m["home"]["score"] + m["away"]["score"] == 0)
     per_season = Counter(m["season"] for m in matches)
+    season_of = {m["id"]: m["season"] for m in matches}
     scope = [m for m in matches if m["home"]["id"] in clubs and m["away"]["id"] in clubs]
     with_team = sum(1 for m in scope if m["has_details"] and all(g["team_id"] is not None for g in m["goals"]))
     report = {
@@ -798,11 +858,18 @@ def stage_build(_refresh: bool = False) -> None:
             **fpl_report,
         },
         "names_ru": names_report,
+        "team_stats": {
+            "matches_with_stats": len(team_stats),
+            "matches_with_shots": sum(1 for per_team in team_stats.values() if all("shots" in s for s in per_team.values()) and per_team),
+            "matches_with_box_shots": sum(1 for per_team in team_stats.values() if all("shots_inside_box" in s for s in per_team.values()) and per_team),
+            "per_season": dict(sorted(Counter(season_of[mid] for mid in team_stats if mid in season_of).items())),
+        },
     }
     write_json(NORM / "teams.json", list(clubs.values()), indent=2)
     write_json(NORM / "matches.json", matches)
     write_json(NORM / "match_details.json", {str(k): v for k, v in details.items()})
     write_json(NORM / "h2h.json", h2h)
+    write_json(NORM / "team_match_stats.json", {str(k): {str(t): v for t, v in per.items()} for k, per in team_stats.items()})
     write_json(NORM / "players.json", players)
     write_json(NORM / "people.json", {str(k): v for k, v in people.items()})
     write_json(NORM / "report.json", report, indent=2)
@@ -810,10 +877,10 @@ def stage_build(_refresh: bool = False) -> None:
 
 
 STAGES = {
-    "matches": stage_matches, "details": stage_details, "squads": stage_squads, "ranked": stage_ranked,
-    "fpl": stage_fpl, "names": stage_names, "build": stage_build,
+    "matches": stage_matches, "details": stage_details, "teamstats": stage_teamstats, "squads": stage_squads,
+    "ranked": stage_ranked, "fpl": stage_fpl, "names": stage_names, "build": stage_build,
 }
-ALL_ORDER = ("matches", "squads", "ranked", "fpl", "details", "names", "build")
+ALL_ORDER = ("matches", "squads", "ranked", "fpl", "details", "teamstats", "names", "build")
 
 
 def main(argv: list[str] | None = None) -> int:
