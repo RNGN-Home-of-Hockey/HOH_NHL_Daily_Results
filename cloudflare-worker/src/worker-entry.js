@@ -17,6 +17,7 @@ import { runWinlineFeedMaintenance } from "./winline-feed-maintenance.js";
 import { getWinlineLiveFeedMaintenanceStatus, runWinlineLiveFeedMaintenance } from "./winline-live-feed-maintenance.js";
 import { persistNhlLiveGame, runNhlLiveScoreMaintenance } from "./nhl-live-score-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
+import { runVkCoverScrape } from "./telegram-center-vk-cover-scrape.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
 import { handleVkOauthStore } from "./vk-oauth-helper.js";
@@ -160,11 +161,19 @@ export default {
 
     if (cron === "*/2 * * * *") {
       if (env.DB) {
-        ctx.waitUntil(
-          runVkBroadcastMaintenance(env).catch((error) => {
+        ctx.waitUntil((async () => {
+          try {
+            await runVkBroadcastMaintenance(env);
+          } catch (error) {
             console.error("dedicated HOH VK broadcast maintenance failed", error);
-          }),
-        );
+          }
+          // covers from the public VK pages: they come even when the sync of the channel cannot log in
+          try {
+            await runVkCoverScrape(env);
+          } catch (error) {
+            console.error("VK cover scrape failed", error);
+          }
+        })());
       }
       return;
     }

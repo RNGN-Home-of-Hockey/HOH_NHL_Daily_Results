@@ -260,6 +260,7 @@ jobs:
           node tests/validate_mini_app_subscriptions.mjs
           node tests/validate_vk_upcoming_broadcast.mjs
           node tests/validate_vk_sync.mjs
+          node tests/validate_vk_cover_scrape.mjs
 
       - name: Market line evaluator
         run: |
