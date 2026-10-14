@@ -19,6 +19,7 @@ export function predictionsApp() {
     me: null, meAt: 0, meBusy: false,
     boards: new Map(), period: "week", boardBusy: new Set(), boardOpen: false,
     rulesOpen: false, pending: new Set(), want: new Set(), wantTimer: null,
+    draft: new Map(), scoreBusy: new Set(), // the exact score being set: game -> {home, away}
   };
   const painted = new WeakMap(); // element -> the html it shows, so a redraw happens only when something changed
 
@@ -30,7 +31,9 @@ export function predictionsApp() {
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   };
-  const LEVELS = [["Новичок", 0], ["Болельщик", 100], ["Знаток", 500], ["Мастер", 2000], ["Легенда", 5000]];
+  const LEVELS = [0, 20, 60, 120, 220, 380, 620, 1000, 1600, 2500]; // the XP of the levels 1–10
+  const EXACT_XP = 25;
+  const SCORE_MAX = 15;
   const MEDAL = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="5.2"/><path d="M8.6 13.2 7 21l5-2.6 5 2.6-1.6-7.8"/></svg>';
 
   // ---- styles ----------------------------------------------------------------------------------------------------------------
@@ -62,6 +65,19 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 .v29Btn.busy{opacity:.6}
 .v29Line{font-size:12px;font-weight:600;color:var(--v29-muted)}
 .v29Line.ok{color:var(--v29-win)}
+.v29Score{display:grid;gap:6px;padding:8px 10px;border:1px dashed var(--v29-line);border-radius:12px}
+.v29ScQ{font-size:12.5px;font-weight:800;color:var(--v29-text)}
+.v29ScQ em{font-style:normal;color:var(--v29-pick)}
+.v29ScRow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.v29ScTri{font-size:12px;font-weight:800;color:var(--v29-muted)}
+.v29Step{display:inline-flex;align-items:center;border:1px solid var(--v29-line);border-radius:10px;overflow:hidden;background:var(--v29-btn)}
+.v29Step button{width:30px;height:32px;border:0;background:none;color:var(--v29-pick);font:inherit;font-size:18px;font-weight:800;cursor:pointer}
+.v29Step b{min-width:22px;text-align:center;font-size:17px;font-weight:900;color:var(--v29-text)}
+.v29ScColon{font-size:17px;font-weight:900}
+.v29ScSave{margin-left:auto;padding:7px 12px;border:0;border-radius:10px;background:var(--v29-pick);color:#fff;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+.v29ScOk{margin-left:auto;font-size:16px;font-weight:900;color:var(--v29-win)}
+.v29ScBad{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--v29-muted)}
+.v29Score.compact .v29Step button{width:26px;height:28px}
 .v29Vote.compact{gap:5px}
 .v27Hero .v29Slot{margin-top:2px}
 .v29MatchSlot{margin:10px 0;padding:12px;border:1px solid var(--v26-line,#282b38);border-radius:16px;background:var(--v26-card,rgba(16,18,26,.8))}
@@ -125,12 +141,12 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     const tri = my && g[my.pick] ? g[my.pick].tri : "";
     if (g.open) {
       if (st.pending.has(g.game_pk)) return { text: "Сохраняем…" };
-      if (my) return { text: `Ваш выбор: ${tri} · можно поменять до ${clock(g.start)}` };
+      if (my) return { text: `Ваш выбор: ${tri}${my.score ? `, счёт ${my.score.away}:${my.score.home}` : ""} · можно поменять до ${clock(g.start)}` };
       return { text: g.votes && g.votes.total ? `Проголосовали: ${g.votes.total} · с учётом ОТ и буллитов` : "Победа с учётом ОТ и буллитов" };
     }
     if (noSpoilers()) return { text: "Итог скрыт: режим без спойлеров" };
     if (g.settled && g.settled.winner === "void") return { text: "Матч не состоялся — прогнозы без очков" };
-    if (g.settled && my && my.result) return my.result === "win" ? { text: `✓ Угадали · +${my.xp} XP`, ok: true } : { text: `Не угадали · +${my.xp} XP` };
+    if (g.settled && my && my.result) return my.result === "win" ? { text: `✓ Угадали${my.exact ? " · 🎯 точный счёт" : ""} · +${my.xp} XP`, ok: true } : { text: `Не угадали · +${my.xp} XP` };
     if (g.settled) return { text: g.votes && g.votes.total >= MIN_SPLIT_VOTES ? `Как голосовали болельщики · ${g.votes.total}` : g.votes && g.votes.total ? `Проголосовали: ${g.votes.total}` : "Матч завершён" };
     return { text: my ? `Матч идёт · ваш выбор ${tri}` : "Прогнозы закрыты — матч начался" };
   }
@@ -156,7 +172,55 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     };
     const line = lineOf(g);
     const row = card ? `<div class="v29Btns">${side("away")}${side("home")}</div>` : `<div class="v29Row3">${side("away")}<span class="v29Mid">Кто<br>победит?</span>${side("home")}</div>`;
-    return `<div class="v29Vote${card ? " compact" : ""}">${row}<div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div></div>`;
+    return `<div class="v29Vote${card ? " compact" : ""}">${row}<div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div>${scoreHtml(g, card)}</div>`;
+  }
+
+  // ---- the exact score: asked right after the pick, +25 XP when it is right --------------------------------------------------
+  const defaultScore = (pick) => (pick === "home" ? { home: 3, away: 2 } : { home: 2, away: 3 });
+  const scoreFits = (pick, d) => d.home !== d.away && (pick === "home") === (d.home > d.away);
+  function scoreHtml(g, card) {
+    if (!g.open || !g.my || st.pending.has(g.game_pk)) return "";
+    const pk = g.game_pk;
+    const saved = g.my.score;
+    const d = st.draft.get(pk) || saved || defaultScore(g.my.pick);
+    const changed = !saved || saved.home !== d.home || saved.away !== d.away;
+    const fits = scoreFits(g.my.pick, d);
+    const step = (side) => `<span class="v29Step"><button type="button" data-v29-sc="${esc(pk)}:${side}:-1" aria-label="Меньше">−</button><b>${d[side]}</b><button type="button" data-v29-sc="${esc(pk)}:${side}:1" aria-label="Больше">+</button></span>`;
+    const title = !saved ? "Хотите угадать точный счёт?" : changed ? "Новый счёт" : "Ваш точный счёт";
+    const action = !changed
+      ? '<span class="v29ScOk" aria-label="Сохранено">✓</span>'
+      : fits
+        ? `<button type="button" class="v29ScSave" data-v29-sc-save="${esc(pk)}">${st.scoreBusy.has(pk) ? "…" : "Сохранить"}</button>`
+        : `<span class="v29ScBad">счёт в пользу ${esc((g[g.my.pick] || {}).tri || "")}</span>`;
+    return `<div class="v29Score${card ? " compact" : ""}"><span class="v29ScQ">${title} <em>+${EXACT_XP} XP</em></span><span class="v29ScRow"><span class="v29ScTri">${esc(g.away.tri)}</span>${step("away")}<span class="v29ScColon">:</span>${step("home")}<span class="v29ScTri">${esc(g.home.tri)}</span>${action}</span></div>`;
+  }
+  function stepScore(code) {
+    const [pkRaw, side, delta] = String(code).split(":");
+    const pk = Number(pkRaw);
+    const g = st.games.get(pk);
+    if (!g || !g.my || (side !== "home" && side !== "away")) return;
+    const d = { ...(st.draft.get(pk) || g.my.score || defaultScore(g.my.pick)) };
+    d[side] = Math.max(0, Math.min(SCORE_MAX, d[side] + Number(delta)));
+    st.draft.set(pk, d);
+    paintAll();
+  }
+  async function saveScore(pk) {
+    const g = st.games.get(pk);
+    const d = st.draft.get(pk) || (g && g.my && !g.my.score ? defaultScore(g.my.pick) : null);
+    if (!g || !g.open || !g.my || !d || st.scoreBusy.has(pk) || !scoreFits(g.my.pick, d)) return;
+    st.scoreBusy.add(pk);
+    paintAll();
+    try {
+      const r = await H.api(`${API}/predictions`, { method: "POST", body: JSON.stringify({ game_pk: pk, pick: g.my.pick, score: { home: d.home, away: d.away } }) });
+      if (r && r.game) setGame(r.game);
+      st.draft.delete(pk);
+      st.meAt = 0;
+    } catch (error) {
+      alert(errorText(error));
+    } finally {
+      st.scoreBusy.delete(pk);
+      paintAll();
+    }
   }
 
   // the hero of the home page asks for its html while it is drawn, so the vote is there from the first frame
@@ -271,11 +335,11 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     if (!m) return '<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="v29Empty">Загрузка…</div></div>';
     if (m.guest) return '<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="v29Empty">Прогнозы, очки и рейтинг доступны в приложении, открытом из Telegram-бота.</div></div>';
     const lv = m.level;
-    const toNext = lv.next ? `До уровня «${esc(lv.next.name)}»: ${fmtXp(lv.to_next)} XP` : "Высший уровень";
+    const toNext = lv.next ? `До уровня ${esc(lv.next.n || lv.next.name)}: ${fmtXp(lv.to_next)} XP` : "Высший уровень";
     const week = m.ranks && m.ranks.week;
     const acc = m.stats.accuracy == null ? "—" : `${m.stats.accuracy}%`;
     const rules = st.rulesOpen
-      ? `<div class="v29Rules"><span>+1 XP — за каждый прогноз на сыгранный матч</span><span>+10 XP — угадали победителя (с учётом ОТ и буллитов)</span><span>+10 XP сверху — угадали победу андердога (кэф Winline на момент начала от 2.10 и выше)</span><span>+5 XP сверху — угадали, а этот исход выбрали меньше 30% болельщиков (от 10 голосов)</span><span>Уровни: ${LEVELS.map(([n, x]) => `${n} ${fmtXp(x)}`).join(" · ")} XP</span></div>`
+      ? `<div class="v29Rules"><span>+1 XP — за каждый прогноз на сыгранный матч</span><span>+10 XP — угадали победителя (с учётом ОТ и буллитов)</span><span>+10 XP сверху — угадали победу андердога (кэф Winline на момент начала от 2.10 и выше)</span><span>+5 XP сверху — угадали, а этот исход выбрали меньше 30% болельщиков (от 10 голосов)</span><span>+${EXACT_XP} XP сверху — угадали точный счёт матча (итоговый: победный гол в ОТ или буллитах считается)</span><span>Уровни: ${LEVELS.map((x, i) => `${i + 1} — ${fmtXp(x)}`).join(" · ")} XP</span></div>`
       : "";
     const nick = m.has_nick ? "" : `<div class="v29Note">В рейтинге вы «${esc(m.label)}». Задайте ник в «Профиль и комментарии», чтобы вас узнавали.</div>`;
     return `<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="top"><div><b class="lvl">${esc(lv.name)}</b><span class="note">${esc(lv.note)}</span></div><span class="v29Badge">${MEDAL}</span></div><div class="xp"><b>${fmtXp(lv.xp)} XP</b><span>${toNext}</span></div><div class="v29Bar"><i style="width:${Math.round(lv.progress * 100)}%"></i></div><div class="v29Stats"><div><b>${m.stats.total}</b><span>прогнозов</span></div><div><b>${acc}</b><span>угадано</span></div><div><b>${week ? `#${week.rank}` : "—"}</b><span>место за неделю</span></div></div>${nick}<div class="v29Opt"><span>Утренний итог прогнозов в боте</span><button type="button" class="v29Sw${m.prefs.morning_digest ? " on" : ""}" role="switch" aria-checked="${m.prefs.morning_digest}" aria-label="Утренний итог прогнозов в боте" data-v29-digest><i></i></button></div><button type="button" class="v29More" data-v29-rules>${st.rulesOpen ? "Скрыть правила" : "Как начисляются очки"}</button>${rules}</div>`;
@@ -403,6 +467,7 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
   function errorText(error) {
     const code = String((error && error.message) || error || "");
     if (/voting_closed/.test(code)) return "Матч уже начался — прогнозы на него закрыты.";
+    if (/invalid_score/.test(code)) return "Счёт должен быть в пользу команды, которую вы выбрали.";
     if (/expired/.test(code)) return "Сессия устарела: закройте приложение и откройте его снова из Telegram-бота.";
     if (/missing_telegram_init_data|guest|signature|init_data/.test(code)) return "Голосовать можно в приложении, открытом из Telegram-бота.";
     return "Не удалось сохранить прогноз. Попробуйте ещё раз.";
@@ -417,7 +482,8 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
       return;
     }
     const before = g;
-    setGame({ ...g, my: { pick: side, result: null, xp: null } });
+    st.draft.delete(pk); // a new pick: the score is set again (the server keeps an old one only if it still fits)
+    setGame({ ...g, my: { pick: side, result: null, xp: null, score: null } });
     st.pending.add(pk);
     paintAll();
     try {
@@ -452,12 +518,14 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 
   // ---- clicks: caught before the cards under them (the hero and the cards of "Матчи" open the match) ---------------------------
   document.addEventListener("click", (e) => {
-    const el = e.target && e.target.closest && e.target.closest("[data-v29-pick],[data-v29-me],[data-v29-period],[data-v29-digest],[data-v29-rules],[data-v29-board-more]");
+    const el = e.target && e.target.closest && e.target.closest("[data-v29-pick],[data-v29-sc],[data-v29-sc-save],[data-v29-me],[data-v29-period],[data-v29-digest],[data-v29-rules],[data-v29-board-more]");
     if (!el) return;
     e.preventDefault();
     e.stopPropagation();
     const d = el.dataset;
     if (d.v29Pick) vote(Number(d.v29Game), d.v29Pick);
+    else if (d.v29Sc) stepScore(d.v29Sc);
+    else if (d.v29ScSave) saveScore(Number(d.v29ScSave));
     else if (d.v29Me !== undefined) {
       const tab = document.querySelector('.tab[data-tab="follows"]');
       if (tab) tab.click();

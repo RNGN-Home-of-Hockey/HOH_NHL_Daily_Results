@@ -19,26 +19,25 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 
 // ---- 1) the rules ----------------------------------------------------------------------------------------------------------------
 {
-  assert.deepEqual(LEVELS.map((l) => [l.name, l.min]), [["Новичок", 0], ["Болельщик", 100], ["Знаток", 500], ["Мастер", 2000], ["Легенда", 5000]]);
+  // ten levels with numbers; the gaps grow (the owner: «второй уровень быстро, третий подольше, и так далее»)
+  assert.deepEqual(LEVELS.map((l) => [l.name, l.min]), [["Уровень 1", 0], ["Уровень 2", 20], ["Уровень 3", 60], ["Уровень 4", 120], ["Уровень 5", 220], ["Уровень 6", 380], ["Уровень 7", 620], ["Уровень 8", 1000], ["Уровень 9", 1600], ["Уровень 10", 2500]]);
+  const gaps = LEVELS.slice(1).map((l, i) => l.min - LEVELS[i].min);
+  assert.ok(gaps.every((g, i) => i === 0 || g > gaps[i - 1]), `every next level takes longer: ${gaps.join(", ")}`);
+  assert.ok(LEVELS[1].min <= 2 * 11, "level 2 comes with the first right picks (a right winner gives 11 XP)");
   const l0 = levelOf(0);
-  assert.equal(l0.name, "Новичок");
-  assert.equal(l0.to_next, 100);
-  assert.equal(l0.next.name, "Болельщик");
+  assert.deepEqual([l0.name, l0.n, l0.to_next, l0.next.name, l0.next.n], ["Уровень 1", 1, 20, "Уровень 2", 2]);
   const l400 = levelOf(400);
-  assert.equal(l400.name, "Болельщик", "400 XP: a fan");
-  assert.equal(l400.note, "Освоил основы");
-  assert.equal(l400.to_next, 100, "like the picture: «До уровня «Знаток»: 100 XP»");
-  assert.equal(l400.progress, 0.75);
-  const l3700 = levelOf(3700);
-  assert.equal(l3700.name, "Мастер");
-  assert.equal(l3700.note, "Один из лучших");
-  assert.equal(l3700.to_next, 1300, "like the picture: «До уровня «Легенда»: 1300 XP»");
-  const top = levelOf(12000);
-  assert.equal(top.name, "Легенда");
+  assert.equal(l400.name, "Уровень 6", "400 XP: level 6");
+  assert.equal(l400.note, "Знаток");
+  assert.equal(l400.to_next, 220);
+  assert.equal(Math.round(l400.progress * 1000), 83);
+  const top = levelOf(3700);
+  assert.equal(top.name, "Уровень 10");
+  assert.equal(top.note, "Легенда");
   assert.equal(top.next, null);
   assert.equal(top.progress, 1);
   assert.equal(levelOf(-5).xp, 0);
-  assert.equal(levelOf("abc").name, "Новичок");
+  assert.equal(levelOf("abc").name, "Уровень 1");
 
   assert.equal(nhlDateOf("2026-10-13T23:15:00Z"), "2026-10-13", "an evening game in America belongs to its day");
   assert.equal(nhlDateOf("2026-10-14T02:30:00Z"), "2026-10-13", "a late western game too");
@@ -94,7 +93,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
   assert.match(msg, /❌ NJD — DET: вы выбрали NJD · \+1 XP/);
   assert.ok(!/BOS/.test(msg), "a game that was not played is not in the message");
   assert.match(msg, /Угадано 1 из 2 · \+27 XP/);
-  assert.match(msg, /Уровень: Болельщик — 427 XP, до уровня «Знаток»: 73 XP/);
+  assert.match(msg, /\nУровень 6 — 427 XP, до уровня 7: 193 XP$/);
   assert.equal(digestText([{ result: "void", xp: 0 }]), null, "nothing played: no message");
   assert.ok(!/TBL|XP/.test(digestText([{ away_tri: "TBL", home_tri: "NYR", pick_tri: "TBL", result: "win", xp: 26 }], { noSpoilers: true })), "no-spoilers: no results in the message");
   assert.deepEqual(plain(localParts(Date.parse("2026-10-13T07:30:00Z"), "Europe/Moscow")), { date: "2026-10-13", hour: 10 });
@@ -120,6 +119,7 @@ function makeDb() {
   raw.exec(migration("0030_user_profile_no_spoilers.sql").split(";")[0] + ";");
   raw.exec(migration("0043_notification_user_preferences.sql"));
   raw.exec(migration("0048_fan_predictions.sql"));
+  raw.exec(migration("0050_fan_prediction_scores.sql"));
   const norm = (v) => (v === undefined ? null : typeof v === "boolean" ? (v ? 1 : 0) : v);
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
@@ -225,7 +225,7 @@ const API = "/api/telegram-center-v29";
 
   const first = await call(`${API}/predictions`, { method: "POST", user: A, body: { game_pk: 9002, pick: "away" } });
   assert.equal(first.status, 200);
-  assert.deepEqual(first.body.game.my, { pick: "away", result: null, xp: null });
+  assert.deepEqual(first.body.game.my, { pick: "away", result: null, xp: null, score: null, exact: null });
   assert.deepEqual(first.body.game.votes, { total: 1, home: 0, away: 1 }, "after the pick the split is shown");
   let row = db.raw.prepare("SELECT * FROM fan_predictions WHERE telegram_user_id=101 AND game_pk=9002").get();
   assert.equal(row.pick_tri, "TBL");
@@ -304,7 +304,7 @@ const API = "/api/telegram-center-v29";
   const settled = await call(`${API}/games?ids=9010`, { user: A });
   const g = settled.body.games[0];
   assert.equal(g.open, false);
-  assert.deepEqual(g.my, { pick: "away", result: "win", xp: 26 });
+  assert.deepEqual(g.my, { pick: "away", result: "win", xp: 26, score: null, exact: false });
   assert.equal(g.settled.winner, "away");
   assert.deepEqual(g.settled.score, { home: 2, away: 3, period_type: "REG" });
   assert.deepEqual(g.odds, { home: 1.62, away: 2.3 }, "a settled game shows the odds at the start");
@@ -317,9 +317,9 @@ const API = "/api/telegram-center-v29";
   assert.equal(me.status, 200);
   assert.equal(me.body.label, "@kaprizov97");
   assert.equal(me.body.has_nick, true);
-  assert.equal(me.body.level.name, "Новичок", "26 + 11 = 37 XP");
+  assert.equal(me.body.level.name, "Уровень 2", "26 + 11 = 37 XP");
   assert.equal(me.body.level.xp, 37);
-  assert.equal(me.body.level.to_next, 63);
+  assert.equal(me.body.level.to_next, 23);
   assert.deepEqual(me.body.stats, { total: 4, settled: 2, correct: 2, pending: 1, accuracy: 100 }, "the postponed game is neither right nor wrong");
   assert.deepEqual(plain(me.body.ranks.week), { rank: 1, players: 12, xp: 26, correct: 1, total: 1 }, "the week from Monday 12 October: only the game of the 12th");
   assert.equal(me.body.ranks.month.xp, 37);
@@ -348,7 +348,7 @@ const API = "/api/telegram-center-v29";
   assert.deepEqual(week.body.rows.slice(0, 3).map((r) => [r.rank, r.label.startsWith("@") ? r.label : "Болельщик", r.xp]), [[1, "@kaprizov97", 26], [2, "Болельщик", 26], [3, "Болельщик", 1]]);
   assert.equal(week.body.rows[0].avatar_url, "/api/telegram-center-v22/avatars/101", "an avatar only for a person who has one");
   assert.equal(week.body.rows[1].avatar_url, null);
-  assert.equal(week.body.rows[0].level, "Новичок");
+  assert.equal(week.body.rows[0].level, "Уровень 2");
   assert.ok(week.body.rows.every((r) => !("id" in r) && !("telegram_user_id" in r)), "no Telegram ids in the public table");
   assert.equal(week.body.me, null, "a guest has no place");
   const month = await call(`${API}/leaderboard?period=month`, { user: B });
@@ -387,7 +387,7 @@ const API = "/api/telegram-center-v29";
   assert.match(msgA.text, /✅ TBL — NYR: вы выбрали TBL · \+26 XP/);
   assert.match(msgA.text, /✅ VGK — MIN: вы выбрали MIN · \+11 XP/);
   assert.ok(!/DET/.test(msgA.text), "the postponed game is not in it");
-  assert.match(msgA.text, /Угадано 2 из 2 · \+37 XP\nУровень: Новичок — 37 XP, до уровня «Болельщик»: 63 XP$/);
+  assert.match(msgA.text, /Угадано 2 из 2 · \+37 XP\nУровень 2 — 37 XP, до уровня 3: 23 XP$/);
   assert.match(dry.messages.find((m) => m.user_id === 102).text, /режим без спойлеров/, "no results for a person in no-spoilers mode");
   assert.ok(!dry.messages.some((m) => [103, 104, 105].includes(m.user_id)), "switched off, no bot messages at all, or not 10:00 yet in Vladivostok");
   assert.equal(dry.skipped_off, 2);
@@ -473,8 +473,8 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   window.alert = (m) => box.alerts.push(m);
   window.scrollTo = () => {};
   window.HOHNoSpoilers = () => spoilers;
-  const ME = { ok: true, label: "@kaprizov97", has_nick: true, level: { key: "novice", name: "Новичок", note: "Первые прогнозы", min: 0, xp: 37, next: { name: "Болельщик", min: 100 }, to_next: 63, progress: 0.37 }, stats: { total: 4, settled: 2, correct: 2, pending: 1, accuracy: 100 }, ranks: { week: { rank: 1, players: 12, xp: 26, correct: 1, total: 1 } }, recent: [], prefs: { morning_digest: true } };
-  const BOARD = (period) => ({ ok: true, period, players: 12, rows: Array.from({ length: 12 }, (_, i) => ({ rank: i + 1, label: i === 0 ? "@kaprizov97" : `Болельщик ${1000 + i}`, avatar_url: i === 0 ? "/api/telegram-center-v22/avatars/101" : null, xp: period === "month" ? 100 - i : 50 - i, correct: 1, total: 2, level: "Новичок" })), me: signedIn ? { rank: 1, players: 12, xp: 26, correct: 1, total: 1 } : null });
+  const ME = { ok: true, label: "@kaprizov97", has_nick: true, level: { key: "l2", n: 2, name: "Уровень 2", note: "Первая победа", min: 20, xp: 37, next: { key: "l3", n: 3, name: "Уровень 3", min: 60 }, to_next: 23, progress: 0.42 }, stats: { total: 4, settled: 2, correct: 2, pending: 1, accuracy: 100 }, ranks: { week: { rank: 1, players: 12, xp: 26, correct: 1, total: 1 } }, recent: [], prefs: { morning_digest: true } };
+  const BOARD = (period) => ({ ok: true, period, players: 12, rows: Array.from({ length: 12 }, (_, i) => ({ rank: i + 1, label: i === 0 ? "@kaprizov97" : `Болельщик ${1000 + i}`, avatar_url: i === 0 ? "/api/telegram-center-v22/avatars/101" : null, xp: period === "month" ? 100 - i : 50 - i, correct: 1, total: 2, level: "Уровень 2" })), me: signedIn ? { rank: 1, players: 12, xp: 26, correct: 1, total: 1 } : null });
   window.HOHV15 = {
     esc,
     state: { profile: false },
@@ -494,7 +494,7 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
         if (postError) throw new Error(postError);
         const b = JSON.parse(opt.body);
         const g = box.games.find((x) => x.game_pk === b.game_pk);
-        const updated = { ...g, my: { pick: b.pick, result: null, xp: null }, votes: { total: 8, home: b.pick === "home" ? 2 : 1, away: b.pick === "away" ? 7 : 6 } };
+        const updated = { ...g, my: { pick: b.pick, result: null, xp: null, score: b.score || null, exact: null }, votes: { total: 8, home: b.pick === "home" ? 2 : 1, away: b.pick === "away" ? 7 : 6 } };
         box.games = box.games.map((x) => (x.game_pk === b.game_pk ? updated : x));
         return { ok: true, game: updated };
       }
@@ -578,6 +578,29 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   assert.deepEqual(opened, [], "the vote is not 'open the match'");
   assert.deepEqual(ctx.box.calls.find((c) => c.method === "POST").body, { game_pk: 9002, pick: "home" });
   assert.ok(slotOf(9002).querySelector('[data-v29-pick="home"]').classList.contains("mine"));
+  // right after the pick: «Хотите угадать точный счёт? +25 XP», two counters in favour of the pick
+  const sc = slotOf(9002).querySelector(".v29Score");
+  assert.ok(sc, "the exact score is asked after the pick");
+  assert.match(text(sc.querySelector(".v29ScQ")), /^Хотите угадать точный счёт\? \+25 XP$/);
+  assert.deepEqual([...sc.querySelectorAll(".v29Step b")].map(text), ["2", "3"], "TBL 2 : 3 NYR — in favour of NYR, the pick");
+  assert.ok(sc.querySelector("[data-v29-sc-save]"), "a button to save it");
+  const plusAway = () => slotOf(9002).querySelector('[data-v29-sc="9002:away:1"]');
+  plusAway().click();
+  plusAway().click();
+  await tick(10);
+  assert.deepEqual([...slotOf(9002).querySelectorAll(".v29Step b")].map(text), ["4", "3"]);
+  assert.ok(!slotOf(9002).querySelector("[data-v29-sc-save]"), "4:3 for TBL does not fit the pick: no saving");
+  assert.match(text(slotOf(9002).querySelector(".v29ScBad")), /счёт в пользу NYR/);
+  assert.deepEqual(opened, [], "the counters do not open the match");
+  slotOf(9002).querySelector('[data-v29-sc="9002:home:1"]').click();
+  slotOf(9002).querySelector('[data-v29-sc="9002:home:1"]').click();
+  await tick(10);
+  slotOf(9002).querySelector("[data-v29-sc-save]").click();
+  await tick(30);
+  assert.deepEqual(ctx.box.calls.filter((c) => c.method === "POST").at(-1).body, { game_pk: 9002, pick: "home", score: { home: 5, away: 4 } });
+  assert.match(text(slotOf(9002).querySelector(".v29ScQ")), /^Ваш точный счёт/);
+  assert.ok(slotOf(9002).querySelector(".v29ScOk"), "saved: a tick");
+  assert.match(text(slotOf(9002).querySelector(".v29Line")), /Ваш выбор: NYR, счёт 4:5 ·/);
   document.querySelector('.v19Broadcast[data-v19-game="9002"] b').click();
   assert.deepEqual(opened, ["9002"]);
   // another day: the list is drawn again, the cards get their votes again
@@ -670,23 +693,24 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   assert.equal(ctx.document.getElementById("view").firstElementChild, box, "at the top");
   const prof = box.querySelector(".v29Prof");
   assert.match(text(prof), /^Твой профиль/);
-  assert.equal(text(prof.querySelector(".lvl")), "Новичок");
-  assert.equal(text(prof.querySelector(".note")), "Первые прогнозы");
+  assert.equal(text(prof.querySelector(".lvl")), "Уровень 2");
+  assert.equal(text(prof.querySelector(".note")), "Первая победа");
   assert.equal(text(prof.querySelector(".xp b")), "37 XP");
-  assert.equal(text(prof.querySelector(".xp span")), "До уровня «Болельщик»: 63 XP");
-  assert.equal(prof.querySelector(".v29Bar i").style.width, "37%");
+  assert.equal(text(prof.querySelector(".xp span")), "До уровня 3: 23 XP");
+  assert.equal(prof.querySelector(".v29Bar i").style.width, "42%");
   assert.deepEqual([...prof.querySelectorAll(".v29Stats b")].map(text), ["4", "100%", "#1"]);
   assert.ok(prof.querySelector(".v29Badge svg"), "the medal");
   assert.ok(!/Задайте ник/.test(text(prof)), "a person with a nickname is not asked for one");
   prof.querySelector("[data-v29-rules]").click();
   assert.match(text(box.querySelector(".v29Rules")), /\+10 XP сверху — угадали победу андердога/);
-  assert.match(text(box.querySelector(".v29Rules")), /Легенда 5 000 XP/);
+  assert.match(text(box.querySelector(".v29Rules")), /Уровни: 1 — 0 · 2 — 20 · 3 — 60 · 4 — 120 · 5 — 220 · 6 — 380 · 7 — 620 · 8 — 1 000 · 9 — 1 600 · 10 — 2 500 XP/);
+  assert.match(text(box.querySelector(".v29Rules")), /\+25 XP сверху — угадали точный счёт матча/);
 
   const board = box.querySelector(".v29Board");
   assert.equal(board.querySelectorAll("li").length, 10, "the top ten");
   assert.ok(board.querySelector("li").classList.contains("me"), "my row is marked");
   assert.equal(board.querySelector("li .av img").getAttribute("src"), "/api/telegram-center-v22/avatars/101");
-  assert.match(text(board.querySelector("li")), /@kaprizov97\s*Новичок · угадано 1 из 2\s*50 XP$/);
+  assert.match(text(board.querySelector("li")), /@kaprizov97\s*Уровень 2 · угадано 1 из 2\s*50 XP$/);
   board.querySelector("[data-v29-board-more]").click();
   assert.equal(box.querySelectorAll(".v29Board li").length, 12, "the whole table");
   box.querySelector('[data-v29-period="month"]').click();
@@ -714,6 +738,83 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   assert.match(text(guest.document.querySelector(".v29Prof")), /доступны в приложении, открытом из Telegram-бота/);
   assert.equal(guest.document.querySelectorAll(".v29Board li").length, 10, "the table is open to everybody");
   guest.window.close();
+}
+
+// ---- 7) the exact score: +25 XP on top of the right winner --------------------------------------------------------------------
+{
+  const { validScore, isExactScore, XP_RULES } = await import("../cloudflare-worker/src/telegram-center-v29-predictions-data.js");
+  assert.equal(XP_RULES.exact, 25);
+  assert.deepEqual(validScore("home", { home: 3, away: 2 }), { home: 3, away: 2 });
+  assert.equal(validScore("home", { home: 2, away: 3 }), null, "against the pick");
+  assert.equal(validScore("away", { home: 2, away: 2 }), null, "no draw: there is always a winner");
+  assert.equal(validScore("away", { home: 1, away: 16 }), null, "up to 15");
+  assert.equal(validScore("away", { home: "1", away: 2.5 }), null);
+  assert.equal(validScore("draw", { home: 1, away: 2 }), null);
+  assert.ok(isExactScore({ score_home: 2, score_away: 3 }, 2, 3));
+  assert.ok(!isExactScore({ score_home: null, score_away: null }, 0, 0), "no guess, no exact score");
+  const nowBefore = Date.now;
+  Date.now = () => NOW; // the signed requests of the test are dated NOW
+
+  const db2 = makeDb();
+  const env2 = { DB: db2, TELEGRAM_CENTER_BOT_TOKEN: TOKEN };
+  const r = db2.raw;
+  for (const tri of ["TBL", "NYR"]) r.prepare("INSERT INTO teams(tri_code,name_en,name_ru,logo_url) VALUES(?,?,?,?)").run(tri, tri, tri, `https://l.test/${tri}.svg`);
+  const game = r.prepare("INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri,home_score,away_score,period_type) VALUES(?,?,?,?,?,?,?,?,?,?)");
+  game.run(9101, "20262027", 2, "2026-10-13T23:15:00Z", "FUT", "NYR", "TBL", 0, 0, null);
+  game.run(9110, "20262027", 2, "2026-10-12T23:00:00Z", "OFF", "NYR", "TBL", 2, 3, "SO"); // TBL won 3:2 in the shootout
+  const call2 = async (path, { method = "GET", user = null, body } = {}) => {
+    const headers = {};
+    if (user) headers["X-Telegram-Init-Data"] = initDataFor(user);
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const res = await handleTelegramCenterV29(new Request(`https://x.test${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), env2, path.split("?")[0]);
+    return { status: res.status, body: await res.json() };
+  };
+  const post = (body) => call2(`${API}/predictions`, { method: "POST", user: A, body });
+  const scoreRow = () => ({ ...r.prepare("SELECT pick,score_home,score_away FROM fan_predictions WHERE telegram_user_id=101 AND game_pk=9101").get() });
+  let res = await post({ game_pk: 9101, pick: "away", score: { home: 2, away: 3 } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.game.my.score, { home: 2, away: 3 }, "the guess is kept with the pick");
+  for (const bad of [{ home: 3, away: 2 }, { home: 2, away: 2 }, { home: 1, away: 99 }, { home: "x", away: 1 }]) {
+    const no = await post({ game_pk: 9101, pick: "away", score: bad });
+    assert.deepEqual([no.status, no.body.error], [400, "invalid_score"], JSON.stringify(bad));
+  }
+  assert.deepEqual(scoreRow(), { pick: "away", score_home: 2, score_away: 3 }, "a refused guess changes nothing");
+  res = await post({ game_pk: 9101, pick: "away" });
+  assert.deepEqual(res.body.game.my.score, { home: 2, away: 3 }, "the pick again without a score keeps the score");
+  res = await post({ game_pk: 9101, pick: "home" });
+  assert.equal(res.body.game.my.score, null, "the other team: the old score does not fit and is dropped");
+  assert.deepEqual(scoreRow(), { pick: "home", score_home: null, score_away: null });
+  res = await post({ game_pk: 9101, pick: "home", score: { home: 4, away: 1 } });
+  assert.deepEqual(res.body.game.my.score, { home: 4, away: 1 });
+  res = await post({ game_pk: 9101, pick: "home", score: null });
+  assert.equal(res.body.game.my.score, null, "null takes the guess back");
+  Date.now = () => Date.parse("2026-10-13T23:16:00Z");
+  assert.equal((await post({ game_pk: 9101, pick: "home", score: { home: 4, away: 1 } })).body.error, "voting_closed", "no guesses after the start");
+  Date.now = () => NOW;
+
+  // the settlement: the exact final score of the shootout game (3:2 for TBL) brings 25 more
+  const pick = r.prepare("INSERT INTO fan_predictions(telegram_user_id,game_pk,pick,pick_tri,game_date,season_id,score_home,score_away) VALUES(?,?,?,?,?,?,?,?)");
+  for (const id of [201, 202, 203, 204]) r.prepare("INSERT INTO telegram_users(telegram_user_id,first_name) VALUES(?,?)").run(id, `U${id}`);
+  pick.run(201, 9110, "away", "TBL", "2026-10-12", "20262027", 2, 3);
+  pick.run(202, 9110, "away", "TBL", "2026-10-12", "20262027", 1, 4);
+  pick.run(203, 9110, "away", "TBL", "2026-10-12", "20262027", null, null);
+  pick.run(204, 9110, "home", "NYR", "2026-10-12", "20262027", 3, 2);
+  const s = await runFanPredictionSettlement(env2, { now: Date.parse("2026-10-13T05:00:00Z") });
+  assert.equal(s.games, 1);
+  const got = (uid) => ({ ...r.prepare("SELECT result,xp,exact FROM fan_predictions WHERE telegram_user_id=? AND game_pk=9110").get(uid) });
+  assert.deepEqual(got(201), { result: "win", xp: 11 + 25, exact: 1 }, "the right winner (11) and the exact score (25)");
+  assert.deepEqual(got(202), { result: "win", xp: 11, exact: 0 }, "the right winner, another score");
+  assert.deepEqual(got(203), { result: "win", xp: 11, exact: 0 }, "no guess");
+  assert.deepEqual(got(204), { result: "loss", xp: 1, exact: 0 }, "the wrong winner: never an exact score");
+  const settled = await call2(`${API}/games?ids=9110`, { user: { id: 201, first_name: "U201" } });
+  assert.deepEqual(settled.body.games[0].my, { pick: "away", result: "win", xp: 36, score: { home: 2, away: 3 }, exact: true });
+  const meExact = await call2(`${API}/me`, { user: { id: 201, first_name: "U201" } });
+  assert.equal(meExact.body.recent[0].exact, true);
+  assert.equal(meExact.body.level.name, "Уровень 2", "36 XP: level 2 after one good evening");
+  const digest = await runFanPredictionDigest(env2, { now: Date.parse("2026-10-13T07:30:00Z"), dryRun: true });
+  assert.match(digest.messages.find((m) => m.user_id === 201).text, /✅ TBL — NYR: вы выбрали TBL · 🎯 точный счёт · \+36 XP/);
+  assert.ok(!/🎯/.test(digest.messages.find((m) => m.user_id === 202).text));
+  Date.now = nowBefore;
 }
 
 console.log("predictions validation passed");

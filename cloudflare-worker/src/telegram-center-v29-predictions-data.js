@@ -2,17 +2,17 @@
 // points (XP), levels and the table of the best fans. The pure rules live here: the API, the settlement of the finished games,
 // the morning message of the bot and the tests all use the same functions.
 
-export const LEVELS = [
-  { key: "novice", name: "Новичок", min: 0, note: "Первые прогнозы" },
-  { key: "fan", name: "Болельщик", min: 100, note: "Освоил основы" },
-  { key: "expert", name: "Знаток", min: 500, note: "Разбирается в игре" },
-  { key: "master", name: "Мастер", min: 2000, note: "Один из лучших" },
-  { key: "legend", name: "Легенда", min: 5000, note: "Высший уровень" },
-];
+// Ten levels with numbers (the owner: «второй уровень быстро, третий подольше… сможем сделать 10 уровней? Может делать их числами?»).
+// A right winner gives about 11 XP: level 2 comes with the first good pick, level 10 after a season of steady play.
+const LEVEL_MINS = [0, 20, 60, 120, 220, 380, 620, 1000, 1600, 2500];
+const LEVEL_NOTES = ["Первые прогнозы", "Первая победа", "Входит во вкус", "Постоянный болельщик", "Разбирается в игре", "Знаток", "Опытный прогнозист", "Мастер прогноза", "Почти легенда", "Легенда"];
+export const LEVELS = LEVEL_MINS.map((min, i) => ({ key: `l${i + 1}`, name: `Уровень ${i + 1}`, min, note: LEVEL_NOTES[i] }));
 
 // +1 for every pick on a game that was played, +10 for the right winner, +10 more when the winner was the underdog by the Winline
 // odds at the start, +5 more when fewer than 30% of the fans (out of at least 10) picked it.
-export const XP_RULES = { vote: 1, correct: 10, underdog: 10, minority: 5 };
+export const XP_RULES = { vote: 1, correct: 10, underdog: 10, minority: 5, exact: 25 };
+// the exact score: a guess of the final score (the official one: an overtime or shootout winner counts as one more goal)
+export const SCORE_MAX = 15;
 export const UNDERDOG_MIN_ODDS = 2.1;
 export const MINORITY_SHARE = 0.3;
 export const MINORITY_MIN_VOTES = 10;
@@ -36,11 +36,28 @@ export function levelOf(value) {
   const next = LEVELS[index + 1] || null;
   const progress = next ? (xp - current.min) / (next.min - current.min) : 1;
   return {
-    key: current.key, name: current.name, note: current.note, min: current.min, xp,
-    next: next ? { key: next.key, name: next.name, min: next.min } : null,
+    key: current.key, n: index + 1, name: current.name, note: current.note, min: current.min, xp,
+    next: next ? { key: next.key, n: index + 2, name: next.name, min: next.min } : null,
     to_next: next ? next.min - xp : 0,
     progress: Math.max(0, Math.min(1, progress)),
   };
+}
+
+// A guess of the exact score: whole numbers 0–15, and the picked team must win it. null = not a valid guess.
+export function validScore(pick, score) {
+  if (!score || (pick !== "home" && pick !== "away")) return null;
+  const home = Number(score.home);
+  const away = Number(score.away);
+  const ok = (n) => Number.isInteger(n) && n >= 0 && n <= SCORE_MAX;
+  if (!ok(home) || !ok(away) || home === away) return null;
+  if ((pick === "home") !== (home > away)) return null;
+  return { home, away };
+}
+
+export function isExactScore(prediction, homeScore, awayScore) {
+  const h = Number(prediction?.score_home);
+  const a = Number(prediction?.score_away);
+  return prediction?.score_home != null && prediction?.score_away != null && h === Number(homeScore) && a === Number(awayScore);
 }
 
 // The game day of the NHL: the same as date(datetime(scheduled_start_utc,'-8 hours')) in the SQL of the other layers.
@@ -154,12 +171,12 @@ export function digestText(rows, { levelXp = 0, noSpoilers = false } = {}) {
   const played = (rows || []).filter((r) => r.result === "win" || r.result === "loss");
   if (!played.length) return null;
   if (noSpoilers) return "🏒 Ваши прогнозы рассчитаны.\nВключён режим без спойлеров — итоги и очки смотрите в приложении.";
-  const lines = played.map((r) => `${r.result === "win" ? "✅" : "❌"} ${r.away_tri} — ${r.home_tri}: вы выбрали ${r.pick_tri} · +${r.xp} XP`);
+  const lines = played.map((r) => `${r.result === "win" ? "✅" : "❌"} ${r.away_tri} — ${r.home_tri}: вы выбрали ${r.pick_tri}${Number(r.exact) === 1 ? " · 🎯 точный счёт" : ""} · +${r.xp} XP`);
   const correct = played.filter((r) => r.result === "win").length;
   const xp = played.reduce((sum, r) => sum + (Number(r.xp) || 0), 0);
   const level = levelOf(levelXp);
-  const next = level.next ? `, до уровня «${level.next.name}»: ${formatXp(level.to_next)} XP` : "";
-  return `🏒 Итоги ваших прогнозов\n\n${lines.join("\n")}\n\nУгадано ${correct} из ${played.length} · +${xp} XP\nУровень: ${level.name} — ${formatXp(level.xp)} XP${next}`;
+  const next = level.next ? `, до уровня ${level.next.n}: ${formatXp(level.to_next)} XP` : " — высший";
+  return `🏒 Итоги ваших прогнозов\n\n${lines.join("\n")}\n\nУгадано ${correct} из ${played.length} · +${xp} XP\n${level.name} — ${formatXp(level.xp)} XP${next}`;
 }
 
 export function formatXp(v) {

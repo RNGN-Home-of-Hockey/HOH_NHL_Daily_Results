@@ -52,7 +52,7 @@ html:not(.v15Light) .v30Why{color:#b58aff}
   let anchor = null;
   window.addEventListener("click", (e) => {
     const t = e.target;
-    if (!t || !t.closest || t.closest(".v28Fol,[data-v29-pick],a[href]")) return;
+    if (!t || !t.closest || t.closest(".v28Fol,[data-v29-pick],[data-v29-sc],[data-v29-sc-save],a[href]")) return;
     for (const a of ANCHORS) {
       const el = t.closest(a.sel);
       if (el && el.closest("#view")) {
