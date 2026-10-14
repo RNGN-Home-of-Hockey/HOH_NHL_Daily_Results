@@ -225,6 +225,7 @@ jobs:
           node tests/validate_vk_covers.mjs
           node tests/validate_player_names.mjs
           node tests/validate_polish_batch.mjs
+          node tests/validate_nav_v30.mjs
 
       - name: Kaprizov historical season smoke
         run: |
