@@ -250,6 +250,10 @@ const TBL_PLAYERS = (ctx) => ctx.S.pool.filter((p) => p.tri === "TBL").map((p) =
   const ctx = makeApp({ tab: "players", html: playersHtml(rows), follows: [{ subscription_id: 77, subject_type: "player", subject_key: "8476453" }, { subscription_id: 78, subject_type: "team", subject_key: "MIN" }] });
   let rowClicks = 0;
   ctx.document.querySelectorAll(".playerRow").forEach((r) => r.addEventListener("click", () => { rowClicks += 1; }));
+  // the older layers catch every click on a player row at the document in the capture phase, open the player and stop the click:
+  // the "+" must still work (the owner: "их нельзя нажать прям там, а только внутри страницы игрока")
+  let opened = 0;
+  ctx.document.addEventListener("click", (e) => { if (e.target.closest && e.target.closest(".playerRow[data-player]")) { opened += 1; e.stopImmediatePropagation(); } }, true);
   await tick(1300);
   const values = [...ctx.document.querySelectorAll(".playerSortValue")];
   assert.equal(text(values[0].querySelector("b")), "12", "the number is big");
@@ -262,6 +266,8 @@ const TBL_PLAYERS = (ctx) => ctx.S.pool.filter((p) => p.tri === "TBL").map((p) =
   assert.match(css, /\.playerRow \.playerSortValue\{[^}]*color:#5b21b6!important;font-weight:900!important/, "a deep violet, bold, on the light theme");
   assert.match(css, /html:not\(\.v15Light\) \.playerRow \.playerSortValue\{color:#cdb9ff!important\}/, "a light one on the dark theme");
   assert.match(css, /html \.playerRow \.playerSortValue b\{color:inherit!important\}/, "the number keeps the violet: the black of the other bold texts of a row (.v15Light .playerRow b) does not win");
+  assert.match(css, /\.v15Section,\.v23Section,\.v15Group\{[^}]*color:#3b0f8c!important;background:rgba\(255,255,255,\.88\)/, "the small section titles: a dark violet on a white pill, readable over the silhouette");
+  assert.match(css, /html:not\(\.v15Light\) :is\(\.v15Section,\.v23Section,\.v15Group\)\{color:#f1eaff!important;background:rgba\(12,13,20,\.84\)/, "and light on a dark pill in the dark theme");
   assert.match(css, /html\.hohSil \.app\{background:transparent!important\}/, "the light theme paints the app solid (.v15Light .app): with the silhouettes on it is see-through");
 
   const buttons = [...ctx.document.querySelectorAll(".v28Fol")];
@@ -276,6 +282,7 @@ const TBL_PLAYERS = (ctx) => ctx.S.pool.filter((p) => p.tri === "TBL").map((p) =
   buttons[0].click();
   await tick(30);
   assert.equal(rowClicks, 0, "the tap does not open the player");
+  assert.equal(opened, 0, "not even through the older layers");
   assert.deepEqual(ctx.calls.filter((c) => c.method === "POST").map((c) => c.body), [{ type: "player", key: "8478864" }]);
   assert.equal(text(buttons[0]), "✓", "the plus turns into a tick");
   assert.ok(buttons[0].classList.contains("on"));

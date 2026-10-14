@@ -164,8 +164,9 @@ const BASE = "https://clips.test";
   // enough goals on the newest day: the day before does not come in
   const many = { games: [{ game_pk: 21, goals: Array.from({ length: 20 }, (_, i) => goal(500 + i, 1 + Math.floor(i / 7), "10:00", 0, i, 1, "Many", "MIN")) }, { game_pk: 22, goals: [goal(900, 1, "10:00", 0, 1, 2, "Older", "OTT")] }] };
   const capped = buildGoalTiles({ games: [finalToday, finalYesterday], index: many, indexOk: true, now: NOW, clipsBase: BASE });
-  assert.equal(capped.items.length, MAX_TILES);
-  assert.equal(capped.total, 20, "the count says how many clips the day has, the shelf shows the newest ones");
+  assert.equal(capped.items.length, 20, "all the clips of the day come: the shelf shows MAX_TILES, the page «Все голы» all of them");
+  assert.ok(capped.items.length > MAX_TILES);
+  assert.equal(capped.total, 20, "the count says how many clips the day has");
   assert.ok(!capped.items.some((t) => t.event_id === 900));
   assert.ok(capped.total >= MIN_TILES);
 

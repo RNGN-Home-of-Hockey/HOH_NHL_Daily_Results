@@ -19,6 +19,8 @@ export const SOON_MS = 3 * HOUR;
 export const GOALS_WINDOW_MS = 40 * HOUR;
 export const MIN_TILES = 6;
 export const MAX_TILES = 16;
+// the shelf shows MAX_TILES of them, the page "Все голы" shows all the clips of the day (113 on a busy night)
+export const MAX_ALL_TILES = 240;
 
 const num = (v) => {
   if (v === null || v === undefined || v === "") return null;
@@ -211,7 +213,7 @@ export function buildGoalTiles({ games, index, indexOk, now, clipsBase = DEFAULT
     day: days[0],
     live: picked.some((t) => t.live),
     total: picked.length,
-    items: picked.slice(0, MAX_TILES).map(({ moment, ...tile }) => tile),
+    items: picked.slice(0, MAX_ALL_TILES).map(({ moment, ...tile }) => tile),
   };
 }
 

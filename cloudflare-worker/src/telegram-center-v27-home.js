@@ -106,13 +106,30 @@ async function loadGoalCounts(tiles) {
   return counts;
 }
 
+// The clip index of the highlights server. When the server is slow (it answered in more than 4 s now and then) the shelf of goals
+// used to vanish from the home page; now it waits up to 8 s and, failing that, uses the last good index of this worker
+// (up to 30 minutes old: the goals of the night do not change any more).
+const indexMemory = new Map();
+export async function loadClipIndex(base, { fetcher = fetchJson, now = Date.now() } = {}) {
+  const url = `${String(base).replace(/\/+$/, "")}/index.json`;
+  try {
+    const fresh = await fetcher(url, { ttl: 20, timeoutMs: 8000 });
+    if (fresh && Array.isArray(fresh.games)) indexMemory.set(url, { at: now, data: fresh });
+    return fresh;
+  } catch (error) {
+    const kept = indexMemory.get(url);
+    if (kept && now - kept.at <= 30 * 60 * 1000) return kept.data;
+    throw error;
+  }
+}
+
 const realDeps = {
   loadRussians,
   loadRussianIds,
   loadGoalCounts,
   loadGames: (env, now) => loadGames(env.DB, now),
   loadFeatured,
-  loadIndex: (base) => fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 }),
+  loadIndex: (base) => loadClipIndex(base),
   loadNames: (env, ids) => loadNames(env.DB, ids),
   loadHeroLive,
 };

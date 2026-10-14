@@ -4,7 +4,8 @@
 // A goal and its clip are the same thing: the NHL `eventId` of the goal is the `event_id` the highlights engine
 // stores for the clip, so the join is exact. Names are Russian when the database knows the player.
 
-export const DEFAULT_CLIPS_BASE = "https://72-56-13-100.sslip.io";
+// the highlights server moved on 14 October 2026 (production also sets HOH_CLIPS_BASE)
+export const DEFAULT_CLIPS_BASE = "https://109-172-113-187.sslip.io";
 const CLIP_PENDING_WINDOW_MS = 4 * 60 * 60 * 1000;
 
 const num = (v) => {

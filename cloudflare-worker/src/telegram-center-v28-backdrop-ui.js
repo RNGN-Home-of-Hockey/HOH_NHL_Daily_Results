@@ -102,6 +102,8 @@ html:not(.v15Light) .v28Fol{border-color:#464a59;background:rgba(23,25,34,.8);co
 .v28Fol.on{background:#dff5ea;border-color:#68c79a;color:#17784f}
 html:not(.v15Light) .v28Fol.on{background:#123429;border-color:#347e63;color:#62e6ae}
 .v28Fol[disabled]{opacity:.5}
+.v15Section,.v23Section,.v15Group{display:block;width:fit-content;max-width:100%;justify-self:start;align-self:flex-start;margin:12px 0 4px!important;padding:4px 10px;border-radius:999px;font:900 11px/1.25 Inter,Arial,sans-serif!important;letter-spacing:.5px;text-transform:uppercase;color:#3b0f8c!important;background:rgba(255,255,255,.88);box-shadow:0 1px 2px rgba(59,15,140,.14)}
+html:not(.v15Light) :is(.v15Section,.v23Section,.v15Group){color:#f1eaff!important;background:rgba(12,13,20,.84);box-shadow:none}
 `;
     document.head.appendChild(style);
   }
@@ -278,11 +280,6 @@ html:not(.v15Light) .v28Fol.on{background:#123429;border-color:#347e63;color:#62
       btn.type = "button";
       btn.className = "v28Fol";
       btn.dataset.v28Fol = row.dataset.player;
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation(); // the row itself opens the player
-        toggle(btn);
-      });
       paintButton(btn);
       value.before(btn);
       added = true;
@@ -299,6 +296,15 @@ html:not(.v15Light) .v28Fol.on{background:#123429;border-color:#347e63;color:#62
   };
   document.addEventListener("click", (e) => {
     if (e.target.closest && e.target.closest(".tab")) setTimeout(() => { update(); decoratePlayers(); }, 160);
+  }, true);
+  // The older layers catch every click on a player row at the document (capture) and open the player, so a tap on "+" never
+  // reached the button. The window sees the click before the document does: the button answers first and the row stays put.
+  window.addEventListener("click", (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest(".v28Fol") : null;
+    if (!btn) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!btn.disabled) toggle(btn);
   }, true);
   // The players list is drawn again on every change of the sort, the team or the country, and a player or a match opens without
   // runCore: whatever changes on the page, the silhouette and the buttons catch up a moment later.

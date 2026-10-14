@@ -21,7 +21,7 @@ function lastDay(v){const d=new Date(firstDay(v)+'T12:00:00');d.setMonth(d.getMo
 function shiftMonth(v,n){const d=new Date(firstDay(v)+'T12:00:00');d.setMonth(d.getMonth()+n);return firstDay(localDate(d))}
 function daysInMonth(v){return Number(lastDay(v).slice(8,10))}
 function dateLabel(v){const d=new Date(v+'T12:00:00');return d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'})}
-function monthLabel(v){const d=new Date(v+'T12:00:00');return d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'})}
+function monthLabel(v){const d=new Date(v+'T12:00:00');if(Number.isNaN(d.getTime()))return'';return ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][d.getMonth()]+' '+d.getFullYear()}
 function dateTime(v){const d=new Date(v);if(Number.isNaN(d.getTime()))return'';return d.toLocaleString('ru-RU',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})}
 function timeOnly(v){const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}
 function final(g){return ['FINAL','OFF'].includes(String(g?.game_state||'').toUpperCase())}

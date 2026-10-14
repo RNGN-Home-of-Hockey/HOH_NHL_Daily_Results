@@ -119,6 +119,7 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
   }
 
   // ---- the vote ----------------------------------------------------------------------------------------------------------------
+  const MIN_SPLIT_VOTES = 5;
   function lineOf(g) {
     const my = g.my;
     const tri = my && g[my.pick] ? g[my.pick].tri : "";
@@ -130,7 +131,7 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     if (noSpoilers()) return { text: "Итог скрыт: режим без спойлеров" };
     if (g.settled && g.settled.winner === "void") return { text: "Матч не состоялся — прогнозы без очков" };
     if (g.settled && my && my.result) return my.result === "win" ? { text: `✓ Угадали · +${my.xp} XP`, ok: true } : { text: `Не угадали · +${my.xp} XP` };
-    if (g.settled) return { text: g.votes && g.votes.total ? `Как голосовали болельщики · ${g.votes.total}` : "Матч завершён" };
+    if (g.settled) return { text: g.votes && g.votes.total >= MIN_SPLIT_VOTES ? `Как голосовали болельщики · ${g.votes.total}` : g.votes && g.votes.total ? `Проголосовали: ${g.votes.total}` : "Матч завершён" };
     return { text: my ? `Матч идёт · ваш выбор ${tri}` : "Прогнозы закрыты — матч начался" };
   }
 
@@ -142,7 +143,8 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     const hide = !g.open && noSpoilers();
     const total = g.votes ? Number(g.votes.total) || 0 : 0;
     if (card && !g.open && !g.my && total === 0) return "";
-    const split = !hide && g.votes && g.votes.home != null && total > 0;
+    // percentages from a handful of votes say nothing ("100% / 0%" after one vote): the split shows from five votes
+    const split = !hide && g.votes && g.votes.home != null && total >= MIN_SPLIT_VOTES;
     const winner = !hide && g.settled && g.settled.winner !== "void" ? g.settled.winner : null;
     const side = (k) => {
       const t = g[k] || {};

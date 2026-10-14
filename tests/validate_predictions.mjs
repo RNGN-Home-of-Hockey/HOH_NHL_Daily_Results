@@ -565,7 +565,7 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   assert.ok(!slotOf(9001).querySelector(".v29Mid"), "the card is narrow: no question between the buttons, the head says it");
   assert.ok(!/1\.8|1\.9/.test(text(slotOf(9001))), "no odds in the card vote either");
   assert.ok(slotOf(9004).querySelector(".v29Btn").disabled, "a game that is on: closed");
-  assert.deepEqual([...slotOf(9004).querySelectorAll(".v29Pc")].map(text), ["33%", "67%"]);
+  assert.deepEqual([...slotOf(9004).querySelectorAll(".v29Pc")].map(text), [], "three votes: no percentages, they would say nothing");
   assert.ok(slotOf(9010).hidden, "an old game nobody voted on: nothing in its card");
   const old = slotOf(9011);
   assert.ok(!old.hidden, "an old game with votes: how the fans voted");

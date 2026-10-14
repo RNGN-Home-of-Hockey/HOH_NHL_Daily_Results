@@ -1,5 +1,6 @@
 const API="/api/telegram-center-v20";
 const NHL_PAGE="https://www.sports.ru/hockey/tournament/nhl/";
+const NHL_NEWS_PAGE="https://www.sports.ru/hockey/tournament/nhl/news/";
 const USER_AGENT="Mozilla/5.0 (compatible; HOH-NHL-Center/20; +news-indexer)";
 const HOME_MIN_INTERVAL_MS=10*60*1000;
 const PLAYER_BATCH=4;
@@ -169,6 +170,14 @@ async function scanNhlMain(env){
   const freshPage=freshSportsUrl(NHL_PAGE);
   try{html=await fetchText(freshPage)}catch(error){return {ok:false,error:"sports_main_fetch_failed",detail:errorText(error),stored:0,politics:0}}
   let items=extractHtmlNews(html,NHL_PAGE).slice(0,60);
+  // the list of NHL news carries the real time of every news ("22:40"); the main page does not, so before every news got the
+  // time of our scan and the home showed "только что" for all of them
+  try{
+    const listed=extractNewsListPage(await fetchText(freshSportsUrl(NHL_NEWS_PAGE)),NHL_NEWS_PAGE);
+    const byUrl=new Map(listed.map(x=>[x.source_url,x]));
+    items=items.map(x=>{const l=byUrl.get(x.source_url);if(l)byUrl.delete(x.source_url);return l?{...x,published_at:l.published_at||x.published_at,source_badge:x.source_badge||l.source_badge}:x});
+    items=[...items,...byUrl.values()].sort((a,b)=>String(b.published_at||"").localeCompare(String(a.published_at||""))).slice(0,80);
+  }catch{}
   const rssUrl=discoverRssUrl(html,NHL_PAGE);
   if(rssUrl){
     try{
@@ -181,7 +190,8 @@ async function scanNhlMain(env){
   for(let i=0;i<items.length&&stored<30;i++){
     const item=items[i];
     if(isPolitical(item.title)){politics++;continue}
-    item.published_at=item.published_at||new Date(Date.now()-i*1000).toISOString();
+    // no real time: a guess (the time of the scan) only fills an empty time and never overwrites a known one
+    if(!item.published_at){item.published_at=new Date(Date.now()-i*1000).toISOString();item.published_guess=true}
     const id=await upsertNews(env.DB,item);
     if(!id){duplicate++;continue}
     stored++;
@@ -330,10 +340,10 @@ async function upsertNews(db,item){
     ON CONFLICT(source,source_key) DO UPDATE SET
       title=excluded.title,
       body_text=COALESCE(NULLIF(excluded.body_text,''),sports_news.body_text),
-      published_at=COALESCE(excluded.published_at,sports_news.published_at),
+      published_at=CASE WHEN ? THEN COALESCE(sports_news.published_at,excluded.published_at) ELSE COALESCE(excluded.published_at,sports_news.published_at) END,
       source_badge=COALESCE(NULLIF(excluded.source_badge,''),sports_news.source_badge),
       updated_at=CURRENT_TIMESTAMP;
-  `).bind(sourceKey,item.source_url,item.title,item.body_text||null,item.published_at||null,item.source_badge||null).run();
+  `).bind(sourceKey,item.source_url,item.title,item.body_text||null,item.published_at||null,item.source_badge||null,item.published_guess?1:0).run();
   const row=await db.prepare("SELECT news_id FROM sports_news WHERE source='sports_ru' AND source_key=? LIMIT 1").bind(sourceKey).first();
   return Number(row?.news_id||0);
 }
@@ -362,6 +372,25 @@ async function linkPlayersFromTitle(db,newsId,title,players){
   }
   if(hits.length)await db.batch(hits.map(id=>db.prepare("INSERT OR IGNORE INTO sports_news_players(news_id,player_id) VALUES(?,?)").bind(newsId,id)));
 }
+
+// sports.ru/hockey/tournament/nhl/news/: <p class="one_news" data-news-dtime="2026-10-14 22:40:00+03"> … <a class="short-text" href="/hockey/123.html">title</a>
+export function extractNewsListPage(html,base){
+  const out=[],seen=new Set(),text=String(html||"");
+  const re=/<p\b[^>]*data-news-dtime=(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/p>/gi;
+  let m;
+  while((m=re.exec(text))){
+    const a=/<a\b[^>]*href=(["'])([^"']*\/hockey\/\d+(?:-[^/"']+)?\.html)\1[^>]*>([\s\S]*?)<\/a>/i.exec(m[3]);
+    if(!a)continue;
+    let href;try{href=canonicalUrl(new URL(decodeEntities(a[2]),base).toString())}catch{continue}
+    const title=cleanText(a[3]);
+    if(title.length<20||seen.has(href))continue;
+    seen.add(href);
+    out.push({source_key:href,source_url:href,title,body_text:null,published_at:sportsDate(m[2]),source_badge:sourceBadge(m[0])});
+  }
+  return out;
+}
+// "2026-10-14 22:40:00+03" → ISO time
+export function sportsDate(v){const s=String(v||"").trim().replace(" ","T").replace(/([+-]\d{2})$/,"$1:00");return validDate(s)}
 
 function extractHtmlNews(html,base){
   const out=[],seen=new Set();

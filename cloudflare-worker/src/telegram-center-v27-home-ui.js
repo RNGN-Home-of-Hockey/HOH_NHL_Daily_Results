@@ -285,6 +285,14 @@ html.v15Light .v27Wl{border-color:#e4a176;background:#fff7f0}
 .v27Goal .sc{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:0 2px}
 .v27Goal .sc img{width:16px;height:16px;object-fit:contain}
 .v27Goal .tm{font-size:11px;color:var(--c-muted);padding:0 2px}
+.v27GoalAll .v27Poster{display:grid;place-content:center;justify-items:center;gap:2px;background:linear-gradient(150deg,#5b21b6,#2a1060);color:#fff}
+.v27GoalAll .v27Poster b{font-size:28px;font-weight:900;line-height:1}
+.v27GoalAll .v27Poster span{font-size:12px;font-weight:800;letter-spacing:.3px;text-transform:uppercase}
+.v27GoalsPage{display:grid;gap:14px;padding-bottom:20px}
+.v27GSeg{justify-self:start}
+.v27GGame h3{margin:0 2px 8px;font-size:15px;font-weight:800}
+.v27GGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 10px}
+.v27GGrid .v27Goal{flex:none;min-width:0}
 .v27Note{display:grid;gap:10px;justify-items:start;padding:14px;border:1px dashed var(--c-line);border-radius:14px;color:var(--c-muted);font-size:13px;line-height:1.4}
 .v27Note button{border:1px solid var(--c-line);border-radius:10px;background:var(--c-card2);color:var(--c-text);padding:9px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 .v27NewsList{display:grid;border:1px solid var(--c-line);border-radius:16px;background:var(--c-card);overflow:hidden}
@@ -506,6 +514,67 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
   // "Кто победит?" of the game of the fans (v29) inside the match of the day; empty until that layer knows the game
   const predictSlot = (pk) => (window.HOHV29 && typeof window.HOHV29.slotHtml === "function" ? window.HOHV29.slotHtml(pk) : "");
 
+  const SHELF_TILES = 16;
+
+  // ---- the page "Все голы": every clip of the day, game by game, with a switch "Все | Русские" -------------------------------
+  function goalsPageHtml() {
+    const gl = (st.data && st.data.goals) || {};
+    const all = (gl.items || []).slice();
+    const onlyRu = st.goalsFilter === "ru";
+    const shown = onlyRu ? all.filter((t) => t.russian) : all;
+    const teams = myTeams();
+    const players = myPlayers();
+    const mineTile = (t) => teams.has(String(t.team || "").toUpperCase()) || players.has(t.scorer_id);
+    // the games in the order they started, the goals of a game in the order they were scored
+    const groups = new Map();
+    for (const t of shown) {
+      const k = String(t.game_pk);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(t);
+    }
+    // the score after each goal grows by one: 1:0, 1:1, 2:1 … is the order they were scored in
+    const order = (list) => list.slice().sort((a, b) => ((Number(a.away_score) || 0) + (Number(a.home_score) || 0)) - ((Number(b.away_score) || 0) + (Number(b.home_score) || 0)) || (Number(a.period) || 0) - (Number(b.period) || 0));
+    st.goalsQueue = [];
+    const blocks = [...groups.values()].map((list) => {
+      const ordered = order(list);
+      const g = ordered[ordered.length - 1] || {};
+      const head = `${esc(g.away && g.away.tri)} — ${esc(g.home && g.home.tri)}`;
+      const tiles = ordered.map((t) => { st.goalsQueue.push(t); return tileHtml(t, st.goalsQueue.length - 1, mineTile(t)); }).join("");
+      return `<section class="v27GGame"><h3>${head}</h3><div class="v27GGrid">${tiles}</div></section>`;
+    }).join("");
+    const ruCount = all.filter((t) => t.russian).length;
+    const seg = `<div class="v27Seg v27GSeg"><button type="button" data-v27-gfilter="all" class="${onlyRu ? "" : "on"}">Все · ${all.length}</button><button type="button" data-v27-gfilter="ru" class="${onlyRu ? "on" : ""}">Русские · ${ruCount}</button></div>`;
+    return `${seg}${blocks || '<div class="v27Empty">Голов русских игроков в этот день нет.</div>'}`;
+  }
+
+  function openGoalsPage() {
+    const root = H.view();
+    if (!root) return;
+    closeGoal();
+    H.state.profile = true;
+    const tabs = document.getElementById("tabs");
+    if (tabs) tabs.style.display = "none";
+    const gl = (st.data && st.data.goals) || {};
+    root.innerHTML = `<div class="v27NewsPage v27GoalsPage v20Detail">${H.backRow(goalsTitle(gl, localToday()))}<div id="v27GBody">${goalsPageHtml()}</div></div>`;
+    const back = document.getElementById("v15Back");
+    if (back) back.onclick = leaveNews;
+    root.querySelector(".v27GoalsPage").addEventListener("click", (e) => {
+      const t = e.target;
+      const f = t.closest && t.closest("[data-v27-gfilter]");
+      if (f) {
+        st.goalsFilter = f.dataset.v27Gfilter;
+        document.getElementById("v27GBody").innerHTML = goalsPageHtml();
+        return;
+      }
+      const goal = t.closest && t.closest("[data-v27-goal]");
+      if (goal) {
+        st.queue = (st.goalsQueue || []).slice();
+        showGoal(Number(goal.dataset.v27Goal));
+      }
+    });
+    window.scrollTo(0, 0);
+  }
+
   function goalsTitle(gl, today) {
     if (gl.live) return "Голы в эфире";
     if (gl.day === today) return "Голы сегодня";
@@ -534,7 +603,9 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     const teams = myTeams();
     const players = myPlayers();
     const mineTile = (t) => teams.has(String(t.team || "").toUpperCase()) || players.has(t.scorer_id);
-    return `<div class="v27Head"><b>${esc(title)}</b><small>${esc(count)}</small></div><div class="v27Shelf">${gl.items.map((t, i) => tileHtml(t, i, mineTile(t))).join("")}</div>`;
+    // the shelf shows the first SHELF_TILES goals; the last tile opens the page with all the clips of the day
+    const more = gl.items.length > SHELF_TILES ? `<button type="button" class="v27Goal v27GoalAll" data-v27-goals-all="1"><span class="v27Poster"><b>${esc(gl.items.length)}</b><span>все голы</span></span></button>` : "";
+    return `<div class="v27Head"><b>${esc(title)}</b>${gl.items.length > SHELF_TILES ? `<button type="button" data-v27-goals-all="1">${esc(count)} ›</button>` : `<small>${esc(count)}</small>`}</div><div class="v27Shelf">${gl.items.slice(0, SHELF_TILES).map((t, i) => tileHtml(t, i, mineTile(t))).join("")}${more}</div>`;
   }
 
   function newsMetaHtml(x, mine) {
@@ -907,6 +978,7 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
       st.queue = ((st.data && st.data.goals && st.data.goals.items) || []).slice();
       return showGoal(Number(goal.dataset.v27Goal));
     }
+    if (t.closest("[data-v27-goals-all]")) return openGoalsPage();
     if (t.closest("[data-v27-all]")) {
       const tab = document.querySelector('.tab[data-tab="broadcasts"]');
       if (tab) tab.click();
