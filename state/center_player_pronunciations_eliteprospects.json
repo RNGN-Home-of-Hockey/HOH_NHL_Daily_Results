@@ -1,9 +1,9 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
-  "eliteprospects_audio_matched": 565,
-  "eliteprospects_profiles_resolved": 761,
-  "matched": 573,
-  "nhl_audio_fallback_matched": 8,
+  "eliteprospects_audio_matched": 564,
+  "eliteprospects_profiles_resolved": 759,
+  "matched": 571,
+  "nhl_audio_fallback_matched": 7,
   "players": {
     "8470613": {
       "audio_cached": true,
@@ -9090,29 +9090,6 @@
       "upstream_verified": true,
       "weight_kg": 88
     },
-    "8481572": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8481572.mp3",
-      "birth_country": "FIN",
-      "birth_date": "2001-03-02",
-      "eliteprospects_id": "428795",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Ville%20Heinola",
-      "eliteprospects_slug": "ville-heinola",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/428795/ville-heinola",
-      "first_name": "Ville",
-      "full_name_en": "Ville Heinola",
-      "height_cm": 183,
-      "last_name": "Heinola",
-      "player_id": 8481572,
-      "position_code": "D",
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ville_heinola.mp3",
-      "shoots_catches": "L",
-      "sweater_number": 14,
-      "team_tri": "VGK",
-      "upstream_verified": true,
-      "weight_kg": 84
-    },
     "8481580": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8481580.mp3",
@@ -11228,29 +11205,6 @@
       "team_tri": "CHI",
       "upstream_verified": true,
       "weight_kg": 82
-    },
-    "8482861": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8482861.mp3",
-      "birth_country": "CAN",
-      "birth_date": "2002-11-14",
-      "eliteprospects_id": "201802",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Vincent%20Iorio",
-      "eliteprospects_slug": "vincent-iorio",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/201802/vincent-iorio",
-      "first_name": "Vincent",
-      "full_name_en": "Vincent Iorio",
-      "height_cm": 193,
-      "last_name": "Iorio",
-      "player_id": 8482861,
-      "position_code": "D",
-      "pronunciation_source": "nhl.com_team_pronunciation_guide",
-      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/ptixbbrra9g2qfqevh4z.mp3",
-      "shoots_catches": "R",
-      "sweater_number": 6,
-      "team_tri": "NYR",
-      "upstream_verified": true,
-      "weight_kg": 94
     },
     "8482866": {
       "audio_cached": true,
@@ -24581,29 +24535,6 @@
       "team_tri": "CHI",
       "weight_kg": 102
     },
-    "8481572": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8481572.mp3",
-      "birth_country": "FIN",
-      "birth_date": "2001-03-02",
-      "eliteprospects_id": "428795",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Ville%20Heinola",
-      "eliteprospects_slug": "ville-heinola",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/428795/ville-heinola",
-      "first_name": "Ville",
-      "full_name_en": "Ville Heinola",
-      "height_cm": 183,
-      "last_name": "Heinola",
-      "player_id": 8481572,
-      "position_code": "D",
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/ville_heinola.mp3",
-      "shoots_catches": "L",
-      "sweater_number": 14,
-      "team_tri": "VGK",
-      "upstream_verified": true,
-      "weight_kg": 84
-    },
     "8481580": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8481580.mp3",
@@ -27538,29 +27469,6 @@
       "sweater_number": 63,
       "team_tri": "SJS",
       "weight_kg": 98
-    },
-    "8482861": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8482861.mp3",
-      "birth_country": "CAN",
-      "birth_date": "2002-11-14",
-      "eliteprospects_id": "201802",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Vincent%20Iorio",
-      "eliteprospects_slug": "vincent-iorio",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/201802/vincent-iorio",
-      "first_name": "Vincent",
-      "full_name_en": "Vincent Iorio",
-      "height_cm": 193,
-      "last_name": "Iorio",
-      "player_id": 8482861,
-      "position_code": "D",
-      "pronunciation_source": "nhl.com_team_pronunciation_guide",
-      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/ptixbbrra9g2qfqevh4z.mp3",
-      "shoots_catches": "R",
-      "sweater_number": 6,
-      "team_tri": "NYR",
-      "upstream_verified": true,
-      "weight_kg": 94
     },
     "8482866": {
       "audio_cached": true,
@@ -30839,7 +30747,7 @@
       "weight_kg": 92
     }
   },
-  "roster_players": 786,
+  "roster_players": 784,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
