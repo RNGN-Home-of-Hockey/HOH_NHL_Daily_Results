@@ -19,6 +19,7 @@ import { persistNhlLiveGame, runNhlLiveScoreMaintenance } from "./nhl-live-score
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
+import { handleVkOauthStore } from "./vk-oauth-helper.js";
 import { getPostgameIngestionStatus, runPostgameFinalizer } from "./postgame-finalizer.js";
 import { broadcastInsightAnalyticsSummary } from "./broadcast-insight-history.js";
 import { runFanPredictionDigest, runFanPredictionSettlement } from "./telegram-center-v29-predictions.js";
@@ -38,6 +39,9 @@ export default {
 
     const vkOauthResponse = handleVkOauthHelper(request, path);
     if (vkOauthResponse) return vkOauthResponse;
+
+    const vkOauthStoreResponse = await handleVkOauthStore(request, env, path);
+    if (vkOauthStoreResponse) return vkOauthStoreResponse;
 
     if (path === "/go/winline") {
       return winlineClickRoute(request, env);
