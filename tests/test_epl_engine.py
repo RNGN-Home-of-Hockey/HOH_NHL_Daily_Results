@@ -155,6 +155,14 @@ def test_build_cards_groups_and_limits():
     assert cards == sorted(cards, key=lambda c: (-c["score"], -c["evidence"]["sample"]))
 
 
+def test_news_in_russian():
+    assert eng.news_ru("Knee injury - Unknown return date") == "Травма колена — срок возвращения неизвестен"
+    assert eng.news_ru("Hamstring injury - Expected back 25 Oct") == "Травма задней поверхности бедра — ожидается к 25 октября"
+    assert eng.news_ru("Unspecified injury - 75% chance of playing") == "Травма — шанс сыграть 75%"
+    assert eng.news_ru("Suspended until 2 Nov") == "Дисквалификация до 2 ноября"
+    assert eng.news_ru("Something new") == "Something new" and eng.news_ru(None) is None
+
+
 def main() -> None:
     for name, function in sorted(globals().items()):
         if name.startswith("test_") and callable(function):

@@ -731,6 +731,43 @@ def team_profile(rows_all: list[dict], before: str, xg: dict[int, dict[int, floa
     }
 
 
+INJURY_RU = {
+    "knee": "колена", "hamstring": "задней поверхности бедра", "thigh": "бедра", "ankle": "голеностопа", "calf": "икры",
+    "back": "спины", "shoulder": "плеча", "leg": "ноги", "foot": "стопы", "groin": "паха", "arm": "руки", "achilles": "ахилла",
+    "shin": "голени", "hip": "тазобедренного сустава", "head": "головы", "neck": "шеи", "toe": "пальца ноги", "wrist": "запястья",
+}
+MONTHS_RU = {"jan": "января", "feb": "февраля", "mar": "марта", "apr": "апреля", "may": "мая", "jun": "июня", "jul": "июля",
+             "aug": "августа", "sep": "сентября", "oct": "октября", "nov": "ноября", "dec": "декабря"}
+
+
+def news_ru(text: str | None) -> str | None:
+    """Fantasy's English injury news in Russian for the operators ("Knee injury - Unknown return date" →
+    "Травма колена — срок возвращения неизвестен"); an unknown wording stays as it is."""
+    if not text:
+        return None
+    date = lambda d, m: f"{int(d)} {MONTHS_RU.get(m[:3].lower(), m)}"
+    match = re.match(r"^(?:(\w+) injury|Knock|Illness)\s*-\s*(.+)$", text.strip(), re.I)
+    if match:
+        part = (match.group(1) or "").lower()
+        head = ("Ушиб" if text.lower().startswith("knock") else "Болезнь" if text.lower().startswith("illness")
+                else f"Травма {INJURY_RU[part]}" if part in INJURY_RU else "Травма" if part == "unspecified" else None)
+        tail = match.group(2)
+        if head:
+            if (m := re.match(r"^(\d+)% chance of playing$", tail, re.I)):
+                return f"{head} — шанс сыграть {m.group(1)}%"
+            if (m := re.match(r"^Expected back (\d+) (\w+)$", tail, re.I)):
+                return f"{head} — ожидается к {date(m.group(1), m.group(2))}"
+            if re.match(r"^Unknown return date$", tail, re.I):
+                return f"{head} — срок возвращения неизвестен"
+    if (m := re.match(r"^Suspended until (\d+) (\w+)$", text.strip(), re.I)):
+        return f"Дисквалификация до {date(m.group(1), m.group(2))}"
+    if (m := re.match(r"^Has joined (.+?) on loan", text.strip(), re.I)):
+        return f"Ушёл в аренду в {m.group(1)}"
+    if re.match(r"^not included in squad", text.strip(), re.I):
+        return "Не включён в заявку"
+    return text
+
+
 def player_board_rows(event: dict, ctx: dict, cards: list[dict]) -> list[dict]:
     """Every player Winline prices for the match: odds, our record, model chance vs price, best card."""
     best = {}
@@ -750,7 +787,7 @@ def player_board_rows(event: dict, ctx: dict, cards: list[dict]) -> list[dict]:
             vs = [a for a in ctx["apps"].get(player["pl_id"], []) if a["opp"] == opp and a["kickoff"] < ctx["before"]][:8]
             row.update({"pl_id": player["pl_id"], "name_ru": player.get("name_ru"), "position": player.get("position"),
                         "goals": season.get("goals_scored"), "xg": season.get("expected_goals"), "xg90": season.get("expected_goals_per_90"),
-                        "minutes": season.get("minutes"), "penalty_taker": season.get("penalties_order") == 1, "news": season.get("news"),
+                        "minutes": season.get("minutes"), "penalty_taker": season.get("penalties_order") == 1, "news": news_ru(season.get("news")),
                         "last5": [r.get("goals_scored") for r in (player.get("season_2026_27_by_gameweek") or [])[-5:]],
                         "vs_opponent": {"apps": len(vs), "scored_in": sum(1 for a in vs if a["goals"] > 0)}})
             model = scoring_probability(player)
