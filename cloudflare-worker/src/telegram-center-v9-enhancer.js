@@ -1,5 +1,6 @@
 import fullNames from "../../ru_full_names.json" with { type: "json" };
 import salaryCache from "../../player_salary_2026_27.json" with { type: "json" };
+import { loadNameOverrides, mergedNames } from "./telegram-center-player-names.js";
 
 const NHL = "https://api-web.nhle.com/v1";
 const API = "/api/telegram-center-v9";
@@ -22,7 +23,8 @@ export async function handleTelegramCenterV9Enhancer(request, env, path) {
   if (path === "/api/telegram-center-v7/games" && request.method === "GET") return gamesForDate(request, env);
   if (path === "/api/telegram-center-v7/players" && request.method === "GET") return playersBySalary(request, env);
   if (path === `${API}/calendar` && request.method === "GET") return calendarForMonth(request, env);
-  if (path === `${API}/ru-names` && request.method === "GET") return json({ok:true,names:fullNames||{}});
+  // Sports.ru names with the admins' corrections from the bot on top
+  if (path === `${API}/ru-names` && request.method === "GET") return json({ok:true,names:env?.DB?mergedNames(await loadNameOverrides(env.DB)):(fullNames||{})});
   if (path === `${API}/salaries` && request.method === "GET") return json({ok:true,season:salaryCache?.season||"2026-27",source:salaryCache?.source||"PuckPedia",players:salaryCache?.players||{}});
   if (path === `${API}/media` && request.method === "GET") return mediaConfig(env);
   return null;

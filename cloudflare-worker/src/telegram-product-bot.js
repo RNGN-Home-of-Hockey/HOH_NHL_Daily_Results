@@ -1,3 +1,4 @@
+import { handleAdminMessage, handleAdminCallback } from "./telegram-center-admin-bot.js";
 const DEFAULT_CENTER_WEBHOOK_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram/center?v=20260921-1";
 const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v3";
 const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
@@ -72,11 +73,14 @@ export async function handleTelegramProductBotRequest(request, env, path) {
 
   const callback = update.callback_query || null;
   if (callback) {
+    const admin = await adminCallback(env, callback);
+    if (admin.handled) return json({ ok: true, action: "admin_callback" });
     const outcome = await processCenterReminderCallback(env, callback);
     if (outcome.handled) return json({ ok: true, action: "game_reminder_callback", ...outcome });
   }
 
   const message = update.message || null;
+  if (message && (await adminMessage(env, message)).handled) return json({ ok: true, action: "admin_command" });
   console.log("telegram_center_update", {
     has_message: Boolean(message),
     has_callback: Boolean(callback),
@@ -800,14 +804,35 @@ async function answerCenterCallback(env, callbackId, text) {
 }
 
 
+// admin commands (/name …) — a failure here never blocks the ordinary handling of the update
+async function adminMessage(env, message) {
+  try {
+    return await handleAdminMessage(env, message, (payload) => telegramRequest(env, "sendMessage", payload));
+  } catch (error) {
+    console.error("center admin message failed", error);
+    return { handled: false };
+  }
+}
+async function adminCallback(env, callback) {
+  try {
+    return await handleAdminCallback(env, callback, (payload) => telegramRequest(env, "sendMessage", payload), (id, text) => answerCenterCallback(env, id, text));
+  } catch (error) {
+    console.error("center admin callback failed", error);
+    return { handled: false };
+  }
+}
+
 async function processPolledCenterUpdate(env, update) {
   const updateId = Number(update?.update_id || 0) || null;
   const callback = update?.callback_query || null;
   if (callback) {
+    const admin = await adminCallback(env, callback);
+    if (admin.handled) return { retry: false, handled: true };
     const outcome = await processCenterReminderCallback(env, callback);
     if (outcome.handled) return { ...outcome, retry: Boolean(outcome.retry) };
   }
   const message = update?.message || null;
+  if (message && (await adminMessage(env, message)).handled) return { retry: false, handled: true };
   if (!message || message.chat?.type !== "private") {
     await recordCenterDiagnostic(env, {
       stage: "poll_update_skipped",
