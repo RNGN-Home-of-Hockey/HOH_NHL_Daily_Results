@@ -7,8 +7,10 @@
 // championship 1 is the Premier League ("АПЛ"), sport 1 is football. Some market groups (players, quick markets)
 // are loaded by the page only when their tab is opened, so every tab is clicked before the lines are read.
 // Sequential, with a pause between events; stops at once if the site shows a challenge page.
+// Every run keeps a gzip snapshot (snapshots/<time>/) — the history of line movements — and rewrites latest.json.
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { normalizeStoreEvent } from './catalogue.mjs';
@@ -37,7 +39,8 @@ const log = (message) => console.log(`[${new Date().toISOString().slice(11, 19)}
 
 async function launch(headed) {
   const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined;
-  const options = { headless: !headed, executablePath };
+  // Chrome refuses to start as root without --no-sandbox (the Linux server runs the job as root, in a throwaway profile).
+  const options = { headless: !headed, executablePath, args: process.getuid?.() === 0 ? ['--no-sandbox'] : [] };
   if (!executablePath) options.channel = process.env.WINLINE_BROWSER_CHANNEL || 'chrome';
   return chromium.launch(options);
 }
@@ -115,7 +118,8 @@ async function main() {
     await page.waitForFunction(() => window.apiWlb?.getEvents?.()?.dbCollection?.data?.length > 0, null, { timeout: 40000 });
     let events = (await storeEvents(page)).filter((e) => e.championship === args.championship);
     if (args.events.length) events = args.events.map((id) => events.find((e) => e.id === id) || { id, members: [], date: null, championship: args.championship });
-    events = events.sort((a, b) => String(a.date).localeCompare(String(b.date))).slice(0, args.limit);
+    const when = (e) => new Date(e.date).getTime() || Number.MAX_SAFE_INTEGER;
+    events = events.sort((a, b) => when(a) - when(b)).slice(0, args.limit);  // nearest first: they carry the richest lines
     if (!events.length) throw new Error(`No football events found for championship ${args.championship}`);
     log(`${events.length} events to capture into ${snapshotDir}`);
     for (const [number, event] of events.entries()) {
@@ -133,7 +137,7 @@ async function main() {
         normalized.captured_at = new Date().toISOString();
         normalized.live = raw.live;
         normalized.tabs_opened = tabs;
-        fs.writeFileSync(path.join(snapshotDir, `${event.id}.raw.json`), JSON.stringify(raw));
+        fs.writeFileSync(path.join(snapshotDir, `${event.id}.raw.json.gz`), zlib.gzipSync(JSON.stringify(raw)));
         captured.push(normalized);
         const s = normalized.summary;
         log(`${number + 1}/${events.length} ${normalized.home} - ${normalized.away}: ${s.market_lines} lines, ${s.market_types} types, ${s.player_lines} player lines (tabs: ${tabs.length})`);
@@ -148,7 +152,7 @@ async function main() {
     await browser.close();
   }
   const payload = { captured_at: new Date().toISOString(), source: 'winline-site-store', sport_id: 1, championship_id: args.championship, events: captured, errors };
-  fs.writeFileSync(path.join(snapshotDir, 'index.json'), JSON.stringify(payload));
+  fs.writeFileSync(path.join(snapshotDir, 'index.json.gz'), zlib.gzipSync(JSON.stringify(payload)));  // the line history, kept compressed
   fs.writeFileSync(path.join(args.out, 'latest.json'), JSON.stringify(payload));
   log(`done: ${captured.length} events, ${errors.length} errors; latest.json updated`);
   if (!captured.length) process.exitCode = 1;

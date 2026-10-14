@@ -1,0 +1,12 @@
+[Unit]
+Description=HOH EPL: Winline lines -> site data -> hoh-epl worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/hoh-epl/repo/deploy/epl/run_lines.sh
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=4G
+TimeoutStartSec=30min

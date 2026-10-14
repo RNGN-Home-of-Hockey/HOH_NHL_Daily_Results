@@ -1,0 +1,10 @@
+[Unit]
+Description=HOH EPL: Winline lines every 10 minutes (counted from the end of the previous run)
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=10min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

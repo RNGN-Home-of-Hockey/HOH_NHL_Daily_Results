@@ -114,22 +114,38 @@ Checks: fitted before 2025 and tested on 2025/26+ it correlates 0.46 with real g
 
 Aggregators looked at (robots.txt and a plain request, 2026-10-13): Sofascore answers a bot challenge and its robots.txt closes seasonal paths: not used, no workaround. Understat: `Disallow: /`. FotMob: pages allowed, `/api/*` disallowed for generic bots. Flashscore: the feed host has no robots.txt, but flashscore.com disallows `/x/`; the owner's tennis project uses that feed. WhoScored, FootyStats, 365Scores: not used. Not scanned, because the own model already tracks real xG at 0.85; Flashscore is the first one to try if a second opinion is ever needed.
 
-## Insight engine and operator site
+## Trend engine v2 and grading (`tools/epl_engine.py`)
 
-- `tools/epl_insights.py`: rules head-to-head wins / unbeaten run / totals / both teams to score, team scoring form against the exact team-total line, chance creation against this opponent (shots in the box vs the club's usual), league unbeaten run, player-to-score form. Whole-number lines count exact hits as refunds, not wins. Freshness limits: the latest meeting must be within 6 years, form windows look back 14 months, the chance baseline three seasons. One card per fact with the other lines as `alternatives`; at most 2 cards per rule and 12 per match. Score 0-100 = history vs price (Wilson lower bound against the implied probability), sample size, usable price, rule weight: editorial relevance, not a probability. 7 tests in `tests/test_epl_insights.py`.
-- `tools/epl_site_data.py`: Winline snapshot + our data (+ Russian names) into `local-data/epl/site/site.json`.
-- `epl-site/`: static light-theme operator console (match list with prices and best score, tabs Recommendations / all Winline markets / Players / Head-to-head / Form and statistics, "Эфир" queue with a placeholder plate until the Winline plate designs arrive, keyboard: arrows or j/k to switch matches, 1-5 for tabs). `python -I tools/epl_serve.py` serves it locally on 127.0.0.1:8780 with the data folder mounted as `/data/`; on a server serve `epl-site/` and copy `site.json` into its `data/` folder.
+Owner 2026-10-14: a full site with the most interesting trends and bets for teams and players on the Winline line, a big choice and a grading of how strong each plate is. The basic rules of `tools/epl_insights.py` stay; `epl_engine.py` adds the club match history (`club_rows`: result, halves and goal order from the detail pages, corners, cards, shots) and these families, each tied to the exact Winline line:
+
+- Result: win share in recent form, home/away form, win to nil, clean sheet, handicap margin (one card per club: the boldest line the record still covers, odds 1.40+).
+- Goals: match total, both teams to score, team goal buckets (0 / exactly 1 / 2 / 3+).
+- Halves: first-half total, team goal in the first half, which half has more goals, scores in both halves, wins a half / both halves, half-time lead.
+- Match flow: scores first, last goal, first goal by minute 10/15.
+- Corners and cards (cards are marked beta: referee not yet used).
+- Players: model chance vs price (xG Opta per 90 blended with last season or the position's usual level × average minutes of the last five rounds, Poisson; only 20%+ chances and odds up to 8), record against this opponent (4+ meetings in 6 years), first/last goal of the match share.
+
+Every card gets `category` (Исход, Голы, Таймы, Ход матча, Угловые, Карточки, Игроки), `basis` (Личные встречи, Форма, Моменты, Модель), `score` and a tier: Огонь ≥ 80, Сильная ≥ 65, Рабочая ≥ 50, Фон ≥ 35 (stars 5–2). Score = 40% history vs price (Wilson lower bound / implied probability), 20% sample, 15% usable odds, 15% how striking (perfect record, long run, near-perfect, real price), 10% rule weight. Сильная/Огонь need at least four hits, and a sample under 8 only when it is perfect ("4 из 4"). Same fact on several lines = one card with alternatives; at most 3 cards per rule and 45 per match. Boards: `team_profile` (last 8 matches: form, goals, xG, totals, BTTS, clean sheets, halves, scores first, corners, cards) and `player_board_rows` (every Winline player line with odds, model vs price, form, record vs opponent, best card). 10 tests in `tests/test_epl_engine.py`.
+
+`tools/epl_site_data.py` writes `local-data/epl/site/site.json`: matches (quick odds, every market, players, head-to-head, form and stats, cards), `teams`, `tiers`, `categories`, `bases`.
+
+## Operator site v2 (`epl-site/`)
+
+Light theme, four pages: **Лента** (every card of every match; filters by tier, market, basis, match, team, odds range, text; five sort orders), **Матчи** (match list; tabs Карточки / Рынки Winline / Игроки / Личные встречи / Форма и статистика), **Игроки** (all player lines: first/anytime/last odds, model vs price, value, goals/xG, last five, record vs opponent, best card; sortable), **Команды** (profiles of all 20 clubs, sortable; click = the club's cards or its next match). «Эфир» queue on every page (placeholder plate until the Winline designs arrive). The data reloads every 5 minutes. Locally: `python -I tools/epl_serve.py`.
+
+## Hosting and pipeline
+
+- **Cloudflare worker `hoh-epl`** (account rngn f7f0376b, https://hoh-epl.rngn.workers.dev, config `epl-worker/wrangler.jsonc`): serves `epl-site/`, `GET /data/site.json` from KV `hoh-epl-data`, `POST /api/ingest` (Bearer secret `EPL_INGEST_KEY`, gzip body with `x-epl-encoding: gzip`), `GET /api/health`. noindex everywhere. Separate from the NHL workers and hoh-data-core. Deploy: `wrangler deploy --config epl-worker/wrangler.jsonc`.
+- **Server `hoh`** (`/opt/hoh-epl`): `repo/` = copy of the EPL tools, `repo/local-data/epl/` = data, `secrets/ingest.key` (0600). `hoh-epl-lines.timer` runs `deploy/epl/run_lines.sh` 10 minutes after the previous run ends: Winline capture (server Chromium binary in a throwaway profile, never the hoh-chromium service) → `epl_site_data.py` → `epl_publish.py`. Every capture is kept gzip-compressed in `winline/snapshots/<time>/` — the database of line movements. Nice 10, idle IO, 4 GB memory cap.
+- **Statistics come from the PC**: the Premier League API answers 403 and Fantasy 503 to the server's Russian IP. `tools/epl_refresh_stats.py` (Windows Task Scheduler) runs `epl_collect.py all` + `epl_xg.py`, sends `normalized/` as one archive, and `deploy/epl/receive_stats.sh` swaps it in under the same lock as the line job. If the PC is off, lines keep updating and the statistics wait.
+- Update code on the server: copy the changed files into `/opt/hoh-epl/repo` (the server has no GitHub access).
 
 ## Plan
 
-1. Done: collector, dataset, Russian names, tests, this document, Winline capture, insight rules, operator site (local).
-2. Winline football collector: browser-based like the NBA script (Playwright store reader) plus the XML feed; timestamped snapshots so odds history and in-play movement are kept; run in GitHub Actions or on the owner's server. Football tables in D1 under an `epl_` prefix, migration number taken from the current highest at that time.
-3. Football data core in D1 (teams, players, matches, events, lineups, team stats per match, Russian names) and a daily/live sync.
-4. Insight engine: rule families above, evaluators on the exact Winline line, AIR SCORE style editorial score.
-5. Plates: Winline plate designs come from the owner; renderer template and `/broadcast` football room.
+1. Done: collector, dataset, Russian names, Winline capture, own xG, engine v2 with tiers, operator site v2, worker on rngn, server pipeline.
+2. Next: referee for cards, line movement on cards (snapshot history), live mode (in-play lines), plates when the Winline designs arrive (renderer template, `/broadcast` football room).
 
 ## Open decisions
 
-- Understat xG (third-party terms) vs own chance-quality proxy from PL shot/box stats.
-- Where Winline snapshots run (GitHub Actions like NBA, or the owner's server) and how long they are kept.
 - Licensed data provider before commercial use: all free sources above are unofficial and undocumented.
+- Access to the operator site (open link with noindex now; a password can be added in the worker).
