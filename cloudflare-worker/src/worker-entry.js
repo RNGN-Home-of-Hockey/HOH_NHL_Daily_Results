@@ -18,6 +18,7 @@ import { getWinlineLiveFeedMaintenanceStatus, runWinlineLiveFeedMaintenance } fr
 import { persistNhlLiveGame, runNhlLiveScoreMaintenance } from "./nhl-live-score-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { runVkCoverScrape } from "./telegram-center-vk-cover-scrape.js";
+import { runPlayerProfileMaintenance } from "./telegram-center-v31-player-profile.js";
 import { getVkArchiveDiscovery } from "./telegram-center-vk-discovery.js";
 import { handleVkOauthHelper } from "./vk-oauth-helper.js";
 import { handleVkOauthStore } from "./vk-oauth-helper.js";
@@ -214,6 +215,12 @@ export default {
           } catch (error) {
             console.error("scheduled fan prediction morning digest failed", error);
           }
+        }
+        // the portraits of the players (the hexagon on the player page): the NHL stats of the league, once in 6 hours
+        try {
+          await runPlayerProfileMaintenance(env);
+        } catch (error) {
+          console.error("scheduled player profile maintenance failed", error);
         }
         if (envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
           try {
