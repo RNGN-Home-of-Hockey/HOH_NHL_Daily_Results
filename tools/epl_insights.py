@@ -47,12 +47,25 @@ def wilson_lower(hits: int, n: int, z: float = 1.0) -> float:
     return max(0.0, (centre - margin) / (1 + z * z / n))
 
 
-def editorial_score(rate_low: float, odds: float, sample: int, weight: float = 0.5) -> int:
+def editorial_score(rate_low: float, odds: float, sample: int, weight: float = 0.5, wow: float = 0.0) -> int:
+    """0..100: history against the price, sample size, a usable price, how striking the fact is, rule weight."""
     lift = rate_low / (1.0 / odds)  # history against what the price implies; >1 means the history is stronger
     lift_part = min(max((lift - 0.9) / 1.1, 0.0), 1.0)
     sample_part = min(sample / 10.0, 1.0)
     odds_part = 1.0 if 1.5 <= odds <= 5.0 else 0.6 if odds <= 8.0 else 0.3
-    return round(100 * (0.45 * lift_part + 0.25 * sample_part + 0.20 * odds_part + 0.10 * weight))
+    return round(100 * (0.40 * lift_part + 0.20 * sample_part + 0.15 * odds_part + 0.15 * wow + 0.10 * weight))
+
+
+def default_wow(hits: int, n: int, odds: float) -> float:
+    """How striking a record is, 0..1: perfect, near perfect, strong, or a real price with a solid record."""
+    rate = hits / n if n else 0.0
+    if n >= 8 and hits == n:
+        return 1.0
+    if n >= 6 and rate >= 0.9:
+        return 0.7
+    if rate >= 0.8:
+        return 0.45
+    return 0.25 if odds >= 3.0 and rate >= 0.5 else 0.0
 
 
 def index_matches(matches: list[dict]) -> dict[int, list[dict]]:
@@ -111,9 +124,13 @@ def market_ref(market: dict, picked: dict, label: str) -> dict:
 
 
 def make_candidate(rule: str, title: str, evidence: dict, market: dict, picked: dict, label: str, *, weight: float = 0.5,
-                   tags: list[str] | None = None, details: dict | None = None) -> dict | None:
-    rate_low = wilson_lower(evidence["hits"], evidence["sample"])
-    score = editorial_score(rate_low, picked["odds"], evidence["sample"], weight)
+                   tags: list[str] | None = None, details: dict | None = None, wow: float | None = None,
+                   rate_low: float | None = None) -> dict | None:
+    if rate_low is None:
+        rate_low = wilson_lower(evidence["hits"], evidence["sample"])
+    if wow is None:
+        wow = default_wow(evidence["hits"], evidence["sample"], picked["odds"])
+    score = editorial_score(rate_low, picked["odds"], evidence["sample"], weight, wow)
     if score < MIN_SCORE:
         return None
     evidence = {**evidence, "rate": round(evidence["hits"] / evidence["sample"], 3), "rate_conservative": round(rate_low, 3),

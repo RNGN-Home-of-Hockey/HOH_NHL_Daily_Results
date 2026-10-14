@@ -72,6 +72,7 @@ TEAM_STAT_KEYS = {
     "carries": "carries", "progressive_carries": "progressive_carries", "duels_won": "duel_won", "aerials_won": "aerial_won",
 }
 TEAM_STATS_FROM_SEASON = 2016  # all matches from this season; matches between current clubs from 2006
+DETAILS_ALL_FROM_SEASON = 2023  # match detail pages (scoring team of each goal, lineups) for every match from this season
 # Letters that Unicode decomposition does not turn into plain ASCII.
 LATIN_FIXES = str.maketrans({"ø": "o", "Ø": "O", "æ": "ae", "Æ": "AE", "ß": "ss", "đ": "d", "Đ": "D", "ł": "l", "Ł": "L", "œ": "oe", "ı": "i"})
 
@@ -547,7 +548,9 @@ def stage_ranked(refresh: bool) -> None:
 
 def stage_details(refresh: bool) -> None:
     clubs = {int(t["id"]) for t in current_teams()}
-    todo = [m for m in load_matches() if m["home"]["id"] in clubs and m["away"]["id"] in clubs]
+    # matches between current clubs (head-to-head) plus every match of recent seasons (form, halves, lineups)
+    todo = [m for m in load_matches()
+            if (m["home"]["id"] in clubs and m["away"]["id"] in clubs) or int((m["season"] or "0")[:4] or 0) >= DETAILS_ALL_FROM_SEASON]
     todo.sort(key=lambda m: m["kickoff_utc"] or "", reverse=True)  # newest first: the most useful data arrives first
     folder = RAW / "pulselive" / "fixture-details"
     missing_path = folder / "_missing.txt"

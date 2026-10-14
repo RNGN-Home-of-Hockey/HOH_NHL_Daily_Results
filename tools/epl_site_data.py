@@ -10,6 +10,7 @@ Reads local-data/epl/normalized/*.json (tools/epl_collect.py build) and the Winl
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import sys
 from datetime import datetime, timezone
@@ -17,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import epl_collect as epl  # noqa: E402
+import epl_engine as eng  # noqa: E402
 import epl_insights as ins  # noqa: E402
 
 STAT_KEYS = ("xg_proxy", "shots", "shots_on_target", "shots_inside_box", "touches_in_opp_box", "possession_pct", "corners_won",
@@ -120,29 +122,6 @@ def quick_odds(event: dict) -> dict:
     return quick
 
 
-def player_table(event: dict, ctx: dict) -> list[dict]:
-    rows: dict[tuple, dict] = {}
-    for market in event["markets"]:
-        if market["family"] != "player_goal" or not market.get("subject") or not market["outcomes"]:
-            continue
-        subject = market["subject"]
-        row = rows.setdefault((subject["team"], subject["name"]), {"name": subject["name"], "team": subject["team"], "number": subject.get("number")})
-        row[market["variant"]] = market["outcomes"][0]["odds"]
-    table = []
-    for (team, name), row in rows.items():
-        club = ctx["home"] if team == "home" else ctx["away"]
-        player = ins.match_player(name, club, ctx["players"])
-        if player:
-            history = [r for r in (player.get("season_2026_27_by_gameweek") or []) if (r.get("minutes") or 0) > 0][-5:]
-            season = player.get("season_2026_27") or {}
-            row.update({"pl_id": player["pl_id"], "position": player["position"], "goals_season": season.get("goals_scored"),
-                        "xg_season": season.get("expected_goals"), "penalty_taker": season.get("penalties_order") == 1,
-                        "last5_goals": [r.get("goals_scored") for r in history], "news": season.get("news")})
-        table.append(row)
-    table.sort(key=lambda r: (r.get("anytime") or 99))
-    return table
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--winline", default=str(epl.OUT / "winline" / "latest.json"))
@@ -161,6 +140,11 @@ def main(argv: list[str] | None = None) -> int:
     names = {t["id"]: t["name_ru"] or t["name"] for t in teams}
     matches_by_id = {m["id"]: m for m in matches}
     by_club = ins.index_matches(matches)
+    rows = eng.club_rows(matches, stats)
+    details = {int(k): v for k, v in load("match_details.json").items()}
+    apps = eng.appearances(details, matches_by_id)
+    xg = ({int(k): {int(t): v for t, v in per.items()} for k, per in load("xg_proxy.json").items()}
+          if (epl.NORM / "xg_proxy.json").exists() else {})
 
     out_matches, skipped = [], []
     for event in snapshot["events"]:
@@ -169,21 +153,36 @@ def main(argv: list[str] | None = None) -> int:
             skipped.append(f"{event['home']} - {event['away']}")
             continue
         before = iso_seconds(event["starts_at"])
-        ctx = {"by_club": by_club, "stats": stats, "names": names, "before": before, "home": home["id"], "away": away["id"], "players": players}
+        ctx = {"by_club": by_club, "stats": stats, "names": names, "before": before, "home": home["id"], "away": away["id"], "players": players,
+               "rows": rows, "apps": apps}
+        cards = eng.build_cards(event, ctx)
         out_matches.append({
             "event_id": event["event_id"], "starts_at": before, "live": event.get("live", False), "captured_at": event.get("captured_at"),
             "home": {"id": home["id"], "name": home["name"], "name_ru": names[home["id"]]},
             "away": {"id": away["id"], "name": away["name"], "name_ru": names[away["id"]]},
-            "quick": quick_odds(event), "summary": event["summary"], "markets": event["markets"], "players": player_table(event, ctx),
+            "quick": quick_odds(event), "summary": event["summary"], "markets": event["markets"], "players": eng.player_board_rows(event, ctx, cards),
             "h2h": h2h_block(h2h, home["id"], away["id"], matches_by_id, names, people, before),
             "form": {"home": form_rows(by_club, home["id"], before, names), "away": form_rows(by_club, away["id"], before, names)},
             "stats": {side: {"recent": averages(by_club, stats, club["id"], before, STATS_RECENT),
                              "baseline": averages(by_club, stats, club["id"], before, STATS_BASELINE)}
                       for side, club in (("home", home), ("away", away))},
-            "insights": ins.build_match_insights(event, ctx),
+            "insights": cards,
         })
     out_matches.sort(key=lambda m: m["starts_at"])
-    payload = {"generated_at": epl.now_iso(), "winline_captured_at": snapshot["captured_at"], "league": "АПЛ", "matches": out_matches}
+    now = epl.now_iso()
+    teams_board = []
+    for team in teams:
+        club = team["id"]
+        upcoming = next((m for m in out_matches if club in (m["home"]["id"], m["away"]["id"])), None)
+        tiers = Counter(c["tier"] for m in out_matches if club in (m["home"]["id"], m["away"]["id"]) for c in m["insights"])
+        teams_board.append({"id": club, "name": team["name"], "name_ru": names[club], "abbr": team.get("abbr"),
+                            "profile": eng.team_profile(rows.get(club, []), now, xg, club), "cards_by_tier": dict(tiers),
+                            "next": ({"event_id": upcoming["event_id"], "starts_at": upcoming["starts_at"],
+                                      "opponent": upcoming["away" if upcoming["home"]["id"] == club else "home"]["name_ru"],
+                                      "venue": "H" if upcoming["home"]["id"] == club else "A"} if upcoming else None)})
+    payload = {"generated_at": now, "winline_captured_at": snapshot["captured_at"], "league": "АПЛ", "matches": out_matches,
+               "teams": teams_board, "tiers": [{"id": t, "label": label, "min_score": s, "stars": st} for s, t, label, st in eng.TIERS],
+               "categories": sorted({c for c, _ in eng.RULE_META.values()}), "bases": sorted({b for _, b in eng.RULE_META.values()})}
     epl.write_json(Path(args.out), payload)
     total = sum(len(m["insights"]) for m in out_matches)
     print(f"site data: {len(out_matches)} matches, {total} insight candidates, skipped {skipped or 'none'} -> {args.out}")
