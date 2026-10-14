@@ -253,6 +253,17 @@ export function applyHeroLive(payload, live) {
   return payload;
 }
 
+// The two buttons on top of the home page (the owner: «вчера 16 матчей / сегодня 2 матча»): the day the page shows and the last
+// day before it with games, each with its number of games. The other day is loaded only when the viewer taps it.
+export function dayButtons(games, stripDay) {
+  if (!stripDay) return null;
+  const playable = (games || []).filter((g) => g.phase !== "postponed");
+  const count = (day) => playable.filter((g) => g.date === day).length;
+  const before = [...new Set(playable.map((g) => g.date).filter((d) => d < stripDay))].sort();
+  const other = before[before.length - 1] || null;
+  return { main: { date: stripDay, count: count(stripDay) }, other: other ? { date: other, count: count(other) } : null };
+}
+
 export function buildHomePayload({ games, now, featured = null, index = null, indexOk = false, clipsBase = DEFAULT_CLIPS_BASE, russianIds = null }) {
   const pick = pickHome(games, now);
   const strip = pick.stripDay ? stripOf(games, pick.stripDay) : [];
@@ -265,6 +276,7 @@ export function buildHomePayload({ games, now, featured = null, index = null, in
     strip_day: pick.stripDay,
     hero_day: pick.heroDay,
     games: strip.map(publicGame),
+    days: dayButtons(games, pick.stripDay),
     featured,
     goals: buildGoalTiles({ games, index, indexOk, now, clipsBase, russianIds }),
   };

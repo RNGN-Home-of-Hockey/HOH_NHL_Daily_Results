@@ -146,4 +146,29 @@ const LIST = `<div class="news"><div class="short-news"><b>14 октября </b
   assert.deepEqual(asked, { url: "https://clips.test/index.json", ttl: 20, timeoutMs: 8000 }, "it waits up to 8 seconds now (4 before)");
 }
 
+// ---- 7) «Вчера · 16 матчей | Сегодня · 2 матча» on top of the home page ----------------------------------------------------------------------
+{
+  const { dayButtons } = await import("../cloudflare-worker/src/telegram-center-v27-home-data.js");
+  const { loadDayPayload } = await import("../cloudflare-worker/src/telegram-center-v27-home.js");
+  const g = (pk, date, phase = "final") => ({ game_pk: pk, date, phase, start: `${date}T23:00:00Z`, start_ms: Date.parse(`${date}T23:00:00Z`), away: { tri: "NJD" }, home: { tri: "DET" }, away_score: 5, home_score: 4 });
+  const games = [g(1, "2026-10-13"), g(2, "2026-10-13"), g(3, "2026-10-13"), g(4, "2026-10-14", "upcoming"), g(5, "2026-10-14", "upcoming"), { ...g(6, "2026-10-12"), phase: "postponed" }, g(7, "2026-10-12")];
+  assert.deepEqual(dayButtons(games, "2026-10-14"), { main: { date: "2026-10-14", count: 2 }, other: { date: "2026-10-13", count: 3 } }, "the day of the page and the last day before it, with their games");
+  assert.deepEqual(dayButtons(games, "2026-10-12").other, null, "nothing before: one button would make no sense");
+  assert.equal(dayButtons(games, null), null);
+  assert.equal(dayButtons(games, "2026-10-13").other.count, 1, "a postponed game does not count");
+  const deps = { loadGames: async () => games, loadRussians: async (env, strip) => strip.map((x) => ({ player_id: x.game_pk, name_ru: "Капризов", line: { kind: "s", goals: 2, assists: 0 } })) };
+  const day = await loadDayPayload({}, { date: "2026-10-13", deps });
+  assert.equal(day.ok, true);
+  assert.deepEqual(day.games.map((x) => x.game_pk), [1, 2, 3], "the strip of that day");
+  assert.equal(day.russians.items.length, 3, "and its Russians with their numbers");
+  assert.equal((await loadDayPayload({}, { date: "yesterday", deps })).error, "invalid_date");
+  const failing = await loadDayPayload({}, { date: "2026-10-13", deps: { ...deps, loadRussians: async () => { throw new Error("nhl down"); } } });
+  assert.deepEqual([failing.ok, failing.russians.ok, failing.games.length], [true, false, 3], "the NHL box scores down: the results still come");
+  const ui = await textOf(handleTelegramCenterV27(new Request("https://x.test/telegram-app/v27-home.js"), {}, "/telegram-app/v27-home.js"));
+  assert.match(ui, /const SECTIONS = \["days", "strip"/, "the switch is the first thing of the home page");
+  assert.match(ui, /data-v27-day="\$\{key\}"/);
+  assert.match(ui, /if \(d\.otherDay\) return `Русские \$\{relDay\(d\.russians\.day, d\.today \|\| localToday\(\)\)\.toLowerCase\(\)\}`;/, "«Русские вчера»");
+  assert.match(ui, /await H\.api\(`\$\{API\}\/day\?date=\$\{encodeURIComponent\(date\)\}`\)/, "the other day is loaded only on a tap");
+}
+
 console.log("polish batch validation passed");

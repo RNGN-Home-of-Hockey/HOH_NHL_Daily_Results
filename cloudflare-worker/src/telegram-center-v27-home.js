@@ -4,10 +4,12 @@ import { stateInfo, phaseOf, DEFAULT_CLIPS_BASE } from "./telegram-center-v26-go
 import { loadNames, fetchJson, seasonIdOf } from "./telegram-center-v26-goals.js";
 import { handleTelegramCenterV19ProductData } from "./telegram-center-v19-product-data.js";
 import { homeScreenApp } from "./telegram-center-v27-home-ui.js";
-import { gameFromRow, buildHomePayload, applyNames, applyGoalCounts, applyHeroLive, stripOf } from "./telegram-center-v27-home-data.js";
+import { gameFromRow, buildHomePayload, applyNames, applyGoalCounts, applyHeroLive, stripOf, publicGame } from "./telegram-center-v27-home-data.js";
 import { buildRussians } from "./telegram-center-v27-russians.js";
 
 export const HOME_PATH = "/api/telegram-center-v27/home";
+// the strip and the Russians of another day (the button «Вчера» on top of the home page)
+export const DAY_PATH = "/api/telegram-center-v27/day";
 export const SCRIPT_PATH = "/telegram-app/v27-home.js";
 const FEATURED_PATH = "/api/telegram-center-v19/featured";
 const NHL_LANDING = (gamePk) => `https://api-web.nhle.com/v1/gamecenter/${gamePk}/landing`;
@@ -174,6 +176,23 @@ export async function loadHomePayload(env, { now = Date.now(), deps = realDeps }
   return payload;
 }
 
+export async function loadDayPayload(env, { date, now = Date.now(), deps = realDeps } = {}) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return { ok: false, error: "invalid_date", status: 400 };
+  if (!env?.DB && deps === realDeps) return { ok: false, error: "missing_d1_binding", status: 503 };
+  const games = await deps.loadGames(env, now);
+  const strip = stripOf(games, date);
+  let russians = { ok: true, day: date, items: [] };
+  if (strip.length && deps.loadRussians) {
+    try {
+      russians = { ok: true, day: date, items: await deps.loadRussians(env, strip, now) };
+    } catch (error) {
+      console.error("v27 day russians failed", error);
+      russians = { ok: false, day: date, items: [] };
+    }
+  }
+  return { ok: true, date, games: strip.map(publicGame), russians };
+}
+
 // All visitors share one answer for a few seconds.
 async function cachedHome(request, env) {
   const cache = globalThis.caches && globalThis.caches.default;
@@ -202,6 +221,17 @@ export async function handleTelegramCenterV27(request, env, path) {
     } catch (error) {
       console.error("v27 home failed", error);
       return json({ ok: false, error: "home_failed" }, 500);
+    }
+  }
+  if (path === DAY_PATH) {
+    if (request.method !== "GET") return json({ ok: false, error: "method_not_allowed" }, 405);
+    try {
+      const payload = await loadDayPayload(env, { date: new URL(request.url).searchParams.get("date") });
+      if (payload.ok === false) return json({ ok: false, error: payload.error }, payload.status || 503);
+      return json(payload, 200, "public, max-age=30");
+    } catch (error) {
+      console.error("v27 day failed", error);
+      return json({ ok: false, error: "day_failed" }, 500);
     }
   }
   if (path === SCRIPT_PATH) {

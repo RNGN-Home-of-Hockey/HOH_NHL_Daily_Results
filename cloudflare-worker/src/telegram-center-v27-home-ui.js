@@ -35,7 +35,7 @@ export function homeScreenApp() {
 
   const st = (S.state = {
     data: null, news: null, newsAt: 0, media: null, mediaAt: 0, busy: false, fails: 0, timer: null, lastAt: 0,
-    revealed: false, sections: {}, queue: [], goalIndex: -1, openNewsId: null, arrowDone: false,
+    revealed: false, sections: {}, queue: [], goalIndex: -1, openNewsId: null, arrowDone: false, dayView: "main", other: null,
     follows: null, followsAt: 0, playerTeams: new Map(), mineOnly: store.get("hoh-home-mine") === "1", hintHidden: store.get("hoh-home-hint") === "1",
     // what the person switched on in the settings: the home page is the same for everybody until then
     prefs: { russians: store.get("hoh-home-russians") !== "0", mine: store.get("hoh-home-mine-on") === "1", sil: store.get("hoh-bg-sil") !== "0" },
@@ -285,6 +285,12 @@ html.v15Light .v27Wl{border-color:#e4a176;background:#fff7f0}
 .v27Goal .sc{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:0 2px}
 .v27Goal .sc img{width:16px;height:16px;object-fit:contain}
 .v27Goal .tm{font-size:11px;color:var(--c-muted);padding:0 2px}
+.v27Days{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border:1px solid var(--c-line);border-radius:14px;background:var(--c-card)}
+.v27Days button{display:grid;gap:1px;justify-items:center;padding:7px 6px;border:0;border-radius:10px;background:none;color:var(--c-text);font:inherit;cursor:pointer}
+.v27Days button b{font-size:14px;font-weight:800}
+.v27Days button span{font-size:12px;color:var(--c-muted);font-weight:600}
+.v27Days button.on{background:var(--c-accent);color:#fff}
+.v27Days button.on span{color:rgba(255,255,255,.85)}
 .v27GoalAll .v27Poster{display:grid;place-content:center;justify-items:center;gap:2px;background:linear-gradient(150deg,#5b21b6,#2a1060);color:#fff}
 .v27GoalAll .v27Poster b{font-size:28px;font-weight:900;line-height:1}
 .v27GoalAll .v27Poster span{font-size:12px;font-weight:800;letter-spacing:.3px;text-transform:uppercase}
@@ -414,12 +420,40 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     return `<div class="v27ChipBox"><button type="button" class="v27Chip ${live ? "live" : done ? "done" : "up"}${why ? " mine" : ""}" data-v27-game="${esc(g.game_pk)}" aria-label="${esc(label)}${why ? ` (${esc(why)})` : ""}"><span class="v27ChipTop">${status}</span><span class="v27ChipMid"><img src="${esc(away.logo || "")}" alt="">${mid}<img src="${esc(homeTeam.logo || "")}" alt=""></span><span class="v27ChipTri">${esc(away.tri || "")} · ${esc(homeTeam.tri || "")}</span>${reason}</button>${vk}</div>`;
   }
 
+  // ---- «Вчера · 16 матчей | Сегодня · 2 матча»: the two days of the strip and of the Russians ---------------------------------
+  function relDay(date, today) {
+    if (!date) return "";
+    if (date === today) return "Сегодня";
+    if (date === prevDay(today)) return "Вчера";
+    if (prevDay(date) === today) return "Завтра";
+    return shortDate(date);
+  }
+  function daysHtml(d) {
+    const days = d.days;
+    if (!days || !days.other || !days.main) return "";
+    const today = d.today || localToday();
+    const btn = (key, x) => `<button type="button" data-v27-day="${key}" class="${st.dayView === key ? "on" : ""}"><b>${esc(relDay(x.date, today))}</b><span>${esc(x.count)} ${plural(x.count, "матч", "матча", "матчей")}</span></button>`;
+    return `<div class="v27Days">${btn("other", days.other)}${btn("main", days.main)}</div>`;
+  }
+  // what the strip and the Russians show: the day of the page or, after a tap on the other button, that day
+  function viewData(d) {
+    if (st.dayView !== "other" || !d.days || !d.days.other) return d;
+    const o = st.other;
+    if (!o || o.date !== d.days.other.date) return { ...d, mode: "results", strip_day: d.days.other.date, games: [], russians: null, loadingOther: true };
+    return { ...d, mode: "results", strip_day: o.date, games: o.games || [], russians: o.russians, otherDay: true };
+  }
+  async function loadOtherDay(date) {
+    const o = await H.api(`${API}/day?date=${encodeURIComponent(date)}`);
+    if (!o || o.ok === false || !Array.isArray(o.games)) throw new Error("day_unavailable");
+    st.other = { date: o.date, games: o.games, russians: o.russians, at: Date.now() };
+  }
+
   function stripHtml(d) {
     const games = d.games || [];
     if (!games.length) return "";
     const hide = noSpoilers();
     const today = localToday();
-    const day = d.strip_day === today ? "сегодня" : shortDate(d.strip_day);
+    const day = d.otherDay ? relDay(d.strip_day, d.today || today).toLowerCase() : d.strip_day === today ? "сегодня" : shortDate(d.strip_day);
     const caption = d.mode === "results" ? `Итоги · ${day}` : `${day.charAt(0).toUpperCase()}${day.slice(1)} · ${games.length} ${plural(games.length, "матч", "матча", "матчей")}`;
     // my games come right after the ones that are on; with "Мои" only they are alone
     let list = games.map((g) => ({ g, why: mineReason(g) }));
@@ -437,6 +471,7 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
   }
 
   function russiansTitle(d) {
+    if (d.otherDay) return `Русские ${relDay(d.russians.day, d.today || localToday()).toLowerCase()}`;
     if (d.mode === "live") return "Русские в игре";
     if (d.mode === "results") return "Русские: как сыграли";
     return d.russians.day === localToday() ? "Русские сегодня" : `Русские · ${shortDate(d.russians.day)}`;
@@ -646,7 +681,7 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
   }
 
   // ---- painting --------------------------------------------------------------------------------------------------------------
-  const SECTIONS = ["strip", "hero", "goals", "russians", "news", "videos"];
+  const SECTIONS = ["days", "strip", "hero", "goals", "russians", "news", "videos"];
   function build() {
     const el = document.createElement("section");
     el.className = "v27Home";
@@ -683,8 +718,10 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
       return;
     }
     // the goals always come before the match of the day (the owner: «Голы вчера переносим выше, между русские сегодня и матчем дня»)
-    setSec("strip", stripHtml(d), 1);
-    setSec("russians", russiansHtml(d), 2);
+    const view = viewData(d);
+    setSec("days", daysHtml(d), 0);
+    setSec("strip", view.loadingOther ? SKEL_STRIP : stripHtml(view), 1);
+    setSec("russians", view.loadingOther ? "" : russiansHtml(view), 2);
     setSec("goals", goalsHtml(d), 3);
     setSec("hero", d.featured ? heroHtml(d.featured) : "", 4);
   }
@@ -979,6 +1016,16 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
       return showGoal(Number(goal.dataset.v27Goal));
     }
     if (t.closest("[data-v27-goals-all]")) return openGoalsPage();
+    const dayBtn = t.closest("[data-v27-day]");
+    if (dayBtn) {
+      st.dayView = dayBtn.dataset.v27Day === "other" ? "other" : "main";
+      paintHome();
+      const other = st.data && st.data.days && st.data.days.other;
+      if (st.dayView === "other" && other && (!st.other || st.other.date !== other.date || Date.now() - st.other.at > 60000)) {
+        loadOtherDay(other.date).then(paintHome, () => { st.dayView = "main"; paintHome(); });
+      }
+      return;
+    }
     if (t.closest("[data-v27-all]")) {
       const tab = document.querySelector('.tab[data-tab="broadcasts"]');
       if (tab) tab.click();
