@@ -172,6 +172,7 @@ async function liveGameCandidates(db,nowIso){
     SELECT game_pk,scheduled_start_utc,game_state,home_tri,away_tri
     FROM games
     WHERE game_type IN (1,2,3)
+      AND COALESCE(game_state,'') NOT IN ('FINAL','OFF','PPD','CAN')
       AND (game_state IN ('LIVE','CRIT','INTERMISSION')
            OR datetime(scheduled_start_utc) BETWEEN datetime(?,'-4 hours') AND datetime(?,'+30 minutes'))
     ORDER BY datetime(scheduled_start_utc) ASC

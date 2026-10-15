@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { fetchNhlLiveFeedWithFallback, getWinlineLiveFeedMaintenanceStatus, parseNhlLiveFeed, mapLiveEvents } from "../cloudflare-worker/src/winline-live-feed-maintenance.js";
+import { fetchNhlLiveFeedWithFallback, getWinlineLiveFeedMaintenanceStatus, runWinlineLiveFeedMaintenance, parseNhlLiveFeed, mapLiveEvents } from "../cloudflare-worker/src/winline-live-feed-maintenance.js";
 import { cadenceFor } from "../cloudflare-worker/src/winline-feed-maintenance.js";
 
 const xml=`<Root><Sport Id="4"><Country Id="1"><Tournament Id="nhl" Name="NHL"><Match Id="9001" Team1="Carolina Hurricanes" Team2="Florida Panthers" MatchDate="2026-10-10T00:00:00Z" MatchUrl="https://winline.ru/match/9001"><line freetext="Next Goal" name1="1" odd1="1.91" name2="2" odd2="2.05"/><line freetext="Total" value="5.5" name1="Over" odd1="1.85" name2="Under" odd2="1.95"/></Match></Tournament></Country></Sport></Root>`;
@@ -78,5 +78,41 @@ const mappingState={fetched_at:"2026-10-09T23:59:30.000Z",live_games:1,feed_even
 const mappingFailure=await getWinlineLiveFeedMaintenanceStatus({DB:statusDb(mappingState,[game])},{nowMs:now});
 assert.equal(mappingFailure.healthy,false);
 assert.equal(mappingFailure.degraded_reason,"mapping_empty");
+
+// The live candidates on the real tables: a game that is over is not live any more, even inside the 4-hour window
+// (2026-10-15: MTL–WSH and DAL–COL were over, Winline rightly had no NHL games, and the deploy check called it "provider_empty").
+{
+  const fs = await import("node:fs");
+  const { DatabaseSync } = await import("node:sqlite");
+  const MIG = new URL("../migrations/", import.meta.url);
+  const createOf = (file, table) => fs.readFileSync(new URL(file, MIG), "utf8").match(new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\(([\\s\\S]*?)\\n\\);`))[0];
+  const raw = new DatabaseSync(":memory:");
+  for (const t of ["teams", "games"]) raw.exec(createOf("0001_hoh_data_core.sql", t));
+  raw.exec(createOf("0010_data_core_meta.sql", "data_core_meta"));
+  for (const t of ["MTL", "WSH", "DAL", "COL", "BOS", "SJS", "NYR", "TBL"]) raw.prepare("INSERT INTO teams(tri_code,name_en) VALUES(?,?)").run(t, t);
+  const add = (pk, start, state, away, home) => raw.prepare("INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri) VALUES(?,?,?,?,?,?,?)").run(pk, "20262027", 2, start, state, home, away);
+  add(1, "2026-10-14T23:30:00Z", "OFF", "MTL", "WSH");   // over two hours ago
+  add(2, "2026-10-15T00:30:00Z", "FINAL", "DAL", "COL"); // just over (shootout)
+  add(3, "2026-10-15T01:00:00Z", "CRIT", "BOS", "SJS");  // still on
+  add(4, "2026-10-15T03:40:00Z", "FUT", "NYR", "TBL");   // starts in 15 minutes
+  const stmt = (sql, args = []) => ({
+    bind: (...a) => stmt(sql, a),
+    all: async () => ({ results: raw.prepare(sql).all(...args).map((x) => ({ ...x })) }),
+    first: async () => { const x = raw.prepare(sql).get(...args); return x ? { ...x } : null; },
+    run: async () => { raw.prepare(sql).run(...args); return {}; },
+  });
+  const db = { prepare: (sql) => stmt(sql) };
+  const nowMs = Date.parse("2026-10-15T03:25:00Z");
+  const night = await getWinlineLiveFeedMaintenanceStatus({ DB: db }, { nowMs });
+  assert.equal(night.candidate_games, 2, "the game on and the one about to start; not the two that are over");
+  raw.prepare("UPDATE games SET game_state='OFF' WHERE game_pk IN (3,4)").run();
+  raw.prepare("UPDATE games SET scheduled_start_utc='2026-10-15T01:30:00Z' WHERE game_pk=4").run();
+  const after = await getWinlineLiveFeedMaintenanceStatus({ DB: db }, { nowMs });
+  assert.equal(after.candidate_games, 0, "after the last game the night is over: nothing to call stale");
+  const asked = [];
+  const skipped = await runWinlineLiveFeedMaintenance({ DB: db }, { nowMs, fetchImpl: async (u) => { asked.push(u); return { ok: true, status: 200, text: async () => emptyXml }; } });
+  assert.equal(skipped.reason, "no_live_games");
+  assert.equal(asked.length, 0, "and Winline is not asked for finished games");
+}
 
 console.log("WINLINE_LIVE_FEED_PARSE_OK");
