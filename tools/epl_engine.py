@@ -656,18 +656,41 @@ ENGINE_RULES = (
 )
 
 
+DOUBT_PENALTY = 10
+
+
+def availability(player: dict | None) -> str:
+    """'out' (Fantasy: injured, suspended, gone, or under 50% to play), 'doubt' (50-75%) or 'ok'."""
+    season = (player or {}).get("season_2026_27") or {}
+    status, chance = season.get("status"), season.get("chance_of_playing_next_round")
+    if status in ("i", "s", "u", "n") or (chance is not None and chance < 50):
+        return "out"
+    if status == "d" or (chance is not None and chance < 100):
+        return "doubt"
+    return "ok"
+
+
 def build_cards(event: dict, ctx: dict) -> list[dict]:
     """Every card for one match, strongest first: the same fact on several lines = one card with alternatives;
-    at most PER_RULE_LIMIT per rule and MATCH_LIMIT per match."""
+    at most PER_RULE_LIMIT per rule and MATCH_LIMIT per match. No player card for a player Fantasy lists as out;
+    a doubtful one loses DOUBT_PENALTY points and gets the tag «под вопросом»."""
     candidates = []
     for rule in ins.RULES:
         candidates += [finish(c) for c in rule(event, ctx)]
     for rule in ENGINE_RULES:
         candidates += rule(event, ctx)
+    players = {p["pl_id"]: p for p in ctx.get("players") or []}
     seen, grouped = set(), {}
     for card in candidates:
         if not card:
             continue
+        pid = (card.get("details") or {}).get("player_id")
+        if pid is not None:
+            fit = availability(players.get(pid))
+            if fit == "out":
+                continue
+            if fit == "doubt":
+                card = finish({**card, "score": max(0, card["score"] - DOUBT_PENALTY), "tags": [*card.get("tags", []), "под вопросом"]})
         key = (card["rule"], card["market"]["key"])
         if key in seen:
             continue
@@ -785,7 +808,7 @@ def player_board_rows(event: dict, ctx: dict, cards: list[dict]) -> list[dict]:
             season = player.get("season_2026_27") or {}
             opp = ctx["away"] if entry["club"] == ctx["home"] else ctx["home"]
             vs = [a for a in ctx["apps"].get(player["pl_id"], []) if a["opp"] == opp and a["kickoff"] < ctx["before"]][:8]
-            row.update({"pl_id": player["pl_id"], "name_ru": player.get("name_ru"), "position": player.get("position"),
+            row.update({"pl_id": player["pl_id"], "name_ru": player.get("name_ru"), "position": player.get("position"), "fit": availability(player),
                         "goals": season.get("goals_scored"), "xg": season.get("expected_goals"), "xg90": season.get("expected_goals_per_90"),
                         "minutes": season.get("minutes"), "penalty_taker": season.get("penalties_order") == 1, "news": news_ru(season.get("news")),
                         "last5": [r.get("goals_scored") for r in (player.get("season_2026_27_by_gameweek") or [])[-5:]],

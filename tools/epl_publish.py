@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Send the operator site data (site.json) to the hoh-epl worker, which keeps it in KV.
+"""Send the operator site data (site.json) to the epl worker, which keeps it in KV.
 
-  python -I tools/epl_publish.py [--site PATH] [--url https://hoh-epl.rngn.workers.dev] [--key-file PATH]
+  python -I tools/epl_publish.py [--site PATH] [--url https://epl.rngn.workers.dev] [--key-file PATH]
 
 The key is the worker secret EPL_INGEST_KEY, read from a file (default ~/.hoh-epl/ingest.key, or
 EPL_INGEST_KEY_FILE); it is never printed. The body is gzip-compressed (header x-epl-encoding: gzip).
@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import epl_collect as epl  # noqa: E402
 
-DEFAULT_URL = "https://hoh-epl.rngn.workers.dev"
+DEFAULT_URL = "https://epl.rngn.workers.dev"
 DEFAULT_KEY = Path.home() / ".hoh-epl" / "ingest.key"
 
 

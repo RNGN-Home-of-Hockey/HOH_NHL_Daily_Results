@@ -163,6 +163,22 @@ def test_news_in_russian():
     assert eng.news_ru("Something new") == "Something new" and eng.news_ru(None) is None
 
 
+def test_injured_players_get_no_cards():
+    def priced(odds):
+        return {"markets": [{"key": "p", "market_id": 900, "family": "player_goal", "variant": "anytime", "period": "FT", "scope": "match",
+                             "line": None, "subject": {"name": "Букайо Сака", "team": "home"},
+                             "outcomes": [{"index": 0, "side": "yes", "odds": odds, "label": "Да"}]}]}
+    saka = {"pl_id": 8, "club": {"id": 1}, "surname_ru": "Сака", "position": "F",
+            "season_2026_27": {"minutes": 720, "expected_goals": 4.0, "status": "a", "chance_of_playing_next_round": None},
+            "season_2026_27_by_gameweek": [{"minutes": 90}] * 8, "past_seasons": [{"minutes": 2700, "expected_goals": 15.0}]}
+    fit = eng.build_cards(priced(3.0), ctx_for([], players=[saka]))
+    injured = dict(saka, season_2026_27={**saka["season_2026_27"], "status": "i", "chance_of_playing_next_round": 0})
+    doubt = dict(saka, season_2026_27={**saka["season_2026_27"], "status": "d", "chance_of_playing_next_round": 75})
+    assert len(fit) == 1 and eng.build_cards(priced(3.0), ctx_for([], players=[injured])) == []
+    doubtful = eng.build_cards(priced(3.0), ctx_for([], players=[doubt]))
+    assert doubtful[0]["score"] == fit[0]["score"] - eng.DOUBT_PENALTY and "под вопросом" in doubtful[0]["tags"]
+
+
 def main() -> None:
     for name, function in sorted(globals().items()):
         if name.startswith("test_") and callable(function):

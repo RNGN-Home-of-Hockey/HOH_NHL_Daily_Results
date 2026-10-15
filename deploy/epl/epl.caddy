@@ -1,0 +1,39 @@
+# HOH EPL operator site on the Moscow server (opens without a VPN): https://epl.109-172-113-187.sslip.io
+# Imported by the clip server's /etc/hoh-clips/Caddyfile (one line: import /etc/hoh-epl/epl.caddy); this file lives
+# in /etc/hoh-epl/. Read-only: pages from /opt/hoh-epl/repo/epl-site, data = the line job's site.json (written
+# atomically every ~10 min). Certificate: Let's Encrypt TLS-ALPN on :443, like the clip host.
+epl.109-172-113-187.sslip.io {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+
+	encode zstd gzip
+
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Robots-Tag "noindex, nofollow"
+	}
+
+	handle /data/site.json {
+		root * /opt/hoh-epl/repo/local-data/epl/site
+		rewrite * /site.json
+		header Cache-Control "no-store"
+		file_server
+	}
+
+	handle /robots.txt {
+		respond `User-agent: *
+Disallow: /
+` 200
+	}
+
+	handle {
+		root * /opt/hoh-epl/repo/epl-site
+		header Cache-Control "no-cache"
+		file_server
+	}
+}

@@ -1,4 +1,4 @@
-// HOH EPL operator site on Cloudflare (worker hoh-epl, account rngn).
+// HOH EPL operator site on Cloudflare (worker epl → https://epl.rngn.workers.dev, account rngn).
 // Pages are the static files of epl-site/; data/site.json lives in KV and is replaced by the server
 // pipeline (tools/epl_publish.py) with POST /api/ingest, authorised by the EPL_INGEST_KEY secret.
 // GET /api/health tells when the data was last replaced. Nothing here calls third-party sites.

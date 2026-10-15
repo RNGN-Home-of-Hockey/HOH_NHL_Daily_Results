@@ -1,0 +1,9 @@
+// Worker hoh-epl: the first address of the EPL site, now only a redirect to epl.rngn.workers.dev.
+{
+  "name": "hoh-epl",
+  "account_id": "f7f0376bf1c44c4e3cef4a24adf1b66a",
+  "main": "redirect/index.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false
+}

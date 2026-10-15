@@ -63,7 +63,7 @@ const defaults = () => ({
 });
 const state = {
   data: null, cards: [], playerRows: [], selected: null, tab: 'tips', tipTier: 'all', tipCategory: 'all', query: '', family: 'all', side: 'all',
-  feedLimit: FEED_PAGE, open: new Set(), queue: loadJson(QUEUE_KEY, []), ...mergeUi(loadJson(UI_KEY, {})),
+  feedLimit: FEED_PAGE, filtersOpen: false, open: new Set(), queue: loadJson(QUEUE_KEY, []), ...mergeUi(loadJson(UI_KEY, {})),
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -76,7 +76,9 @@ const pct = (value) => (value == null ? '—' : `${Math.round(value * 100)}%`);
 const lineKey = (mk) => mk.line ?? (Number.isFinite(Number(mk.param)) ? Number(mk.param) : 0);
 const starsText = (n) => '★'.repeat(n) + '☆'.repeat(Math.max(0, 5 - n));
 const kickoff = (m) => `${shortDayFmt.format(new Date(m.starts_at))}, ${timeFmt.format(new Date(m.starts_at))}`;
-const pairName = (m) => `${m.home.name_ru} — ${m.away.name_ru}`;
+const fullName = (club) => club.name_full || club.name_ru;
+const pairName = (m) => `${fullName(m.home)} — ${fullName(m.away)}`;
+const WEEK_MS = 7 * 24 * 3600 * 1000;
 const tierLabel = (id) => state.data?.tiers.find((t) => t.id === id)?.label || id;
 const resultPill = (c) => `<span class="fpill ${c}">${c === 'W' ? 'П' : c === 'D' ? 'Н' : 'Л'}</span>`;
 
@@ -118,13 +120,14 @@ function chipRow(action, current, items) {
 // ---------- header ----------
 function freshness() {
   const captured = state.data?.winline_captured_at;
-  if (!captured) return { cls: 'bad', text: 'Линии Winline: нет данных' };
+  if (!captured) return { cls: 'bad', text: 'Линии Winline: нет данных', short: 'нет данных' };
   const minutes = Math.max(0, Math.round((Date.now() - new Date(captured).getTime()) / 60000));
   const when = timeFmt.format(new Date(captured));
   const ago = minutes < 60 ? `${minutes} мин назад` : minutes < 2880 ? `${Math.floor(minutes / 60)} ч ${minutes % 60} мин назад` : `${Math.floor(minutes / 1440)} дн назад`;
   const cls = minutes < 20 ? 'good' : minutes < 90 ? 'warn' : 'bad';
-  return { cls, text: `Линии Winline: ${when} МСК · ${ago}` };
+  return { cls, text: `Линии Winline: ${when} МСК · ${ago}`, short: `${when} МСК · ${ago}` };
 }
+const freshHtml = (f) => `<i></i><span class="wide-only">Линии Winline:&nbsp;</span>${esc(f.short || f.text)}`;
 
 function renderHeader() {
   const f = freshness();
@@ -136,10 +139,35 @@ function renderHeader() {
     <nav class="nav" aria-label="Разделы">${nav.map(([id, label, count]) =>
       `<button class="nav-btn" data-action="page" data-page="${id}" aria-current="${state.page === id}">${label}${count ? `<span class="count">${count}</span>` : ''}</button>`).join('')}</nav>
     <div class="status">
-      <span class="pill ${f.cls}" id="fresh"><i></i>${esc(f.text)}</span>
-      <span class="pill"><i></i>Данные: ${stats} МСК</span>
+      <span class="pill ${f.cls}" id="fresh" title="${esc(f.text)}">${freshHtml(f)}</span>
+      <span class="pill wide-only"><i></i>Данные: ${stats} МСК</span>
+      <button class="btn phone-only" data-action="to-dock">Эфир · ${state.queue.length}</button>
       <button class="btn" data-action="reload">Обновить</button>
     </div>`;
+}
+
+// ---------- strip: the week's matches as buttons (feed and players filter, match page navigation on phones) ----------
+function weekMatches() {
+  const matches = state.data?.matches || [];
+  const now = Date.now();
+  const week = matches.filter((m) => { const t = new Date(m.starts_at).getTime(); return t >= now - 3 * 3600 * 1000 && t < now + WEEK_MS; });
+  return week.length ? week : matches.slice(0, 10);
+}
+
+function renderStrip() {
+  const strip = $('#strip');
+  if (!state.data || state.page === 'teams') { strip.innerHTML = ''; return; }
+  const current = state.page === 'feed' ? state.feed.match : state.page === 'players' ? state.players.match : String(state.selected);
+  const count = (m) => (state.page === 'players' ? m.players.length : m.insights.length);
+  const hot = (m) => m.insights.filter((c) => c.tier === 'fire' || c.tier === 'strong').length;
+  const unit = state.page === 'players' ? 'игроков' : 'карточек';
+  const all = state.page === 'matches' ? '' : `<button class="wk all" data-action="strip" data-value="all" aria-pressed="${current === 'all'}">
+      <span class="wk-date">Все матчи</span><span class="wk-team">${state.page === 'players' ? state.playerRows.length : state.cards.length}</span><span class="wk-count">${unit}</span></button>`;
+  strip.innerHTML = `<h4>Матчи недели</h4><div class="week">${all}${weekMatches().map((m) => `
+    <button class="wk" data-action="strip" data-value="${m.event_id}" aria-pressed="${current === String(m.event_id)}" title="${esc(pairName(m))}">
+      <span class="wk-date">${m.live ? '<span class="live-dot"></span>' : ''}${esc(kickoff(m))}</span>
+      <span class="wk-team">${esc(fullName(m.home))}</span><span class="wk-team">${esc(fullName(m.away))}</span>
+      <span class="wk-count">${count(m)} ${unit}${hot(m) ? ` · ${hot(m)}★` : ''}</span></button>`).join('')}</div>`;
 }
 
 // ---------- card (used by the feed and the match page) ----------
@@ -163,7 +191,7 @@ function cardHtml(m, c, { showMatch = false } = {}) {
   return `<article class="tip" data-tier="${c.tier}">
     ${tierBadge(c)}
     <div class="tip-body">
-      ${showMatch ? `<div class="tip-match"><button class="linkish" data-action="open-match" data-id="${m.event_id}">${mono(m.home)}${esc(m.home.name_ru)} — ${esc(m.away.name_ru)}${mono(m.away)}</button><span class="faint">${esc(kickoff(m))} МСК</span></div>` : ''}
+      ${showMatch ? `<div class="tip-match"><button class="linkish" data-action="open-match" data-id="${m.event_id}">${mono(m.home)}${esc(fullName(m.home))} — ${esc(fullName(m.away))}${mono(m.away)}</button><span class="faint">${esc(kickoff(m))} МСК</span></div>` : ''}
       <div class="tip-meta"><span class="tag cat">${esc(c.category)}</span><span class="tag basis">${esc(c.basis)}</span>${(c.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
       <h3>${esc(c.title)}</h3>
       <div class="evidence">История <b class="num">${e.hits} из ${e.sample}</b> (${pct(e.rate)}, осторожно ${pct(e.rate_conservative)}) · цена Winline подразумевает <b class="num">${pct(e.implied_by_price)}</b>${e.span ? ` · ${esc(e.span)}` : ''}</div>
@@ -214,15 +242,15 @@ function renderFeedSide() {
       <span>${esc(tierLabel(t))}</span><b class="num">${count((x) => x.c.tier === t)}</b></button>`).join('');
   const cats = [['all', 'Все', all.length], ...(state.data?.categories || []).map((cat) => [cat, cat, count((x) => x.c.category === cat)])].filter(([, , n]) => n);
   const bases = [['all', 'Все', null], ...(state.data?.bases || []).map((b) => [b, b, count((x) => x.c.basis === b)])].filter(([, , n]) => n !== 0);
-  const matchOptions = (state.data?.matches || []).map((m) => `<option value="${m.event_id}" ${f.match === String(m.event_id) ? 'selected' : ''}>${esc(kickoff(m))} · ${esc(pairName(m))}</option>`).join('');
   const teamOptions = [...(state.data?.teams || [])].sort((a, b) => a.name_ru.localeCompare(b.name_ru, 'ru'))
     .map((t) => `<option value="${t.id}" ${f.team === String(t.id) ? 'selected' : ''}>${esc(t.name_ru)}</option>`).join('');
   const presets = [['', '', 'любой'], ['1.5', '', 'от 1,50'], ['2', '', 'от 2,00'], ['3', '', 'от 3,00'], ['1.3', '2', '1,30–2,00']];
   $('#side').innerHTML = `
+    <div class="side-head phone-only"><b>Фильтры</b><button class="btn primary" id="filters-done" data-action="toggle-filters">Показать</button></div>
     <div class="fgroup"><h4>Крутизна</h4><div class="tier-chips">${tiers}</div></div>
     <div class="fgroup"><h4>Рынок</h4><div class="chips">${chipRow('feed-category', f.category, cats)}</div></div>
     <div class="fgroup"><h4>Основание</h4><div class="chips">${chipRow('feed-basis', f.basis, bases)}</div></div>
-    <div class="fgroup"><h4>Матч</h4><select data-input="feed-match" aria-label="Матч"><option value="all">Все матчи</option>${matchOptions}</select></div>
+    <div class="fgroup"><h4>Поиск</h4><input type="search" data-input="feed-query" placeholder="Игрок, рынок, слово" value="${esc(f.query)}" aria-label="Поиск по карточкам"></div>
     <div class="fgroup"><h4>Команда</h4><select data-input="feed-team" aria-label="Команда"><option value="all">Все команды</option>${teamOptions}</select></div>
     <div class="fgroup"><h4>Кэф Winline</h4><div class="range"><input type="text" inputmode="decimal" data-input="feed-min" placeholder="от" value="${esc(f.minOdds)}" aria-label="Кэф от">
       <span>—</span><input type="text" inputmode="decimal" data-input="feed-max" placeholder="до" value="${esc(f.maxOdds)}" aria-label="Кэф до"></div>
@@ -237,17 +265,23 @@ function renderFeedList() {
   const rest = shown.length - state.feedLimit;
   const more = rest > 0 ? `<button class="btn more" data-action="feed-more">Показать ещё ${Math.min(FEED_PAGE, rest)} (осталось ${rest})</button>` : '';
   $('#feed-list').innerHTML = (body || '<div class="empty">Ничего не нашлось. Ослабьте фильтры: добавьте уровни «Рабочая» и «Фон» или расширьте диапазон кэфа.</div>') + more;
-  $('#feed-count').textContent = `Показано ${Math.min(shown.length, state.feedLimit)} из ${shown.length} · всего карточек ${state.cards.length}`;
+  $('#feed-count').textContent = `${shown.length} из ${state.cards.length}`;
+  const f = state.feed, base = defaults().feed;
+  const active = ['category', 'basis', 'team', 'minOdds', 'maxOdds', 'query'].filter((k) => f[k] !== base[k]).length + (f.tiers.join() !== base.tiers.join() ? 1 : 0);
+  const button = $('#filters-btn');
+  if (button) button.textContent = `Фильтры${active ? ` · ${active}` : ''}`;
+  const done = $('#filters-done');
+  if (done) done.textContent = `Показать ${shown.length}`;
 }
 
 function renderFeed() {
   renderFeedSide();
   const f = state.feed;
   $('#main').innerHTML = `<section class="card panel">
-      <div class="toolbar"><input type="search" data-input="feed-query" placeholder="Поиск: команда, игрок, рынок" value="${esc(f.query)}" aria-label="Поиск по карточкам">
+      <div class="toolbar"><button class="btn phone-only" id="filters-btn" data-action="toggle-filters">Фильтры</button>
         <select data-input="feed-sort" aria-label="Сортировка">${FEED_SORTS.map(([v, label]) => `<option value="${v}" ${f.sort === v ? 'selected' : ''}>${label}</option>`).join('')}</select>
-        <span class="faint" id="feed-count" style="margin-left:auto"></span></div>
-      <p class="plate-note">Каждая карточка — факт из нашей базы, привязанный к линии, которую Winline сейчас реально даёт на матч. Крутизна: Огонь ≥ 80, Сильная ≥ 65, Рабочая ≥ 50, Фон ≥ 35 (сила истории против цены, выборка, кэф, яркость факта). Сильная и Огонь — только если факт повторился хотя бы 4 раза.</p>
+        <span class="faint" id="feed-count"></span></div>
+      <p class="plate-note wide-only">Каждая карточка — факт из нашей базы, привязанный к линии, которую Winline сейчас реально даёт на матч. Крутизна: Огонь ≥ 80, Сильная ≥ 65, Рабочая ≥ 50, Фон ≥ 35 (сила истории против цены, выборка, кэф, яркость факта). Сильная и Огонь — только если факт повторился хотя бы 4 раза.</p>
     </section><div class="list" id="feed-list"></div>`;
   renderFeedList();
 }
@@ -266,7 +300,7 @@ function renderRail() {
     const x = m.quick.x12;
     html += `<button class="match" data-action="select" data-id="${m.event_id}" aria-current="${m.event_id === state.selected}">
       <div class="time num">${timeFmt.format(new Date(m.starts_at))}<small>МСК</small></div>
-      <div class="teams"><div class="team">${mono(m.home)}<span>${esc(m.home.name_ru)}</span></div><div class="team">${mono(m.away)}<span>${esc(m.away.name_ru)}</span></div>
+      <div class="teams"><div class="team">${mono(m.home)}<span>${esc(fullName(m.home))}</span></div><div class="team">${mono(m.away)}<span>${esc(fullName(m.away))}</span></div>
         ${x ? `<div class="mini-odds num"><b>${odds(x[0])}</b><b>${odds(x[1])}</b><b>${odds(x[2])}</b></div>` : ''}</div>
       <span class="badge" data-tier="${top?.tier || ''}" title="Лучшая оценка матча; карточек уровня «Сильная» и «Огонь»: ${hot}">${m.live ? '<span class="live-dot"></span>' : ''}${top ? `${top.score}${hot ? ` · ${hot}★` : ''}` : `${m.summary.market_lines} лин.`}</span>
     </button>`;
@@ -289,7 +323,7 @@ function renderHead(m) {
   const tiers = TIER_ORDER.map((t) => [t, m.insights.filter((c) => c.tier === t).length]).filter(([, n]) => n);
   return `<section class="card head">
     <div class="head-top">
-      <div class="versus">${mono(m.home)}<span>${esc(m.home.name_ru)}</span><span class="vs">—</span>${mono(m.away)}<span>${esc(m.away.name_ru)}</span></div>
+      <div class="versus">${mono(m.home)}<span>${esc(fullName(m.home))}</span><span class="vs">—</span>${mono(m.away)}<span>${esc(fullName(m.away))}</span></div>
       <div class="kick"><b class="num">${timeFmt.format(new Date(m.starts_at))} МСК</b>${esc(dayFmt.format(new Date(m.starts_at)))} · АПЛ</div>
     </div>
     <div class="quick">${quickGroups(m)}</div>
@@ -419,9 +453,9 @@ function bestCardId(m, p) {
 }
 
 function valueCells(p) {
-  if (p.model_prob == null) return '<td class="r faint">—</td><td class="r faint">—</td>';
+  if (p.model_prob == null) return '<td class="r faint empty-cell" data-label="Модель / цена">—</td><td class="r faint empty-cell" data-label="Ценность">—</td>';
   const cls = p.value >= 1.15 ? 'good' : p.value <= 0.8 ? 'bad' : '';
-  return `<td class="r">${pct(p.model_prob)} <span class="faint">/ ${pct(p.implied_prob)}</span></td><td class="r"><b class="${cls}">×${num(p.value, 2)}</b></td>`;
+  return `<td class="r" data-label="Модель / цена">${pct(p.model_prob)} <span class="faint">/ ${pct(p.implied_prob)}</span></td><td class="r" data-label="Ценность"><b class="${cls}">×${num(p.value, 2)}</b></td>`;
 }
 
 function playerTable(rows, { showMatch = true } = {}) {
@@ -438,14 +472,14 @@ function playerTable(rows, { showMatch = true } = {}) {
       const queued = id && state.queue.some((q) => q.id === id);
       const club = p.team === 'home' ? m.home : m.away;
       const opp = p.team === 'home' ? m.away : m.home;
-      return `<tr><td><div class="pname">${mono(club)}<div><b>${esc(p.name_ru || p.name)}</b>${p.penalty_taker ? '<span class="pen">пенальти</span>' : ''}
+      return `<tr><td class="lead"><div class="pname">${mono(club)}<div><b>${esc(p.name_ru || p.name)}</b>${p.penalty_taker ? '<span class="pen">пенальти</span>' : ''}${p.fit === 'out' ? '<span class="fit out">вне игры</span>' : p.fit === 'doubt' ? '<span class="fit doubt">под вопросом</span>' : ''}
           <div class="faint small">${esc(club.name_ru)}${p.position ? ` · ${esc(POSITION[p.position] || p.position)}` : ''}${p.minutes != null ? ` · ${p.minutes} мин` : ''}</div>
           ${p.news ? `<div class="news small">${esc(p.news)}</div>` : ''}</div></div></td>
-        ${showMatch ? `<td><button class="linkish" data-action="open-match" data-id="${m.event_id}">vs ${esc(opp.name_ru)}</button><div class="faint small">${esc(kickoff(m))}</div></td>` : ''}
-        <td class="r">${odds(p.odds?.first)}</td><td class="r"><b>${odds(p.odds?.anytime)}</b></td><td class="r">${odds(p.odds?.last)}</td>${valueCells(p)}
-        <td class="r">${p.goals != null ? `${p.goals} / ${num(p.xg, 1)}` : '—'}</td><td>${spark(p.last5)}</td>
-        <td class="r">${p.vs_opponent?.apps ? `${p.vs_opponent.scored_in} из ${p.vs_opponent.apps}` : '—'}</td>
-        <td class="best">${p.best_card ? `<span class="tier-dot" data-tier="${p.tier}">${esc(p.tier_label)} ${p.score}</span><div class="small">${esc(p.best_card)}</div>
+        ${showMatch ? `<td data-label="Матч"><button class="linkish" data-action="open-match" data-id="${m.event_id}">vs ${esc(fullName(opp))}</button><div class="faint small">${esc(kickoff(m))}</div></td>` : ''}
+        <td class="r" data-label="Первый гол">${odds(p.odds?.first)}</td><td class="r" data-label="Забьёт"><b>${odds(p.odds?.anytime)}</b></td><td class="r" data-label="Последний">${odds(p.odds?.last)}</td>${valueCells(p)}
+        <td class="r" data-label="Голы / xG">${p.goals != null ? `${p.goals} / ${num(p.xg, 1)}` : '—'}</td><td data-label="Последние 5">${spark(p.last5)}</td>
+        <td class="r" data-label="Против соп.">${p.vs_opponent?.apps ? `${p.vs_opponent.scored_in} из ${p.vs_opponent.apps}` : '—'}</td>
+        <td class="best" data-label="Лучшая карточка">${p.best_card ? `<span class="tier-dot" data-tier="${p.tier}">${esc(p.tier_label)} ${p.score}</span><div class="small">${esc(p.best_card)}</div>
           ${id ? `<button class="btn small ${queued ? 'on' : ''}" data-action="queue" data-card="${esc(id)}">${queued ? 'В эфире ✓' : 'В эфир'}</button>` : ''}` : '<span class="faint">—</span>'}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
@@ -480,13 +514,14 @@ function renderPlayersTable() {
 function renderPlayersPage() {
   const f = state.players;
   const withLines = (state.data?.matches || []).filter((m) => m.players.length);
-  const matchOptions = withLines.map((m) => `<option value="${m.event_id}" ${f.match === String(m.event_id) ? 'selected' : ''}>${esc(kickoff(m))} · ${esc(pairName(m))}</option>`).join('');
   const clubs = new Map();
   for (const m of withLines) { clubs.set(m.home.id, m.home.name_ru); clubs.set(m.away.id, m.away.name_ru); }
   const teamOptions = [...clubs].sort((a, b) => a[1].localeCompare(b[1], 'ru')).map(([id, name]) => `<option value="${id}" ${f.team === String(id) ? 'selected' : ''}>${esc(name)}</option>`).join('');
+  const sorts = [['score', 'Сначала лучшие карточки'], ['value', 'Ценность: выше'], ['model', 'Шанс по модели: выше'], ['anytime', 'Кэф «забьёт»: ниже'],
+    ['goals', 'Голы в сезоне'], ['vs', 'Против соперника'], ['kickoff', 'По времени матча']];
   $('#main').innerHTML = `<section class="card panel">
       <div class="toolbar"><input type="search" data-input="player-query" placeholder="Поиск игрока" value="${esc(f.query)}" aria-label="Поиск игрока">
-        <select data-input="player-match" aria-label="Матч"><option value="all">Все матчи с линиями (${withLines.length})</option>${matchOptions}</select>
+        <select class="phone-only" data-input="player-sort" aria-label="Сортировка">${sorts.map(([v, label]) => `<option value="${v}" ${f.sort === v ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <select data-input="player-team" aria-label="Команда"><option value="all">Все команды</option>${teamOptions}</select>
         <select data-input="player-position" aria-label="Амплуа"><option value="all">Все амплуа</option>${Object.entries(POSITION).map(([k, v]) => `<option value="${k}" ${f.position === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
         <label class="check"><input type="checkbox" data-input="player-model" ${f.withModel ? 'checked' : ''}> есть модель</label>
@@ -531,10 +566,14 @@ function renderTeams() {
     return (typeof x === 'string' ? x.localeCompare(y, 'ru') : x - y) * f.dir;
   });
   const head = TEAM_COLUMNS.map(([key, label]) => `<th class="${['name', 'form', 'next'].includes(key) ? '' : 'r'}"><button class="th-btn" data-action="team-sort" data-value="${key}" aria-pressed="${f.sort === key}">${label}${f.sort === key ? (f.dir < 0 ? ' ↓' : ' ↑') : ''}</button></th>`).join('');
+  const sorts = TEAM_COLUMNS.filter(([key]) => key !== 'form').map(([key, label]) => `<option value="${key}" ${f.sort === key ? 'selected' : ''}>${label}</option>`).join('');
+  const labelled = (t, key, label) => teamCell(t, key).replace('<td', `<td data-label="${esc(label)}"${key === 'name' ? ' class="lead"' : ''}`);
   $('#main').innerHTML = `<section class="card panel">
+      <div class="toolbar phone-only"><select data-input="team-sort" aria-label="Сортировка">${sorts}</select>
+        <button class="btn" data-action="team-dir">${f.dir < 0 ? 'По убыванию ↓' : 'По возрастанию ↑'}</button></div>
       <p class="plate-note">Последние 8 матчей АПЛ каждой команды (не старше 14 месяцев). xG — наша модель без пенальти. «Карточки» — сколько карточек каждого уровня в ближайших матчах команды. Клик по команде открывает её карточки в Ленте, по сопернику — матч.</p>
       <div class="scroll"><table class="table num teams"><thead><tr>${head}</tr></thead><tbody>
-      ${teams.map((t) => `<tr>${TEAM_COLUMNS.map(([key]) => teamCell(t, key)).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+      ${teams.map((t) => `<tr>${TEAM_COLUMNS.map(([key, label]) => labelled(t, key, label)).join('')}</tr>`).join('')}</tbody></table></div></section>`;
 }
 
 // ---------- dock (queue) ----------
@@ -558,7 +597,9 @@ function renderDock() {
 // ---------- render & routing ----------
 function render() {
   $('#layout').dataset.page = state.page;
+  $('#layout').dataset.filters = state.filtersOpen && state.page === 'feed' ? 'open' : 'closed';
   renderHeader();
+  renderStrip();
   if (state.page === 'feed') renderFeed();
   else if (state.page === 'matches') renderMatches();
   else if (state.page === 'players') renderPlayersPage();
@@ -579,6 +620,8 @@ function readHash() {
 
 function go(page, selected) {
   state.page = page;
+  state.filtersOpen = false;
+  document.body.classList.remove('locked');
   if (selected != null) { state.selected = selected; state.open.clear(); }
   saveUi(); setHash(); render();
   window.scrollTo({ top: 0 });
@@ -617,9 +660,11 @@ function toggleQueue(id) {
 
 function refreshContent() {
   const y = window.scrollY;
+  renderHeader();
   if (state.page === 'feed') renderFeedList();
   else if (state.page === 'players') renderPlayersTable();
-  else { renderHeader(); state.page === 'matches' ? renderMatches() : renderTeams(); }
+  else if (state.page === 'matches') renderMatches();
+  else renderTeams();
   renderDock();
   window.scrollTo({ top: y });
 }
@@ -630,7 +675,22 @@ function onClick(event) {
   const { action, value } = target.dataset;
   const f = state.feed;
   const feedChanged = () => { state.feedLimit = FEED_PAGE; saveUi(); renderFeedSide(); renderFeedList(); };
-  if (action === 'page') go(target.dataset.page);
+  if (action === 'page') { state.filtersOpen = false; go(target.dataset.page); }
+  else if (action === 'strip') {
+    if (state.page === 'matches') { go('matches', Number(value)); return; }
+    const filter = state.page === 'players' ? state.players : f;
+    filter.match = filter.match === value ? 'all' : value;
+    state.feedLimit = FEED_PAGE; saveUi(); renderStrip();
+    if (state.page === 'players') renderPlayersTable(); else { renderFeedSide(); renderFeedList(); }
+  }
+  else if (action === 'toggle-filters') {
+    state.filtersOpen = !state.filtersOpen;
+    $('#layout').dataset.filters = state.filtersOpen ? 'open' : 'closed';
+    document.body.classList.toggle('locked', state.filtersOpen);
+    if (!state.filtersOpen) $('#main').scrollIntoView({ block: 'start' });
+  }
+  else if (action === 'to-dock') $('#dock').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  else if (action === 'team-dir') { state.teams.dir = -state.teams.dir; saveUi(); renderTeams(); }
   else if (action === 'select' || action === 'open-match') { state.tab = 'tips'; go('matches', Number(target.dataset.id)); }
   else if (action === 'tab') { state.tab = target.dataset.tab; render(); }
   else if (action === 'tip-tier') { state.tipTier = value; refreshContent(); }
@@ -681,6 +741,8 @@ function onInput(event) {
   else if (kind === 'player-match') players('match', target.value);
   else if (kind === 'player-team') players('team', target.value);
   else if (kind === 'player-position') players('position', target.value);
+  else if (kind === 'player-sort') { state.players.dir = ASCENDING_FIRST.has(target.value) ? 1 : -1; players('sort', target.value); }
+  else if (kind === 'team-sort') { state.teams.sort = target.value; state.teams.dir = ASCENDING_FIRST.has(target.value) ? 1 : -1; saveUi(); renderTeams(); }
   else if (kind === 'player-model') players('withModel', target.checked);
   else if (kind === 'player-card') players('withCard', target.checked);
   else if (kind === 'market-query') {
@@ -705,7 +767,7 @@ function onKey(event) {
 // ---------- boot ----------
 function shell() {
   $('#app').innerHTML = `<div class="shell"><header class="topbar" id="top"></header>
-    <div class="layout" id="layout"><aside class="card side" id="side" aria-label="Фильтры и матчи"></aside><main class="main" id="main"></main><aside class="card dock" id="dock" aria-label="Эфир"></aside></div></div>`;
+    <div class="layout" id="layout"><section class="card strip" id="strip" aria-label="Матчи недели"></section><aside class="card side" id="side" aria-label="Фильтры и матчи"></aside><main class="main" id="main"></main><aside class="card dock" id="dock" aria-label="Эфир"></aside></div></div>`;
 }
 
 async function load(manual = false) {
@@ -735,6 +797,6 @@ document.addEventListener('click', onClick);
 document.addEventListener('input', onInput);
 document.addEventListener('keydown', onKey);
 window.addEventListener('hashchange', () => { readHash(); render(); });
-setInterval(() => { const el = $('#fresh'); if (el && state.data) { const f = freshness(); el.className = `pill ${f.cls}`; el.innerHTML = `<i></i>${esc(f.text)}`; } }, 30000);
+setInterval(() => { const el = $('#fresh'); if (el && state.data) { const f = freshness(); el.className = `pill ${f.cls}`; el.innerHTML = freshHtml(f); } }, 30000);
 setInterval(() => { if (!/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '')) load(false); }, AUTO_RELOAD_MS);
 load();

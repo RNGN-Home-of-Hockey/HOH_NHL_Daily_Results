@@ -158,8 +158,8 @@ def main(argv: list[str] | None = None) -> int:
         cards = eng.build_cards(event, ctx)
         out_matches.append({
             "event_id": event["event_id"], "starts_at": before, "live": event.get("live", False), "captured_at": event.get("captured_at"),
-            "home": {"id": home["id"], "name": home["name"], "name_ru": names[home["id"]]},
-            "away": {"id": away["id"], "name": away["name"], "name_ru": names[away["id"]]},
+            "home": {"id": home["id"], "name": home["name"], "name_ru": names[home["id"]], "name_full": event["home"]},
+            "away": {"id": away["id"], "name": away["name"], "name_ru": names[away["id"]], "name_full": event["away"]},
             "quick": quick_odds(event), "summary": event["summary"], "markets": event["markets"], "players": eng.player_board_rows(event, ctx, cards),
             "h2h": h2h_block(h2h, home["id"], away["id"], matches_by_id, names, people, before),
             "form": {"home": form_rows(by_club, home["id"], before, names), "away": form_rows(by_club, away["id"], before, names)},

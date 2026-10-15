@@ -1,7 +1,7 @@
-// Worker hoh-epl: the EPL operator site (epl-site/) + its data in KV. Separate from the NHL workers and
+// Worker epl (https://epl.rngn.workers.dev): the EPL operator site (epl-site/) + its data in KV. Separate from the NHL workers and
 // from hoh-data-core. Deploy: wrangler deploy --config epl-worker/wrangler.jsonc (account rngn pinned below).
 {
-  "name": "hoh-epl",
+  "name": "epl",
   "account_id": "f7f0376bf1c44c4e3cef4a24adf1b66a",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
