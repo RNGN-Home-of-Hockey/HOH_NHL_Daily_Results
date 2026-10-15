@@ -129,6 +129,17 @@ Every card gets `category` (Исход, Голы, Таймы, Ход матча,
 
 `tools/epl_site_data.py` writes `local-data/epl/site/site.json`: matches (quick odds, every market, players, head-to-head, form and stats, cards), `teams`, `tiers`, `categories`, `bases`.
 
+## Market rules (`tools/epl_markets.py`, 2026-10-15)
+
+Rules driven by the Winline markets the basic families did not cover; they plug into `epl_engine.build_cards`.
+- Combos: result + total, result + BTTS, double chance + total / BTTS (also by halves), BTTS + total, half-time/full-time, winning margin, first goal + result, BTTS by halves.
+- Halves: result, double chance, BTTS, second-half totals, team totals and clean sheets by half, both halves over/under, which half a club scores more in.
+- Goals: goal counts and ranges (match, halves, team), European handicap (full match and halves), which team scores, the minute of the first goal.
+- Cards from the match pages (every card shown counts 1 — Winline's own counting is not checked yet, such cards carry a tag): first-half totals, counts, who gets more, first card; team card counts.
+- Corners (full match only — the league feed has no corner times): who wins the corners, counts, team counts, corner handicap.
+
+Method: the two clubs' recent league matches are read from the upcoming fixture's side (the away club's matches mirrored), so "П1 и больше 2,5" = the home club won with 3+ goals in its matches and the away club lost with 3+ in its own. A card needs 4+ hits, the family's minimum share, a conservative (Wilson, z=1) share not below the price's implied probability, and at least 25% from each club (40% for Огонь). The same fact on several markets = one card with alternatives; the same bet backed by several facts = one card with «Ещё в пользу этой ставки». On the 15 Oct lines: 118 → 289 cards (Огонь 1, Сильная 24, Рабочая 106, Фон 158), odds 1.50–2: 101, 2–3: 90, 3–5: 80, 5+: 18. Tests: `tests/test_epl_markets.py` (7).
+
 ## Operator site v2 (`epl-site/`)
 
 Light theme, four pages: **Лента** (the week's matches as buttons on top; every card of every match; filters by tier, market, basis, team, odds range, text; five sort orders), **Матчи** (match list; tabs Карточки / Рынки Winline / Игроки / Личные встречи / Форма и статистика), **Игроки** (all player lines: first/anytime/last odds, model vs price, value, goals/xG, last five, record vs opponent, best card; sortable), **Команды** (profiles of all 20 clubs, sortable; click = the club's cards or its next match). «Эфир» queue on every page (placeholder plate until the Winline designs arrive). Phones: the match strip scrolls sideways, filters open as a full-screen panel, player and team tables turn into cards. Full club names are Winline's (`name_full`). Player cards are dropped for players Fantasy lists as out (injured, suspended, under 50%), doubtful ones lose 10 points and get «под вопросом». The data reloads every 5 minutes. Locally: `python -I tools/epl_serve.py`.

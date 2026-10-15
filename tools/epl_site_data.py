@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import epl_collect as epl  # noqa: E402
 import epl_engine as eng  # noqa: E402
+import epl_markets  # noqa: E402,F401 - registers the market rules' categories before the payload lists them
 import epl_insights as ins  # noqa: E402
 
 STAT_KEYS = ("xg_proxy", "shots", "shots_on_target", "shots_inside_box", "touches_in_opp_box", "possession_pct", "corners_won",
@@ -140,8 +141,8 @@ def main(argv: list[str] | None = None) -> int:
     names = {t["id"]: t["name_ru"] or t["name"] for t in teams}
     matches_by_id = {m["id"]: m for m in matches}
     by_club = ins.index_matches(matches)
-    rows = eng.club_rows(matches, stats)
     details = {int(k): v for k, v in load("match_details.json").items()}
+    rows = eng.club_rows(matches, stats, details)
     apps = eng.appearances(details, matches_by_id)
     xg = ({int(k): {int(t): v for t, v in per.items()} for k, per in load("xg_proxy.json").items()}
           if (epl.NORM / "xg_proxy.json").exists() else {})

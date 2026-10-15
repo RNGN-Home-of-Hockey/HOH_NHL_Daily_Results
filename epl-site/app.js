@@ -194,6 +194,7 @@ function cardHtml(m, c, { showMatch = false } = {}) {
       ${showMatch ? `<div class="tip-match"><button class="linkish" data-action="open-match" data-id="${m.event_id}">${mono(m.home)}${esc(fullName(m.home))} — ${esc(fullName(m.away))}${mono(m.away)}</button><span class="faint">${esc(kickoff(m))} МСК</span></div>` : ''}
       <div class="tip-meta"><span class="tag cat">${esc(c.category)}</span><span class="tag basis">${esc(c.basis)}</span>${(c.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
       <h3>${esc(c.title)}</h3>
+      ${c.support?.length ? `<div class="support"><b>Ещё в пользу этой ставки:</b> ${c.support.map(esc).join(' · ')}</div>` : ''}
       <div class="evidence">История <b class="num">${e.hits} из ${e.sample}</b> (${pct(e.rate)}, осторожно ${pct(e.rate_conservative)}) · цена Winline подразумевает <b class="num">${pct(e.implied_by_price)}</b>${e.span ? ` · ${esc(e.span)}` : ''}</div>
       <div class="tip-market"><span class="label">${esc(c.market.label)}</span><span class="odds num">${odds(c.market.odds)}</span>${alts ? `<div class="alts">Ещё линии: ${alts}</div>` : ''}</div>
     </div>

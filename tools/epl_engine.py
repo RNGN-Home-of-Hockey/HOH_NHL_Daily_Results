@@ -23,7 +23,8 @@ import epl_insights as ins  # noqa: E402
 
 TIERS = ((80, "fire", "Огонь", 5), (65, "strong", "Сильная", 4), (50, "solid", "Рабочая", 3), (35, "background", "Фон", 2))
 PER_RULE_LIMIT = 3
-MATCH_LIMIT = 45
+MATCH_LIMIT = 60
+SUPPORT_LIMIT = 3
 MIN_ODDS = 1.50  # owner 2026-10-15: no card on a price below 1.50 (the line is dropped before the cards are grouped)
 FORM_N = 8
 FORM_MIN = 6
@@ -68,10 +69,32 @@ def minute_of(minute: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def club_rows(matches: list[dict], stats: dict[int, dict[int, dict]]) -> dict[int, list[dict]]:
+def minute_value(minute: str | None) -> float:
+    """Sort key of a minute label: "45+2'" -> 45.02 (still the first half), "46'" -> 46."""
+    match = re.match(r"\s*(\d+)(?:\s*\+\s*(\d+))?", minute or "")
+    return int(match.group(1)) + int(match.group(2) or 0) / 100 if match else 999.0
+
+
+def card_facts(detail: dict | None, club: int) -> dict:
+    """Cards of one match from the detail page, every card shown counts 1 (Y, R and the second-yellow red YR):
+    totals (club, opponent), first half, and who got the first card. Empty when the page has no card list."""
+    if not detail or "cards" not in detail:
+        return {"cards_ev": None, "cards_h1": None, "first_card": None, "first_card_min": None}
+    cards = sorted(detail.get("cards") or [], key=lambda c: minute_value(c.get("minute")))
+    mine = lambda c: c.get("team_id") == club  # noqa: E731
+    first_half = [c for c in cards if half_of(c.get("minute")) == 1]
+    return {"cards_ev": (sum(1 for c in cards if mine(c)), sum(1 for c in cards if not mine(c))),
+            "cards_h1": (sum(1 for c in first_half if mine(c)), sum(1 for c in first_half if not mine(c))),
+            "first_card": ("for" if mine(cards[0]) else "against") if cards else "none",
+            "first_card_min": minute_of(cards[0].get("minute")) if cards else None}
+
+
+def club_rows(matches: list[dict], stats: dict[int, dict[int, dict]], details: dict[int, dict] | None = None) -> dict[int, list[dict]]:
     """Per club, oldest first: result, halves, first/last goal, corners, cards, shots of every league match.
-    Halves and goal order need the scoring team of every goal (match detail pages); otherwise they stay None."""
+    Halves and goal order need the scoring team of every goal (match detail pages); otherwise they stay None.
+    Card facts by half and the first card come from the detail pages too (`details`, optional)."""
     rows: dict[int, list[dict]] = defaultdict(list)
+    details = details or {}
     for m in sorted(matches, key=lambda m: (m["kickoff_utc"] or "", m["id"])):
         goals = m["goals"]
         known = all(g.get("team_id") is not None and half_of(g.get("minute")) for g in goals)
@@ -80,7 +103,8 @@ def club_rows(matches: list[dict], stats: dict[int, dict[int, dict]]) -> dict[in
             gf, ga = (m["home"]["score"], m["away"]["score"]) if venue == "H" else (m["away"]["score"], m["home"]["score"])
             row = {"id": m["id"], "kickoff": m["kickoff_utc"] or "", "season": m["season"], "venue": venue, "opp": opp,
                    "gf": gf, "ga": ga, "ht": None, "h2": None, "first": None, "first_min": None, "last": None,
-                   "corners": None, "cards": None, "shots": None}
+                   "corners": None, "cards": None, "shots": None, "referee": (details.get(m["id"]) or {}).get("referee"),
+                   **card_facts(details.get(m["id"]), club)}
             if known:
                 h1f = sum(1 for g in goals if g["team_id"] == club and half_of(g["minute"]) == 1)
                 h1a = sum(1 for g in goals if g["team_id"] != club and half_of(g["minute"]) == 1)
@@ -672,14 +696,17 @@ def availability(player: dict | None) -> str:
 
 
 def build_cards(event: dict, ctx: dict) -> list[dict]:
-    """Every card for one match, strongest first: the same fact on several lines = one card with alternatives;
+    """Every card for one match, strongest first: the same fact on several lines or markets = one card with alternatives,
+    the same bet backed by several facts = one card with `support`;
     at most PER_RULE_LIMIT per rule and MATCH_LIMIT per match. Lines priced below MIN_ODDS never become cards
     (nor alternatives), so a fact keeps only its 1.50+ lines. No player card for a player Fantasy lists as out;
     a doubtful one loses DOUBT_PENALTY points and gets the tag «под вопросом»."""
+    import epl_markets  # noqa: PLC0415 - the market rules build on this module's helpers, so they load after it
+
     candidates = []
     for rule in ins.RULES:
         candidates += [finish(c) for c in rule(event, ctx)]
-    for rule in ENGINE_RULES:
+    for rule in (*ENGINE_RULES, *epl_markets.MARKET_RULES):
         candidates += rule(event, ctx)
     players = {p["pl_id"]: p for p in ctx.get("players") or []}
     seen, grouped = set(), {}
@@ -697,7 +724,7 @@ def build_cards(event: dict, ctx: dict) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
-        grouped.setdefault((card["rule"], card["title"]), []).append(card)
+        grouped.setdefault(card["title"], []).append(card)  # one fact = one card, its other lines and markets as alternatives
     cards = []
     for group in grouped.values():
         group.sort(key=lambda c: -c["score"])
@@ -706,11 +733,18 @@ def build_cards(event: dict, ctx: dict) -> list[dict]:
                                  "market_id": c["market"]["market_id"], "key": c["market"]["key"]} for c in group[1:]]
         cards.append(best)
     cards.sort(key=lambda c: (-c["score"], -c["evidence"]["sample"]))
-    per_rule, out = Counter(), []
+    per_rule, by_bet, out = Counter(), {}, []
     for card in cards:
+        kept = by_bet.get(card["market"]["key"])
+        if kept is not None:  # the same bet backed by another fact: one card, the weaker fact listed as support
+            if len(kept["support"]) < SUPPORT_LIMIT:
+                kept["support"].append(card["title"])
+            continue
         if per_rule[card["rule"]] >= PER_RULE_LIMIT:
             continue
         per_rule[card["rule"]] += 1
+        card["support"] = []
+        by_bet[card["market"]["key"]] = card
         out.append(card)
     return out[:MATCH_LIMIT]
 
