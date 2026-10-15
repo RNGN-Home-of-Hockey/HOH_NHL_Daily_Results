@@ -75,6 +75,7 @@ export async function buildLiveGameSnapshot(gamePk, fetchImpl = fetch) {
   });
   const liveStats={away:statFor(game.away_tri,game.away_sog),home:statFor(game.home_tri,game.home_sog)};
   const liveContext=buildLiveContext(game,shots);
+  liveContext.power_play=powerPlayState(game,payload.plays||[]);
 
   const cards = buildLiveCards(game, shots);
   return {
@@ -177,6 +178,27 @@ export function buildLiveContext(game,shots){
     recent_5m:windowByMinutes(5),recent_10m:windowByMinutes(10),periods,
     current_period:{period,total:periodRows.length,leader:periodLeader,leader_shots:periodLeaderShots,opponent:periodOther,opponent_shots:Number(periodCounts[periodOther]||0),share:periodRows.length?round3(periodLeaderShots/periodRows.length):0,goals_total:periodGoals.goals_total,goals_by_team:periodGoals.goals_by_team}
   };
+}
+
+// A power play that is on the ice right now, from the situationCode of the latest plays ("1451": away goalie in net,
+// 4 away skaters, 5 home skaters, home goalie in net). Only in periods 1–3 with both goalies in, and only for the
+// first 115 seconds of the run: a minor ends after two minutes, and a stale code must not keep the card alive.
+export function powerPlayState(game,plays){
+  const period=Number(game?.period_number||0);
+  if(!period||period>3||game?.in_intermission||!["LIVE","CRIT"].includes(String(game?.game_state||"").toUpperCase()))return null;
+  const list=(plays||[]).filter(p=>/^\d{4}$/.test(String(p?.situationCode||""))&&Number(p?.periodDescriptor?.number||0)>0);
+  const last=list.at(-1);if(!last)return null;
+  const code=String(last.situationCode);
+  const awayGoalie=Number(code[0]),awaySkaters=Number(code[1]),homeSkaters=Number(code[2]),homeGoalie=Number(code[3]);
+  if(awayGoalie!==1||homeGoalie!==1||awaySkaters===homeSkaters)return null;
+  let start=list.length-1;
+  while(start>0&&String(list[start-1].situationCode)===code)start-=1;
+  const began=gameElapsedSeconds(list[start]),sec=Number(game.seconds_remaining);
+  if(!Number.isFinite(began)||!Number.isFinite(sec))return null;
+  const running=(period-1)*20*60+(20*60-sec)-began;
+  if(running<0||running>115)return null;
+  const team=awaySkaters>homeSkaters?game.away_tri:game.home_tri;
+  return {team,opponent:opponent(game,team),skaters:`${Math.max(awaySkaters,homeSkaters)}x${Math.min(awaySkaters,homeSkaters)}`,running_seconds:running,situation_code:code};
 }
 
 export function buildLiveCards(game, shots) {

@@ -1,9 +1,16 @@
 import { applyWinlineMarkets } from "./winline-market-adapter.js";
 import { loadBroadcastPregameArchive } from "./broadcast-insight-history.js";
 import { regulationBasisRows } from "./regulation-basis.js";
+import { loadSpecialTeams } from "./nhl-special-teams.js";
 
 const MIN_SAMPLE=8;
 const MIN_ODDS=1.50;
+const RECENT_GAMES=12;
+// score-state stories («уступая шайбу после двух периодов…») need a longer memory: about the season and the last one
+const LONG_GAMES=90;
+const MIN_SITUATION_SAMPLE=5;
+// teams score in regulation in ~95% of games (2025/26), so only a long run is a story for «обе забьют»
+const BTTS_MIN_STREAK=20;
 
 export async function buildLiveHistoricalContext(db,snapshot,providerMarkets,options={}){
   const game=snapshot?.game||{};
@@ -20,13 +27,21 @@ export async function buildLiveHistoricalContext(db,snapshot,providerMarkets,opt
   let archive={cards:[]};
   try{archive=await loadBroadcastPregameArchive(db,Number(game.game_pk));}
   catch(error){console.error("live pregame archive read failed",error)}
+  const awayRows=featureResults?.[0]?.results||[],homeRows=featureResults?.[1]?.results||[];
   const rowsByTeam=new Map([
-    [String(game.away_tri).toUpperCase(),featureResults?.[0]?.results||[]],
-    [String(game.home_tri).toUpperCase(),featureResults?.[1]?.results||[]],
+    [String(game.away_tri).toUpperCase(),awayRows.slice(0,RECENT_GAMES)],
+    [String(game.home_tri).toUpperCase(),homeRows.slice(0,RECENT_GAMES)],
   ]);
+  const longRows=new Map([[String(game.away_tri).toUpperCase(),awayRows],[String(game.home_tri).toUpperCase(),homeRows]]);
+  let special=null;
+  if(snapshot?.live_context?.power_play){
+    try{special=await loadSpecialTeams(db,{seasonId:game.season_id,fetchImpl:options.fetchImpl||fetch})}
+    catch(error){console.error("live special teams read failed",error)}
+  }
   const history=buildProviderHistoryCards(snapshot,providerMarkets,rowsByTeam,options);
+  const situation=buildSituationCards(snapshot,providerMarkets,{recent:rowsByTeam,long:longRows,special},options);
   const repriced=repricePregameLiveCards(snapshot,archive?.cards||[],providerMarkets,options);
-  return mergeLiveInsightCards(history,repriced);
+  return mergeLiveInsightCards([...history,...situation],repriced);
 }
 
 function recentFeatures(db,team,gamePk){
@@ -37,8 +52,168 @@ function recentFeatures(db,team,gamePk){
     FROM team_game_features
     WHERE team_tri=? AND game_pk<>?
     ORDER BY scheduled_start_utc DESC,game_pk DESC
-    LIMIT 12;
+    LIMIT ${LONG_GAMES};
   `).bind(team,gamePk);
+}
+
+// Cards that read the situation on the ice, so the 2nd and 3rd periods are not left with shots only (commentators,
+// 2026-10-05 and 2026-10-11: «ко второму периоду кэфы иссякают»):
+//   score_state_history — what this team did with the same score after the same number of periods;
+//   btts_history        — the team that has not scored yet usually does (market «обе забьют»);
+//   power_play          — a power play on the ice right now and the team's season percentage (market «следующий гол»).
+export function buildSituationCards(snapshot,providerMarkets,data={},options={}){
+  const nowMs=resolveNow(options.now),maxAgeMs=finitePositive(options.market_max_age_ms,90_000);
+  const markets=(providerMarkets||[]).filter(m=>freshLiveMarket(m,nowMs,maxAgeMs));
+  const recent=rowsMap(data.recent),long=rowsMap(data.long);
+  const cards=[...scoreStateCards(snapshot,markets,long.size?long:recent)];
+  for(const m of markets){
+    const type=String(m?.market_type||m?.type||"").toLowerCase(),period=String(m?.period||"GAME").toUpperCase();
+    let card=null;
+    if(type==="both_teams_score"&&period==="GAME"&&String(m?.side||"").toLowerCase()==="yes")card=bothScoreCard(snapshot,m,recent,long);
+    else if(type==="next_goal_team"&&data.special)card=powerPlayCard(snapshot,m,data.special);
+    if(card)cards.push(card);
+  }
+  return dedupeByProviderSelection(cards).sort((a,b)=>Number(b.air_score||0)-Number(a.air_score||0));
+}
+
+const SITUATION_RULES={
+  // The share of such games the story needs: 1.3–2× the league in that situation. League 2025/26 (team_game_features):
+  // after P1 −1 win 33% / no regulation loss 44%, −2 21% / 32%; after P2 −1 24% / 40%, −2 8% / 14%; tied 50%;
+  // after P1 +1 win 67%, +2 79%; after P2 +1 76%.
+  trail:{1:{"-1":{dc:0.58,ml:0.45},"-2":{dc:0.50,ml:0.36}},2:{"-1":{dc:0.52,ml:0.34},"-2":{dc:0.25,ml:0.17}}},
+  tie:0.62,
+  lead:{1:{"1":0.80,"2":0.90},2:{"1":0.90}},
+};
+
+function scoreStateCards(snapshot,markets,longMap){
+  const game=snapshot?.game||{},st=completedPeriodState(snapshot);if(!st)return [];
+  const out=[];
+  for(const team of [String(game.away_tri||"").toUpperCase(),String(game.home_tri||"").toUpperCase()]){
+    const opp=opponent(game,team),own=team===String(game.away_tri).toUpperCase()?st.away:st.home,other=team===String(game.away_tri).toUpperCase()?st.home:st.away,d=own-other;
+    if(Math.abs(d)>2)continue;
+    const rows=periodCheckedRows(rowsFor(longMap,team)).filter(r=>diffAfter(r,st.k)===d);
+    if(rows.length<MIN_SITUATION_SAMPLE)continue;
+    const wins=boolRate(rows,r=>Number(r.final_win)===1);
+    const noLoss=boolRate(rows,r=>Number(r.regulation_goals_for)>=Number(r.regulation_goals_against));
+    const options=[];
+    if(d<0){
+      const rule=SITUATION_RULES.trail[st.k]?.[String(d)];
+      if(rule){options.push({stat:noLoss,need:rule.dc,market:findMarket(markets,"double_chance","REG",team,"team_or_draw"),kind:"no_loss"});options.push({stat:wins,need:rule.ml,market:findMarket(markets,"moneyline","GAME",team,team),kind:"win"});}
+    }else if(d===0){
+      if(rows.length>=6)options.push({stat:wins,need:SITUATION_RULES.tie,market:findMarket(markets,"moneyline","GAME",team,team),kind:"win"});
+    }else{
+      const need=SITUATION_RULES.lead[st.k]?.[String(d)];
+      if(need&&rows.length>=6)options.push({stat:wins,need,market:findMarket(markets,"moneyline","GAME",team,team),kind:"win"});
+    }
+    let best=null;
+    for(const o of options){
+      if(!o.market||o.stat.hits<3||o.stat.rate<o.need)continue;
+      const score=clamp(74+Math.round((o.stat.rate-o.need)*60)+(snapshot.game?.in_intermission?3:0),64,92);
+      if(!best||score>best.score)best={...o,score};
+    }
+    if(!best)continue;
+    const after=st.k===1?"ПОСЛЕ 1-ГО ПЕРИОДА":"ПОСЛЕ ДВУХ ПЕРИОДОВ";
+    const state=d===-1?"УСТУПАЯ ШАЙБУ":d===-2?"УСТУПАЯ ДВЕ ШАЙБЫ":d===1?"ВЕДЯ В ОДНУ ШАЙБУ":d===2?"ВЕДЯ В ДВЕ ШАЙБЫ":"ПРИ НИЧЬЕЙ";
+    const {hits,sample}=best.stat;
+    const title=best.kind==="no_loss"
+      ?`${state} ${after}, ${team} НЕ ПРОИГРАЛ В ОСНОВНОЕ ВРЕМЯ В ${hits} ИЗ ${sample} МАТЧЕЙ`
+      :d===0?`ПРИ НИЧЬЕЙ ${after} ${team} ВЫИГРАЛ В ${hits} ИЗ ${sample} МАТЧЕЙ`:`${state} ${after}, ${team} ВЫИГРАЛ В ${hits} ИЗ ${sample} МАТЧЕЙ`;
+    const since=sinceText(rows);
+    out.push(providerCard(snapshot,best.market,{
+      origin:"score_state_history",score:best.score,eyebrow:`LIVE · СЧЁТ ${after}`,value:`${hits}/${sample}`,title,
+      subtitle:`Сейчас ${game.away_tri} ${game.away_score}:${game.home_score} ${game.home_tri} · ${sample} таких матчей ${team}${since?` с ${since}`:""}`,
+      explanation:`Все матчи ${team}${since?` с ${since}`:""}, где после ${st.k}-го периода был такой же счёт по разнице шайб. Счёт по периодам сверен с итогом основного времени.`,
+      evidence:{team,opponent:opp,situation:{after_period:st.k,score_diff:d},hits,decisions:sample,sample,hit_rate:best.stat.rate,game_pks:rows.map(r=>Number(r.game_pk)),stats_validation:"period_sums_match_regulation",feature_layer:"live_score_state_history_v1"},
+      reasons:["тот же счёт после того же периода","история команды","точная live-линия"],
+    }));
+  }
+  return out;
+}
+
+// The score after the last finished period, while it is still the score on the ice: in the intermission, or in the
+// first half of the next period with no goal yet.
+function completedPeriodState(snapshot){
+  const game=snapshot?.game||{},period=Number(game.period_number||0),state=String(game.game_state||"").toUpperCase();
+  if(!["LIVE","CRIT"].includes(state))return null;
+  const k=game.in_intermission?period:period-1;
+  if(k<1||k>2)return null;
+  if(!game.in_intermission){const sec=Number(game.seconds_remaining);if(!Number.isFinite(sec)||sec<10*60)return null}
+  let away=0,home=0;
+  for(const row of snapshot?.live_context?.periods||[]){
+    if(Number(row.period)>k)continue;
+    away+=Number(row.goals_by_team?.[game.away_tri]||0);home+=Number(row.goals_by_team?.[game.home_tri]||0);
+  }
+  if(away!==Number(game.away_score||0)||home!==Number(game.home_score||0))return null;
+  return {k,away,home};
+}
+
+function bothScoreCard(snapshot,m,recentMap,longMap){
+  const game=snapshot?.game||{},as=Number(game.away_score||0),hs=Number(game.home_score||0);
+  const scoreless=[as===0?game.away_tri:null,hs===0?game.home_tri:null].filter(Boolean);
+  if(scoreless.length!==1)return null;
+  const team=String(scoreless[0]).toUpperCase(),opp=opponent(game,team),period=Number(game.period_number||0),sec=Number(game.seconds_remaining);
+  if(period>3||(period===3&&Number.isFinite(sec)&&sec<240))return null;
+  const scored=boolRate(rowsFor(recentMap,team).slice(0,10),r=>regulationGoals(r,"for")>0);
+  const conceded=boolRate(rowsFor(recentMap,opp).slice(0,10),r=>regulationGoals(r,"against")>0);
+  if(scored.sample<MIN_SAMPLE||conceded.sample<MIN_SAMPLE||conceded.rate<0.8)return null;
+  const history=rowsFor(longMap,team).length?rowsFor(longMap,team):rowsFor(recentMap,team);
+  let streak=0;for(const r of history){if(regulationGoals(r,"for")>0)streak++;else break}
+  if(streak<BTTS_MIN_STREAK)return null;
+  // the whole stored history without a blank game: say since when, not «подряд» (the run may be longer)
+  const matches=`${streak} ${streak%10===1&&streak%100!==11?"МАТЧЕ":"МАТЧАХ"}`,since=sinceText(history);
+  const title=streak===history.length&&since?`${team} ЗАБИВАЛ ВО ВСЕХ ${matches} С ${since.toUpperCase()}`:`${team} ЗАБИВАЕТ В ${matches} ПОДРЯД`;
+  const score=clamp(72+Math.min(10,Math.floor((streak-BTTS_MIN_STREAK)/5))+Math.round((conceded.rate-0.8)*20)+(period===3?4:0),64,88);
+  return providerCard(snapshot,m,{
+    origin:"btts_history",score,eyebrow:"LIVE · ОБЕ ЗАБЬЮТ",value:`${streak} подряд`,title,
+    subtitle:`Сейчас ${game.away_tri} ${game.away_score}:${game.home_score} ${game.home_tri} · ${opp} пропускал в ${conceded.hits} из ${conceded.sample} последних матчей`,
+    explanation:`${team} ещё не забил в этом матче. Голы основного времени: ${team} забивает ${streak} матчей подряд, ${opp} пропускал в ${conceded.hits} из ${conceded.sample} последних.`,
+    evidence:{team,opponent:opp,team_scored:scored,opponent_conceded:conceded,scoring_streak:streak,hits:scored.hits,decisions:scored.sample,hit_rate:scored.rate,feature_layer:"live_btts_history_v1"},
+    reasons:["команда без гола в матче","забивает почти всегда","точная live-линия"],
+  });
+}
+
+function powerPlayCard(snapshot,m,special){
+  const pp=snapshot?.live_context?.power_play,game=snapshot?.game||{};if(!pp)return null;
+  const team=String(m?.subject||"").toUpperCase();if(team!==String(pp.team).toUpperCase())return null;
+  const own=special?.[team],opp=special?.[String(pp.opponent).toUpperCase()];
+  if(!own||Number(own.gp)<3)return null;
+  const weakKill=opp&&Number(opp.pk)<=0.78;
+  if(Number(own.pp)<0.20&&!weakKill)return null;
+  const ppPct=Math.round(Number(own.pp)*100),pkPct=opp?Math.round(Number(opp.pk)*100):null;
+  const title=Number(own.pp_rank)<=10?`${team} В БОЛЬШИНСТВЕ: ${ppPct}% РЕАЛИЗАЦИИ — ${own.pp_rank}-Е МЕСТО В НХЛ`:`${team} В БОЛЬШИНСТВЕ: ${ppPct}% РЕАЛИЗАЦИИ В СЕЗОНЕ`;
+  const score=clamp(84+Math.min(8,Math.round((Number(own.pp)-0.2)*40))+(weakKill?3:0),80,95);
+  return providerCard(snapshot,m,{
+    origin:"power_play",score,eyebrow:`LIVE · БОЛЬШИНСТВО ${String(pp.skaters||"").replace("x"," НА ")}`,value:`${ppPct}%`,title,
+    subtitle:`${pp.opponent}${pkPct!==null?` в меньшинстве: ${pkPct}%${opp.pk_rank?` (${opp.pk_rank}-е место)`:""}`:""} · сейчас ${game.away_tri} ${game.away_score}:${game.home_score} ${game.home_tri}`,
+    explanation:`Идёт большинство ${team} (${pp.skaters}). Реализация большинства и меньшинства — статистика НХЛ за сезон (${own.gp} матчей у ${team}).`,
+    evidence:{team,opponent:pp.opponent,power_play:pp,team_power_play:own,opponent_penalty_kill:opp||null,feature_layer:"live_power_play_v1"},
+    reasons:["большинство прямо сейчас","реализация за сезон","точная live-линия"],
+  });
+}
+
+function findMarket(markets,type,period,subject,side){
+  return (markets||[]).find(m=>String(m?.market_type||m?.type||"").toLowerCase()===type&&String(m?.period||"GAME").toUpperCase()===period&&String(m?.subject||"").toUpperCase()===subject&&String(m?.side||"").toLowerCase()===String(side).toLowerCase())||null;
+}
+function periodCheckedRows(rows){
+  return (rows||[]).filter(r=>{
+    const p=[1,2,3].map(n=>[Number(r?.[`p${n}_goals_for`]),Number(r?.[`p${n}_goals_against`])]);
+    if(p.some(([f,a])=>!Number.isInteger(f)||!Number.isInteger(a)||f<0||a<0))return false;
+    const gf=Number(r?.regulation_goals_for),ga=Number(r?.regulation_goals_against);
+    if(!Number.isInteger(gf)||!Number.isInteger(ga))return false;
+    return p.reduce((s,x)=>s+x[0],0)===gf&&p.reduce((s,x)=>s+x[1],0)===ga&&[0,1].includes(Number(r?.final_win))&&r?.final_win!==null&&r?.final_win!==undefined&&r?.final_win!=="";
+  });
+}
+function diffAfter(r,k){let d=0;for(let n=1;n<=k;n++)d+=Number(r[`p${n}_goals_for`])-Number(r[`p${n}_goals_against`]);return d}
+function regulationGoals(r,side){const reg=r?.[`regulation_goals_${side}`];return Number(reg!==null&&reg!==undefined&&reg!==""?reg:r?.[`final_goals_${side}`])}
+const MONTHS_GEN=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+function sinceText(rows){
+  const t=Math.min(...(rows||[]).map(r=>Date.parse(String(r?.scheduled_start_utc||""))).filter(Number.isFinite));
+  if(!Number.isFinite(t))return "";
+  const d=new Date(t);return `${MONTHS_GEN[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+function rowsMap(input){
+  if(input instanceof Map)return new Map([...input.entries()].map(([k,v])=>[String(k).toUpperCase(),v||[]]));
+  return new Map(Object.entries(input||{}).map(([k,v])=>[String(k).toUpperCase(),v||[]]));
 }
 
 export function buildProviderHistoryCards(snapshot,providerMarkets,rowsByTeamInput,options={}){
@@ -96,7 +271,7 @@ export function mergeLiveInsightCards(contextCards=[],shotCards=[]){
   for(const card of unique){
     const origin=String(card.live_origin||"live_other");
     const used=Number(originCounts.get(origin)||0);
-    const cap=origin==="shot_support"?1:origin==="pregame_repriced"?4:origin.startsWith("period_")?4:3;
+    const cap=origin==="shot_support"||origin==="power_play"||origin==="btts_history"?1:origin==="score_state_history"?2:origin==="pregame_repriced"?4:origin.startsWith("period_")?4:3;
     if(used>=cap)continue;
     out.push(card);originCounts.set(origin,used+1);
     if(out.length>=12)break;

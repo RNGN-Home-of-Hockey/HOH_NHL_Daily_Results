@@ -105,18 +105,22 @@ function card(game,m,rows,s){
   const team=subject===String(game.home_tri||"").toUpperCase()||subject===String(game.away_tri||"").toUpperCase()?subject:String(game.away_tri||"").toUpperCase();
   const opponent=team===String(game.home_tri||"").toUpperCase()?String(game.away_tri||"").toUpperCase():String(game.home_tri||"").toUpperCase();
   const teamName=gameTeamName(game,team),opponentName=gameTeamName(game,opponent);
+  // Teams of different conferences meet two or three times a season, so «4 из 4» can span two years: the card says
+  // from which year the meetings are counted and ranks lower when they are old or few (commentators, 2026-10-11).
+  const since=sinceYear(rows),sinceTail=since?" С "+since+" ГОДА":"",span=spanDays(rows,game);
   const title=String(m.market_type||"")==="moneyline"
-    ?fitTitle(teamName+" ОБЫГРЫВАЛИ "+opponentName+" В "+s.hits+" ИЗ "+s.decisions+" ПОСЛЕДНИХ МАТЧЕЙ",shortName(teamName)+": "+s.hits+" ИЗ "+s.decisions+" ПОБЕД ПРОТИВ "+shortName(opponentName))
-    :fitTitle(label+" ПРОТИВ "+opponentName+" — "+s.hits+" ИЗ "+s.decisions+" ПОСЛЕДНИХ МАТЧЕЙ",label+": "+s.hits+" ИЗ "+s.decisions+" ПРОТИВ "+shortName(opponentName));
+    ?fitTitle(teamName+" ОБЫГРЫВАЛИ "+opponentName+" В "+s.hits+" ИЗ "+s.decisions+" ЛИЧНЫХ ВСТРЕЧ"+sinceTail,shortName(teamName)+": "+s.hits+" ИЗ "+s.decisions+" ПОБЕД ПРОТИВ "+shortName(opponentName)+(since?" С "+since:""))
+    :fitTitle(label+" ПРОТИВ "+opponentName+" — "+s.hits+" ИЗ "+s.decisions+" ЛИЧНЫХ ВСТРЕЧ"+sinceTail,label+": "+s.hits+" ИЗ "+s.decisions+" ПРОТИВ "+shortName(opponentName)+(since?" С "+since:""));
+  const penalty=(span!==null&&span>400?6:0)+(s.decisions<5?4:0);
   return {
     id:String(game.game_pk)+":h2h-current-line:"+key(m),
     insight_type:"h2h_current_line",category:"h2h_broadcast",kind:"history",timing:"pregame",
-    score:Math.min(94,62+Math.round(s.rate*24)+Math.min(8,window)),
-    eyebrow:"ЛИЧНЫЕ ВСТРЕЧИ · "+window,
+    score:Math.min(94,62+Math.round(s.rate*24)+Math.min(8,window)-penalty),
+    eyebrow:"ЛИЧНЫЕ ВСТРЕЧИ · "+window+(since?" С "+since:""),
     value:s.hits+"/"+s.decisions,
     title,
-    explanation:"Последние "+window+" очных матчей "+teamName+" и "+opponentName+". Рассчитана именно текущая линия WINLINE, без подмены соседней линией.",
-    evidence:{split:"h2h",window,sample:window,hits:s.hits,decisions:s.decisions,pushes:s.pushes,hit_rate:s.rate,team,opponent,game_pks:rows.map(r=>Number(r.game_pk)),exact_provider_line:true,period_data_verified:s.period_data_verified,period_validation:s.period_data_verified?"period_scores+goal_events+feature+regulation":null,stats_validation:"exact_market_v5_goal_event_crosscheck",feature_layer:"h2h_current_winline_line_v2"},
+    explanation:"Последние "+window+" очных матчей "+teamName+" и "+opponentName+(since?" (с "+since+" года)":"")+". Рассчитана именно текущая линия WINLINE, без подмены соседней линией.",
+    evidence:{split:"h2h",window,sample:window,hits:s.hits,decisions:s.decisions,pushes:s.pushes,hit_rate:s.rate,team,opponent,game_pks:rows.map(r=>Number(r.game_pk)),since_year:since?Number(since):null,span_days:span,exact_provider_line:true,period_data_verified:s.period_data_verified,period_validation:s.period_data_verified?"period_scores+goal_events+feature+regulation":null,stats_validation:"exact_market_v5_goal_event_crosscheck",feature_layer:"h2h_current_winline_line_v2"},
     market:{type:m.market_type,period:m.period,subject:m.subject,side:m.side,line:m.line,label,odds:m.odds,provider:m.provider,odds_is_demo:false,odds_source:"provider_live",event_id:m.event_id,market_id:m.market_id,selection_id:m.selection_id,updated_at:m.updated_at,deeplink:m.deeplink}
   };
 }
@@ -127,6 +131,9 @@ function gameTeamName(game,tri){
   return t;
 }
 function shortName(value){return String(value||"").trim().split(/\s+/)[0]||String(value||"").trim()}
+function oldestMeeting(rows){const t=Math.min(...(rows||[]).map(r=>Date.parse(String(r?.scheduled_start_utc||""))).filter(Number.isFinite));return Number.isFinite(t)?t:null}
+function sinceYear(rows){const t=oldestMeeting(rows);return t===null?"":String(new Date(t).getUTCFullYear())}
+function spanDays(rows,game){const t=oldestMeeting(rows),now=Date.parse(String(game?.scheduled_start_utc||""));return t===null||!Number.isFinite(now)?null:Math.round((now-t)/86400000)}
 function fitTitle(full,compact){return String(full||"").length<=96?full:compact}
 function periodTotal(r,p){if(p==="GAME"||p==="REG")return Number(r.total_goals);const n=Number(String(p).replace("P",""));return Number(r["p"+n+"_goals_for"])+Number(r["p"+n+"_goals_against"])}
 function teamGoals(r,p,awayPerspective){if(p==="GAME"||p==="REG")return Number(awayPerspective?r.final_goals_for:r.final_goals_against);const n=Number(String(p).replace("P",""));return Number(r["p"+n+(awayPerspective?"_goals_for":"_goals_against")])}

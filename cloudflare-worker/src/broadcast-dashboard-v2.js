@@ -5,9 +5,12 @@ import { archiveBroadcastInsightHistory, loadBroadcastPregameArchive } from "./b
 import { summarizeMarketCoverage } from "./market-coverage-audit.js";
 import { isFeaturedQuality, selectBroadcastFour } from "./broadcast-four-card-selector.js";
 import { buildCommentatorBrief } from "./commentator-brief.js";
+import { broadcastMarketText } from "./broadcast-market-text.js";
 
 const BROADCAST_PATH = "/broadcast";
 const MIN_BROADCAST_ODDS = 1.50;
+// a card left on air goes off by itself: commentators forgot cards whose live odds were long gone (2026-10-11)
+export const ON_AIR_MAX_SECONDS = 180;
 export function broadcastGameLooksLive(game,nowMs=Date.now()){
   const state=String(game?.game_state||"").toUpperCase();
   if(["LIVE","CRIT","INTERMISSION"].includes(state))return true;
@@ -31,7 +34,7 @@ export async function handleBroadcastRequest(request, env, path) {
   if (path === "/broadcast/app.js") {
     if (request.method !== "GET") return jsonResponse({ ok: false, error: "method_not_allowed" }, 405);
     const rendererBase=String(env.BROADCAST_RENDERER_URL||"https://hoh-broadcast-renderer.vercel.app").replace(/\/+$/,"");
-    return jsResponse(`const __name=(target,value)=>target;\nconst HOH_RENDERER_BASE=${JSON.stringify(rendererBase)};\n(${browserApp.toString()})();`);
+    return jsResponse(`const __name=(target,value)=>target;\nconst HOH_RENDERER_BASE=${JSON.stringify(rendererBase)};\nconst ON_AIR_MAX_SECONDS=${ON_AIR_MAX_SECONDS};\n${broadcastMarketText.toString()}\n(${browserApp.toString()})();`);
   }
 
   if (path === BROADCAST_PATH) {
@@ -94,7 +97,7 @@ async function broadcastGamesRoute(env) {
         LEFT JOIN teams ht ON ht.tri_code=g.home_tri
         LEFT JOIN teams at ON at.tri_code=g.away_tri
         LEFT JOIN broadcast_operator_leases bol ON bol.game_pk=g.game_pk AND datetime(bol.expires_at)>datetime('now')
-        LEFT JOIN broadcast_cards onair ON onair.game_pk=g.game_pk AND onair.status='shown'
+        LEFT JOIN broadcast_cards onair ON onair.game_pk=g.game_pk AND onair.status='shown' AND datetime(onair.shown_at)>datetime('now','-${ON_AIR_MAX_SECONDS} seconds')
         LEFT JOIN broadcast_queue_summaries bqs ON bqs.game_pk=g.game_pk
         WHERE g.game_type IN (2,3)
           AND (
@@ -271,6 +274,7 @@ async function broadcastStateRoute(request, env) {
     const gamePk=Number.isSafeInteger(requested)&&requested>0?requested:null;
     const sql=`
       SELECT bc.card_id,bc.game_pk,bc.headline_ru,bc.stat_text_ru,bc.source_note_ru,bc.shown_at,bc.status,
+             CAST(strftime('%s','now')-strftime('%s',bc.shown_at) AS INTEGER) AS on_air_seconds,
              bc.suggested_market_type,bc.suggested_market_subject,bc.manual_odds,bc.odds_is_demo,bc.payload_json,
              bc.render_hash,bc.render_bytes,bc.rendered_at,
              g.home_tri,g.away_tri,
@@ -285,12 +289,26 @@ async function broadcastStateRoute(request, env) {
       LIMIT 1;
     `;
     const stmt=env.DB.prepare(sql);
-    const shown=gamePk?await stmt.bind(gamePk).first():await stmt.first();
-    return jsonResponse({ ok:true, scope:{game_pk:gamePk}, on_air:shown||null });
+    let shown=gamePk?await stmt.bind(gamePk).first():await stmt.first();
+    if(shown&&Number(shown.on_air_seconds)>ON_AIR_MAX_SECONDS){
+      await expireOnAirCard(env.DB,shown);
+      shown=null;
+    }
+    return jsonResponse({ ok:true, scope:{game_pk:gamePk}, on_air:shown||null, on_air_max_seconds:ON_AIR_MAX_SECONDS });
   } catch (error) {
     console.error("broadcast state failed", error);
     return jsonResponse({ ok:false, error:"broadcast_state_failed" },500);
   }
+}
+// The overlay asks /api/broadcast/state about every 0.75 s, so a forgotten card goes off within a second after its time;
+// the change is logged in «Эфирная лента» as taken off by «Авто».
+async function expireOnAirCard(db,row){
+  try{
+    const done=await db.prepare(`UPDATE broadcast_cards SET status='hidden',shown_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE card_id=? AND status='shown' AND shown_at=?;`).bind(row.card_id,row.shown_at).run();
+    if(Number(done?.meta?.changes||0)<1)return;
+    await db.prepare(`INSERT INTO broadcast_operator_actions(game_pk,card_id,action,operator_id,operator_name,headline_ru,stat_text_ru,created_at) VALUES(?,?,'hidden','auto',?,?,?,CURRENT_TIMESTAMP);`)
+      .bind(row.game_pk,String(row.card_id||"").slice(0,180),`Авто · ${Math.round(ON_AIR_MAX_SECONDS/60)} мин`,String(row.headline_ru||"").slice(0,240),String(row.stat_text_ru||"").slice(0,240)).run();
+  }catch(error){console.error("broadcast on-air expiry failed",error)}
 }
 async function broadcastGameRoute(env, gamePk) {
   if (!env.DB) return jsonResponse({ ok:false, error:"missing_d1_binding" },503);
@@ -645,6 +663,14 @@ export function canonicalBroadcastWinlineMarket(row,event,game,teams){
   }
   if(/oddeven|evenodd|chetn|nechetn/.test(norm))return null;
 
+  // Winline's live 3-way of regulation time («Match Result (Excluding Overtime)») is the same market as the pregame
+  // main_1x2_regular: without it a pregame «победа в основное время» card lost its price at the first puck drop.
+  if(/matchresultexcludingovertime|resultexcludingovertime|regulartimeresult|regulationtimeresult/.test(norm)){
+    const subject=teamSubject(row.subject_key,outcome,game,teams);
+    const side=subject||(/^(x|draw|tie|ничья|н)$/i.test(outcome)?"draw":null);
+    if(!side)return null;
+    return {...base,market_type:"moneyline",period:"REG",subject,side,line:null};
+  }
   if(String(row.market_type)==="main_1x2_regular"||/3wayodds|1x2/.test(norm)){
     const subject=teamSubject(row.subject_key,outcome,game,teams);
     const side=subject||(/^(x|draw|tie|ничья|н)$/i.test(outcome)?"draw":null);
@@ -787,7 +813,27 @@ function typeLabel(t){const n=Number(t);return n===1?'Предсезонка':n=
 async function api(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
 async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} матчей · ближайшие + live + предматчевый архив за 7 дней`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null);await refreshActions();void warmQueueSummaries();if(!actionTimer)actionTimer=setInterval(refreshActions,15000);if(!gameListTimer)gameListTimer=setInterval(refreshGameList,15000)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
 async function refreshGameList(){try{const d=await api('/api/broadcast/games');const fresh=d.games||[],byPk=new Map(games.map(g=>[Number(g.game_pk),g])),live=currentData?.game;games=fresh.map(g=>{const merged={...byPk.get(Number(g.game_pk)),...g};if(live&&Number(g.game_pk)===Number(selected)&&gameLooksLive(live))Object.assign(merged,{game_state:live.game_state,away_score:live.away_score,home_score:live.home_score,current_period:live.period_number??live.current_period,period_type:live.period_type});return merged});$('#counts').textContent=`${d.counts.games} матчей · ближайшие + live + предматчевый архив за 7 дней`;renderGames();void warmQueueSummaries()}catch{}}
-function renderAir(card){const air=$('#air'),text=$('#airtext');if(card){air.classList.add('live');text.textContent=`${card.headline_ru}: ${card.stat_text_ru}`}else{air.classList.remove('live');text.textContent='Сейчас ничего не показано'}}
+let airCard=null,airSince=0,airClock=null,airPoll=null;
+function airTime(sec){const v=Math.max(0,Math.round(sec));return Math.floor(v/60)+':'+String(v%60).padStart(2,'0')}
+function airTick(){const text=$('#airtext');if(!text||!airCard)return;const on=(Date.now()-airSince)/1000,left=ON_AIR_MAX_SECONDS-on;text.textContent=`${displayText(airCard.headline_ru||'')}: ${displayText(airCard.stat_text_ru||'')} · в эфире ${airTime(on)}`+(left>0?` · сама уйдёт через ${airTime(left)}`:'')}
+function renderAir(card){
+  const air=$('#air'),text=$('#airtext'),img=$('#airimg'),off=$('#air-off');
+  if(card){
+    const fresh=!airCard||String(airCard.card_id)!==String(card.card_id);
+    if(fresh||Number.isFinite(Number(card.on_air_seconds)))airSince=Date.now()-1000*Math.max(0,Number(card.on_air_seconds)||0);
+    airCard=card;air.classList.add('live');
+    if(img){if(card.render_hash){const src='/api/broadcast/rendered/'+encodeURIComponent(card.card_id)+'.png?v='+encodeURIComponent(card.render_hash);if(img.getAttribute('src')!==src)img.setAttribute('src',src);img.hidden=false}else{img.hidden=true;img.removeAttribute('src')}}
+    if(off){off.hidden=false;off.disabled=false}
+    airTick();if(!airClock)airClock=setInterval(airTick,1000);
+  }else{
+    airCard=null;air.classList.remove('live');text.textContent='Сейчас ничего не показано';
+    if(img){img.hidden=true;img.removeAttribute('src')}
+    if(off)off.hidden=true;
+    if(airClock){clearInterval(airClock);airClock=null}
+  }
+}
+// the bar follows the overlay: a card taken off from another phone or by the timer disappears here too
+async function refreshAir(){if(!selected)return;try{const s=await api('/api/broadcast/state?game='+encodeURIComponent(selected));renderAir(s.on_air||null)}catch{}}
 function gameLooksLive(g){
   const state=String(g?.game_state||'').toUpperCase();
   if(['LIVE','CRIT','INTERMISSION'].includes(state))return true;
@@ -953,7 +999,7 @@ function displayText(value){
   let s=String(value??"");
   for(const [tri,meta] of Object.entries(TEAM_META))s=s.replace(new RegExp("\\b"+tri+"\\b","gi"),meta.name);
   s=s.replace(/(^|[^A-Z0-9])P1(?=$|[^A-Z0-9])/gi,'$11-Й ПЕРИОД').replace(/(^|[^A-Z0-9])P2(?=$|[^A-Z0-9])/gi,'$12-Й ПЕРИОД').replace(/(^|[^A-Z0-9])P3(?=$|[^A-Z0-9])/gi,'$13-Й ПЕРИОД');
-  s=s.replace(/([+-]?\\d+)\\.(\\d+)/g,"$1,$2").toUpperCase();
+  s=s.replace(/([+-]?\d+)\.(\d+)/g,"$1,$2").toUpperCase();
   return applyAgainstUi(s);
 }
 function lineText(value){
@@ -962,25 +1008,17 @@ function lineText(value){
   return (n>0?"+":n<0?"-":"")+abs;
 }
 function marketDescription(card,team){
-  const m=card?.market||{},type=String(m.type||"").toLowerCase(),side=String(m.side||"").toLowerCase();
-  const line=Number(m.line);
-  if(type==="handicap"){let v=Number.isFinite(line)?line:null;if(v===null){const mm=String(m.label||"").match(/([+-]\\d+(?:[.,]\\d+)?)/);if(mm)v=Number(mm[1].replace(",","."))}return "ФОРА "+(v===null?"":lineText(v))+" ГОЛА"}
-  if(type==="team_total"){const dir=side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?lineText(Math.abs(line)).replace("+",""):"")+" ГОЛА"}
-  if(type==="game_total"){const dir=side==="under"?"ОБЩИЙ ТОТАЛ МЕНЬШЕ":"ОБЩИЙ ТОТАЛ БОЛЬШЕ";return dir+" "+(Number.isFinite(line)?String(line).replace(".",","):"")}
-  if(type==="moneyline")return"ПОБЕДА";
-  if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";
-  if(type==="period_1_result")return"1-Й ПЕРИОД · ПОБЕДА";
-  if(type==="period_2_result")return"2-Й ПЕРИОД · ПОБЕДА";
-  if(type==="period_3_result")return"3-Й ПЕРИОД · ПОБЕДА";
-  if(type==="double_chance")return side==="no_draw"?"БЕЗ НИЧЬЕЙ":"НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ";
-  const fallback=displayText(m.label||"СТАВКА WINLINE").replace(team.name,"").replace(/^\\s*[·—-]+\\s*/,"").trim();
+  const m=card?.market||{},type=String(m.type||"").toLowerCase();
+  if(type==="handicap"&&!Number.isFinite(Number(m.line))){const mm=String(m.label||"").match(/([+-]\d+(?:[.,]\d+)?)/);if(mm)return broadcastMarketText({...m,type,line:Number(mm[1].replace(",","."))})}
+  const text=broadcastMarketText(m);if(text)return text;
+  const fallback=displayText(m.label||"СТАВКА WINLINE").replace(team.name,"").replace(/^\s*[·—-]+\s*/,"").trim();
   return fallback||"СТАВКА WINLINE";
 }
 function factText(card){
   const m=card?.market||{};
   let s=displayText(card?.broadcast_title||card?.title||card?.value||"");
-  if(String(m.type||"").toLowerCase()==="handicap"&&!/ФОРУ[^А-ЯЁ]*[+-]?\\d+(?:,\\d+)?\\s+ГОЛА/.test(s)){
-    s=s.replace(/ФОРУ\\s+([+-]?\\d+(?:,\\d+)?)/,"ФОРУ $1 ГОЛА");
+  if(String(m.type||"").toLowerCase()==="handicap"&&!/ФОРУ[^А-ЯЁ]*[+-]?\d+(?:,\d+)?\s+ГОЛА/.test(s)){
+    s=s.replace(/ФОРУ\s+([+-]?\d+(?:,\d+)?)/,"ФОРУ $1 ГОЛА");
   }
   return s;
 }
@@ -1261,7 +1299,7 @@ function renderActions(rows){
 function renderPlayers(rows){$('#players').innerHTML=`<div class="prow head"><div>Игрок</div><div class="num">Г</div><div class="num">П</div><div class="num">О</div><div class="num">Бр</div></div>`+(rows.length?rows.slice(0,10).map(p=>`<div class="prow"><div><div class="pname">${esc(p.full_name_ru||p.full_name_en)}</div><div class="pmeta">${esc(p.team_tri)} · ${esc(p.position_code||'—')} · #${esc(p.sweater_number??'—')}</div></div><div class="num">${p.goals??0}</div><div class="num">${p.assists??0}</div><div class="num">${p.points??0}</div><div class="num">${p.shots??'—'}</div></div>`).join(''):'<div class="empty">Нет статистики</div>')}
 function renderEvents(rows){$('#events').innerHTML=rows.length?rows.slice(0,18).map(e=>`<div class="event"><div class="etime">P${esc(e.period_number??'—')} ${esc(e.time_in_period||'')}</div><div><div class="etype">${e.event_type==='goal'||e.event_type==='shootout-goal'?'ГОЛ':e.event_type==='penalty'?'УДАЛЕНИЕ':'КОНЕЦ ПЕРИОДА'}${e.team_tri?' · '+esc(e.team_tri):''}</div><div class="edesc">${esc(e.description||peopleText(e.people)||'')}</div></div><div class="escore">${e.away_score??''}${e.away_score!==null&&e.away_score!==undefined?':':''}${e.home_score??''}</div></div>`).join(''):'<div class="empty">Нет ключевых событий</div>'}
 function peopleText(v){return String(v||'').split(';;').map(x=>x.split('|')[0]).filter(Boolean).join(', ')}
-$('#close').onclick=()=>$('#drawer').classList.remove('open');$('#drawer').onclick=e=>{if(e.target===$('#drawer'))$('#drawer').classList.remove('open')};$('#overlay-off').onclick=hideSelectedMatch;$('#overlay-copy').onclick=async()=>{if(!selected)return;const b=$('#overlay-copy'),old=b.textContent;try{await navigator.clipboard.writeText(absoluteOverlayUrl(selected));b.textContent='URL СКОПИРОВАН';setTimeout(()=>{b.textContent=old},1400)}catch{prompt('Скопируй URL overlay для OBS',absoluteOverlayUrl(selected))}};window.addEventListener('pagehide',()=>{if(selected)fetch('/api/broadcast/operator/leases/'+selected,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator_id:operatorId}),keepalive:true}).catch(()=>{})});load();
+$('#close').onclick=()=>$('#drawer').classList.remove('open');$('#drawer').onclick=e=>{if(e.target===$('#drawer'))$('#drawer').classList.remove('open')};$('#overlay-off').onclick=hideSelectedMatch;$('#air-off').onclick=async()=>{const b=$('#air-off');if(b){b.disabled=true;b.textContent='УБИРАЮ…'}try{await hideSelectedMatch()}finally{if(b){b.disabled=false;b.textContent='УБРАТЬ С ЭКРАНА'}}};if(!airPoll)airPoll=setInterval(refreshAir,5000);$('#overlay-copy').onclick=async()=>{if(!selected)return;const b=$('#overlay-copy'),old=b.textContent;try{await navigator.clipboard.writeText(absoluteOverlayUrl(selected));b.textContent='URL СКОПИРОВАН';setTimeout(()=>{b.textContent=old},1400)}catch{prompt('Скопируй URL overlay для OBS',absoluteOverlayUrl(selected))}};window.addEventListener('pagehide',()=>{if(selected)fetch('/api/broadcast/operator/leases/'+selected,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator_id:operatorId}),keepalive:true}).catch(()=>{})});load();
 
 }
 
@@ -1278,7 +1316,8 @@ ${BROADCAST_CARD_CSS}
 .app{display:grid;grid-template-columns:290px minmax(0,1fr);min-height:100vh}.side{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--line);background:var(--side);padding:20px 16px}.brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px}.brandname{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:950}.mark{width:18px;height:18px;border-radius:4px;background:var(--orange);box-shadow:10px 0 0 var(--lav)}.alpha{font-size:9px;letter-spacing:.15em;color:#777;border:1px solid #29292e;padding:5px 8px;border-radius:99px}.label{font-size:9px;font-weight:900;letter-spacing:.16em;color:#67676f;text-transform:uppercase;margin:18px 6px 8px}.nav{display:grid;gap:4px}.navitem{padding:11px 12px;border-radius:11px;color:#9a9aa1;display:flex;align-items:center;gap:10px;text-decoration:none;cursor:pointer;border:0;background:transparent;font:inherit;text-align:left}.navitem:hover{background:#141416;color:#fff}.navitem.active{background:#1a1a1d;color:#fff}.dot{width:7px;height:7px;border-radius:50%;background:#53535a}.active .dot{background:var(--orange);box-shadow:0 0 0 5px rgba(255,90,31,.1)}.soon{margin-left:auto;font-size:10px;color:#555}.sidecount{font-size:10px;color:#6f6f76;margin:0 6px 10px}.games{display:grid;gap:5px}
 .gamegroup{border:1px solid #242429;border-radius:12px;background:#0d0d0f;overflow:hidden}.gamegroup+.gamegroup{margin-top:4px}.grouphead{list-style:none;display:grid;grid-template-columns:1fr auto 16px;align-items:center;gap:8px;padding:10px 11px;color:#9b9ba4;font-size:10px;font-weight:950;letter-spacing:.11em;text-transform:uppercase;cursor:pointer;user-select:none}.grouphead::-webkit-details-marker{display:none}.grouphead:hover{background:#151517;color:#fff}.groupcount{min-width:23px;text-align:center;color:#777780;border:1px solid #2d2d33;border-radius:999px;padding:2px 6px;font-size:9px;letter-spacing:0}.groupchev{font-size:15px;line-height:1;color:#666;transform:rotate(0deg);transition:transform .15s ease}.gamegroup[open] .groupchev{transform:rotate(180deg)}.grouprows{border-top:1px solid #202024;padding:4px}.grouprows .game{width:100%}
 .game{border:1px solid transparent;border-radius:12px;background:transparent;color:inherit;padding:10px 11px;text-align:left;cursor:pointer}.game:hover{background:#141416}.game.active{background:#19191c;border-color:#35353b}.gline{display:flex;justify-content:space-between;gap:8px;align-items:center}.gteams{font-size:13px;font-weight:900}.gscore{font-size:18px;font-weight:950}.gmeta{display:flex;justify-content:space-between;gap:8px;margin-top:5px;color:#74747b;font-size:10px}.pill{font-size:8px;color:var(--lav);padding:3px 5px;background:rgba(200,183,255,.08);border-radius:5px;text-transform:uppercase}
-.main{padding:22px 26px 40px;min-width:0;background:radial-gradient(circle at 88% -8%,rgba(200,183,255,.10),transparent 26%),radial-gradient(circle at 25% 110%,rgba(255,90,31,.07),transparent 34%)}.top{display:grid;grid-template-columns:1fr 360px;gap:14px;margin-bottom:16px}.heading{padding:5px 2px}.heading h1{font-size:13px;letter-spacing:.17em;margin:0;text-transform:uppercase}.heading p{margin:6px 0 0;color:#777;font-size:11px}.air{border:1px solid var(--line);background:#0f0f11;border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px}.airtag{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:900;letter-spacing:.12em}.airdot{width:8px;height:8px;border-radius:50%;background:#45454c}.air.live .airdot{background:var(--red);box-shadow:0 0 12px rgba(255,97,97,.7)}.airtext{font-size:11px;color:#8c8c94;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+.main{padding:22px 26px 40px;min-width:0;background:radial-gradient(circle at 88% -8%,rgba(200,183,255,.10),transparent 26%),radial-gradient(circle at 25% 110%,rgba(255,90,31,.07),transparent 34%)}.top{display:grid;grid-template-columns:1fr 360px;gap:14px;margin-bottom:16px}.heading{padding:5px 2px}.heading h1{font-size:13px;letter-spacing:.17em;margin:0;text-transform:uppercase}.heading p{margin:6px 0 0;color:#777;font-size:11px}.air{border:1px solid var(--line);background:#0f0f11;border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px}.airtag{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:900;letter-spacing:.12em}.airdot{width:8px;height:8px;border-radius:50%;background:#45454c}.air.live .airdot{background:var(--red);box-shadow:0 0 12px rgba(255,97,97,.7)}.airtext{font-size:11px;color:#8c8c94;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}.air.live .airtext{color:#e6e6ea;white-space:normal;max-width:none;flex:1;line-height:1.3}.airimg{height:38px;width:auto;max-width:150px;border-radius:6px;object-fit:contain;background:#000}.airoff{flex:none;border:0;border-radius:10px;background:var(--red);color:#fff;font-weight:950;font-size:12px;letter-spacing:.04em;padding:11px 14px;cursor:pointer}.airoff:disabled{opacity:.6}
+@media(max-width:760px){.air.live{position:fixed;left:8px;right:8px;bottom:8px;z-index:60;box-shadow:0 10px 32px rgba(0,0,0,.6);border-color:var(--red)}.air.live .airimg{display:none}.air.live .airoff{padding:13px 16px;font-size:13px}}
 .hero{border:1px solid var(--line);border-radius:20px;background:linear-gradient(135deg,#111113,#0f0f11 65%,#18141f);overflow:hidden}.herohead{display:flex;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line);font-size:10px;color:#777}.match{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:22px 26px;gap:20px}.team{display:flex;align-items:center;gap:14px}.team.home{justify-content:flex-end;text-align:right}.logo{width:58px;height:58px;border-radius:16px;border:1px solid #303036;background:#18181a;display:grid;place-items:center;overflow:hidden}.logo img{width:46px;height:46px;object-fit:contain}.fallback{font-size:18px;font-weight:950}.code{font-size:27px;font-weight:950;letter-spacing:-.05em}.name{margin-top:3px;color:#777;font-size:10px}.score{font-size:56px;font-weight:950;letter-spacing:-.08em}.score span{color:#46464d;margin:0 5px}.periods{text-align:center;color:var(--lav);font-size:9px;font-weight:900;letter-spacing:.09em;padding:0 18px 15px;text-transform:uppercase}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 14px}.metric{border:1px solid var(--line);background:#101012;border-radius:14px;padding:13px 14px}.mval{font-size:22px;font-weight:950;letter-spacing:-.05em}.mlabel{font-size:9px;color:#696970;letter-spacing:.12em;text-transform:uppercase;margin-top:4px}
 .work{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(330px,.65fr);gap:14px}.panel{border:1px solid var(--line);background:#0f0f11;border-radius:18px;overflow:hidden}.phead{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px}.ptitle{font-size:12px;font-weight:900}.psub{font-size:9px;color:#666}.cards{padding:12px;display:block}.queueblock+.queueblock{margin-top:12px}.queuehead,.queue-more>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 8px;color:#b7b7bf;font-size:9px;font-weight:950;letter-spacing:.12em;text-transform:uppercase}.queuehead b{min-width:22px;text-align:center;border:1px solid #34343b;border-radius:999px;padding:2px 6px;color:var(--green);letter-spacing:0}.queuehead.muted{color:#686870}.queue-more>summary{cursor:pointer;list-style:none;border-top:1px solid #28282d;padding-top:12px}.queue-more>summary::-webkit-details-marker{display:none}.queue-more>summary small{font-size:8px;color:#696971;letter-spacing:.04em}.cardgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card{border:1px solid #303036;border-radius:15px;background:#171719;overflow:hidden;position:relative}.card.featured{border-color:#44444d;box-shadow:0 0 0 1px rgba(131,230,177,.05)}.card.weak{opacity:.66}.card.weak:hover{opacity:.9}.card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--orange)}.card.lav:before{background:var(--lav)}.cardbody{padding:14px 15px 11px}.eyebrow{font-size:9px;color:#7c7c85;font-weight:900;letter-spacing:.13em}.cvalue{font-size:29px;font-weight:950;letter-spacing:-.06em;margin-top:12px}.ctitle{font-size:12px;font-weight:850;margin-top:8px}.cnote{font-size:9px;color:#73737b;margin-top:6px}.actions{display:grid;grid-template-columns:1fr 1.2fr;border-top:1px solid #29292e}.act{border:0;background:transparent;color:#aaa;padding:10px 8px;font-size:9px;font-weight:900;letter-spacing:.08em;cursor:pointer}.act:hover{background:#202024;color:#fff}.show{color:#111;background:var(--orange)}.show:hover{background:#ff6b36}.show[disabled]{background:#26262a;color:#64646b;cursor:not-allowed}.kind{position:absolute;right:10px;top:9px;font-size:8px;color:#65656d;text-transform:uppercase}
@@ -1321,7 +1360,7 @@ ${BROADCAST_CARD_CSS}
   <div class="label">Ближайшие матчи NHL</div><div class="sidecount" id="counts">загрузка...</div><div class="games" id="games"></div>
 </aside>
 <main class="main">
-  <div class="top"><div class="heading"><h1>Broadcast Stats / Control Room</h1><p>Реальные данные NHL → HOH Data Core → эфир</p><div class="overlaytools"><a id="overlay-open" class="overlayopen" href="/broadcast/overlay" target="_blank" rel="noopener">ОТКРЫТЬ OVERLAY ЭТОГО МАТЧА ↗</a><button id="overlay-copy" class="overlaycopy" type="button">СКОПИРОВАТЬ URL ДЛЯ OBS</button><button id="overlay-off" class="overlayoff" type="button">ВЫКЛЮЧИТЬ ПОКАЗ МАТЧА</button></div></div><div class="air" id="air"><div class="airtag"><span class="airdot"></span><span>ON AIR</span></div><div class="airtext" id="airtext">Сейчас ничего не показано</div></div></div>
+  <div class="top"><div class="heading"><h1>Broadcast Stats / Control Room</h1><p>Реальные данные NHL → HOH Data Core → эфир</p><div class="overlaytools"><a id="overlay-open" class="overlayopen" href="/broadcast/overlay" target="_blank" rel="noopener">ОТКРЫТЬ OVERLAY ЭТОГО МАТЧА ↗</a><button id="overlay-copy" class="overlaycopy" type="button">СКОПИРОВАТЬ URL ДЛЯ OBS</button><button id="overlay-off" class="overlayoff" type="button">ВЫКЛЮЧИТЬ ПОКАЗ МАТЧА</button></div></div><div class="air" id="air"><div class="airtag"><span class="airdot"></span><span>ON AIR</span></div><img class="airimg" id="airimg" alt="" hidden><div class="airtext" id="airtext">Сейчас ничего не показано</div><button class="airoff" id="air-off" type="button" hidden>УБРАТЬ С ЭКРАНА</button></div></div>
   <section class="hero" id="hero"><div class="empty">Выбираю матч...</div></section>
   <section class="metrics" id="metrics"></section>
   <section class="work">

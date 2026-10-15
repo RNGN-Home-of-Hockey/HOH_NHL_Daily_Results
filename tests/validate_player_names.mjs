@@ -24,7 +24,9 @@ assert.equal(transliterateName(""), null);
 assert.deepEqual([1, 2, 4, 5, 11, 14, 21, 22, 25, 31].map(yearsWord), ["год", "года", "года", "лет", "лет", "лет", "год", "года", "лет", "год"], "21 год, 22 года, 25 лет");
 
 // ---- 2) the order of trust ----------------------------------------------------------------------------------------------------------------
-const LOHREI = 8482511, HOGLANDER = 8481535, DOWLING = 8475413;
+// DOWLING is a made-up id: the real Justin Dowling (8475413) got a Sports.ru name in the daily refresh of 2026-10-15,
+// and the test needs a player Sports.ru will never know
+const LOHREI = 8482511, HOGLANDER = 8481535, DOWLING = 8999901;
 assert.equal(sportsRu[String(LOHREI)], "Мэйсон Лорей");
 assert.equal(sportsRu[String(HOGLANDER)], "Нильс Хегландер");
 assert.equal(sportsRu[String(DOWLING)], undefined, "a player Sports.ru does not know");

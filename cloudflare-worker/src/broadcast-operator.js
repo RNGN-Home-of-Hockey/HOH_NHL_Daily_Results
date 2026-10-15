@@ -2,6 +2,7 @@ import { evaluateMarketLines } from "./market-line-evaluator.js";
 import { buildPlayerMarketInsights } from "./player-market-insights.js";
 import { BROADCAST_CARD_CSS } from "./broadcast-card-theme.js";
 import { applyTeamGrammar, applyDisplayTeamGrammar } from "./team-russian-grammar.js";
+import { broadcastMarketText } from "./broadcast-market-text.js";
 
 const NHL_BASE = "https://api-web.nhle.com/v1";
 const ALLOWED_STATUSES = new Set(["draft","preview","shown","hidden"]);
@@ -585,27 +586,19 @@ function renderDisplayText(value){
   s=s.replace(/([+-]?\d+)\.(\d+)/g,"$1,$2").toUpperCase();
   return renderAgainstCase(s);
 }
-function renderLineText(value){
-  const n=Number(value);if(!Number.isFinite(n))return"";
-  const abs=Math.abs(n).toString().replace(".",",");
-  return (n>0?"+":n<0?"-":"")+abs;
-}
 function renderMarketText(candidate,row,teamName){
   const m=candidate.market&&typeof candidate.market==="object"?candidate.market:{};
   const type=String(m.type||row.suggested_market_type||"").toLowerCase();
-  const side=String(m.side||"").toLowerCase();
   const line=Number(m.line);
-  if(type==="handicap"){
-    let value=Number.isFinite(line)?line:null;
-    if(value===null){const found=String(m.label||row.stat_text_ru||"").match(/([+-]\d+(?:[.,]\d+)?)/);if(found)value=Number(found[1].replace(",","."))}
-    return "ФОРА "+(value===null?"":renderLineText(value))+" ГОЛА";
+  if(type==="handicap"&&!Number.isFinite(line)){
+    let value=null;
+    const found=String(m.label||row.stat_text_ru||"").match(/([+-]\d+(?:[.,]\d+)?)/);if(found)value=Number(found[1].replace(",","."));
+    if(value!==null)return broadcastMarketText({...m,type,line:value});
+    return "ФОРА ГОЛА";
   }
-  if(type==="team_total")return (side==="under"?"ТОТАЛ КОМАНДЫ МЕНЬШЕ ":"ТОТАЛ КОМАНДЫ БОЛЬШЕ ")+(Number.isFinite(line)?String(Math.abs(line)).replace(".",","):"")+" ГОЛА";
-  if(type==="game_total")return (side==="under"?"ОБЩИЙ ТОТАЛ МЕНЬШЕ ":"ОБЩИЙ ТОТАЛ БОЛЬШЕ ")+(Number.isFinite(line)?String(line).replace(".",","):"");
-  if(type==="moneyline")return"ПОБЕДА";
-  if(type==="next_goal_team")return"СЛЕДУЮЩИЙ ГОЛ";
-  if(type==="period_2_result")return"2-Й ПЕРИОД · ПОБЕДА";
-  if(type==="double_chance")return side==="no_draw"?"БЕЗ НИЧЬЕЙ":"НЕ ПРОИГРАЕТ В ОСНОВНОЕ ВРЕМЯ";
+  // the period is always named: a line of the 1st period is never «ОБЩИЙ ТОТАЛ» (broadcast-market-text.js)
+  const text=broadcastMarketText({...m,type});
+  if(text)return text;
   const fallback=renderDisplayText(m.label||row.stat_text_ru||"СТАВКА WINLINE").replace(teamName,"").replace(/^\s*[·—-]+\s*/,"").trim();
   return fallback||"СТАВКА WINLINE";
 }

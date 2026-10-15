@@ -6,7 +6,7 @@ const rows=Array.from({length:6},(_,i)=>{
   const p1gf=i<4?1:0,p1ga=i<4?0:1,p2gf=2,p2ga=1,p3gf=1,p3ga=1;
   const regGf=p1gf+p2gf+p3gf,regGa=p1ga+p2ga+p3ga;
   return {
-    game_pk:100+i,
+    game_pk:100+i,scheduled_start_utc:["2026-03-01T00:00:00Z","2026-01-10T00:00:00Z","2025-11-02T00:00:00Z","2025-03-15T00:00:00Z","2024-12-01T00:00:00Z","2024-10-20T00:00:00Z"][i],
     final_goals_for:i<4?4:2,final_goals_against:i<4?2:3,total_goals:i<5?6:4,final_goal_diff:i<4?2:-1,final_win:i<4?1:0,
     regulation_goals_for:regGf,regulation_goals_against:regGa,regulation_result:regGf>regGa?"W":regGf<regGa?"L":"T",regulation_goal_diff:regGf-regGa,
     p1_goals_for:p1gf,p1_goals_against:p1ga,p2_goals_for:p2gf,p2_goals_against:p2ga,p3_goals_for:p3gf,p3_goals_against:p3ga,
@@ -32,7 +32,11 @@ const ml=cards.find(c=>c.market.type==="moneyline"&&c.market.subject==="FLA");
 assert.ok(ml);
 assert.equal(ml.evidence.hits,4);
 assert.equal(ml.evidence.decisions,6);
-assert.match(ml.title,/ФЛОРИДА ПАНТЕРЗ ОБЫГРЫВАЛИ КАРОЛИНА ХАРРИКЕЙНЗ В 4 ИЗ 6 ПОСЛЕДНИХ МАТЧЕЙ/);
+assert.match(ml.title,/ФЛОРИДА ПАНТЕРЗ ОБЫГРЫВАЛИ КАРОЛИНА ХАРРИКЕЙНЗ В 4 ИЗ 6 ЛИЧНЫХ ВСТРЕЧ С 2024 ГОДА/);
+// meetings two years old are said so, and rank lower than fresh ones
+assert.equal(ml.evidence.since_year,2024);
+assert.equal(ml.evidence.span_days,711);
+assert.match(ml.eyebrow,/С 2024$/);
 assert.equal(ml.evidence.team,"FLA");
 assert.equal(ml.evidence.opponent,"CAR");
 const p2=cards.find(c=>c.market.type==="period_2_result"&&c.market.subject==="FLA");

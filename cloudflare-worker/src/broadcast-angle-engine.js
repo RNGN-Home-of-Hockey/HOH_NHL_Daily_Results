@@ -143,19 +143,22 @@ function addHistory(out,e,m,p={}){
   const team=String(p?.team||e.team||m.subject||"").trim().toUpperCase();
   const opponent=String(p?.opponent||e.opponent||"").trim().toUpperCase();
   if(h2h&&team&&opponent&&team!==opponent){
+    // head-to-head samples can be two years old: say from when (h2h-broadcast-insights.js sets since_year)
+    const sinceYear=n(e.since_year),since=sinceYear?` С ${Math.round(sinceYear)} ГОДА`:"",sinceShort=sinceYear?` С ${Math.round(sinceYear)}`:"";
+    const meetings=sinceYear?"ЛИЧНЫХ ВСТРЕЧ":"ПОСЛЕДНИХ МАТЧЕЙ";
     if(String(m.type||"").toLowerCase()==="moneyline"){
-      const full=`${team} ОБЫГРЫВАЛИ ${opponent} В ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`;
-      const compact=`${shortTeamName(team)}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОБЕД ПРОТИВ ${shortTeamName(opponent)}`;
-      put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ`,108,"очный результат с явным соперником");
+      const full=`${team} ОБЫГРЫВАЛИ ${opponent} В ${Math.round(hits)} ИЗ ${Math.round(dec)} ${meetings}${since}`;
+      const compact=`${shortTeamName(team)}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОБЕД ПРОТИВ ${shortTeamName(opponent)}${sinceShort}`;
+      put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ${sinceShort}`,108,"очный результат с явным соперником");
     }else{
       const isDoubleChance=String(m.type||"").toLowerCase()==="double_chance"&&String(m.side||"").toLowerCase()==="team_or_draw";
       const full=isDoubleChance
-        ?`${team} — БЕЗ ПОРАЖЕНИЯ В ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${opponent}`
-        :`${label} ПРОТИВ ${opponent} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОСЛЕДНИХ МАТЧЕЙ`;
+        ?`${team} — БЕЗ ПОРАЖЕНИЯ В ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${opponent}${since}`
+        :`${label} ПРОТИВ ${opponent} — ${Math.round(hits)} ИЗ ${Math.round(dec)} ${meetings}${since}`;
       const compact=isDoubleChance
-        ?`${shortTeamName(team)}: БЕЗ ПОРАЖЕНИЯ ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${shortTeamName(opponent)}`
-        :`${label}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${shortTeamName(opponent)}`;
-      put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ`,104,"очная статистика с явным соперником");
+        ?`${shortTeamName(team)}: БЕЗ ПОРАЖЕНИЯ ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${shortTeamName(opponent)}${sinceShort}`
+        :`${label}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПРОТИВ ${shortTeamName(opponent)}${sinceShort}`;
+      put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ${sinceShort}`,104,"очная статистика с явным соперником");
     }
   }
   const type=String(m.type||"").toLowerCase(),split=String(e.split||"").toLowerCase(),role=String(e.role||"").toLowerCase();

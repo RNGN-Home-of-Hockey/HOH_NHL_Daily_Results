@@ -44,14 +44,16 @@ const cards = new Map([
   }],
 ]);
 
-let renderCalls=0;
+let renderCalls=0,periodPayload=null;
 const originalFetch=globalThis.fetch;
 globalThis.fetch=async (url,options={})=>{
   if(String(url)==='https://renderer.test/api/render-card'){
     renderCalls+=1;
     assert.equal(options.method,'POST');
     const payload=JSON.parse(options.body);
-    if(String(payload.market||'').startsWith('ОБЩИЙ ТОТАЛ')){
+    if(String(payload.market||'').includes('ПЕРИОД')){
+      periodPayload=payload;
+    }else if(String(payload.market||'').startsWith('ОБЩИЙ ТОТАЛ')){
       assert.equal(payload.team_name,'МАТЧ','game total overlay must not masquerade as one team');
       assert.equal(payload.market,'ОБЩИЙ ТОТАЛ БОЛЬШЕ 6');
       assert.equal(payload.team_logo_url,undefined);
@@ -210,6 +212,25 @@ cards.set('game-total-fixture',{
 r=await callCardStatus('game-total-fixture','shown',true);
 assert.equal(r.status,200);
 assert.equal(renderCalls,18,'game-total fixture should render once');
+
+// A line of the 1st period is said so on the card: commentators read «ТОТАЛ МАТЧА БОЛЬШЕ 1,5» for a period line (2026-10-11).
+cards.set('period-total-fixture',{
+  card_id:'period-total-fixture',game_pk:2026020001,
+  headline_ru:'В 1-М ПЕРИОДЕ ЭТИХ КОМАНД ЗАБИВАЮТ 2+ В 7 ИЗ 10',
+  stat_text_ru:'1-Й ПЕРИОД · ТБ 1,5',source_note_ru:'fixture',
+  suggested_market_type:'game_total',suggested_market_subject:null,
+  manual_odds:2.05,odds_is_demo:0,
+  payload_json:JSON.stringify({
+    id:'period-total-fixture',
+    market:{type:'game_total',period:'P1',subject:null,side:'over',line:1.5,label:'1-Й ПЕРИОД · ОБЩИЙ ТОТАЛ БОЛЬШЕ 1,5',odds:2.05,odds_is_demo:false,odds_source:'provider_live'}
+  }),
+  status:'draft',shown_at:null,render_hash:null,render_png_base64:null,render_bytes:null,rendered_at:null,
+});
+r=await callCardStatus('period-total-fixture','shown',true);
+assert.equal(r.status,200);
+assert.equal(renderCalls,19,'period-total fixture should render once');
+assert.equal(periodPayload?.market,'1-Й ПЕРИОД · ТОТАЛ БОЛЬШЕ 1,5');
+assert.equal(periodPayload?.team_name,'МАТЧ');
 
 console.log('BROADCAST_OPERATOR_ON_DEMAND_RENDER_OK');
 console.log('BROADCAST_15_GAME_CONCURRENCY_OK');
