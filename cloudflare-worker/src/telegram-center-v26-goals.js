@@ -137,6 +137,12 @@ const SINCE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const CURSOR_RE = /^(\d{4}-\d{2}-\d{2}T[0-9:.]{8,12}Z)\|(\d{6,12})$/;
 const ARCHIVE_START = "2024-01-01";
 
+// a real VK picture (never the dead getVideoPreview link), or null
+export function directCover(url) {
+  const u = String(url || "");
+  return /^https:\/\/[a-z0-9.-]+\.(?:userapi\.com|vkuserphoto\.ru|vk\.com|okcdn\.ru|mycdn\.me)\//i.test(u) && !/getVideoPreview/i.test(u) ? u : null;
+}
+
 export async function loadWantedCovers(env, { since = null, before = null, limit = 80, now = Date.now() } = {}) {
   if (!env?.DB) return { ok: false, error: "missing_d1_binding" };
   const lim = Math.max(1, Math.min(200, Math.floor(Number(limit)) || 80));
@@ -157,7 +163,7 @@ export async function loadWantedCovers(env, { since = null, before = null, limit
     upperPk = Number(m[2]);
   }
   const rows = await env.DB.prepare(`
-    SELECT g.game_pk,g.game_state,g.scheduled_start_utc,b.source_key
+    SELECT g.game_pk,g.game_state,g.scheduled_start_utc,b.source_key,b.thumbnail_url
     FROM games g
     JOIN game_vk_broadcasts m ON m.game_pk=g.game_pk
     JOIN vk_broadcasts b ON b.source_key=m.source_key
@@ -166,8 +172,11 @@ export async function loadWantedCovers(env, { since = null, before = null, limit
       AND (g.scheduled_start_utc<? OR (g.scheduled_start_utc=? AND g.game_pk<?))
     ORDER BY g.scheduled_start_utc DESC,g.game_pk DESC LIMIT ?;
   `).bind(lower, upperStart, upperStart, upperPk, lim).all();
+  // the picture address itself too: the keeper on the Moscow server can take it from VK directly (Cloudflare in Frankfurt cannot
+  // reach the VK pictures, so the proxy below failed for every cover asked from there since 14 October)
   const games = (rows.results || []).map((r) => ({
     game_pk: Number(r.game_pk), source_key: String(r.source_key), state: String(r.game_state || ""), start: String(r.scheduled_start_utc || ""),
+    thumbnail_url: directCover(r.thumbnail_url),
   }));
   const last = games[games.length - 1];
   return { ok: true, games, next: games.length === lim && last ? `${last.start}|${last.game_pk}` : null };

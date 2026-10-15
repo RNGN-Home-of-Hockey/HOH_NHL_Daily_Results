@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { buildGoalsPayload, buildPlayerSeasonPayload, regulationResult, playerIdsOf, periodInfo, phaseOf, stateInfo } from "../cloudflare-worker/src/telegram-center-v26-goals-data.js";
-import { handleTelegramCenterV26, seasonIdOf, FONT_CSS, FONT_PRELOAD_LINKS } from "../cloudflare-worker/src/telegram-center-v26-goals.js";
+import { handleTelegramCenterV26, seasonIdOf, FONT_CSS, FONT_PRELOAD_LINKS, directCover } from "../cloudflare-worker/src/telegram-center-v26-goals.js";
 import { handleTeamCurrentRequest } from "../cloudflare-worker/src/team-current-routes.js";
 import { handleTelegramCenterV19Ui } from "../cloudflare-worker/src/telegram-center-v19-ui.js";
 
@@ -646,14 +646,18 @@ const SEASON_LANDINGS = new Map([
 }
 {
   // route: the cover keeper on the highlights server asks which broadcasts have a cover to save
-  const rows = [{ game_pk: 2026020069, game_state: "OFF", scheduled_start_utc: "2026-10-10T02:00:00Z", source_key: "vk_a" }];
+  const rows = [{ game_pk: 2026020069, game_state: "OFF", scheduled_start_utc: "2026-10-10T02:00:00Z", source_key: "vk_a", thumbnail_url: "https://sun9-77.userapi.com/s/v1/ig2/a.jpg?size=1280x720" }];
   let sql = "";
   let args = [];
   const env = { DB: { prepare: (q) => { sql = q; return { bind: (...a) => { args = a; return { all: async () => ({ results: rows }) }; } }; } } };
   const path = "/api/telegram-center-v26/covers/wanted";
   const ok = await handleTelegramCenterV26(new Request("https://x.test" + path), env, path);
   assert.equal(ok.status, 200);
-  assert.deepEqual(await ok.json(), { ok: true, games: [{ game_pk: 2026020069, source_key: "vk_a", state: "OFF", start: "2026-10-10T02:00:00Z" }], next: null });
+  assert.deepEqual(await ok.json(), { ok: true, games: [{ game_pk: 2026020069, source_key: "vk_a", state: "OFF", start: "2026-10-10T02:00:00Z", thumbnail_url: "https://sun9-77.userapi.com/s/v1/ig2/a.jpg?size=1280x720" }], next: null }, "with the picture address: the keeper in Moscow takes it from VK directly (Frankfurt cannot)");
+  assert.equal(directCover("https://iv.okcdn.ru/getVideoPreview?id=1"), null, "never the dead preview link");
+  assert.equal(directCover("https://evil.test/a.jpg"), null, "VK pictures only");
+  assert.equal(directCover("http://sun9-1.userapi.com/a.jpg"), null, "https only");
+  assert.equal(directCover("https://sun9-82.vkuserphoto.ru/impg/x.jpg"), "https://sun9-82.vkuserphoto.ru/impg/x.jpg");
   assert.match(sql, /game_vk_broadcasts/);
   assert.match(sql, /thumbnail_url IS NOT NULL/);
   assert.equal(args.length, 5, "the window and the page size are bound, not pasted into the query");
