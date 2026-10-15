@@ -44,7 +44,7 @@ const STAT_ROWS = [
   ['xg_proxy_against', 'xG соперника (модель)'], ['shots_against', 'Удары соперника'], ['shots_inside_box_against', 'Удары соперника из штрафной'],
 ];
 const LOWER_IS_BETTER = new Set(['goals_against', 'ppda', 'shots_against', 'shots_inside_box_against', 'xg_proxy_against']);
-const FEED_SORTS = [['score', 'Сначала самые крутые'], ['kickoff', 'По времени матча'], ['odds_desc', 'Кэф: сначала высокие'], ['odds_asc', 'Кэф: сначала низкие'], ['sample', 'Самая большая выборка']];
+const FEED_SORTS = [['score', 'Сначала самые крутые'], ['drop', 'Кэф упал сильнее всего'], ['kickoff', 'По времени матча'], ['odds_desc', 'Кэф: сначала высокие'], ['odds_asc', 'Кэф: сначала низкие'], ['sample', 'Самая большая выборка']];
 const TEAM_COLUMNS = [
   ['name', 'Команда'], ['form', 'Форма'], ['points', 'В-Н-П'], ['unbeaten_run', 'Без пор.'],
   ['goals_for', 'Забито'], ['goals_against', 'Пропущено'], ['xg_for', 'xG'], ['xg_against', 'xG соп.'],
@@ -80,6 +80,14 @@ const fullName = (club) => club.name_full || club.name_ru;
 const pairName = (m) => `${fullName(m.home)} — ${fullName(m.away)}`;
 const WEEK_MS = 7 * 24 * 3600 * 1000;
 const tierLabel = (id) => state.data?.tiers.find((t) => t.id === id)?.label || id;
+const MOVE_MIN = 0.03;  // a price change below 3% is noise
+const moveOf = (now, was) => (was && now ? now / was - 1 : 0);
+function moveBadge(now, was) {
+  const change = moveOf(now, was);
+  if (Math.abs(change) < MOVE_MIN) return '';
+  const since = state.data?.move_since ? ` (${kickoff({ starts_at: state.data.move_since })} МСК)` : '';
+  return `<span class="move ${change < 0 ? 'down' : 'up'}" title="Кэф Winline был ${odds(was)}${since}: ${change < 0 ? 'падает — в рынок заходят деньги' : 'растёт'}">${change < 0 ? '↓' : '↑'} было ${odds(was)}</span>`;
+}
 const resultPill = (c) => `<span class="fpill ${c}">${c === 'W' ? 'П' : c === 'D' ? 'Н' : 'Л'}</span>`;
 
 function loadJson(key, fallback) {
@@ -196,7 +204,7 @@ function cardHtml(m, c, { showMatch = false } = {}) {
       <h3>${esc(c.title)}</h3>
       ${c.support?.length ? `<div class="support"><b>Ещё в пользу этой ставки:</b> ${c.support.map(esc).join(' · ')}</div>` : ''}
       <div class="evidence">История <b class="num">${e.hits} из ${e.sample}</b> (${pct(e.rate)}, осторожно ${pct(e.rate_conservative)}) · цена Winline подразумевает <b class="num">${pct(e.implied_by_price)}</b>${e.span ? ` · ${esc(e.span)}` : ''}</div>
-      <div class="tip-market"><span class="label">${esc(c.market.label)}</span><span class="odds num">${odds(c.market.odds)}</span>${alts ? `<div class="alts">Ещё линии: ${alts}</div>` : ''}</div>
+      <div class="tip-market"><span class="label">${esc(c.market.label)}</span>${moveBadge(c.market.odds, c.market.was)}<span class="odds num">${odds(c.market.odds)}</span>${alts ? `<div class="alts">Ещё линии: ${alts}</div>` : ''}</div>
     </div>
     <div class="tip-actions">
       <button class="btn ${queued ? 'on' : 'primary'}" data-action="queue" data-card="${esc(id)}">${queued ? 'В эфире ✓' : 'В эфир'}</button>
@@ -227,6 +235,7 @@ function feedMatches({ m, c }) {
 function feedSorted(list) {
   const by = {
     score: (a, b) => b.c.score - a.c.score || b.c.evidence.sample - a.c.evidence.sample,
+    drop: (a, b) => moveOf(a.c.market.odds, a.c.market.was) - moveOf(b.c.market.odds, b.c.market.was) || b.c.score - a.c.score,
     kickoff: (a, b) => a.m.starts_at.localeCompare(b.m.starts_at) || b.c.score - a.c.score,
     odds_desc: (a, b) => b.c.market.odds - a.c.market.odds || b.c.score - a.c.score,
     odds_asc: (a, b) => a.c.market.odds - b.c.market.odds || b.c.score - a.c.score,
@@ -282,7 +291,7 @@ function renderFeed() {
       <div class="toolbar"><button class="btn phone-only" id="filters-btn" data-action="toggle-filters">Фильтры</button>
         <select data-input="feed-sort" aria-label="Сортировка">${FEED_SORTS.map(([v, label]) => `<option value="${v}" ${f.sort === v ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <span class="faint" id="feed-count"></span></div>
-      <p class="plate-note wide-only">Каждая карточка — факт из нашей базы, привязанный к линии, которую Winline сейчас реально даёт на матч. Крутизна: Огонь ≥ 80, Сильная ≥ 65, Рабочая ≥ 50, Фон ≥ 35 (сила истории против цены, выборка, кэф, яркость факта). Сильная и Огонь — только если факт повторился хотя бы 4 раза. Кэф в карточках — не ниже 1,50.</p>
+      <p class="plate-note wide-only">Каждая карточка — факт из нашей базы, привязанный к линии, которую Winline сейчас реально даёт на матч. Крутизна: Огонь ≥ 80, Сильная ≥ 65, Рабочая ≥ 50, Фон ≥ 35 (сила истории против цены, выборка, кэф, яркость факта). Сильная и Огонь — только если факт повторился хотя бы 4 раза. Кэф в карточках — не ниже 1,50. Стрелка ↓/↑ «было» — как кэф изменился примерно за сутки (от 3%).</p>
     </section><div class="list" id="feed-list"></div>`;
   renderFeedList();
 }
@@ -477,7 +486,7 @@ function playerTable(rows, { showMatch = true } = {}) {
           <div class="faint small">${esc(club.name_ru)}${p.position ? ` · ${esc(POSITION[p.position] || p.position)}` : ''}${p.minutes != null ? ` · ${p.minutes} мин` : ''}</div>
           ${p.news ? `<div class="news small">${esc(p.news)}</div>` : ''}</div></div></td>
         ${showMatch ? `<td data-label="Матч"><button class="linkish" data-action="open-match" data-id="${m.event_id}">vs ${esc(fullName(opp))}</button><div class="faint small">${esc(kickoff(m))}</div></td>` : ''}
-        <td class="r" data-label="Первый гол">${odds(p.odds?.first)}</td><td class="r" data-label="Забьёт"><b>${odds(p.odds?.anytime)}</b></td><td class="r" data-label="Последний">${odds(p.odds?.last)}</td>${valueCells(p)}
+        <td class="r" data-label="Первый гол">${odds(p.odds?.first)}</td><td class="r" data-label="Забьёт"><b>${odds(p.odds?.anytime)}</b>${moveBadge(p.odds?.anytime, p.odds_was?.anytime)}</td><td class="r" data-label="Последний">${odds(p.odds?.last)}</td>${valueCells(p)}
         <td class="r" data-label="Голы / xG">${p.goals != null ? `${p.goals} / ${num(p.xg, 1)}` : '—'}</td><td data-label="Последние 5">${spark(p.last5)}</td>
         <td class="r" data-label="Против соп.">${p.vs_opponent?.apps ? `${p.vs_opponent.scored_in} из ${p.vs_opponent.apps}` : '—'}</td>
         <td class="best" data-label="Лучшая карточка">${p.best_card ? `<span class="tier-dot" data-tier="${p.tier}">${esc(p.tier_label)} ${p.score}</span><div class="small">${esc(p.best_card)}</div>

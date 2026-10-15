@@ -5,15 +5,17 @@ form, team statistics and insight candidates.
   python -I tools/epl_site_data.py [--winline PATH] [--out PATH]
 
 Reads local-data/epl/normalized/*.json (tools/epl_collect.py build) and the Winline snapshot
-(tools/winline_football/capture.mjs); writes local-data/epl/site/site.json.
+(tools/winline_football/capture.mjs); writes local-data/epl/site/site.json. Odds movement: every card and player
+line carries the price of the kept snapshot about a day earlier (`was`, `odds_was`; `move_since` = its time).
 """
 from __future__ import annotations
 
 import argparse
 from collections import Counter
+import gzip
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -32,6 +34,54 @@ STATS_BASELINE = 114  # three seasons
 
 def load(name: str):
     return json.loads((epl.NORM / name).read_text(encoding="utf-8"))
+
+
+MOVE_HOURS = 24
+
+
+def snapshot_time(folder: Path) -> datetime | None:
+    try:  # folder names are capture times: 2026-10-14T21-20-16-263Z
+        return datetime.strptime(folder.name[:19], "%Y-%m-%dT%H-%M-%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def reference_prices(winline_dir: Path, now: datetime) -> tuple[str | None, dict]:
+    """Prices of the kept Winline snapshot about MOVE_HOURS before `now` (the latest one at least that old, else
+    the oldest kept): {(event id, market key, outcome index): odds} and that snapshot's capture time."""
+    folders = sorted((f, snapshot_time(f)) for f in (winline_dir / "snapshots").glob("*") if f.is_dir() and snapshot_time(f))
+    if len(folders) < 2:
+        return None, {}
+    cutoff = now - timedelta(hours=MOVE_HOURS)
+    older = [f for f, t in folders if t <= cutoff]
+    for folder in (older[-1:] or []) + [f for f, _ in folders]:
+        gz, plain = folder / "index.json.gz", folder / "index.json"
+        if gz.exists() or plain.exists():
+            payload = json.loads(gzip.decompress(gz.read_bytes()) if gz.exists() else plain.read_bytes())
+            prices = {(e["event_id"], m["key"], o["index"]): o["odds"] for e in payload.get("events") or [] for m in e["markets"] for o in m["outcomes"]}
+            return payload.get("captured_at"), prices
+    return None, {}
+
+
+def mark_moves(cards: list[dict], players: list[dict], event: dict, prices: dict) -> None:
+    """Odds of the reference snapshot as `was` on the cards and `odds_was` on the player rows (when they differ)."""
+    if not prices:
+        return
+    for card in cards:
+        key, _, index = card["market"]["key"].rpartition("#")
+        was = prices.get((event["event_id"], key, int(index))) if index.isdigit() else None
+        if was and was != card["market"]["odds"]:
+            card["market"]["was"] = was
+    keys = {(m.get("subject") or {}).get("name", "") + "|" + (m.get("variant") or ""): m for m in event["markets"] if m["family"] == "player_goal"}
+    for row in players:
+        moved = {}
+        for variant, odds in (row.get("odds") or {}).items():
+            market = keys.get(f"{row['name']}|{variant}")
+            was = prices.get((event["event_id"], market["key"], market["outcomes"][0]["index"])) if market and market["outcomes"] else None
+            if was and was != odds:
+                moved[variant] = was
+        if moved:
+            row["odds_was"] = moved
 
 
 def norm_name(text: str) -> str:
@@ -147,6 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     xg = ({int(k): {int(t): v for t, v in per.items()} for k, per in load("xg_proxy.json").items()}
           if (epl.NORM / "xg_proxy.json").exists() else {})
 
+    move_since, prices = reference_prices(Path(args.winline).parent, datetime.now(timezone.utc))
     out_matches, skipped = [], []
     for event in snapshot["events"]:
         home, away = club_for(event["home"], teams), club_for(event["away"], teams)
@@ -157,11 +208,13 @@ def main(argv: list[str] | None = None) -> int:
         ctx = {"by_club": by_club, "stats": stats, "names": names, "before": before, "home": home["id"], "away": away["id"], "players": players,
                "rows": rows, "apps": apps}
         cards = eng.build_cards(event, ctx)
+        board = eng.player_board_rows(event, ctx, cards)
+        mark_moves(cards, board, event, prices)
         out_matches.append({
             "event_id": event["event_id"], "starts_at": before, "live": event.get("live", False), "captured_at": event.get("captured_at"),
             "home": {"id": home["id"], "name": home["name"], "name_ru": names[home["id"]], "name_full": event["home"]},
             "away": {"id": away["id"], "name": away["name"], "name_ru": names[away["id"]], "name_full": event["away"]},
-            "quick": quick_odds(event), "summary": event["summary"], "markets": event["markets"], "players": eng.player_board_rows(event, ctx, cards),
+            "quick": quick_odds(event), "summary": event["summary"], "markets": event["markets"], "players": board,
             "h2h": h2h_block(h2h, home["id"], away["id"], matches_by_id, names, people, before),
             "form": {"home": form_rows(by_club, home["id"], before, names), "away": form_rows(by_club, away["id"], before, names)},
             "stats": {side: {"recent": averages(by_club, stats, club["id"], before, STATS_RECENT),
@@ -181,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
                             "next": ({"event_id": upcoming["event_id"], "starts_at": upcoming["starts_at"],
                                       "opponent": upcoming["away" if upcoming["home"]["id"] == club else "home"]["name_ru"],
                                       "venue": "H" if upcoming["home"]["id"] == club else "A"} if upcoming else None)})
-    payload = {"generated_at": now, "winline_captured_at": snapshot["captured_at"], "league": "АПЛ", "matches": out_matches,
+    payload = {"generated_at": now, "winline_captured_at": snapshot["captured_at"], "move_since": move_since, "league": "АПЛ", "matches": out_matches,
                "teams": teams_board, "tiers": [{"id": t, "label": label, "min_score": s, "stars": st} for s, t, label, st in eng.TIERS],
                "categories": sorted({c for c, _ in eng.RULE_META.values()}), "bases": sorted({b for _, b in eng.RULE_META.values()})}
     epl.write_json(Path(args.out), payload)
