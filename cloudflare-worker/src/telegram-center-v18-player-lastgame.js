@@ -101,13 +101,24 @@ async function loadGameRow(db, gamePk, currentTeamTri, official){
   }
   return {...g,team_tri:String(official?.teamAbbrev||currentTeamTri||"").toUpperCase(),goals:official?.goals,assists:official?.assists,points:official?.points,shots:official?.shots,toi_seconds:null};
 }
-async function findBroadcastByPairTime(db,game){
+// The same teams on neighbouring days (DAL–COL on 14 and 15 Oct 2026): the stream of the nearest game only, and never one
+// that is linked to another game.
+const NEIGHBOUR_GUARD=`
+      AND NOT EXISTS (SELECT 1 FROM game_vk_broadcasts m2 WHERE m2.source_key=b.source_key AND m2.game_pk<>?)
+      AND NOT EXISTS (
+        SELECT 1 FROM games g2
+        WHERE g2.game_pk<>? AND ((g2.home_tri=? AND g2.away_tri=?) OR (g2.home_tri=? AND g2.away_tri=?))
+          AND ABS(julianday(g2.scheduled_start_utc)-julianday(COALESCE(b.scheduled_at,b.published_at)))
+            < ABS(julianday(?)-julianday(COALESCE(b.scheduled_at,b.published_at)))
+      )`;
+export async function findBroadcastByPairTime(db,game){
   const start=String(game?.scheduled_start_utc||""),home=String(game?.home_tri||"").toUpperCase(),away=String(game?.away_tri||"").toUpperCase();
   if(!start||!home||!away)return null;
+  const pk=Number(game?.game_pk)||0,guard=[pk,pk,home,away,away,home,start];
   const full=await db.prepare(`
     SELECT source_key,title,web_url,app_url,thumbnail_url,status,duration_seconds,
            'full' broadcast_kind,'pair_time_fallback' match_method
-    FROM vk_broadcasts
+    FROM vk_broadcasts b
     WHERE ((parsed_home_tri=? AND parsed_away_tri=?) OR (parsed_home_tri=? AND parsed_away_tri=?))
       AND COALESCE(scheduled_at,published_at) IS NOT NULL
       AND ABS(julianday(COALESCE(scheduled_at,published_at))-julianday(?))<=2.0
@@ -116,16 +127,16 @@ async function findBroadcastByPairTime(db,game){
       AND LOWER(COALESCE(title,'')) NOT LIKE '%highlight%'
       AND LOWER(COALESCE(title,'')) NOT LIKE '%обзор матча%'
       AND LOWER(COALESCE(title,'')) NOT LIKE '%лучшие моменты%'
-      AND LOWER(COALESCE(title,'')) NOT LIKE '%best moment%'
+      AND LOWER(COALESCE(title,'')) NOT LIKE '%best moment%'${NEIGHBOUR_GUARD}
     ORDER BY ABS(julianday(COALESCE(scheduled_at,published_at))-julianday(?)) ASC,
              COALESCE(duration_seconds,0) DESC,updated_at DESC
     LIMIT 1;
-  `).bind(home,away,away,home,start,start).first().catch(()=>null);
+  `).bind(home,away,away,home,start,...guard,start).first().catch(()=>null);
   if(full)return full;
   return db.prepare(`
     SELECT source_key,title,web_url,app_url,thumbnail_url,status,duration_seconds,
            'highlights' broadcast_kind,'pair_time_highlight_fallback' match_method
-    FROM vk_broadcasts
+    FROM vk_broadcasts b
     WHERE ((parsed_home_tri=? AND parsed_away_tri=?) OR (parsed_home_tri=? AND parsed_away_tri=?))
       AND COALESCE(scheduled_at,published_at) IS NOT NULL
       AND ABS(julianday(COALESCE(scheduled_at,published_at))-julianday(?))<=1.0
@@ -134,11 +145,11 @@ async function findBroadcastByPairTime(db,game){
         LOWER(COALESCE(title,'')) LIKE '%хайлайт%' OR LOWER(COALESCE(title,'')) LIKE '%highlight%'
         OR LOWER(COALESCE(title,'')) LIKE '%обзор матча%' OR LOWER(COALESCE(title,'')) LIKE '%лучшие моменты%'
         OR LOWER(COALESCE(title,'')) LIKE '%best moment%'
-      )
+      )${NEIGHBOUR_GUARD}
     ORDER BY ABS(julianday(COALESCE(scheduled_at,published_at))-julianday(?)) ASC,
              COALESCE(duration_seconds,0) DESC,updated_at DESC
     LIMIT 1;
-  `).bind(home,away,away,home,start,start).first().catch(()=>null);
+  `).bind(home,away,away,home,start,...guard,start).first().catch(()=>null);
 }
 function currentSeason(){const d=new Date(),y=d.getUTCFullYear(),m=d.getUTCMonth()+1,s=m>=7?y:y-1;return String(s)+String(s+1)}
 function num(v){const n=Number(v);return Number.isFinite(n)?n:0}

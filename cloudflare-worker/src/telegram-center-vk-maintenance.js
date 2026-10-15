@@ -287,7 +287,9 @@ export function broadcastLengthEligible(record){
   const duration=Number(record?.duration_seconds);
   if(Number.isFinite(duration)&&duration>0)return duration>=MIN_CANONICAL_DURATION_SECONDS;
   const status=norm(record?.status||"");
-  return /live|upcoming|scheduled|online|прямой эфир|предстоящ/.test(status);
+  // VK's live_status of a stream: upcoming → started (on air) → waiting (just ended, the recording is being made) → finished.
+  // "started" and "waiting" are the game itself: dropping them unlinked DAL–COL for its whole broadcast on 2026-10-15.
+  return /live|upcoming|scheduled|online|started|waiting|прямой эфир|предстоящ/.test(status);
 }
 function matchFromCandidates(games,a,b,dateIso,record){
   if(!broadcastLengthEligible(record))return {kind:"unmatched",reason:"duration_under_60m"};
