@@ -143,7 +143,7 @@ const LIST = `<div class="news"><div class="short-news"><b>14 октября </b
   await assert.rejects(loadClipIndex("https://other.test", { fetcher: slow, now: 5_000 }), /timeout/, "nothing kept: an honest failure");
   let asked = null;
   await loadClipIndex(BASE, { fetcher: async (url, opts) => { asked = { url, ...opts }; return { games: [] }; }, now: 2_000 });
-  assert.deepEqual(asked, { url: "https://clips.test/index.json", ttl: 20, timeoutMs: 8000 }, "it waits up to 8 seconds now (4 before)");
+  assert.deepEqual(asked, { url: "https://clips.test/index.json", ttl: 20, timeoutMs: 4000 }, "4 seconds: the copy pushed by the clip server comes first, the direct fetch is only the fallback");
 }
 
 // ---- 7) «Вчера · 16 матчей | Сегодня · 2 матча» on top of the home page ----------------------------------------------------------------------

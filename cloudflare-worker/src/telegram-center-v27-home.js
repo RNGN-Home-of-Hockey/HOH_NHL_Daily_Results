@@ -6,6 +6,7 @@ import { handleTelegramCenterV19ProductData } from "./telegram-center-v19-produc
 import { homeScreenApp } from "./telegram-center-v27-home-ui.js";
 import { gameFromRow, buildHomePayload, applyNames, applyGoalCounts, applyHeroLive, stripOf, publicGame } from "./telegram-center-v27-home-data.js";
 import { buildRussians } from "./telegram-center-v27-russians.js";
+import { pushedIndex } from "./telegram-center-v26-clip-push.js";
 
 export const HOME_PATH = "/api/telegram-center-v27/home";
 // the strip and the Russians of another day (the button «Вчера» on top of the home page)
@@ -115,7 +116,7 @@ const indexMemory = new Map();
 export async function loadClipIndex(base, { fetcher = fetchJson, now = Date.now() } = {}) {
   const url = `${String(base).replace(/\/+$/, "")}/index.json`;
   try {
-    const fresh = await fetcher(url, { ttl: 20, timeoutMs: 8000 });
+    const fresh = await fetcher(url, { ttl: 20, timeoutMs: 4000 });
     if (fresh && Array.isArray(fresh.games)) indexMemory.set(url, { at: now, data: fresh });
     return fresh;
   } catch (error) {
@@ -131,7 +132,8 @@ const realDeps = {
   loadGoalCounts,
   loadGames: (env, now) => loadGames(env.DB, now),
   loadFeatured,
-  loadIndex: (base) => loadClipIndex(base),
+  // the copy pushed by the clip server first (every data centre reads it), the server itself when the copy is stale
+  loadIndex: async (base, env) => (await pushedIndex(env)) || loadClipIndex(base),
   loadNames: (env, ids) => loadNames(env.DB, ids),
   loadHeroLive,
 };
@@ -146,7 +148,7 @@ export async function loadHomePayload(env, { now = Date.now(), deps = realDeps }
 
   const [featuredResult, indexResult, russiansResult, idsResult] = await Promise.allSettled([
     first.hero_day ? deps.loadFeatured(env, first.hero_day) : Promise.resolve(null),
-    deps.loadIndex(base),
+    deps.loadIndex(base, env),
     first.strip_day && deps.loadRussians ? deps.loadRussians(env, stripOf(games, first.strip_day), now) : Promise.resolve([]),
     deps.loadRussianIds ? deps.loadRussianIds(env) : Promise.resolve(null),
   ]);

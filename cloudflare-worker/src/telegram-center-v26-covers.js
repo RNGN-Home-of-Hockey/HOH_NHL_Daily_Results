@@ -2,6 +2,7 @@
 // The server publishes /covers.json = {"version":1,"covers":{"<game_pk>":<picture version>}}; this module turns it into
 // ready-to-use addresses. Any failure (server down, bad file) simply means "no mini cover": the app falls back to VK.
 import { DEFAULT_CLIPS_BASE } from "./telegram-center-v26-goals-data.js";
+import { pushedCovers } from "./telegram-center-v26-clip-push.js";
 
 export function clipsBaseOf(env) {
   return String(env?.HOH_CLIPS_BASE || "").trim().replace(/\/+$/, "") || DEFAULT_CLIPS_BASE;
@@ -21,6 +22,9 @@ export function coverUrlsFrom(doc, base) {
 
 export async function loadCoverUrls(env) {
   const base = clipsBaseOf(env);
+  // the copy pushed by the clip server first (every data centre reads it)
+  const pushed = await pushedCovers(env);
+  if (pushed) return coverUrlsFrom(pushed, base);
   try {
     const res = await fetch(`${base}/covers.json`, {
       headers: { accept: "application/json", "user-agent": "HOH-Live-Center/26" },

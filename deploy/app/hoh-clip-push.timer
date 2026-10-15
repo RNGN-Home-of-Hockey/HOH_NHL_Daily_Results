@@ -1,0 +1,11 @@
+[Unit]
+Description=HOH: push the clip index to the Worker every 30 seconds
+
+[Timer]
+OnBootSec=40s
+OnUnitInactiveSec=30s
+AccuracySec=5s
+Unit=hoh-clip-push.service
+
+[Install]
+WantedBy=timers.target

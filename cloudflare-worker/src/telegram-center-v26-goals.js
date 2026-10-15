@@ -3,6 +3,7 @@
 import { buildGoalsPayload, buildPlayerSeasonPayload, playerIdsOf, DEFAULT_CLIPS_BASE } from "./telegram-center-v26-goals-data.js";
 import { goalsScreenApp } from "./telegram-center-v26-goals-ui.js";
 import { loadCoverUrls } from "./telegram-center-v26-covers.js";
+import { PUSH_PATH, handleClipIndexPush, pushedIndex } from "./telegram-center-v26-clip-push.js";
 
 const NHL_LANDING = (gamePk) => `https://api-web.nhle.com/v1/gamecenter/${gamePk}/landing`;
 const NHL_GAME_LOG = (playerId, season, type) => `https://api-web.nhle.com/v1/player/${playerId}/game-log/${season}/${type}`;
@@ -67,7 +68,7 @@ export async function loadGoalsPayload(env, gamePk, { now = Date.now() } = {}) {
   const base = String(env?.HOH_CLIPS_BASE || "").trim() || DEFAULT_CLIPS_BASE;
   const [landingResult, indexResult, coversResult] = await Promise.allSettled([
     fetchJson(NHL_LANDING(gamePk), { ttl: 8, timeoutMs: 6000 }),
-    fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 }),
+    pushedIndex(env).then((pushed) => pushed || fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 })),
     loadCoverUrls(env),
   ]);
   if (landingResult.status !== "fulfilled") return { ok: false, error: "nhl_unavailable", status: 502 };
@@ -187,6 +188,9 @@ export async function handleTelegramCenterV26(request, env, path) {
       return json({ ok: false, error: "player_goals_failed" }, 500);
     }
   }
+
+  // the highlights server pushes its index here (some Cloudflare data centres cannot reach it)
+  if (path === PUSH_PATH) return handleClipIndexPush(request, env);
 
   if (path === COVERS_WANTED_PATH) {
     if (request.method !== "GET") return json({ ok: false, error: "method_not_allowed" }, 405);

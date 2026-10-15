@@ -1,0 +1,17 @@
+[Unit]
+Description=HOH: push the clip index and covers to the Worker on Cloudflare (some Cloudflare data centres cannot reach this server)
+Documentation=https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results/tree/main/deploy/app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/hoh-app/hoh-clip-push.py
+DynamicUser=yes
+StateDirectory=hoh-clip-push
+ReadOnlyPaths=/opt/hoh-highlights/public_clips
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+TimeoutStartSec=60s

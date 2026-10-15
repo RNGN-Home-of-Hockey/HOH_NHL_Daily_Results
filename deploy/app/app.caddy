@@ -1,0 +1,27 @@
+# HOH NHL Center in a browser and on the phone home screen, without a VPN: https://hoh.109-172-113-187.sslip.io
+# Imported by the clip server's /etc/hoh-clips/Caddyfile on the Moscow server (one line: import /etc/hoh-app/app.caddy);
+# this file lives in /etc/hoh-app/. The server is only the door: every request goes on to the Worker on Cloudflare
+# (hoh-nhl-daily-results.rngn.workers.dev), so nothing of the app runs or is stored here. Certificate: Let's Encrypt
+# TLS-ALPN on :443, like the clip host. When a real domain appears only the first line of the site changes.
+hoh.109-172-113-187.sslip.io {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+
+	encode zstd gzip
+
+	header {
+		-Server
+		X-Robots-Tag "noindex, nofollow"
+	}
+
+	# the address itself opens the app
+	redir / /telegram-app-v24 302
+
+	reverse_proxy https://hoh-nhl-daily-results.rngn.workers.dev {
+		header_up Host hoh-nhl-daily-results.rngn.workers.dev
+		header_up X-Forwarded-Host {host}
+	}
+}
