@@ -1,4 +1,5 @@
 import { handleAdminMessage, handleAdminCallback } from "./telegram-center-admin-bot.js";
+import { handleWebLoginUpdate } from "./telegram-center-web-login.js";
 const DEFAULT_CENTER_WEBHOOK_URL = "https://hoh-nhl-daily-results.rngn.workers.dev/telegram/center?v=20260921-1";
 const CENTER_WEBHOOK_REFRESH_KEY = "telegram_center_webhook_refresh_v3";
 const CENTER_WEBHOOK_REFRESH_MS = 6 * 60 * 60 * 1000;
@@ -7,7 +8,8 @@ const CENTER_POLL_STATUS_KEY = "telegram_center_poll_status_v1";
 const CENTER_POLL_SETUP_KEY = "telegram_center_poll_setup_v18";
 const CENTER_MINI_APP_BUILD = "24.8.0";
 const CENTER_CANONICAL_MINI_APP_PATH = "/telegram-app-v24";
-const CENTER_DEFAULT_MINI_APP_URL = "https://hoh-nhl-daily-results.rngn.workers.dev/telegram-app-v24?build=24.8.0";
+// the app opens through the Moscow door: no VPN needed in Telegram either (the webhook address stays on the Worker)
+const CENTER_DEFAULT_MINI_APP_URL = "https://hoh.109-172-113-187.sslip.io/telegram-app-v24?build=24.8.0";
 
 function centerDeliveryMode(env) {
   return String(env.TELEGRAM_CENTER_DELIVERY_MODE || "webhook").trim().toLowerCase() === "polling"
@@ -70,6 +72,9 @@ export async function handleTelegramProductBotRequest(request, env, path) {
     });
     return json({ ok: false, error: "telegram_webhook_invalid_json" }, 400);
   }
+
+  const webLogin = await webLoginUpdate(env, update);
+  if (webLogin.handled) return json({ ok: true, action: webLogin.action });
 
   const callback = update.callback_query || null;
   if (callback) {
@@ -804,6 +809,16 @@ async function answerCenterCallback(env, callbackId, text) {
 }
 
 
+// «Войти через Telegram» on the website: /start login_<code> and its buttons, for every user
+async function webLoginUpdate(env, update) {
+  try {
+    return await handleWebLoginUpdate(env, update, (method, payload) => telegramRequest(env, method, payload));
+  } catch (error) {
+    console.error("center web login update failed", String(error?.message || error));
+    return { handled: false };
+  }
+}
+
 // admin commands (/name …) — a failure here never blocks the ordinary handling of the update
 async function adminMessage(env, message) {
   try {
@@ -824,6 +839,7 @@ async function adminCallback(env, callback) {
 
 async function processPolledCenterUpdate(env, update) {
   const updateId = Number(update?.update_id || 0) || null;
+  if ((await webLoginUpdate(env, update)).handled) return { retry: false, handled: true };
   const callback = update?.callback_query || null;
   if (callback) {
     const admin = await adminCallback(env, callback);
@@ -999,13 +1015,14 @@ function versionedMiniAppUrl(value) {
   }
 }
 
+// The same address for the menu button and every app button, in the webhook and in the polling: the Moscow door by
+// default (not the host the update came to, which is the Worker), or TELEGRAM_MINI_APP_URL / PUBLIC_BASE_URL when set.
 function miniAppUrl(request, env) {
   const configured = String(env.TELEGRAM_MINI_APP_URL || "").trim();
   if (configured) return versionedMiniAppUrl(configured);
   const publicBase = String(env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
   if (publicBase) return versionedMiniAppUrl(`${publicBase}/telegram-app`);
-  const url = new URL(request.url);
-  return versionedMiniAppUrl(`${url.protocol}//${url.host}/telegram-app`);
+  return versionedMiniAppUrl(CENTER_DEFAULT_MINI_APP_URL);
 }
 
 async function telegramRequest(env, method, payload) {

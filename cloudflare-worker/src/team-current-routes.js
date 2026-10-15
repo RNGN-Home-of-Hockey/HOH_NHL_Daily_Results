@@ -64,8 +64,11 @@ import { handleTelegramCenterV32 } from "./telegram-center-v32-live.js";
 import { handleTelegramCenterV33 } from "./telegram-center-v33-fan.js";
 import { handleTelegramCenterV34 } from "./telegram-center-v34-recap.js";
 import { handleTelegramCenterV35 } from "./telegram-center-v35-hosts.js";
+import { handleWebLogin } from "./telegram-center-web-login.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
+  const webLoginResponse = await handleWebLogin(request, env, path);
+  if (webLoginResponse) return webLoginResponse;
   const centerV26Response = await handleTelegramCenterV26(request, env, path);
   if (centerV26Response) return centerV26Response;
   const centerV27Response = await handleTelegramCenterV27(request, env, path);
@@ -183,6 +186,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
     if (!body.includes('/telegram-app/v9.css')) body = body.replace('</head>', '<link rel="stylesheet" href="/telegram-app/v9.css?build=24.8.0"></head>');
     body = body.replace('</head>', FONT_PRELOAD_LINKS + '<link rel="stylesheet" href="/telegram-app/hoh-font.css?v=26.0"></head>');
     body = body.replace('</body>', '<script>window.HOH_CANONICAL_PLAYER_UI="V24";window.HOH_MINI_APP_BUILD="24.8.0";</script></body>');
+    // «Войти через Telegram» (telegram-center-web-login-ui.js) runs before every other layer: they read the sign-in when they start
+    body = body.replace('<script src="https://telegram.org/js/telegram-web-app.js"></script>', (tag) => tag + '<script src="/telegram-app/v36-login.js?build=36.0"></script>');
     for (const src of [
       "/telegram-app/v9.js?build=24.8.0",
       "/telegram-app/v15-core.js?build=24.8.0",

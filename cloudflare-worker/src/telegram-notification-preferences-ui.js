@@ -13,8 +13,9 @@ function notificationPreferencesEnhancer(){
     ['notify_assist','Передачи игрока'],['notify_period_end','Конец периода'],['notify_final','Финал'],
   ];
 
+  const signedIn=()=>Boolean(initData||(window.HOHAuth&&window.HOHAuth.signedIn()));
   async function syncTimezone(){
-    if(!initData)return;
+    if(!signedIn())return;
     const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone||'';
     if(!timezone)return;
     try{
@@ -47,7 +48,7 @@ function notificationPreferencesEnhancer(){
   }
 
   function enhanceSheet(){
-    if(!subject||!initData)return;
+    if(!subject||!signedIn())return;
     const sheet=document.querySelector('#sheet');
     if(!sheet||sheet.querySelector('#notifyPrefs'))return;
     const active=sheet.querySelector('#followAction.on,#gameFollowAction.on');
@@ -59,7 +60,7 @@ function notificationPreferencesEnhancer(){
   }
 
   async function openPreferences(){
-    if(!subject||!initData)return;
+    if(!subject||!signedIn())return;
     try{
       const d=await api('/api/telegram-app/follows');
       const follow=(d.follows||[]).find(f=>f.subject_type===subject.type&&String(f.subject_key)===String(subject.key));

@@ -18,6 +18,9 @@ export function fanApp() {
   const st = { me: null, meAt: 0, meBusy: false, sheet: null, teams: null, stars: new Map(), pick: { team: null, players: new Set(), interests: new Set() }, step: 1, saving: false };
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const inTelegram = () => Boolean(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+  // signed in: inside Telegram, or on the website through «Войти через Telegram» (telegram-center-web-login-ui.js)
+  const signedIn = () => inTelegram() || Boolean(window.HOHAuth && window.HOHAuth.signedIn());
+  const webGuest = () => !signedIn() && Boolean(window.HOHAuth);
   const store = {
     get: (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
     set: (k, v) => { try { window.localStorage.setItem(k, v); } catch (e) { /* private mode */ } },
@@ -78,7 +81,7 @@ html:not(.v15Light) .v33Ach{border-color:#30334a;background:rgba(16,18,26,.8);co
 
   // ---- the counting behind the achievements ----------------------------------------------------------------------------------
   function track(kind, extra) {
-    if (!inTelegram()) return;
+    if (!signedIn()) return;
     Promise.resolve(H.api(`${API}/activity`, { method: "POST", body: JSON.stringify({ kind, ...(extra || {}) }) })).then(() => { st.meAt = 0; }).catch(() => {});
   }
   function trackOpen() {
@@ -211,7 +214,7 @@ html:not(.v15Light) .v33Ach{border-color:#30334a;background:rgba(16,18,26,.8);co
     }
   }
   async function maybeOnboard() {
-    if (!inTelegram() || store.get(KEY_DONE) === "1" || st.sheet) return;
+    if (!signedIn() || store.get(KEY_DONE) === "1" || st.sheet) return;
     if (H.currentTab && !["games", "home"].includes(H.currentTab())) return;
     const me = await loadMe();
     if (!me || me.guest) return;
@@ -261,7 +264,7 @@ html:not(.v15Light) .v33Ach{border-color:#30334a;background:rgba(16,18,26,.8);co
     const box = document.getElementById("v29Me");
     const el = document.getElementById("v33Ach");
     const onMine = H.currentTab && ["follows", "mine"].includes(H.currentTab()) && !(H.state && H.state.profile);
-    if (!box || !onMine || !inTelegram()) { if (el) el.remove(); return; }
+    if (!box || !onMine || !signedIn()) { if (el) el.remove(); return; }
     if ((!st.me || Date.now() - st.meAt > 60000) && !st.meBusy) loadMe().then(paintAch);
     const html = achHtml();
     if (!html) { if (el) el.remove(); return; }

@@ -10,6 +10,9 @@ export function hostsApp() {
   const st = { hosts: null, hostsAt: 0, mine: null, mineAt: 0, busy: new Set(), compare: new Map(), draft: "", sending: false, note: "" };
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const inTelegram = () => Boolean(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+  // signed in: inside Telegram, or on the website through «Войти через Telegram» (telegram-center-web-login-ui.js)
+  const signedIn = () => inTelegram() || Boolean(window.HOHAuth && window.HOHAuth.signedIn());
+  const webGuest = () => !signedIn() && Boolean(window.HOHAuth);
   const onMine = () => H.currentTab && ["follows", "mine"].includes(H.currentTab()) && !(H.state && H.state.profile);
   const STATUS = { new: "отправлен", picked: "выбран для эфира 🎙", answered: "отвечен в эфире ✅" };
 
@@ -61,7 +64,7 @@ html:not(.v15Light) .v35Host button{color:#c4a6ff;border-color:#8b5cf6}
     const c = st.compare.get(h.id);
     if (!c) return "";
     if (c.loading) return '<div class="v35Cmp"><p>Сравниваем…</p></div>';
-    if (c.error) return '<div class="v35Cmp"><p>Сравнение доступно в приложении, открытом из Telegram-бота.</p></div>';
+    if (c.error) return '<div class="v35Cmp"><p>' + (window.HOHAuth && !inTelegram() ? 'Войдите через Telegram, чтобы сравнить.' : 'Сравнение доступно в приложении, открытом из Telegram-бота.') + '</p></div>';
     const a = (x) => (x.accuracy == null ? "—" : `${x.accuracy}%`);
     const agree = c.common ? `Общих прогнозов: ${c.common}, совпали ${c.agree}` : "Общих прогнозов пока нет — голосуйте за те же матчи";
     return `<div class="v35Cmp"><div><strong>${esc(a(c.me))}</strong> <span>вы · ${esc(c.me.correct)} из ${esc(c.me.settled)}</span></div><div><strong>${esc(a(c.host))}</strong> <span>${esc(h.name)} · ${esc(c.host.correct)} из ${esc(c.host.settled)}</span></div><p>${esc(agree)}</p></div>`;
@@ -69,7 +72,7 @@ html:not(.v15Light) .v35Host button{color:#c4a6ff;border-color:#8b5cf6}
   function hostRow(h) {
     const acc = h.accuracy == null ? "пока без рассчитанных прогнозов" : `угадано ${h.correct} из ${h.settled} · ${h.accuracy}%`;
     const picks = h.picks && h.picks.length ? `Сейчас за: ${h.picks.map((p) => `${p.tri} (${p.game})`).join(", ")}` : "";
-    return `<div class="v35Host" data-v35-host="${esc(h.id)}"><span class="v35Av">${esc(String(h.name || "?").slice(0, 1).toUpperCase())}</span><span><b>${esc(h.name)}</b> <small>Ур. ${esc(h.level)} · ${esc(acc)}</small>${picks ? ` <small>${esc(picks)}</small>` : ""}</span>${inTelegram() ? `<button type="button" data-v35-compare="${esc(h.id)}">${st.compare.has(h.id) ? "Скрыть" : "Сравнить со мной"}</button>` : ""}${compareHtml(h)}</div>`;
+    return `<div class="v35Host" data-v35-host="${esc(h.id)}"><span class="v35Av">${esc(String(h.name || "?").slice(0, 1).toUpperCase())}</span><span><b>${esc(h.name)}</b> <small>Ур. ${esc(h.level)} · ${esc(acc)}</small>${picks ? ` <small>${esc(picks)}</small>` : ""}</span>${signedIn() ? `<button type="button" data-v35-compare="${esc(h.id)}">${st.compare.has(h.id) ? "Скрыть" : "Сравнить со мной"}</button>` : ""}${compareHtml(h)}</div>`;
   }
   function hostsHtml() {
     const d = st.hosts;
@@ -81,7 +84,7 @@ html:not(.v15Light) .v35Host button{color:#c4a6ff;border-color:#8b5cf6}
 
   // ---- the questions -----------------------------------------------------------------------------------------------------------
   function askHtml() {
-    if (!inTelegram()) return "";
+    if (!signedIn()) return webGuest() ? `<section class="v35Card v35Ask" id="v35Ask"><b>Задай вопрос ведущим</b>${window.HOHAuth.needLogin("Войдите через Telegram, чтобы задать вопрос ведущим и сравнить свои прогнозы с их прогнозами.")}</section>` : "";
     const m = st.mine || { questions: [], ama: null };
     const left = MAX - st.draft.length;
     const mine = (m.questions || []).length ? `<ul class="v35Mine">${m.questions.map((q) => `<li>${esc(q.text)} <small>${esc(STATUS[q.status] || q.status)}</small></li>`).join("")}</ul>` : "";
@@ -104,7 +107,7 @@ html:not(.v15Light) .v35Host button{color:#c4a6ff;border-color:#8b5cf6}
     }
   }
   async function loadMine() {
-    if (st.busy.has("mine") || !inTelegram()) return;
+    if (st.busy.has("mine") || !signedIn()) return;
     st.busy.add("mine");
     try {
       const d = await H.api(`${API}/questions`);
@@ -136,7 +139,7 @@ html:not(.v15Light) .v35Host button{color:#c4a6ff;border-color:#8b5cf6}
       return;
     }
     if (!st.busy.has("hosts") && (!st.hosts || Date.now() - st.hostsAt > 120000)) loadHosts();
-    if (inTelegram() && !st.busy.has("mine") && (!st.mine || Date.now() - st.mineAt > 120000)) loadMine();
+    if (signedIn() && !st.busy.has("mine") && (!st.mine || Date.now() - st.mineAt > 120000)) loadMine();
     // the text being typed is never redrawn under the fingers
     const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches("[data-v35-text]");
     const after = document.getElementById("v33Ach") || document.getElementById("v34Box") || me;

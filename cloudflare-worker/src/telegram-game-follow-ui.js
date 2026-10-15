@@ -28,7 +28,7 @@ function gameFollowEnhancer(){
   function isReminded(gamePk){const f=gameFollow(gamePk);return Boolean(f&&Number(f.notify_pregame)===1)}
 
   async function toggle(gamePk,button){
-    if(!initData){tg?.showAlert?.('Откройте приложение из Telegram-бота, чтобы включить напоминание.');return}
+    if(!initData&&!(window.HOHAuth&&window.HOHAuth.signedIn())){if(window.HOHAuth)window.HOHAuth.login();else tg?.showAlert?.('Откройте приложение из Telegram-бота, чтобы включить напоминание.');return}
     const remove=isReminded(gamePk);
     button.disabled=true;
     try{

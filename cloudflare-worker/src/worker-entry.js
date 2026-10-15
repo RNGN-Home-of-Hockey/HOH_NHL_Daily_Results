@@ -1,4 +1,5 @@
 import worker, { ensureLegacyTelegramWebhook } from "./index.js";
+import { withWebSession } from "./telegram-center-web-login.js";
 import { getBackfillStatus, runBackfillStep } from "./data-core-backfill.js";
 import { getBackfillJob, runPersistentBackfillTick } from "./data-core-backfill-job.js";
 import { archiveUpcomingBroadcastAnalytics, handleBroadcastRequest, loadBroadcastWinlineMarkets } from "./broadcast-dashboard-v2.js";
@@ -38,6 +39,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = stripTrailingSlash(url.pathname);
+    // «Войти через Telegram» on the website: a valid session key becomes the Telegram initData of that person
+    if (path.startsWith("/api/")) request = await withWebSession(request, env);
 
     const vkOauthResponse = handleVkOauthHelper(request, path);
     if (vkOauthResponse) return vkOauthResponse;

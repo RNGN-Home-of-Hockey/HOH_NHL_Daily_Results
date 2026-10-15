@@ -12,6 +12,8 @@ export function recapApp() {
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const tg = () => (window.Telegram && window.Telegram.WebApp) || null;
   const inTelegram = () => Boolean(tg() && tg().initData);
+  // the card is for a signed-in fan, in Telegram or on the website (telegram-center-web-login-ui.js); the story share needs Telegram
+  const signedIn = () => inTelegram() || Boolean(window.HOHAuth && window.HOHAuth.signedIn());
   const initData = () => (H.initData || (tg() && tg().initData) || "");
   const word = (n, one, few, many) => { const a = Math.abs(n) % 100, b = a % 10; return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many; };
 
@@ -214,7 +216,7 @@ html:not(.v15Light) .v34Box{border-color:#30334a;color:#f7f7fb}
     const me = document.getElementById("v29Me");
     const el = document.getElementById("v34Box");
     const onMine = H.currentTab && ["follows", "mine"].includes(H.currentTab()) && !(H.state && H.state.profile);
-    if (!me || !onMine || !inTelegram()) { if (el) el.remove(); return; }
+    if (!me || !onMine || !signedIn()) { if (el) el.remove(); return; }
     if (el) return;
     const box = document.createElement("div");
     box.innerHTML = boxHtml();

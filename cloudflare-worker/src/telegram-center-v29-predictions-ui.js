@@ -26,6 +26,9 @@ export function predictionsApp() {
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const noSpoilers = () => typeof window.HOHNoSpoilers === "function" && Boolean(window.HOHNoSpoilers());
   const inTelegram = () => Boolean(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+  // signed in: inside Telegram, or on the website through «Войти через Telegram» (telegram-center-web-login-ui.js)
+  const signedIn = () => inTelegram() || Boolean(window.HOHAuth && window.HOHAuth.signedIn());
+  const webGuest = () => !signedIn() && Boolean(window.HOHAuth);
   const fmtXp = (v) => String(Math.max(0, Math.floor(Number(v) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   const clock = (iso) => {
     const d = new Date(iso);
@@ -164,7 +167,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
       if (st.pending.has(g.game_pk)) return { text: "Сохраняем…" };
       if (my) return { text: `Ваш выбор: ${tri}${my.score ? `, счёт ${my.score.away}:${my.score.home}` : ""} · можно поменять до ${clock(g.start)}` };
       // the match of the day and the match screen add what the pick opens (the cards of "Матчи" are too narrow for it)
-      const hint = inTelegram() ? "Выберите — и покажем коэффициент Winline на ваш выбор" : "";
+      const hint = signedIn() ? "Выберите — и покажем коэффициент Winline на ваш выбор" : "";
       return { text: g.votes && g.votes.total ? `Проголосовали: ${g.votes.total} · с учётом ОТ и буллитов` : "Победа с учётом ОТ и буллитов", hint };
     }
     if (noSpoilers()) return { text: "Итог скрыт: режим без спойлеров" };
@@ -295,7 +298,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
   function matchesHeadHtml() {
     const sl = st.slate;
     const last = sl && sl.last && !noSpoilers() ? `<div class="v29Last">Прошлый игровой день: угадано ${sl.last.correct} из ${sl.last.total} · +${fmtXp(sl.last.xp)} XP</div>` : "";
-    const guest = sl && !sl.signed_in ? " Голосовать можно в приложении, открытом из Telegram-бота." : "";
+    const guest = sl && !sl.signed_in ? (webGuest() ? `</div>${window.HOHAuth.needLogin("Войдите через Telegram, чтобы голосовать и копить очки — всё будет общим с приложением в Telegram.")}<div>` : " Голосовать можно в приложении, открытом из Telegram-бота.") : "";
     return `<div class="v29MhTop"><b>Кто победит?</b><button type="button" class="v29Link" data-v29-me>Мой профиль и рейтинг →</button></div><div class="v29Note">Голосуйте прямо в карточках матчей: победа с учётом ОТ и буллитов, выбор можно менять до начала матча. У прошедших матчей — как голосовали болельщики.${guest}</div>${last}`;
   }
 
@@ -357,7 +360,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
       const html = voteHtml(g, slot.classList.contains("v29CardSlot") ? "card" : "full");
       slot.hidden = !html;
       const box = slot.closest(".v27Hero,.v19Broadcast,#v26Root");
-      if (box) box.classList.toggle("v29Asked", Boolean(html) && g.open && inTelegram());
+      if (box) box.classList.toggle("v29Asked", Boolean(html) && g.open && signedIn());
       if (painted.get(slot) === html && (slot.innerHTML || !html)) return;
       slot.innerHTML = html;
       painted.set(slot, html);
@@ -384,7 +387,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
   function profileHtml() {
     const m = st.me;
     if (!m) return '<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="v29Empty">Загрузка…</div></div>';
-    if (m.guest) return '<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="v29Empty">Прогнозы, очки и рейтинг доступны в приложении, открытом из Telegram-бота.</div></div>';
+    if (m.guest) return '<div class="v29Card v29Prof"><div class="k">Твой профиль</div>' + (webGuest() ? window.HOHAuth.needLogin('Войдите через Telegram — прогнозы, очки и рейтинг будут общими с приложением в Telegram.') : '<div class="v29Empty">Прогнозы, очки и рейтинг доступны в приложении, открытом из Telegram-бота.</div>') + '</div>';
     const lv = m.level;
     const toNext = lv.next ? `До уровня ${esc(lv.next.n || lv.next.name)}: ${fmtXp(lv.to_next)} XP` : "Высший уровень";
     const week = m.ranks && m.ranks.week;
@@ -528,7 +531,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
     if (/voting_closed/.test(code)) return "Матч уже начался — прогнозы на него закрыты.";
     if (/invalid_score/.test(code)) return "Счёт должен быть в пользу команды, которую вы выбрали.";
     if (/expired/.test(code)) return "Сессия устарела: закройте приложение и откройте его снова из Telegram-бота.";
-    if (/missing_telegram_init_data|guest|signature|init_data/.test(code)) return "Голосовать можно в приложении, открытом из Telegram-бота.";
+    if (/missing_telegram_init_data|guest|signature|init_data/.test(code)) return window.HOHAuth && !inTelegram() ? "Войдите через Telegram, чтобы голосовать." : "Голосовать можно в приложении, открытом из Telegram-бота.";
     return "Не удалось сохранить прогноз. Попробуйте ещё раз.";
   }
 
@@ -536,8 +539,9 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
     const g = st.games.get(pk);
     if (!g || !g.open || st.pending.has(pk)) return;
     if (g.my && g.my.pick === side) return;
-    if (!inTelegram()) {
-      alert("Голосовать можно в приложении, открытом из Telegram-бота.");
+    if (!signedIn()) {
+      if (webGuest()) window.HOHAuth.login();
+      else alert("Голосовать можно в приложении, открытом из Telegram-бота.");
       return;
     }
     const before = g;
