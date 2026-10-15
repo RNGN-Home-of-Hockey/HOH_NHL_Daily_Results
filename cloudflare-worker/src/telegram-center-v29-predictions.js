@@ -310,14 +310,14 @@ async function getMe(request, env, now) {
 }
 
 // The accuracy of the season against the other fans with at least PEER_MIN_PICKS played picks: the share one is better than.
-async function accuracyTable(db, season) {
+export async function accuracyTable(db, season) {
   const r = await db.prepare(`
     SELECT telegram_user_id id,SUM(CASE WHEN result='win' THEN 1 ELSE 0 END) correct,COUNT(*) total
     FROM fan_predictions WHERE ${SETTLED} AND season_id=? GROUP BY telegram_user_id HAVING COUNT(*)>=?;
   `).bind(season, PEER_MIN_PICKS).all();
   return new Map((r.results || []).map((x) => [Number(x.id), Number(x.correct) / Number(x.total)]));
 }
-function betterOf(table, id) {
+export function betterOf(table, id) {
   if (!table.has(id)) return null;
   const others = [...table.entries()].filter(([k]) => k !== id).map(([, v]) => v);
   return betterThanPct(table.get(id), others);

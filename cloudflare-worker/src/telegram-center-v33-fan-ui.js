@@ -271,7 +271,7 @@ html:not(.v15Light) .v33Ach{border-color:#30334a;background:rgba(16,18,26,.8);co
     const next = wrap.firstElementChild;
     next.dataset.v33Html = html;
     if (el) el.replaceWith(next);
-    else box.after(next);
+    else (document.getElementById("v34Box") || box).after(next); // under «Мои итоги» when it is there
   }
 
   // ---- clicks -----------------------------------------------------------------------------------------------------------------------
