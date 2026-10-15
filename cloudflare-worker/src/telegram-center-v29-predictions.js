@@ -610,14 +610,14 @@ async function sendTelegram(token, chatId, text, replyMarkup) {
 }
 
 // ---- Telegram identity (the same check as the profiles of v22) -------------------------------------------------------------
-async function upsertTelegramUser(db, user) {
+export async function upsertTelegramUser(db, user) {
   await db.prepare(`INSERT INTO telegram_users(telegram_user_id,username,first_name,last_name,language_code,notifications_enabled,updated_at)
     VALUES(?,?,?,?,?,1,CURRENT_TIMESTAMP)
     ON CONFLICT(telegram_user_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,language_code=excluded.language_code,updated_at=CURRENT_TIMESTAMP`)
     .bind(user.id, user.username, user.first_name, user.last_name, user.language_code).run();
 }
 
-async function telegramAuth(request, env, required) {
+export async function telegramAuth(request, env, required) {
   const initData = String(request.headers.get("x-telegram-init-data") || "").trim();
   if (!initData) return required ? { ok: false, error: "missing_telegram_init_data" } : { ok: false, error: "guest" };
   const token = String(env.TELEGRAM_CENTER_BOT_TOKEN || "").trim();
