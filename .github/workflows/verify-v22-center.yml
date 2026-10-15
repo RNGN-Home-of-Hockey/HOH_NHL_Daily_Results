@@ -59,7 +59,7 @@ jobs:
               &&v23.includes('function trendFamily')
               &&v23.includes('function recommendationFact')
               &&v23.includes('function playerPropOutcome')
-              &&v23.includes('Ставка: ');
+              &&v23.includes('v31RecOdds');
             console.log('CENTER_DEPLOY_WAIT',i+1,shellRes.status,build,'ready',ready);
             if(ready)process.exit(0);
             await new Promise(resolve=>setTimeout(resolve,2000));
@@ -112,7 +112,7 @@ jobs:
           const v22nav=await text('/telegram-app/v22.js');
           for(const x of ['v22SettingsToggle','grid-template-columns:repeat(4,minmax(0,1fr))','Мои и настройки',"body.theme_mode||'light'",'H.decorateHomeOdds','legacyGame','H.openGameV19'])if(!v22nav.includes(x))throw new Error('V22 navigation/settings missing '+x);
           const v23player=await text('/telegram-app/v23-player.js');
-          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')",'function uniqueTrends','function trendFamily','function recommendationFact','function playerPropOutcome','Ставка: ','Выборка: ','source_key=','loading="eager"'])if(!v23player.includes(x))throw new Error('V23 player UX missing '+x);
+          for(const x of ['/broadcast/winline-logo.png?asset=canonical-3','v23RecBrand','v23RecDuo','v23RecTrend','v23RecMarket','v23RecTopline','v23RecMatchup','.v23LastCover{aspect-ratio:16/9','TEAM_CITY','font:italic 950',"a.join('<br>')",'function uniqueTrends','function trendFamily','function recommendationFact','function playerPropOutcome','v31RecOdds','Проходило в ','Выборка: ','source_key=','loading="eager"'])if(!v23player.includes(x))throw new Error('V23 player UX missing '+x);
           if(v23player.includes('Команда: ')||v23player.includes('ОЦЕНКА HOH')||v23player.includes('Линия WINLINE')||v23player.includes('Последний подтверждённый матч'))throw new Error('V23 player page still contains obsolete copy');
           const v15core=await text('/telegram-app/v15-core.js');
           if(!v15core.includes("localStorage.getItem('hoh-center-theme')||'light'"))throw new Error('light theme is not default');
@@ -145,7 +145,7 @@ jobs:
           if(bgPool.length<20)throw new Error('background player pool too small '+bgPool.length);
           console.log('BACKGROUND_POOL_OK',bgPool.length,bgPool.slice(0,3).map(x=>x.full_name_en).join(', '));
           const v23=await text('/telegram-app/v23-player.js');
-          for(const x of ['lockCanonicalPlayer','capturePlayerClick','blockedLegacyOpenPlayer','HOH_CANONICAL_PLAYER_UI','COUNTRY_GRADIENT','rankVisual','v23RankLeagueTop','v23RecOdds','data-v23-rec-market','Все показатели','goals_per_60','shot_attempts_per_60','v23LastCover','grid-template-columns:repeat(4,minmax(0,1fr))','Вся статистика игрока','v23Country','Контракт 2026/27','renderFullStats','power_play_points'])if(!v23.includes(x))throw new Error('V23 player UI missing '+x);
+          for(const x of ['lockCanonicalPlayer','capturePlayerClick','blockedLegacyOpenPlayer','HOH_CANONICAL_PLAYER_UI','COUNTRY_GRADIENT','rankVisual','v23RankLeagueTop','v23RecOdds','data-v23-rec-market','strength(b)-strength(a)','goals_per_60','shot_attempts_per_60','v23LastCover','grid-template-columns:repeat(4,minmax(0,1fr))','Вся статистика игрока','v23Country','Контракт 2026/27','renderFullStats','power_play_points'])if(!v23.includes(x))throw new Error('V23 player UI missing '+x);
           if(v23.includes('По умолчанию открывается последний сезон'))throw new Error('player profile still contains explanatory season note');
           if(v23.includes('ближайший вариант по силе сигнала'))throw new Error('player Winline card still contains explanatory footer');
           const v21=await text('/telegram-app/v21.js');
