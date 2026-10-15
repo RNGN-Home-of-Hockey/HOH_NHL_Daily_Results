@@ -36,8 +36,8 @@ jobs:
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.RNGN_CF_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: f7f0376bf1c44c4e3cef4a24adf1b66a
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
@@ -92,7 +92,7 @@ jobs:
           "
 
           GAME_A="$GAME_A" GAME_B="$GAME_B" CARD_A="$CARD_A" CARD_B="$CARD_B" node --input-type=module <<'JS'
-          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const base='https://hoh-nhl-daily-results.rngn.workers.dev';
           const checks=[
             [process.env.GAME_A,process.env.CARD_A],
             [process.env.GAME_B,process.env.CARD_B],
@@ -147,7 +147,7 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
-          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram/center/status';
+          const url='https://hoh-nhl-daily-results.rngn.workers.dev/api/telegram/center/status';
           let r=null,d=null;
           for(let i=0;i<15;i++){
             r=await fetch(url,{headers:{accept:'application/json'},cache:'no-store'});
@@ -167,9 +167,9 @@ jobs:
           if(!d.delivery_setup?.ok||d.delivery_setup?.mode!=='polling')throw new Error('Telegram Center polling setup failed '+JSON.stringify(d.delivery_setup));
           if(!d.commands?.ok||!(d.commands.items||[]).some(x=>x.command==='menu'))throw new Error('Telegram Center commands missing '+JSON.stringify(d.commands));
           if(!d.menu_button?.ok||d.menu_button?.value?.type!=='web_app')throw new Error('Telegram Center menu button missing '+JSON.stringify(d.menu_button));
-          if(String(d.menu_button?.value?.web_app?.url||'')!=='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.8.0')throw new Error('Telegram Center menu button is not on exact current build '+JSON.stringify(d.menu_button));
+          if(String(d.menu_button?.value?.web_app?.url||'')!=='https://hoh-nhl-daily-results.rngn.workers.dev/telegram-app-v24?build=24.8.0')throw new Error('Telegram Center menu button is not on exact current build '+JSON.stringify(d.menu_button));
           if(d.menu_button_matches_build!==true)throw new Error('Telegram Center menu build contract failed '+JSON.stringify(d));
-          const origin='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const origin='https://hoh-nhl-daily-results.rngn.workers.dev';
           const browserAssets=['/telegram-app/v9.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v19.js','/telegram-app/v20.js','/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js','/telegram-app/v24-visual.js'];
           for(const asset of browserAssets){
             const ar=await fetch(origin+asset+'?build=24.8.0',{cache:'no-store'});
@@ -196,7 +196,7 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
-          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const base='https://hoh-nhl-daily-results.rngn.workers.dev';
           let d=null,r=null;
           for(let i=0;i<15;i++){
             r=await fetch(base+'/api/telegram-center-notifications-v2/status',{cache:'no-store',headers:{accept:'application/json'}});
@@ -243,14 +243,14 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
-          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram/legacy/status';
+          const url='https://hoh-nhl-daily-results.rngn.workers.dev/api/telegram/legacy/status';
           let last=null;
           for(let i=0;i<15;i++){
             const r=await fetch(url,{headers:{accept:'application/json'},cache:'no-store'});
             last=await r.json().catch(()=>({}));
             console.log('LEGACY_TELEGRAM_STATUS',i+1,JSON.stringify(last));
             if(r.ok&&last?.ok&&last?.bot?.username==='hoh_nhl_daily_results_bot'&&
-               last?.webhook?.url==='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram'){
+               last?.webhook?.url==='https://hoh-nhl-daily-results.rngn.workers.dev/api/telegram'){
               console.log('LEGACY_TELEGRAM_WEBHOOK_OK',JSON.stringify({
                 pending:last.webhook.pending_update_count,
                 last_error:last.webhook.last_error_message,
@@ -270,7 +270,7 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
-          const url='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram/center/status';
+          const url='https://hoh-nhl-daily-results.rngn.workers.dev/api/telegram/center/status';
           let last=null;
           for(let i=0;i<50;i++){
             const r=await fetch(url,{headers:{accept:'application/json'},cache:'no-store'});
@@ -292,7 +292,7 @@ jobs:
         run: |
           set -euo pipefail
           sleep 5
-          BASE='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram-center-v18/vk'
+          BASE='https://hoh-nhl-daily-results.rngn.workers.dev/api/telegram-center-v18/vk'
           echo '=== STATUS ==='
           curl --fail-with-body --retry 5 --retry-delay 2 --max-time 30 "$BASE/status"
           echo
@@ -301,7 +301,7 @@ jobs:
           echo
           echo '=== V19 PRODUCT SMOKE ==='
           node --input-type=module <<'JS'
-          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const base='https://hoh-nhl-daily-results.rngn.workers.dev';
           const get=async(path,timeout=90000)=>{
             const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);
             try{

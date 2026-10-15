@@ -19,8 +19,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CORE='https://rngn-content-core-paid-shadow.znamteam-903.workers.dev'
-          DASH='https://rngn-content-dashboard-paid-shadow.znamteam-903.workers.dev'
+          CORE='https://rngn-content-core.rngn.workers.dev'
+          DASH='https://rngn-content-dashboard.rngn.workers.dev'
           probe() {
             local name="$1" url="$2"
             local file="/tmp/$name.out"

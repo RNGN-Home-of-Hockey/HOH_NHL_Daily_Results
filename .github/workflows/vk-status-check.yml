@@ -18,7 +18,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/telegram-center-v18/vk'
+          BASE='https://hoh-nhl-daily-results.rngn.workers.dev/api/telegram-center-v18/vk'
           echo '=== STATUS ==='
           curl --fail-with-body --retry 3 --retry-delay 2 --max-time 30 "$BASE/status"
           echo

@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      CONTENT_CORE_URL: https://rngn-content-core-paid-shadow.znamteam-903.workers.dev
+      CONTENT_CORE_URL: https://rngn-content-core.rngn.workers.dev
       CONTENT_CORE_API_KEY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       SELECT_ACCOUNT_ID: ${{ inputs.account_id || '' }}
     steps:

@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.RNGN_CF_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: f7f0376bf1c44c4e3cef4a24adf1b66a
     steps:
       - name: Wait for latest Worker deploy
         run: sleep 35
@@ -37,8 +37,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          FUTURE='https://hoh-nhl-daily-results.znamteam-903.workers.dev/go/winline?game_pk=2026020001'
-          HIST='https://hoh-nhl-daily-results.znamteam-903.workers.dev/go/winline?game_pk=2024030116'
+          FUTURE='https://hoh-nhl-daily-results.rngn.workers.dev/go/winline?game_pk=2026020001'
+          HIST='https://hoh-nhl-daily-results.rngn.workers.dev/go/winline?game_pk=2024030116'
           echo '--- future route ---'
           FH="$(curl -sS -D - -o /dev/null --max-time 15 "$FUTURE")"
           echo "$FH" | grep -Ei '^(HTTP/|location:)'

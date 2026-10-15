@@ -17,11 +17,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
-      TARGET_DATABASE_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
-      PAID_CORE_URL: https://rngn-content-core-paid-shadow.znamteam-903.workers.dev
-      PAID_DASH_URL: https://rngn-content-dashboard-paid-shadow.znamteam-903.workers.dev
+      CLOUDFLARE_API_TOKEN: ${{ secrets.RNGN_CF_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: f7f0376bf1c44c4e3cef4a24adf1b66a
+      TARGET_DATABASE_ID: abb8a6f2-e9e0-4f6d-b5f5-cbf808a0c2eb
+      PAID_CORE_URL: https://rngn-content-core.rngn.workers.dev
+      PAID_DASH_URL: https://rngn-content-dashboard.rngn.workers.dev
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -51,21 +51,21 @@ jobs:
           const db=process.env.TARGET_DATABASE_ID;
 
           const core=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
-          core.name='rngn-content-core-paid-shadow';
+          core.name='rngn-content-core';
           core.d1_databases[0].database_name='rngn-content-core-v2';
           core.d1_databases[0].database_id=db;
           // Keep the production Core cron schedule from source config.
           fs.writeFileSync('wrangler.paid.jsonc',JSON.stringify(core,null,2));
 
           const matcher=JSON.parse(fs.readFileSync('wrangler.matcher.jsonc','utf8'));
-          matcher.name='rngn-content-matcher-paid';
+          matcher.name='rngn-content-matcher';
           matcher.d1_databases[0].database_name='rngn-content-core-v2';
           matcher.d1_databases[0].database_id=db;
           // Keep both production Matcher schedules (:07 incremental, every 20m full-corpus).
           fs.writeFileSync('wrangler.matcher.paid.jsonc',JSON.stringify(matcher,null,2));
 
           const dash=JSON.parse(fs.readFileSync('dashboard/wrangler.jsonc','utf8'));
-          dash.name='rngn-content-dashboard-paid-shadow';
+          dash.name='rngn-content-dashboard';
           dash.vars.CORE_ORIGIN=process.env.PAID_CORE_URL;
           dash.d1_databases[0].database_name='rngn-content-core-v2';
           dash.d1_databases[0].database_id=db;
@@ -122,7 +122,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for worker in rngn-content-core-paid-shadow rngn-content-matcher-paid; do
+          for worker in rngn-content-core rngn-content-matcher; do
             URL="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$worker/schedules"
             curl --fail --silent --show-error "$URL" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" > "/tmp/$worker-schedules.json"
             jq -e '.success == true' "/tmp/$worker-schedules.json" >/dev/null

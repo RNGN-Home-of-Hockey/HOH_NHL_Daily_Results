@@ -17,7 +17,7 @@ jobs:
       - name: Probe all Winline feeds through production Worker
         run: |
           node --input-type=module <<'JS'
-          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev/api/winline/feed-probe';
+          const base='https://hoh-nhl-daily-results.rngn.workers.dev/api/winline/feed-probe';
           const feeds=[
             'prematch','live','prematcheng','liveeng',
             'prematch_mainsports','live_mainsports',

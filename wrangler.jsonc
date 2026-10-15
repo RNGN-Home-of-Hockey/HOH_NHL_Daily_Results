@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hoh-nhl-daily-results",
+  "account_id": "f7f0376bf1c44c4e3cef4a24adf1b66a",
   "main": "cloudflare-worker/src/worker-entry.js",
   "compatibility_date": "2026-05-06",
   "observability": {
@@ -18,7 +19,7 @@
     {
       "binding": "DB",
       "database_name": "hoh-data-core",
-      "database_id": "e72d8730-e1b1-4291-b659-6500769a1229",
+      "database_id": "bc570e12-3416-453b-ad31-42a27612379a",
       "migrations_dir": "migrations"
     }
   ],
@@ -30,7 +31,7 @@
     "GITHUB_DISPATCH_EVENT_RESEND": "resend_last_day",
     "CLOUDFLARE_CRON_ENABLED": "1",
     "TELEGRAM_CENTER_DELIVERY_MODE": "polling",
-    "TELEGRAM_CENTER_WEBHOOK_URL": "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram/center?v=20260921-1",
+    "TELEGRAM_CENTER_WEBHOOK_URL": "https://hoh-nhl-daily-results.rngn.workers.dev/telegram/center?v=20260921-1",
     "TELEGRAM_LIVE_NOTIFICATIONS_ENABLED": "1",
     "FAN_PREDICTIONS_DIGEST_ENABLED": "1",
     "TELEGRAM_CENTER_EVENT_STREAM_ENABLED": "0",

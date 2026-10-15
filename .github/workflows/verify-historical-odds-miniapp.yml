@@ -19,10 +19,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE='https://hoh-nhl-daily-results.znamteam-903.workers.dev'
+          BASE='https://hoh-nhl-daily-results.rngn.workers.dev'
           sleep 5
           node --input-type=module <<'JS'
-          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const base='https://hoh-nhl-daily-results.rngn.workers.dev';
           const get=async p=>{
             const r=await fetch(base+p,{cache:'no-store',headers:{accept:'application/json'}});
             const t=await r.text();

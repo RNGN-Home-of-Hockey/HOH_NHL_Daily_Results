@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.RNGN_CF_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: f7f0376bf1c44c4e3cef4a24adf1b66a
       TARGET_DATABASE_ID: eeaf01ce-1a33-4d45-8cbe-fd7ae95ae507
       IMPORT_BOOKMARK: 00000001-00000000-000050ef-dd181434d3b6bc4e2ffdbadbea25760d
     steps:

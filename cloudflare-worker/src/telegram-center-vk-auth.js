@@ -1,5 +1,5 @@
 const APP_ID=54776626;
-const REDIRECT="https://hoh-nhl-daily-results.znamteam-903.workers.dev/vk-oauth/callback";
+const REDIRECT="https://hoh-nhl-daily-results.znamteam-903.workers.dev/vk-oauth/callback"; // stays on the old host until VK app 54776626 lists the rngn callback
 const ACCESS_KEY="hoh_vk_oauth_access_v1";
 const REFRESH_KEY="hoh_vk_oauth_refresh_v1";
 const EXPIRES_KEY="hoh_vk_oauth_expires_v1";

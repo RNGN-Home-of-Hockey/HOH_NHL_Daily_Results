@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.RNGN_CF_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: f7f0376bf1c44c4e3cef4a24adf1b66a
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
@@ -72,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
-          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const base='https://hoh-nhl-daily-results.rngn.workers.dev';
           const text=async p=>{const r=await fetch(base+p,{cache:'no-store'});if(!r.ok)throw new Error(p+' HTTP '+r.status);return r.text()};
           const json=async p=>{const r=await fetch(base+p,{cache:'no-store'});const t=await r.text();if(!r.ok)throw new Error(p+' HTTP '+r.status+' '+t.slice(0,200));return JSON.parse(t)};
           const shell=await text('/telegram-app');

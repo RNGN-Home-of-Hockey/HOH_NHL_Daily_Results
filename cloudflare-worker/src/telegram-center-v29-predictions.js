@@ -19,7 +19,7 @@ const BOARD_LIMIT = 50;
 const BOARD_CACHE_SECONDS = 60;
 const DIGEST_BUDGET = 25;
 const AVATAR_PATH = "/api/telegram-center-v22/avatars/";
-const MINI_APP_URL = "https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24";
+const MINI_APP_URL = "https://hoh-nhl-daily-results.rngn.workers.dev/telegram-app-v24";
 const TYPES_SQL = GAME_TYPES.join(",");
 const SETTLED = "settled_at IS NOT NULL AND result IN ('win','loss')";
 

@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '9032ec1bd3cb868d89a38453e4bd1a69' }}
-      TARGET_DATABASE_ID: 5bb4a906-3483-4a2b-8f70-7fea531b9af5
+      CLOUDFLARE_API_TOKEN: ${{ secrets.RNGN_CF_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: f7f0376bf1c44c4e3cef4a24adf1b66a
+      TARGET_DATABASE_ID: abb8a6f2-e9e0-4f6d-b5f5-cbf808a0c2eb
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6

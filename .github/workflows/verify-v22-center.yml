@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
-          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const base='https://hoh-nhl-daily-results.rngn.workers.dev';
           for(let i=0;i<60;i++){
             const [shellRes,v19Res,v23Res]=await Promise.all([
               fetch(base+'/telegram-app-v24?build=24.8.0',{cache:'no-store'}),
@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'JS'
-          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const base='https://hoh-nhl-daily-results.rngn.workers.dev';
           async function raw(path,opts={}){const r=await fetch(base+path,{cache:'no-store',...opts});return {r,t:await r.text()}}
           async function text(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status);return t}
           async function json(path){const {r,t}=await raw(path);if(!r.ok)throw new Error(path+' HTTP '+r.status+' '+t.slice(0,300));return JSON.parse(t)}
@@ -233,7 +233,7 @@ jobs:
           const unauth=await raw('/api/telegram-center-v22/me');
           if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
           const centerStatus=await json('/api/telegram/center/status');
-          if(String(centerStatus.mini_app_url||'')!=='https://hoh-nhl-daily-results.znamteam-903.workers.dev/telegram-app-v24?build=24.8.0')throw new Error('Center mini app URL is not exact current build '+centerStatus.mini_app_url);
+          if(String(centerStatus.mini_app_url||'')!=='https://hoh-nhl-daily-results.rngn.workers.dev/telegram-app-v24?build=24.8.0')throw new Error('Center mini app URL is not exact current build '+centerStatus.mini_app_url);
           if(String(centerStatus.menu_button?.value?.web_app?.url||'')!==centerStatus.mini_app_url)throw new Error('Telegram menu button build mismatch '+JSON.stringify(centerStatus.menu_button));
           if(centerStatus.menu_button_matches_build!==true)throw new Error('Telegram menu build contract false '+JSON.stringify(centerStatus));
 

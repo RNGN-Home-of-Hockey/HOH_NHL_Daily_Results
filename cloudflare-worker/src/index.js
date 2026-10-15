@@ -350,7 +350,7 @@ async function setupWebhook(request, env) {
 
 function legacyWebhookUrl(env) {
   const base = String(env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
-  return `${base || "https://hoh-nhl-daily-results.znamteam-903.workers.dev"}/api/telegram`;
+  return `${base || "https://hoh-nhl-daily-results.rngn.workers.dev"}/api/telegram`;
 }
 
 export async function ensureLegacyTelegramWebhook(env) {

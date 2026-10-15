@@ -19,7 +19,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE='https://hoh-nhl-daily-results.znamteam-903.workers.dev'
+          BASE='https://hoh-nhl-daily-results.rngn.workers.dev'
           assets=(
             '/telegram-app'
             '/telegram-app/v9.js'
@@ -48,7 +48,7 @@ jobs:
           echo "TOTAL_BYTES $total"
 
           node --input-type=module <<'JS'
-          const base='https://hoh-nhl-daily-results.znamteam-903.workers.dev';
+          const base='https://hoh-nhl-daily-results.rngn.workers.dev';
           const paths=[
             '/telegram-app/v9.js','/telegram-app/v9-polish.js','/telegram-app/v11.js','/telegram-app/v12.js','/telegram-app/v13.js',
             '/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v15-player.js','/telegram-app/v16.js?build=18.1',
