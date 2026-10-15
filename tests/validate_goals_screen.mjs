@@ -2,7 +2,7 @@
 // no-spoilers, and the page with every goal of a player.
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import { buildGoalsPayload, buildPlayerSeasonPayload, regulationResult, playerIdsOf, periodInfo, phaseOf } from "../cloudflare-worker/src/telegram-center-v26-goals-data.js";
+import { buildGoalsPayload, buildPlayerSeasonPayload, regulationResult, playerIdsOf, periodInfo, phaseOf, stateInfo } from "../cloudflare-worker/src/telegram-center-v26-goals-data.js";
 import { handleTelegramCenterV26, seasonIdOf, FONT_CSS, FONT_PRELOAD_LINKS } from "../cloudflare-worker/src/telegram-center-v26-goals.js";
 import { handleTeamCurrentRequest } from "../cloudflare-worker/src/team-current-routes.js";
 import { handleTelegramCenterV19Ui } from "../cloudflare-worker/src/telegram-center-v19-ui.js";
@@ -96,6 +96,11 @@ const INDEX = {
   assert.equal(finalOld.goals[2].clip.state, "none", "long after the game there is no clip to wait for");
   const otFinal = buildGoalsPayload({ gamePk: 123, landing: landing({ state: "FINAL", period: { number: 4, periodType: "OT" } }), index: INDEX, indexOk: true, now: NOW, clipsBase: BASE });
   assert.equal(otFinal.state.label_ru, "Финал · ОТ");
+  // a shootout under way: the series score, not the clock that always reads 00:00 (DAL–COL 2026-10-15: "Буллиты · 00:00" looked like a stuck overtime)
+  const shootout = { gameState: "CRIT", startTimeUTC: "2026-10-11T00:00:00Z", periodDescriptor: { number: 5, periodType: "SO" }, clock: { timeRemaining: "00:00", running: false }, awayTeam: { abbrev: "DAL", score: 2 }, homeTeam: { abbrev: "COL", score: 2 } };
+  assert.equal(stateInfo({ ...shootout, summary: { shootout: { liveScore: { home: 0, away: 1 } } } }).label_ru, "Буллиты · 1:0", "guests first, like the cards");
+  assert.equal(stateInfo(shootout).label_ru, "Буллиты", "no series score yet: just the word");
+  assert.equal(stateInfo({ ...shootout, gameState: "OFF" }).label_ru, "Финал · Б");
   const unknownGame = buildGoalsPayload({ gamePk: 999, landing: landing(), index: INDEX, indexOk: true, now: NOW, clipsBase: BASE });
   assert.equal(unknownGame.clips.available, false);
   assert.equal(unknownGame.cover_url, null, "a cover belongs to its own game");

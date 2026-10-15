@@ -40,7 +40,12 @@ export function stateInfo(landing) {
   const clock = landing?.clock || {};
   const intermission = phase === "live" && clock.inIntermission === true;
   let label = "";
-  if (phase === "live") {
+  if (phase === "live" && period.type === "SO") {
+    // the clock of a shootout is always 00:00: the series score says more (guests first, like the cards)
+    const so = landing?.summary?.shootout?.liveScore;
+    const away = num(so?.away), home = num(so?.home);
+    label = away !== null && home !== null ? `Буллиты · ${away}:${home}` : "Буллиты";
+  } else if (phase === "live") {
     label = intermission ? "Перерыв" : `${period.label_ru}${clock.timeRemaining ? ` · ${clock.timeRemaining}` : ""}`;
   } else if (phase === "final") {
     label = period.type === "OT" ? "Финал · ОТ" : period.type === "SO" ? "Финал · Б" : "Финал";
