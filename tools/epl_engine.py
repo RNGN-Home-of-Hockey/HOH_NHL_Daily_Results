@@ -24,6 +24,7 @@ import epl_insights as ins  # noqa: E402
 TIERS = ((80, "fire", "Огонь", 5), (65, "strong", "Сильная", 4), (50, "solid", "Рабочая", 3), (35, "background", "Фон", 2))
 PER_RULE_LIMIT = 3
 MATCH_LIMIT = 45
+MIN_ODDS = 1.50  # owner 2026-10-15: no card on a price below 1.50 (the line is dropped before the cards are grouped)
 FORM_N = 8
 FORM_MIN = 6
 VENUE_N = 8
@@ -672,7 +673,8 @@ def availability(player: dict | None) -> str:
 
 def build_cards(event: dict, ctx: dict) -> list[dict]:
     """Every card for one match, strongest first: the same fact on several lines = one card with alternatives;
-    at most PER_RULE_LIMIT per rule and MATCH_LIMIT per match. No player card for a player Fantasy lists as out;
+    at most PER_RULE_LIMIT per rule and MATCH_LIMIT per match. Lines priced below MIN_ODDS never become cards
+    (nor alternatives), so a fact keeps only its 1.50+ lines. No player card for a player Fantasy lists as out;
     a doubtful one loses DOUBT_PENALTY points and gets the tag «под вопросом»."""
     candidates = []
     for rule in ins.RULES:
@@ -682,7 +684,7 @@ def build_cards(event: dict, ctx: dict) -> list[dict]:
     players = {p["pl_id"]: p for p in ctx.get("players") or []}
     seen, grouped = set(), {}
     for card in candidates:
-        if not card:
+        if not card or card["market"]["odds"] < MIN_ODDS:
             continue
         pid = (card.get("details") or {}).get("player_id")
         if pid is not None:

@@ -179,6 +179,16 @@ def test_injured_players_get_no_cards():
     assert doubtful[0]["score"] == fit[0]["score"] - eng.DOUBT_PENALTY and "под вопросом" in doubtful[0]["tags"]
 
 
+def test_no_cards_below_min_odds():
+    games = season_of(1, [(1, 0)] * 8) + season_of(2, [(0, 0)] * 8)  # 16 of 16 matches under 1.5 and under 2.5
+    lines = [market(100, "total", [("over", 4.0, "Б"), ("under", 1.25, "М")], line=2.5, key="t2.5"),
+             market(100, "total", [("over", 2.6, "Б"), ("under", 1.55, "М")], line=1.5, key="t1.5")]
+    cards = eng.build_cards({"markets": lines}, ctx_for(games))
+    totals = [c for c in cards if c["rule"] == "match_total_form"]
+    assert totals and all(c["market"]["odds"] >= eng.MIN_ODDS for c in cards)
+    assert totals[0]["market"]["line"] == 1.5 and not any(a["odds"] < eng.MIN_ODDS for c in cards for a in c["alternatives"])
+
+
 def main() -> None:
     for name, function in sorted(globals().items()):
         if name.startswith("test_") and callable(function):

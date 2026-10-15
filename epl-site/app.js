@@ -244,7 +244,7 @@ function renderFeedSide() {
   const bases = [['all', 'Все', null], ...(state.data?.bases || []).map((b) => [b, b, count((x) => x.c.basis === b)])].filter(([, , n]) => n !== 0);
   const teamOptions = [...(state.data?.teams || [])].sort((a, b) => a.name_ru.localeCompare(b.name_ru, 'ru'))
     .map((t) => `<option value="${t.id}" ${f.team === String(t.id) ? 'selected' : ''}>${esc(t.name_ru)}</option>`).join('');
-  const presets = [['', '', 'любой'], ['1.5', '', 'от 1,50'], ['2', '', 'от 2,00'], ['3', '', 'от 3,00'], ['1.3', '2', '1,30–2,00']];
+  const presets = [['', '', 'любой'], ['2', '', 'от 2,00'], ['3', '', 'от 3,00'], ['1.5', '2.5', '1,50–2,50']];
   $('#side').innerHTML = `
     <div class="side-head phone-only"><b>Фильтры</b><button class="btn primary" id="filters-done" data-action="toggle-filters">Показать</button></div>
     <div class="fgroup"><h4>Крутизна</h4><div class="tier-chips">${tiers}</div></div>
@@ -281,7 +281,7 @@ function renderFeed() {
       <div class="toolbar"><button class="btn phone-only" id="filters-btn" data-action="toggle-filters">Фильтры</button>
         <select data-input="feed-sort" aria-label="Сортировка">${FEED_SORTS.map(([v, label]) => `<option value="${v}" ${f.sort === v ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <span class="faint" id="feed-count"></span></div>
-      <p class="plate-note wide-only">Каждая карточка — факт из нашей базы, привязанный к линии, которую Winline сейчас реально даёт на матч. Крутизна: Огонь ≥ 80, Сильная ≥ 65, Рабочая ≥ 50, Фон ≥ 35 (сила истории против цены, выборка, кэф, яркость факта). Сильная и Огонь — только если факт повторился хотя бы 4 раза.</p>
+      <p class="plate-note wide-only">Каждая карточка — факт из нашей базы, привязанный к линии, которую Winline сейчас реально даёт на матч. Крутизна: Огонь ≥ 80, Сильная ≥ 65, Рабочая ≥ 50, Фон ≥ 35 (сила истории против цены, выборка, кэф, яркость факта). Сильная и Огонь — только если факт повторился хотя бы 4 раза. Кэф в карточках — не ниже 1,50.</p>
     </section><div class="list" id="feed-list"></div>`;
   renderFeedList();
 }
