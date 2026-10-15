@@ -5,6 +5,7 @@
 //   /cancel                    — stop the current edit
 // A correction is kept in player_name_overrides and wins over Sports.ru everywhere in the app (see telegram-center-player-names.js).
 import { sportsRuName, transliterateName } from "./telegram-center-player-names.js";
+import { HOST_COMMANDS, HOST_HELP, handleHostCommand } from "./telegram-center-v35-hosts.js";
 
 const NAME_RE = /^[А-ЯЁа-яё][А-ЯЁа-яё'’ .\-]{0,58}[А-ЯЁа-яё.]$/;
 const MAX_RESULTS = 8;
@@ -123,6 +124,8 @@ const HELP = [
   "/names — игроки текущих составов с автоматическим переводом имени (их нет на Sports.ru)",
   "/admins — кто админ; /admin_add @ник — добавить админа (он должен один раз нажать /start в боте)",
   "/cancel — отменить правку",
+  "",
+  HOST_HELP,
 ].join("\n");
 
 // Returns { handled } — false for everyone who is not an admin and for messages that are not admin commands.
@@ -133,7 +136,7 @@ export async function handleAdminMessage(env, message, send) {
   if (!db || !chatId || message?.chat?.type !== "private") return { handled: false };
   const text = String(message?.text || "").trim();
   const cmd = command(text);
-  const adminCommands = ["name", "имя", "names", "admins", "admin_add", "cancel", "admin"];
+  const adminCommands = ["name", "имя", "names", "admins", "admin_add", "cancel", "admin", ...HOST_COMMANDS];
   const state = cmd ? null : await getState(db, userId);
   if (!(cmd && adminCommands.includes(cmd.name)) && !(state && state.action === "rename")) return { handled: false };
   if (!(await isAdmin(db, userId))) return { handled: false };
@@ -173,6 +176,11 @@ export async function handleAdminMessage(env, message, send) {
     const auto = (rows.results || []).filter((r) => !sportsRuName(r.player_id)).slice(0, MAX_RESULTS);
     if (!auto.length) { await reply("У всех игроков текущих составов имя со Sports.ru или исправлено админом ✅"); return { handled: true }; }
     await reply(`Имя переведено автоматически (нет на Sports.ru):\n\n${auto.map(playerLine).join("\n")}`, { reply_markup: { inline_keyboard: playerButtons(auto) } });
+    return { handled: true };
+  }
+  // the hosts and the questions of the fans (v35)
+  if (HOST_COMMANDS.includes(cmd.name)) {
+    await handleHostCommand(env, cmd, userId, reply);
     return { handled: true };
   }
   if (cmd.name === "admins") {

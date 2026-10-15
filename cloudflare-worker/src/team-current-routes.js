@@ -63,6 +63,7 @@ import { handleTelegramCenterV31 } from "./telegram-center-v31-player-profile.js
 import { handleTelegramCenterV32 } from "./telegram-center-v32-live.js";
 import { handleTelegramCenterV33 } from "./telegram-center-v33-fan.js";
 import { handleTelegramCenterV34 } from "./telegram-center-v34-recap.js";
+import { handleTelegramCenterV35 } from "./telegram-center-v35-hosts.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
   const centerV26Response = await handleTelegramCenterV26(request, env, path);
@@ -83,6 +84,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (centerV33Response) return centerV33Response;
   const centerV34Response = await handleTelegramCenterV34(request, env, path);
   if (centerV34Response) return centerV34Response;
+  const centerV35Response = await handleTelegramCenterV35(request, env, path);
+  if (centerV35Response) return centerV35Response;
 
   if (path === "/telegram-app/goalie-bg.webp" && request.method === "GET" && env.ASSETS?.fetch) {
     return env.ASSETS.fetch(request);
@@ -199,6 +202,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       "/telegram-app/v32-live.js?build=32.0",
       "/telegram-app/v33-fan.js?build=33.0",
       "/telegram-app/v34-recap.js?build=34.0",
+      "/telegram-app/v35-hosts.js?build=35.0",
       "/telegram-app/game-follow.js?build=25.0.1",
       "/telegram-app/preferences.js?build=25.0.1"
     ]) body = body.replace('</body>', '<script src="'+src+'"></script></body>');
