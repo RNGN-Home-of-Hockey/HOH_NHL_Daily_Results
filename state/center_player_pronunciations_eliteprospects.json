@@ -1,8 +1,8 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
-  "eliteprospects_audio_matched": 564,
-  "eliteprospects_profiles_resolved": 759,
-  "matched": 571,
+  "eliteprospects_audio_matched": 565,
+  "eliteprospects_profiles_resolved": 760,
+  "matched": 572,
   "nhl_audio_fallback_matched": 7,
   "players": {
     "8470613": {
@@ -12309,6 +12309,29 @@
       "team_tri": "PHI",
       "upstream_verified": true,
       "weight_kg": 82
+    },
+    "8484149": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8484149.mp3",
+      "birth_country": "USA",
+      "birth_date": "2004-10-05",
+      "eliteprospects_id": "538006",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Gavin%20Brindley",
+      "eliteprospects_slug": "gavin-brindley",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/538006/gavin-brindley",
+      "first_name": "Gavin",
+      "full_name_en": "Gavin Brindley",
+      "height_cm": 173,
+      "last_name": "Brindley",
+      "player_id": 8484149,
+      "position_code": "C",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/gavin-brindley.mp3",
+      "shoots_catches": "R",
+      "sweater_number": 54,
+      "team_tri": "COL",
+      "upstream_verified": true,
+      "weight_kg": 78
     },
     "8484158": {
       "audio_cached": true,
@@ -29141,6 +29164,29 @@
       "upstream_verified": true,
       "weight_kg": 82
     },
+    "8484149": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8484149.mp3",
+      "birth_country": "USA",
+      "birth_date": "2004-10-05",
+      "eliteprospects_id": "538006",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Gavin%20Brindley",
+      "eliteprospects_slug": "gavin-brindley",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/538006/gavin-brindley",
+      "first_name": "Gavin",
+      "full_name_en": "Gavin Brindley",
+      "height_cm": 173,
+      "last_name": "Brindley",
+      "player_id": 8484149,
+      "position_code": "C",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/gavin-brindley.mp3",
+      "shoots_catches": "R",
+      "sweater_number": 54,
+      "team_tri": "COL",
+      "upstream_verified": true,
+      "weight_kg": 78
+    },
     "8484152": {
       "audio_cached": false,
       "birth_country": "CAN",
@@ -30747,7 +30793,7 @@
       "weight_kg": 92
     }
   },
-  "roster_players": 784,
+  "roster_players": 785,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
