@@ -130,6 +130,26 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 .v29Board .nm small{font-size:11px;color:var(--v29-muted);font-weight:600}
 .v29Board li b{font-size:14px;font-weight:800;white-space:nowrap}
 .v29Empty{font-size:13px;color:var(--v29-muted)}
+.v29Offer{display:grid;gap:6px;padding:9px 10px;border-radius:12px;background:rgba(255,90,0,.08);border:1px solid rgba(255,90,0,.28)}
+html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(255,120,40,.35)}
+.v29OfTop{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--v29-text)}
+.v29OfTop img{height:16px;width:auto}
+.v29OfRow{display:flex;flex-wrap:wrap;gap:6px}
+.v29OfBet{display:inline-flex;align-items:baseline;gap:6px;padding:7px 10px;border-radius:10px;background:#ff5a00;color:#fff;text-decoration:none;font-size:12.5px;font-weight:700}
+.v29OfBet b{font-size:15px;font-weight:900}
+.v29OfBet.alt{background:transparent;color:var(--v29-text);border:1px solid rgba(255,90,0,.45)}
+.v29OfBet.alt b{color:#ff5a00}
+.v29Offer.compact{padding:6px 8px}
+.v29Offer.compact .v29OfBet{padding:5px 8px;font-size:11.5px}
+.v29Offer.compact .v29OfBet b{font-size:13px}
+.v29Asked :is(.v27Wl,.v19CardOdds,.v26Wl){display:none!important}
+.v29Fact{font-size:12px;font-weight:700;color:var(--v29-odd)}
+.v29Better{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:9px 12px;border-radius:12px;background:linear-gradient(120deg,rgba(122,61,240,.14),rgba(255,90,0,.12));font-size:14px;font-weight:800}
+.v29Better b{font-size:18px;font-weight:900;color:var(--v29-pick)}
+.v29Streak{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:700}
+.v29Streak b{font-size:15px;font-weight:900}
+.v29Streak span{color:var(--v29-muted);font-weight:600}
+.v29Board .av.hid{font-size:15px}
 `;
     document.head.appendChild(style);
   }
@@ -142,13 +162,41 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     if (g.open) {
       if (st.pending.has(g.game_pk)) return { text: "Сохраняем…" };
       if (my) return { text: `Ваш выбор: ${tri}${my.score ? `, счёт ${my.score.away}:${my.score.home}` : ""} · можно поменять до ${clock(g.start)}` };
-      return { text: g.votes && g.votes.total ? `Проголосовали: ${g.votes.total} · с учётом ОТ и буллитов` : "Победа с учётом ОТ и буллитов" };
+      // the match of the day and the match screen add what the pick opens (the cards of "Матчи" are too narrow for it)
+      const hint = inTelegram() ? "Выберите — и покажем коэффициент Winline на ваш выбор" : "";
+      return { text: g.votes && g.votes.total ? `Проголосовали: ${g.votes.total} · с учётом ОТ и буллитов` : "Победа с учётом ОТ и буллитов", hint };
     }
     if (noSpoilers()) return { text: "Итог скрыт: режим без спойлеров" };
     if (g.settled && g.settled.winner === "void") return { text: "Матч не состоялся — прогнозы без очков" };
-    if (g.settled && my && my.result) return my.result === "win" ? { text: `✓ Угадали${my.exact ? " · 🎯 точный счёт" : ""} · +${my.xp} XP`, ok: true } : { text: `Не угадали · +${my.xp} XP` };
+    if (g.settled && my && my.result) return my.result === "win" ? { text: `✓ Угадали${my.exact ? " · 🎯 точный счёт" : ""} · +${my.xp} XP`, ok: true, fact: factOf(g) } : { text: `Не угадали · +${my.xp} XP` };
     if (g.settled) return { text: g.votes && g.votes.total >= MIN_SPLIT_VOTES ? `Как голосовали болельщики · ${g.votes.total}` : g.votes && g.votes.total ? `Проголосовали: ${g.votes.total}` : "Матч завершён" };
     return { text: my ? `Матч идёт · ваш выбор ${tri}` : "Прогнозы закрыты — матч начался" };
+  }
+
+  // the personal fact of a right pick (the owner: «ты один из 14% пользователей, которые верили…»), the stars of a streak
+  function factOf(g) {
+    const my = g.my;
+    if (!my || my.result !== "win") return "";
+    const n = Number(my.streak) || 0;
+    if (n >= 5 && n % 5 === 0) return `${"⭐".repeat(Math.min(3, n / 5))} ${n} угаданных подряд!`;
+    const total = g.votes ? Number(g.votes.total) || 0 : 0;
+    const mine = g.votes ? Number(g.votes[my.pick]) || 0 : 0;
+    if (total >= MIN_SPLIT_VOTES && mine / total < 0.5) return `Вы среди ${Math.max(1, Math.round((100 * mine) / total))}% болельщиков, которые верили в ${(g[my.pick] || {}).tri || ""}`;
+    if (n >= 3) return `🔥 ${n} угаданных подряд`;
+    return "";
+  }
+
+  // "Сначала голос, потом Winline": the bet on the chosen side right after the pick — the winner including overtime (what was voted
+  // for) and, bolder, in regulation time and with −1.5
+  function offerHtml(g, card) {
+    const o = g.open && g.my && !st.pending.has(g.game_pk) ? g.offer : null;
+    if (!o) return "";
+    const tri = esc((g[g.my.pick] || {}).tri || "");
+    const href = `/go/winline?game_pk=${encodeURIComponent(g.game_pk)}`;
+    const bet = (label, odds, alt) => (Number(odds) > 1 ? `<a class="v29OfBet${alt ? " alt" : ""}" href="${href}" target="_blank" rel="noopener">${label} <b>${Number(odds).toFixed(2)}</b></a>` : "");
+    const bets = [bet(`Победа ${tri}`, o.win, false), bet(card ? "в осн. время" : "в основное время", o.regulation, true), bet("фора −1.5", o.minus15, true)].filter(Boolean);
+    if (!bets.length) return "";
+    return `<div class="v29Offer${card ? " compact" : ""}"><span class="v29OfTop"><img src="/broadcast/winline-logo.png?asset=canonical-3" alt="WINLINE">Ставка на ваш выбор</span><span class="v29OfRow">${bets.join("")}</span></div>`;
   }
 
   // full: the match of the day and the match screen, the question between the buttons; card: the cards of the "Матчи" tab,
@@ -172,7 +220,7 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     };
     const line = lineOf(g);
     const row = card ? `<div class="v29Btns">${side("away")}${side("home")}</div>` : `<div class="v29Row3">${side("away")}<span class="v29Mid">Кто<br>победит?</span>${side("home")}</div>`;
-    return `<div class="v29Vote${card ? " compact" : ""}">${row}<div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div>${scoreHtml(g, card)}</div>`;
+    return `<div class="v29Vote${card ? " compact" : ""}">${row}<div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div>${line.fact ? `<div class="v29Fact">${esc(line.fact)}</div>` : ""}${line.hint && !card ? `<div class="v29Fact">${esc(line.hint)}</div>` : ""}${offerHtml(g, card)}${scoreHtml(g, card)}</div>`;
   }
 
   // ---- the exact score: asked right after the pick, +25 XP when it is right --------------------------------------------------
@@ -307,6 +355,8 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
       }
       const html = voteHtml(g, slot.classList.contains("v29CardSlot") ? "card" : "full");
       slot.hidden = !html;
+      const box = slot.closest(".v27Hero,.v19Broadcast,#v26Root");
+      if (box) box.classList.toggle("v29Asked", Boolean(html) && g.open && inTelegram());
       if (painted.get(slot) === html && (slot.innerHTML || !html)) return;
       slot.innerHTML = html;
       painted.set(slot, html);
@@ -339,10 +389,16 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     const week = m.ranks && m.ranks.week;
     const acc = m.stats.accuracy == null ? "—" : `${m.stats.accuracy}%`;
     const rules = st.rulesOpen
-      ? `<div class="v29Rules"><span>+1 XP — за каждый прогноз на сыгранный матч</span><span>+10 XP — угадали победителя (с учётом ОТ и буллитов)</span><span>+10 XP сверху — угадали победу андердога (кэф Winline на момент начала от 2.10 и выше)</span><span>+5 XP сверху — угадали, а этот исход выбрали меньше 30% болельщиков (от 10 голосов)</span><span>+${EXACT_XP} XP сверху — угадали точный счёт матча (итоговый: победный гол в ОТ или буллитах считается)</span><span>Уровни: ${LEVELS.map((x, i) => `${i + 1} — ${fmtXp(x)}`).join(" · ")} XP</span></div>`
+      ? `<div class="v29Rules"><span>+1 XP — за каждый прогноз на сыгранный матч</span><span>+10 XP — угадали победителя (с учётом ОТ и буллитов)</span><span>+10 XP сверху — угадали победу андердога (кэф Winline на момент начала от 2.10 и выше)</span><span>+5 XP сверху — угадали, а этот исход выбрали меньше 30% болельщиков (от 10 голосов)</span><span>+${EXACT_XP} XP сверху — угадали точный счёт матча (итоговый: победный гол в ОТ или буллитах считается)</span><span>Серии: 5 угаданных подряд — ⭐ +15 XP, 10 — ⭐⭐ +30 XP, 15 и каждые следующие 5 — ⭐⭐⭐ +50 XP</span><span>Уровни: ${LEVELS.map((x, i) => `${i + 1} — ${fmtXp(x)}`).join(" · ")} XP</span></div>`
       : "";
-    const nick = m.has_nick ? "" : `<div class="v29Note">В рейтинге вы «${esc(m.label)}». Задайте ник в «Профиль и комментарии», чтобы вас узнавали.</div>`;
-    return `<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="top"><div><b class="lvl">${esc(lv.name)}</b><span class="note">${esc(lv.note)}</span></div><span class="v29Badge">${MEDAL}</span></div><div class="xp"><b>${fmtXp(lv.xp)} XP</b><span>${toNext}</span></div><div class="v29Bar"><i style="width:${Math.round(lv.progress * 100)}%"></i></div><div class="v29Stats"><div><b>${m.stats.total}</b><span>прогнозов</span></div><div><b>${acc}</b><span>угадано</span></div><div><b>${week ? `#${week.rank}` : "—"}</b><span>место за неделю</span></div></div>${nick}<div class="v29Opt"><span>Утренний итог прогнозов в боте</span><button type="button" class="v29Sw${m.prefs.morning_digest ? " on" : ""}" role="switch" aria-checked="${m.prefs.morning_digest}" aria-label="Утренний итог прогнозов в боте" data-v29-digest><i></i></button></div><button type="button" class="v29More" data-v29-rules>${st.rulesOpen ? "Скрыть правила" : "Как начисляются очки"}</button>${rules}</div>`;
+    const pub = !m.prefs || m.prefs.public_board !== false;
+    const nick = !pub ? '<div class="v29Note">В рейтинге вы — «Болельщик скрыл имя»: место считается, имя и фото не видны.</div>' : m.has_nick ? "" : `<div class="v29Note">В рейтинге вы «${esc(m.label)}». Задайте ник в «Профиль и комментарии», чтобы вас узнавали.</div>`;
+    // never "you are the last": only how many one is better than, and only when it is somebody
+    const better = Number(m.better_pct) > 0 ? `<div class="v29Better"><span>Ваши прогнозы точнее, чем у</span> <b>${Math.round(Number(m.better_pct))}%</b> <span>болельщиков</span></div>` : "";
+    const sk = m.streak || { current: 0, best: 0, stars: 0 };
+    const bestText = `лучшая серия: ${sk.best}${sk.stars ? ` ${"⭐".repeat(sk.stars)}` : ""}`;
+    const streak = sk.best > 0 ? `<div class="v29Streak"><b>${sk.current > 0 ? `🔥 ${sk.current} подряд` : "Серия угаданных"}</b> <span>${bestText}</span></div>` : "";
+    return `<div class="v29Card v29Prof"><div class="k">Твой профиль</div><div class="top"><div><b class="lvl">${esc(lv.name)}</b><span class="note">${esc(lv.note)}</span></div><span class="v29Badge">${MEDAL}</span></div><div class="xp"><b>${fmtXp(lv.xp)} XP</b><span>${toNext}</span></div><div class="v29Bar"><i style="width:${Math.round(lv.progress * 100)}%"></i></div><div class="v29Stats"><div><b>${m.stats.total}</b><span>прогнозов</span></div><div><b>${acc}</b><span>угадано</span></div><div><b>${week ? `#${week.rank}` : "—"}</b><span>место за неделю</span></div></div>${better}${streak}${nick}<div class="v29Opt"><span>Утренний итог прогнозов в боте</span><button type="button" class="v29Sw${m.prefs.morning_digest ? " on" : ""}" role="switch" aria-checked="${m.prefs.morning_digest}" aria-label="Утренний итог прогнозов в боте" data-v29-digest><i></i></button></div><div class="v29Opt"><span>${pub ? "Мои прогнозы видны всем в рейтинге" : "Мои прогнозы — только для меня"}</span><button type="button" class="v29Sw${pub ? " on" : ""}" role="switch" aria-checked="${pub}" aria-label="Показывать меня в рейтинге" data-v29-public><i></i></button></div><button type="button" class="v29More" data-v29-rules>${st.rulesOpen ? "Скрыть правила" : "Как начисляются очки"}</button>${rules}</div>`;
   }
 
   function boardHtml() {
@@ -354,9 +410,11 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     else {
       const me = b.me;
       const rows = st.boardOpen ? b.rows : b.rows.slice(0, BOARD_SHORT);
-      const row = (r, isMe) => `<li${isMe ? ' class="me"' : ""}><span class="n">${r.rank}</span><span class="av">${r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(String(r.label || "?").replace(/^@/, "").slice(0, 1).toUpperCase())}</span><span class="nm"><span>${esc(r.label)}</span><small>${esc(r.level)} · угадано ${r.correct} из ${r.total}</small></span><b>${fmtXp(r.xp)} XP</b></li>`;
+      const lvl = (r) => (r.level_n ? `Ур. ${r.level_n} · ${r.level_note}` : r.level);
+      const av = (r) => (r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : r.hidden ? "🙈" : esc(String(r.label || "?").replace(/^@/, "").slice(0, 1).toUpperCase()));
+      const row = (r, isMe) => `<li${isMe ? ' class="me"' : ""}><span class="n">${r.rank}</span><span class="av${r.hidden && !r.avatar_url ? " hid" : ""}">${av(r)}</span><span class="nm"><span>${esc(isMe && r.hidden ? "Вы (имя скрыто)" : r.label)}</span><small>${esc(lvl(r))} · угадано ${r.correct} из ${r.total}</small></span><b>${fmtXp(r.xp)} XP</b></li>`;
       let html = rows.map((r) => row(r, Boolean(me && me.rank === r.rank))).join("");
-      if (me && me.rank > rows.length) html += `<li class="gap">…</li>${row({ rank: me.rank, label: st.me && !st.me.guest ? st.me.label : "Вы", avatar_url: null, level: st.me && st.me.level ? st.me.level.name : "", correct: me.correct, total: me.total, xp: me.xp }, true)}`;
+      if (me && me.rank > rows.length) html += `<li class="gap">…</li>${row({ rank: me.rank, label: st.me && !st.me.guest ? st.me.label : "Вы", avatar_url: null, level: st.me && st.me.level ? st.me.level.name : "", level_n: st.me && st.me.level ? st.me.level.n : null, level_note: st.me && st.me.level ? st.me.level.note : "", correct: me.correct, total: me.total, xp: me.xp }, true)}`;
       const more = b.rows.length > BOARD_SHORT ? `<button type="button" class="v29More" data-v29-board-more>${st.boardOpen ? "Свернуть" : `Весь рейтинг (${b.rows.length})`}</button>` : "";
       body = `<ol>${html}</ol>${more}`;
     }
@@ -502,6 +560,22 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
     }
   }
 
+  async function togglePublic() {
+    if (!st.me || st.me.guest) return;
+    const now = !st.me.prefs || st.me.prefs.public_board !== false;
+    st.me = { ...st.me, prefs: { ...st.me.prefs, public_board: !now } };
+    paintMe();
+    try {
+      await H.api(`${API}/me`, { method: "PUT", body: JSON.stringify({ public_board: !now }) });
+      st.boards.clear(); // the table shows the new name (or none) on the next load
+      loadBoard(st.period);
+    } catch (error) {
+      st.me = { ...st.me, prefs: { ...st.me.prefs, public_board: now } };
+      paintMe();
+      alert("Не удалось сохранить настройку. Попробуйте ещё раз.");
+    }
+  }
+
   async function toggleDigest() {
     if (!st.me || st.me.guest) return;
     const next = !st.me.prefs.morning_digest;
@@ -518,7 +592,7 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 
   // ---- clicks: caught before the cards under them (the hero and the cards of "Матчи" open the match) ---------------------------
   document.addEventListener("click", (e) => {
-    const el = e.target && e.target.closest && e.target.closest("[data-v29-pick],[data-v29-sc],[data-v29-sc-save],[data-v29-me],[data-v29-period],[data-v29-digest],[data-v29-rules],[data-v29-board-more]");
+    const el = e.target && e.target.closest && e.target.closest("[data-v29-pick],[data-v29-sc],[data-v29-sc-save],[data-v29-me],[data-v29-period],[data-v29-digest],[data-v29-public],[data-v29-rules],[data-v29-board-more]");
     if (!el) return;
     e.preventDefault();
     e.stopPropagation();
@@ -537,6 +611,7 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
       if (!b || Date.now() - b.at > REFRESH_MS) loadBoard(st.period);
       paintMe();
     } else if (d.v29Digest !== undefined) toggleDigest();
+    else if (d.v29Public !== undefined) togglePublic();
     else if (d.v29Rules !== undefined) {
       st.rulesOpen = !st.rulesOpen;
       paintMe();

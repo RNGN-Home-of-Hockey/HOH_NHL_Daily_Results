@@ -8,8 +8,9 @@
 //   GET  /api/telegram-center-v29/status             counts only, for the checks
 import { predictionsApp } from "./telegram-center-v29-predictions-ui.js";
 import {
-  GAME_TYPES, PERIODS, DIGEST_FROM_HOUR, DIGEST_TO_HOUR, DEFAULT_TIMEZONE,
+  GAME_TYPES, PERIODS, DIGEST_FROM_HOUR, DIGEST_TO_HOUR, DEFAULT_TIMEZONE, PEER_MIN_PICKS,
   levelOf, nhlDateOf, addDays, dayStartUtc, isOpen, settleGame, periodRange, fanLabel, digestText, localParts, validScore, XP_RULES,
+  streakAfter, streakBonus, starsOf, betterThanPct, seasonOf,
 } from "./telegram-center-v29-predictions-data.js";
 
 const API = "/api/telegram-center-v29";
@@ -81,15 +82,44 @@ async function loadMine(db, userId, ids) {
   const map = new Map();
   if (!userId || !ids.length) return map;
   const q = ids.map(() => "?").join(",");
-  const r = await db.prepare(`SELECT game_pk,pick,result,xp,score_home,score_away,exact FROM fan_predictions WHERE telegram_user_id=? AND game_pk IN (${q});`).bind(userId, ...ids).all();
+  const r = await db.prepare(`SELECT game_pk,pick,result,xp,score_home,score_away,exact,streak FROM fan_predictions WHERE telegram_user_id=? AND game_pk IN (${q});`).bind(userId, ...ids).all();
   for (const x of r.results || []) map.set(Number(x.game_pk), x);
   return map;
 }
 
+// "Сначала голос, потом Winline" (the owner, package 1): after the pick the app offers the bet on the chosen side — the winner
+// including overtime (what the fan voted for), the bolder "in regulation time" and "−1.5". The handicap lines of Winline are
+// written from the home side: "asianhandicap:-1.5" is home −1.5 / away +1.5, so the away −1.5 is "asianhandicap:1.5".
+async function loadOffers(db, rows) {
+  const open = rows.filter((x) => OPEN_FOR_OFFER.has(String(x.game_state || "").toUpperCase()));
+  const map = new Map();
+  if (!open.length) return map;
+  const q = open.map(() => "?").join(",");
+  const r = await db.prepare(`
+    SELECT we.game_pk,m.market_type,m.subject_key,m.odds FROM winline_events we JOIN winline_markets m ON m.winline_event_id=we.winline_event_id
+    WHERE we.game_pk IN (${q}) AND m.active=1 AND m.is_live=0 AND m.odds>1
+      AND m.market_type IN ('3wayodds','main_1x2_regular','asianhandicap:-1.5','asianhandicap:1.5')
+    ORDER BY m.updated_at DESC;
+  `).bind(...open.map((x) => Number(x.game_pk))).all().catch(() => ({ results: [] }));
+  for (const x of open) {
+    const mine = (r.results || []).filter((m) => Number(m.game_pk) === Number(x.game_pk));
+    const odd = (types, tri) => num((mine.find((m) => types.includes(m.market_type) && m.subject_key === tri) || {}).odds);
+    const side = (k) => ({
+      win: num(x[`${k}_odds`]),
+      regulation: odd(["3wayodds", "main_1x2_regular"], x[`${k}_tri`]),
+      minus15: odd([k === "home" ? "asianhandicap:-1.5" : "asianhandicap:1.5"], x[`${k}_tri`]),
+    });
+    const offer = { home: side("home"), away: side("away") };
+    if (offer.home.win || offer.away.win || offer.home.regulation || offer.away.regulation) map.set(Number(x.game_pk), offer);
+  }
+  return map;
+}
+const OPEN_FOR_OFFER = new Set(["FUT", "PRE"]);
+
 const num = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 const teamLogo = (tri) => `https://assets.nhle.com/logos/nhl/svg/${String(tri || "").toUpperCase()}_light.svg`;
 
-function gameBlock(x, mine, now) {
+function gameBlock(x, mine, now, offer = null) {
   const open = isOpen(x, now);
   const homeVotes = Number(x.home_votes) || 0;
   const awayVotes = Number(x.away_votes) || 0;
@@ -113,7 +143,10 @@ function gameBlock(x, mine, now) {
       pick: mine.pick, result: mine.result || null, xp: mine.result ? Number(mine.xp) || 0 : null,
       score: num(mine.score_home) != null && num(mine.score_away) != null ? { home: num(mine.score_home), away: num(mine.score_away) } : null,
       exact: mine.result ? Number(mine.exact) === 1 : null,
+      streak: mine.result && mine.streak != null ? Number(mine.streak) : null,
     } : null,
+    // the bet on the chosen side, shown after the pick while the game has not started
+    offer: open && mine && offer ? offer[mine.pick] || null : null,
     settled: winner ? { winner, home_xp: num(x.home_xp), away_xp: num(x.away_xp), score: winner === "void" ? null : { home: num(x.home_score), away: num(x.away_score), period_type: x.period_type || null } } : null,
   };
 }
@@ -138,8 +171,9 @@ async function slate(request, env, now) {
   }
   const rows = await loadGameRows(db, ids);
   const mine = auth.ok ? await loadMine(db, auth.user.id, ids) : new Map();
+  const offers = mine.size ? await loadOffers(db, rows) : new Map();
   const last = auth.ok ? await lastNight(db, auth.user.id) : null;
-  return json({ ok: true, now: nowIso, date, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now)), last });
+  return json({ ok: true, now: nowIso, date, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now, offers.get(Number(x.game_pk)))), last });
 }
 
 // the last game day with settled picks of the person: "угадано 3 из 4 · +32 XP"
@@ -159,7 +193,8 @@ async function games(request, env, now) {
   const auth = await telegramAuth(request, env, false);
   const rows = await loadGameRows(env.DB, ids);
   const mine = auth.ok ? await loadMine(env.DB, auth.user.id, ids) : new Map();
-  return json({ ok: true, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now)) });
+  const offers = mine.size ? await loadOffers(env.DB, rows) : new Map();
+  return json({ ok: true, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now, offers.get(Number(x.game_pk)))) });
 }
 
 async function predict(request, env, now) {
@@ -204,7 +239,8 @@ async function predict(request, env, now) {
   `).bind(auth.user.id, gamePk, pick, tri, num(odds?.odds), nhlDateOf(g.scheduled_start_utc), String(g.season_id), score ? score.home : null, score ? score.away : null).run();
   const rows = await loadGameRows(db, [gamePk]);
   const mine = await loadMine(db, auth.user.id, [gamePk]);
-  return json({ ok: true, game: gameBlock(rows[0], mine.get(gamePk), now) });
+  const offers = await loadOffers(db, rows);
+  return json({ ok: true, game: gameBlock(rows[0], mine.get(gamePk), now, offers.get(gamePk)) });
 }
 
 // ---- me and the table ------------------------------------------------------------------------------------------------------
@@ -244,7 +280,7 @@ async function getMe(request, env, now) {
       FROM fan_predictions WHERE telegram_user_id=?;
     `).bind(id).first(),
     db.prepare(`SELECT display_username FROM app_user_profiles WHERE telegram_user_id=? LIMIT 1;`).bind(id).first().catch(() => null),
-    db.prepare(`SELECT morning_digest FROM fan_profiles WHERE telegram_user_id=? LIMIT 1;`).bind(id).first(),
+    db.prepare(`SELECT morning_digest,public_board FROM fan_profiles WHERE telegram_user_id=? LIMIT 1;`).bind(id).first(),
     db.prepare(`
       SELECT p.game_pk,p.pick,p.pick_tri,p.result,p.xp,p.exact,g.home_tri,g.away_tri,g.scheduled_start_utc start
       FROM fan_predictions p JOIN games g ON g.game_pk=p.game_pk
@@ -256,6 +292,8 @@ async function getMe(request, env, now) {
   for (const period of PERIODS) ranks[period] = await rankOf(db, id, periodWhere(period, now));
   const settled = Number(totals?.settled) || 0;
   const correct = Number(totals?.correct) || 0;
+  const season = seasonOf(nhlDateOf(new Date(now).toISOString()));
+  const [better, streak] = await Promise.all([accuracyBetter(db, id, season), streaksOf(db, id)]);
   return json({
     ok: true,
     label: fanLabel(id, profile?.display_username),
@@ -264,8 +302,43 @@ async function getMe(request, env, now) {
     stats: { total: Number(totals?.total) || 0, settled, correct, pending: Number(totals?.pending) || 0, accuracy: settled ? Math.round((100 * correct) / settled) : null },
     ranks,
     recent: (recent.results || []).map((x) => ({ game_pk: Number(x.game_pk), start: x.start, away_tri: x.away_tri, home_tri: x.home_tri, pick_tri: x.pick_tri, result: x.result, xp: Number(x.xp) || 0, exact: Number(x.exact) === 1 })),
-    prefs: { morning_digest: prefs ? Number(prefs.morning_digest) === 1 : true },
+    // "Ваши прогнозы точнее, чем у 63% болельщиков" (this season, 5+ played picks; null = not enough fans to say)
+    better_pct: better,
+    streak,
+    prefs: { morning_digest: prefs ? Number(prefs.morning_digest) === 1 : true, public_board: prefs ? Number(prefs.public_board ?? 1) === 1 : true },
   });
+}
+
+// The accuracy of the season against the other fans with at least PEER_MIN_PICKS played picks: the share one is better than.
+async function accuracyTable(db, season) {
+  const r = await db.prepare(`
+    SELECT telegram_user_id id,SUM(CASE WHEN result='win' THEN 1 ELSE 0 END) correct,COUNT(*) total
+    FROM fan_predictions WHERE ${SETTLED} AND season_id=? GROUP BY telegram_user_id HAVING COUNT(*)>=?;
+  `).bind(season, PEER_MIN_PICKS).all();
+  return new Map((r.results || []).map((x) => [Number(x.id), Number(x.correct) / Number(x.total)]));
+}
+function betterOf(table, id) {
+  if (!table.has(id)) return null;
+  const others = [...table.entries()].filter(([k]) => k !== id).map(([, v]) => v);
+  return betterThanPct(table.get(id), others);
+}
+async function accuracyBetter(db, id, season) {
+  return betterOf(await accuracyTable(db, season), id);
+}
+
+// The right picks in a row now and the best run of the person, in the order of the games; the stars of the best run.
+async function streaksOf(db, id) {
+  const r = await db.prepare(`
+    SELECT p.result FROM fan_predictions p JOIN games g ON g.game_pk=p.game_pk
+    WHERE p.telegram_user_id=? AND p.settled_at IS NOT NULL AND p.result IN ('win','loss')
+    ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC;
+  `).bind(id).all();
+  let current = 0, best = 0;
+  for (const x of r.results || []) {
+    current = streakAfter(current, x.result === "win");
+    best = Math.max(best, current);
+  }
+  return { current, best, stars: starsOf(best) };
 }
 
 async function putMe(request, env) {
@@ -273,35 +346,49 @@ async function putMe(request, env) {
   if (!auth.ok) return json({ ok: false, error: auth.error }, 401);
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "invalid_json" }, 400); }
-  if (typeof body?.morning_digest !== "boolean") return json({ ok: false, error: "invalid_settings" }, 400);
+  const digest = body?.morning_digest;
+  const board = body?.public_board;
+  const ok = (v) => v === undefined || typeof v === "boolean";
+  if (!ok(digest) || !ok(board) || (digest === undefined && board === undefined)) return json({ ok: false, error: "invalid_settings" }, 400);
   await upsertTelegramUser(env.DB, auth.user);
+  // a setting that is not sent keeps its value (1 for a new row: the morning message on, the name in the table)
   await env.DB.prepare(`
-    INSERT INTO fan_profiles(telegram_user_id,morning_digest,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)
-    ON CONFLICT(telegram_user_id) DO UPDATE SET morning_digest=excluded.morning_digest,updated_at=CURRENT_TIMESTAMP;
-  `).bind(auth.user.id, body.morning_digest ? 1 : 0).run();
-  return json({ ok: true, prefs: { morning_digest: body.morning_digest } });
+    INSERT INTO fan_profiles(telegram_user_id,morning_digest,public_board,updated_at) VALUES(?,COALESCE(?,1),COALESCE(?,1),CURRENT_TIMESTAMP)
+    ON CONFLICT(telegram_user_id) DO UPDATE SET morning_digest=COALESCE(?,fan_profiles.morning_digest),public_board=COALESCE(?,fan_profiles.public_board),updated_at=CURRENT_TIMESTAMP;
+  `).bind(auth.user.id, digest === undefined ? null : digest ? 1 : 0, board === undefined ? null : board ? 1 : 0, digest === undefined ? null : digest ? 1 : 0, board === undefined ? null : board ? 1 : 0).run();
+  const row = await env.DB.prepare(`SELECT morning_digest,public_board FROM fan_profiles WHERE telegram_user_id=? LIMIT 1;`).bind(auth.user.id).first();
+  return json({ ok: true, prefs: { morning_digest: Number(row?.morning_digest) === 1, public_board: Number(row?.public_board) === 1 } });
 }
 
 async function boardRows(db, where) {
   const r = await db.prepare(`
     SELECT p.telegram_user_id id,SUM(p.xp) xp,SUM(CASE WHEN p.result='win' THEN 1 ELSE 0 END) correct,COUNT(*) total,
            MAX(a.display_username) nick,
-           MAX(CASE WHEN a.avatar_base64 IS NOT NULL AND a.avatar_base64<>'' THEN 1 ELSE 0 END) has_avatar
+           MAX(CASE WHEN a.avatar_base64 IS NOT NULL AND a.avatar_base64<>'' THEN 1 ELSE 0 END) has_avatar,
+           MAX(COALESCE(f.public_board,1)) public_board
     FROM fan_predictions p LEFT JOIN app_user_profiles a ON a.telegram_user_id=p.telegram_user_id
+    LEFT JOIN fan_profiles f ON f.telegram_user_id=p.telegram_user_id
     WHERE p.settled_at IS NOT NULL AND p.result IN ('win','loss') AND p.${where.sql}
     GROUP BY p.telegram_user_id
     ORDER BY xp DESC,correct DESC,total ASC,p.telegram_user_id ASC
     LIMIT ${BOARD_LIMIT};
   `).bind(...where.args).all();
-  return (r.results || []).map((x, i) => ({
-    rank: i + 1,
-    label: fanLabel(x.id, x.nick),
-    avatar_url: Number(x.has_avatar) ? AVATAR_PATH + x.id : null,
-    xp: Number(x.xp) || 0,
-    correct: Number(x.correct) || 0,
-    total: Number(x.total) || 0,
-    level: levelOf(x.xp).name,
-  }));
+  return (r.results || []).map((x, i) => {
+    const hidden = Number(x.public_board) === 0;
+    const lv = levelOf(x.xp);
+    return {
+      rank: i + 1,
+      label: hidden ? "Болельщик скрыл имя" : fanLabel(x.id, x.nick),
+      hidden,
+      avatar_url: !hidden && Number(x.has_avatar) ? AVATAR_PATH + x.id : null,
+      xp: Number(x.xp) || 0,
+      correct: Number(x.correct) || 0,
+      total: Number(x.total) || 0,
+      level: lv.name,
+      level_n: lv.n,
+      level_note: lv.note,
+    };
+  });
 }
 
 async function leaderboard(request, env, now) {
@@ -398,11 +485,50 @@ export async function runFanPredictionSettlement(env, { now = Date.now(), limit 
         away_odds=excluded.away_odds,home_xp=excluded.home_xp,away_xp=excluded.away_xp,settled_at=excluded.settled_at;
     `).bind(g.game_pk, s.winner, count("home"), count("away"), odds.home, odds.away, s.home.total, s.away.total, settledAt);
     await db.batch([update, record]);
+    if (s.winner !== "void") summary.streak_bonuses = (summary.streak_bonuses || 0) + (await settleStreaks(db, g));
     summary.games++;
     summary.predictions += count("home") + count("away");
     if (s.winner === "void") summary.void_games++;
   }
   return summary;
+}
+
+// The right picks in a row (package 1): the streak every pick of this game makes, counted back over the person's played picks in
+// the order of the games; every 5th right pick in a row adds the bonus XP (⭐ +15, ⭐⭐ +30, ⭐⭐⭐ +50). Written once (streak IS NULL).
+const STREAK_LOOKBACK = 100;
+async function settleStreaks(db, g) {
+  const r = await db.prepare(`
+    WITH voters AS (SELECT telegram_user_id FROM fan_predictions WHERE game_pk=? AND result IN ('win','loss') AND streak IS NULL),
+    h AS (
+      SELECT p.telegram_user_id id,p.game_pk,p.result,
+             ROW_NUMBER() OVER (PARTITION BY p.telegram_user_id ORDER BY gq.scheduled_start_utc DESC,gq.game_pk DESC) n
+      FROM fan_predictions p JOIN games gq ON gq.game_pk=p.game_pk
+      WHERE p.telegram_user_id IN (SELECT telegram_user_id FROM voters) AND p.result IN ('win','loss')
+        AND (gq.scheduled_start_utc<? OR (gq.scheduled_start_utc=? AND gq.game_pk<=?))
+    )
+    SELECT id,game_pk,result,n FROM h WHERE n<=? ORDER BY id,n;
+  `).bind(g.game_pk, g.scheduled_start_utc, g.scheduled_start_utc, g.game_pk, STREAK_LOOKBACK).all();
+  const byUser = new Map();
+  for (const x of r.results || []) {
+    const id = Number(x.id);
+    if (!byUser.has(id)) byUser.set(id, []);
+    byUser.get(id).push(x);
+  }
+  const stmts = [];
+  let bonuses = 0;
+  for (const [id, rows] of byUser) {
+    if (Number(rows[0].game_pk) !== Number(g.game_pk)) continue;
+    let streak = 0;
+    for (const x of rows) {
+      if (x.result !== "win") break;
+      streak = streakAfter(streak, true);
+    }
+    const bonus = rows[0].result === "win" ? streakBonus(streak) : 0;
+    if (bonus) bonuses++;
+    stmts.push(db.prepare(`UPDATE fan_predictions SET streak=?,streak_bonus=?,xp=xp+? WHERE telegram_user_id=? AND game_pk=? AND streak IS NULL;`).bind(streak, bonus, bonus, id, g.game_pk));
+  }
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return bonuses;
 }
 
 // ---- the morning message of the bot (cron) ---------------------------------------------------------------------------------
@@ -424,6 +550,7 @@ export async function runFanPredictionDigest(env, { now = Date.now(), dryRun = f
   `).all();
   const summary = { ok: true, dry_run: dryRun, due: 0, sent: 0, skipped_off: 0, skipped_hour: 0, skipped_duplicate: 0, deferred_budget: 0, failed: 0, messages: [] };
   const reportedAt = new Date(now).toISOString();
+  let accuracy = null; // the accuracy table of the season, read once per run
   const markReported = (id) => db.prepare(`UPDATE fan_predictions SET reported_at=? WHERE telegram_user_id=? AND settled_at IS NOT NULL AND reported_at IS NULL;`).bind(reportedAt, id).run();
   for (const u of users.results || []) {
     const id = Number(u.id);
@@ -435,14 +562,18 @@ export async function runFanPredictionDigest(env, { now = Date.now(), dryRun = f
     }
     const local = localParts(now, String(u.tz || "").trim() || DEFAULT_TIMEZONE);
     if (!local || local.hour < DIGEST_FROM_HOUR || local.hour > DIGEST_TO_HOUR) { summary.skipped_hour++; continue; }
+    // with the facts of each pick: how many fans believed in the same side, the streak it made
     const rows = await db.prepare(`
-      SELECT p.game_pk,p.pick_tri,p.result,p.xp,p.exact,g.home_tri,g.away_tri
-      FROM fan_predictions p JOIN games g ON g.game_pk=p.game_pk
+      SELECT p.game_pk,p.pick_tri,p.result,p.xp,p.exact,p.streak,g.home_tri,g.away_tri,
+             CASE p.pick WHEN 'home' THEN fg.home_votes ELSE fg.away_votes END pick_votes,
+             COALESCE(fg.home_votes,0)+COALESCE(fg.away_votes,0) total_votes
+      FROM fan_predictions p JOIN games g ON g.game_pk=p.game_pk LEFT JOIN fan_prediction_games fg ON fg.game_pk=p.game_pk
       WHERE p.telegram_user_id=? AND p.settled_at IS NOT NULL AND p.reported_at IS NULL
       ORDER BY g.scheduled_start_utc ASC,p.game_pk ASC;
     `).bind(id).all();
     const all = await db.prepare(`SELECT COALESCE(SUM(xp),0) xp FROM fan_predictions WHERE telegram_user_id=? AND settled_at IS NOT NULL;`).bind(id).first();
-    const text = digestText(rows.results || [], { levelXp: Number(all?.xp) || 0, noSpoilers: Number(u.no_spoilers) === 1 });
+    if (!accuracy) accuracy = await accuracyTable(db, seasonOf(local.date));
+    const text = digestText(rows.results || [], { levelXp: Number(all?.xp) || 0, noSpoilers: Number(u.no_spoilers) === 1, betterPct: betterOf(accuracy, id) });
     if (!text) { if (!dryRun) await markReported(id); continue; }
     summary.due++;
     if (dryRun) { summary.messages.push({ user_id: id, local_date: local.date, text }); continue; }
