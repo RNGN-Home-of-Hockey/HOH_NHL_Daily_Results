@@ -147,7 +147,8 @@ function addHistory(out,e,m,p={}){
     const sinceYear=n(e.since_year),since=sinceYear?` С ${Math.round(sinceYear)} ГОДА`:"",sinceShort=sinceYear?` С ${Math.round(sinceYear)}`:"";
     const meetings=sinceYear?"ЛИЧНЫХ ВСТРЕЧ":"ПОСЛЕДНИХ МАТЧЕЙ";
     if(String(m.type||"").toLowerCase()==="moneyline"){
-      const full=`${team} ОБЫГРЫВАЛИ ${opponent} В ${Math.round(hits)} ИЗ ${Math.round(dec)} ${meetings}${since}`;
+      const regular=String(m.period||"").toUpperCase()==="REG"?" В ОСНОВНОЕ ВРЕМЯ":"";
+      const full=`${team} ОБЫГРЫВАЛИ ${opponent}${regular} В ${Math.round(hits)} ИЗ ${Math.round(dec)} ${meetings}${since}`;
       const compact=`${shortTeamName(team)}: ${Math.round(hits)} ИЗ ${Math.round(dec)} ПОБЕД ПРОТИВ ${shortTeamName(opponent)}${sinceShort}`;
       put(out,"h2h_matchup","h2h_matchup",fitH2HTitle(full,compact),`ЛИЧНЫЕ ВСТРЕЧИ · ${Math.round(dec)} МАТЧЕЙ${sinceShort}`,108,"очный результат с явным соперником");
     }else{

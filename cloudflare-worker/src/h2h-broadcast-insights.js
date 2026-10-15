@@ -82,6 +82,9 @@ function evaluate(m,game,rows){
     fn=r=>settleTotal(teamGoals(r,period,subject===game.away_tri),side,line);
   }else if(type==="handicap"&&line!==null&&(subject===game.away_tri||subject===game.home_tri)){
     fn=r=>settleHandicap((subject===game.away_tri?1:-1)*Number(r.final_goal_diff),line);
+  }else if(type==="moneyline"&&period==="REG"&&(subject===game.away_tri||subject===game.home_tri)){
+    // the 3-way of regulation time: an overtime or shootout win is not a win of this market
+    fn=r=>{const rr=String(r.regulation_result||"");if(!rr)return null;return subject===game.away_tri?(rr==="W"?"win":"loss"):(rr==="L"?"win":"loss")};
   }else if(type==="moneyline"&&(subject===game.away_tri||subject===game.home_tri)){
     fn=r=>subject===game.away_tri?(Number(r.final_win)===1?"win":"loss"):(Number(r.final_win)===0?"win":"loss");
   }else if(/^period_[123]_result$/.test(type)&&(subject===game.away_tri||subject===game.home_tri)){
@@ -108,8 +111,9 @@ function card(game,m,rows,s){
   // Teams of different conferences meet two or three times a season, so «4 из 4» can span two years: the card says
   // from which year the meetings are counted and ranks lower when they are old or few (commentators, 2026-10-11).
   const since=sinceYear(rows),sinceTail=since?" С "+since+" ГОДА":"",span=spanDays(rows,game);
+  const regular=String(m.period||"").toUpperCase()==="REG"?" В ОСНОВНОЕ ВРЕМЯ":"";
   const title=String(m.market_type||"")==="moneyline"
-    ?fitTitle(teamName+" ОБЫГРЫВАЛИ "+opponentName+" В "+s.hits+" ИЗ "+s.decisions+" ЛИЧНЫХ ВСТРЕЧ"+sinceTail,shortName(teamName)+": "+s.hits+" ИЗ "+s.decisions+" ПОБЕД ПРОТИВ "+shortName(opponentName)+(since?" С "+since:""))
+    ?fitTitle(teamName+" ОБЫГРЫВАЛИ "+opponentName+regular+" В "+s.hits+" ИЗ "+s.decisions+" ЛИЧНЫХ ВСТРЕЧ"+sinceTail,shortName(teamName)+": "+s.hits+" ИЗ "+s.decisions+" ПОБЕД ПРОТИВ "+shortName(opponentName)+(since?" С "+since:""))
     :fitTitle(label+" ПРОТИВ "+opponentName+" — "+s.hits+" ИЗ "+s.decisions+" ЛИЧНЫХ ВСТРЕЧ"+sinceTail,label+": "+s.hits+" ИЗ "+s.decisions+" ПРОТИВ "+shortName(opponentName)+(since?" С "+since:""));
   const penalty=(span!==null&&span>400?6:0)+(s.decisions<5?4:0);
   return {

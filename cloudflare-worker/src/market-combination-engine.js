@@ -70,6 +70,7 @@ function single(game,m,row,i){
   // A hit rate belongs to the market it was measured on. "BOS scored 4 or less in 15 of 20 home games" says nothing
   // about the game total, so a rate-bearing fact is never presented as the history of a different market.
   if(!targetFrequencyVerified&&claimsFrequency(a))return null;
+  if(periodClashes(a,m))return null;
   return {
     id:String(game.game_pk)+":combo:s:"+key(m)+":"+safe(a.id)+":"+i,insight_type:"market_combination_single",category:"market_combination",
     kind:"history",timing:"pregame",score,eyebrow:"WINLINE × DATA CORE",value:a.value||label,title:a.title||label,
@@ -84,6 +85,7 @@ function pair(game,m,ar,br,i){
   const score=clip(Math.round(Math.min(a.score,b.score)*.50+((ar.n+br.n)/2)*.42+15));
   const targetFrequencyVerified=exactAtomMarket(primary,m);
   if(!targetFrequencyVerified&&claimsFrequency(primary))return null;
+  if(periodClashes(primary,m))return null;
   return {
     id:String(game.game_pk)+":combo:p:"+key(m)+":"+safe(a.id)+":"+safe(b.id)+":"+i,insight_type:"market_combination_pair",category:"market_combination",
     kind:"history",timing:"pregame",score,eyebrow:"WINLINE × DATA CORE",value:primary.value||label,title:primary.title||label,
@@ -109,7 +111,12 @@ function primaryAtomForMarket(a,b,m){
 function exactAtomMarket(a,m){
   return atomMarketKey(a)===key(m);
 }
-function claimsFrequency(a){return a?.hit!==null&&a?.hit!==undefined}
+// A fact claims a frequency when it carries a rate, and also when only its title says one: «BUF выиграл 3-й период в 6 из
+// последних 10 матчей» was sold as «BUF · ФОРА -2,5», «BUF забивал 2+ гола в 139 из последних 160» as «обе не забьют».
+const FREQUENCY_TITLE=/\d+\s*%|\d+\s+ИЗ\s+(?:ПОСЛЕДНИХ\s+)?\d+|МАТЧ(?:А|ЕЙ|АХ|Е)?\s+ПОДРЯД/i;
+function claimsFrequency(a){return (a?.hit!==null&&a?.hit!==undefined)||FREQUENCY_TITLE.test(String(a?.title||""))}
+// a fact about one period never goes with a market of another period or of the whole game
+function periodClashes(a,m){const p=/([123])-(?:Й|ГО|М)\s+ПЕРИОД/i.exec(String(a?.title||""));return Boolean(p)&&period(m.period)!=="P"+p[1]}
 function atomMarketKey(a){
   if(!a)return"";
   return [a.type||"unknown",a.period||"GAME",a.subject||"all",a.side||"none",a.line===null||a.line===undefined?"none":Number(a.line).toFixed(2)].join(":");

@@ -7,6 +7,8 @@ import { canonicalBroadcastWinlineMarket, handleBroadcastRequest, ON_AIR_MAX_SEC
 import { powerPlayState } from "../cloudflare-worker/src/live-betting-engine.js";
 import { buildSituationCards, mergeLiveInsightCards } from "../cloudflare-worker/src/live-context-engine.js";
 import { loadSpecialTeams, specialTeamsFromSummary } from "../cloudflare-worker/src/nhl-special-teams.js";
+import { buildMarketCombinationInsights } from "../cloudflare-worker/src/market-combination-engine.js";
+import { buildH2HBroadcastInsights } from "../cloudflare-worker/src/h2h-broadcast-insights.js";
 
 // ---- 1) the market line on the card names the period -----------------------------------------------------------------
 const text = (m) => broadcastMarketText(m);
@@ -189,6 +191,41 @@ for (const [seconds, expired] of [[40, false], [ON_AIR_MAX_SECONDS + 5, true]]) 
   assert.match(js, /function broadcastMarketText\(market\)/);
   assert.match(js, /setInterval\(refreshAir,5000\)/);
   assert.doesNotMatch(js, /\\\\d/, "no doubled backslashes in the portal's regular expressions");
+}
+
+// ---- 8) pregame: a fact is never sold as the history of another market (found by the coverage audit after the push) --
+{
+  const g = { game_pk: 2026020108, away_tri: "BUF", home_tri: "TOR", scheduled_start_utc: "2026-10-15T23:00:00Z" };
+  const quote = { provider: "winline", status: "open", updated_at: "2026-10-15T15:30:53Z", event_id: "16930191", is_live: false };
+  const fact = (id, title, market, evidence = {}) => ({ id, insight_type: "feature", category: "team_form", score: 88, title, market, evidence: { team: "BUF", sample: 10, ...evidence } });
+  const insights = [
+    fact("p3", "BUF выиграл 3-й период в 6 из последних 10 матчей", { type: "period_3_result", period: "P3", subject: "BUF", side: "BUF" }),
+    fact("goals", "BUF забивал 2+ гола в 139 из последних 160 матчей", { type: "team_total", period: "GAME", subject: "BUF", side: "over", line: 1.5 }),
+  ];
+  const offers = [
+    { ...quote, market_id: "h", market_type: "handicap", period: "GAME", subject: "BUF", side: "BUF", line: -2.5, odds: 4.1 },
+    { ...quote, market_id: "b", market_type: "both_teams_score", period: "GAME", subject: null, side: "no", line: null, odds: 7.8 },
+  ];
+  const combos = buildMarketCombinationInsights(insights, offers, g, { now: Date.parse("2026-10-15T15:35:00Z") });
+  assert.deepEqual(combos.map((c) => `${c.title} → ${c.market.type}`), [], "a rate stated only in the title stays with its own market");
+  // a period fact without a rate in the title still does not go with a whole-game line
+  const noRate = buildMarketCombinationInsights([fact("p3ctx", "BUF — №2 НХЛ ПО БРОСКАМ В 3-М ПЕРИОДЕ", { type: "period_3_result", period: "P3", subject: "BUF", side: "BUF" })], offers.slice(0, 1), g, { now: Date.parse("2026-10-15T15:35:00Z") });
+  assert.equal(noRate.length, 0, "a 3rd-period fact is not a story for «BUF · ФОРА -2,5»");
+  // the same period fact still goes with the market of that period
+  const p3 = buildMarketCombinationInsights([fact("p3", "BUF выиграл 3-й период в 6 из последних 10 матчей", { type: "period_3_result", period: "P3", subject: "BUF", side: "BUF" })], [{ ...quote, market_id: "p3", market_type: "period_3_result", period: "P3", subject: "BUF", side: "BUF", line: null, odds: 2.6 }], g, { now: Date.parse("2026-10-15T15:35:00Z") });
+  assert.ok(p3.length >= 1 && p3.every((c) => c.market.period === "P3"));
+}
+{
+  // head to head on «победа в основное время»: an overtime win is not a win of the 3-way
+  const meeting = (i, rr, win) => ({ game_pk: 900 + i, scheduled_start_utc: `2025-1${i}-01T00:00:00Z`, final_goals_for: 3, final_goals_against: 2, total_goals: 5, final_goal_diff: 1, final_win: win, regulation_result: rr, regulation_goals_for: rr === "W" ? 3 : 2, regulation_goals_against: 2, regulation_goal_diff: rr === "W" ? 1 : 0 });
+  const rows = [meeting(0, "W", 1), meeting(1, "T", 1), meeting(2, "T", 1), meeting(3, "T", 1)];
+  const db = { prepare: () => ({ bind: () => ({ all: async () => ({ results: rows }) }) }) };
+  const g = { game_pk: 1, scheduled_start_utc: "2026-10-15T23:00:00Z", away_tri: "TOR", home_tri: "BUF", away_name_ru: "Торонто", home_name_ru: "Баффало" };
+  const q = { provider: "winline", status: "open", updated_at: "2026-10-15T15:30:00Z", event_id: "e", is_live: false };
+  const h2h = await buildH2HBroadcastInsights(db, g, [{ ...q, market_id: "reg", market_type: "moneyline", period: "REG", subject: "TOR", side: "TOR", line: null, odds: 2.35 }, { ...q, market_id: "ml", market_type: "moneyline", period: "GAME", subject: "TOR", side: "TOR", line: null, odds: 1.7 }]);
+  const regCard = h2h.find((c) => c.market.period === "REG"), mlCard = h2h.find((c) => c.market.period === "GAME");
+  assert.deepEqual([regCard.evidence.hits, regCard.evidence.decisions, mlCard.evidence.hits], [1, 4, 4]);
+  assert.match(regCard.title, /^ТОРОНТО ОБЫГРЫВАЛИ БАФФАЛО В ОСНОВНОЕ ВРЕМЯ В 1 ИЗ 4 ЛИЧНЫХ ВСТРЕЧ С 2025 ГОДА$/);
 }
 
 console.log("broadcast live situations validation passed");
