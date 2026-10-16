@@ -35,6 +35,8 @@ def parse_args():
     p.add_argument("--workers",type=int,default=12)
     p.add_argument("--timeout",type=int,default=35)
     p.add_argument("--attempts",type=int,default=4)
+    # the daily run takes only the current season (the player portrait compares skating speed with it)
+    p.add_argument("--seasons",default=",".join(SEASONS))
     return p.parse_args()
 
 def fetch_json(url,timeout,attempts):
@@ -326,7 +328,8 @@ def main():
     out_dir=Path(args.out);out_dir.mkdir(parents=True,exist_ok=True)
     fetched_at=dt.datetime.now(dt.timezone.utc).isoformat()
     tasks=[];entity_counts=[]
-    for season in SEASONS:
+    seasons=[s.strip() for s in str(args.seasons).split(",") if s.strip()]
+    for season in seasons:
         for gt in GAME_TYPES:
             teams,skaters,goalies=entity_lists(season,gt,args.timeout,args.attempts)
             entity_counts.append({
@@ -337,7 +340,7 @@ def main():
             tasks += [(season,gt,"skater",eid,key) for eid,key in skaters.items()]
             tasks += [(season,gt,"goalie",eid,key) for eid,key in goalies.items()]
 
-    land_tasks=[(s,g,k) for s in SEASONS for g in GAME_TYPES for k in ("team","skater","goalie")]
+    land_tasks=[(s,g,k) for s in seasons for g in GAME_TYPES for k in ("team","skater","goalie")]
     rows=[];landings=[];failures=[]
     workers=max(1,min(args.workers,16))
     print(f"EDGE entity_tasks={len(tasks)} landing_tasks={len(land_tasks)} workers={workers}",flush=True)

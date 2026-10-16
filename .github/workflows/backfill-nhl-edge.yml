@@ -2,6 +2,14 @@ name: Backfill NHL EDGE Two-Season Tracking
 
 on:
   workflow_dispatch:
+    inputs:
+      seasons:
+        description: "Seasons, comma separated (empty = the current season)"
+        required: false
+        default: ""
+  # every day the current season: the player portrait compares skating speed (top speed, bursts) with this season's league
+  schedule:
+    - cron: "40 9 * * *"
   push:
     branches: [main]
     paths:
@@ -49,7 +57,16 @@ jobs:
         run: npx wrangler d1 migrations apply hoh-data-core --remote
 
       - name: Download NHL EDGE tracking profiles
-        run: python tools/backfill_nhl_edge.py --workers 12
+        shell: bash
+        env:
+          SEASONS_INPUT: ${{ github.event.inputs.seasons }}
+        run: |
+          set -euo pipefail
+          y=$(date -u +%Y); m=$(date -u +%-m)
+          if [ "$m" -ge 9 ]; then current="${y}$((y+1))"; else current="$((y-1))${y}"; fi
+          seasons="${SEASONS_INPUT:-$current}"
+          echo "EDGE seasons: $seasons"
+          python tools/backfill_nhl_edge.py --workers 12 --seasons "$seasons"
 
       - name: Upload NHL EDGE data to D1
         shell: bash
