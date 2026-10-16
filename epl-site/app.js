@@ -207,6 +207,7 @@ function platePanel(m, c, id) {
     : `<button class="btn primary big" data-action="onair-show" data-card="${esc(id)}">${live ? '▶ Заменить в эфире' : '▶ Дать в эфир'}</button>`;
   return `<div class="pc-panel">
     <canvas class="plate-preview" data-preview="${esc(id)}" width="920" height="240" data-action="plate-zoom" data-card="${esc(id)}" title="Открыть крупно, в кадре 1920×1080"></canvas>
+    ${crestChoice(m, id)}
     ${keyForm()}
     <div class="pc-actions">${action}<button class="btn big" data-action="edit" aria-pressed="${state.editing}">✎ Редактировать</button></div>
     ${live && live !== id ? '<p class="plate-note">Сейчас в эфире этого матча другая плашка — она сменится на эту.</p>' : ''}
@@ -641,10 +642,46 @@ function plateBase(id) {
   return found ? plateDefaults(found.m, found.c) : null;
 }
 
-/** The plate's final texts: the engine's, with this device's edits on top (state.plates[id]). */
+// short club names for a pair beside crests (as tools/epl_text.py SHORT)
+const SHORT_NAMES = { 'Манчестер Сити': 'Ман Сити', 'Манчестер Юнайтед': 'Ман Юнайтед', 'Ноттингем Форест': 'Ноттингем' };
+const shortName = (name) => SHORT_NAMES[name] || name;
+
+/** The match on the team line for `crests` crests: full names if they fit, else the short ones. */
+function pairFor(m, crests) {
+  const full = `${m.home.name_ru} – ${m.away.name_ru}`;
+  return full.length <= PLATE_FIT.team[crests][0] ? full : `${shortName(m.home.name_ru)} – ${shortName(m.away.name_ru)}`;
+}
+const isPair = (m, text) => [pairFor(m, 0), pairFor(m, 1), pairFor(m, 2)].includes(text);
+
+/** The plate's final texts: the engine's, with this device's edits on top (state.plates[id]). A pair the operator did
+ *  not retype follows the crests: full names when they fit beside them, short ones when not. */
 function plateOf(id) {
   const { crestSize, ...edits } = state.plates[id] || {};  // the crest size choice is gone: every crest is 77 px now
-  return { ...(plateBase(id) || { headline: '', team: '', bet: '', odds: null, crest: 'none' }), ...edits };
+  const base = plateBase(id) || { headline: '', team: '', bet: '', odds: null, crest: 'none' };
+  const p = { ...base, ...edits };
+  const found = findCard(id);
+  if (found && edits.team == null && isPair(found.m, base.team)) p.team = pairFor(found.m, CREST_COUNT[p.crest] ?? 1);
+  return p;
+}
+
+/** How the plate's team and bet lines fit with these crests: 'ok', 'small' (the font shrinks a little) or 'long'. */
+function variantFit(m, id, crest) {
+  const p = plateOf(id);
+  const count = CREST_COUNT[crest];
+  const team = state.plates[id]?.team == null && isPair(m, p.team) ? pairFor(m, count) : p.team;
+  const levels = [fitLevel('team', team, count).level, fitLevel('bet', p.bet, count).level];
+  return levels.includes('long') ? 'long' : levels.includes('small') ? 'small' : 'ok';
+}
+
+/** The operator's choice of crests right under the plate: one club, the other, both, none — each says if the text fits. */
+function crestChoice(m, id) {
+  const p = plateOf(id);
+  const options = [['home', m.home.name_ru], ['away', m.away.name_ru], ['match', 'Оба'], ['none', 'Без логотипа']];
+  return `<div class="crest-pick" role="group" aria-label="Логотипы"><span class="crest-pick-label">Логотипы:</span>${options.map(([value, label]) => {
+    const fit = variantFit(m, id, value);
+    const note = { ok: '', small: ' · мельче', long: ' · не влезает' }[fit];
+    return `<button class="chip-btn" data-action="crest" data-card="${esc(id)}" data-value="${value}" data-fit="${fit}" aria-pressed="${p.crest === value}">${esc(label)}${note}</button>`;
+  }).join('')}</div>`;
 }
 
 function setPlate(id, field, value) {
@@ -680,16 +717,13 @@ function fitNote(field, text, crests = 1) {
 
 function plateEditor(m, id) {
   const p = plateOf(id);
-  const option = (value, label, current) => `<option value="${value}" ${current === value ? 'selected' : ''}>${esc(label)}</option>`;
-  const crests = [['home', m.home.name_ru], ['away', m.away.name_ru], ['match', 'обе команды'], ['none', 'без эмблемы']].map(([v, l]) => option(v, l, p.crest)).join('');
   const field = (name) => `data-input="plate-${name}" data-card="${esc(id)}"`;
   const count = CREST_COUNT[p.crest] ?? 1;
   return `<div class="plate-editor">
     <label class="pf"><span>Верхняя строка ${fitNote('headline', p.headline)}</span><textarea rows="2" ${field('headline')}>${esc(p.headline)}</textarea></label>
     <div class="pf-row2"><label class="pf"><span>Команда или игрок ${fitNote('team', p.team, count)}</span><input ${field('team')} value="${esc(p.team)}"></label>
       <label class="pf"><span>Ставка ${fitNote('bet', p.bet, count)}</span><input ${field('bet')} value="${esc(p.bet)}"></label></div>
-    <div class="pf-row2"><label class="pf"><span>Кэф</span><input ${field('odds')} inputmode="decimal" value="${esc(p.odds)}"></label>
-      <label class="pf"><span>Эмблемы</span><select ${field('crest')}>${crests}</select></label></div>
+    <label class="pf pf-odds"><span>Кэф</span><input ${field('odds')} inputmode="decimal" value="${esc(p.odds)}"></label>
     <div class="plate-actions"><button class="btn primary" data-action="edit">Готово</button>
       ${state.plates[id] ? `<button class="btn ghost" data-action="plate-reset" data-card="${esc(id)}">Вернуть исходный текст</button>` : ''}
       <button class="btn ghost" data-action="plate-png" data-card="${esc(id)}">Скачать картинку</button></div>
@@ -941,6 +975,7 @@ function onClick(event) {
     document.querySelector(`[data-card-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' });
   }
   else if (action === 'edit') { state.editing = !state.editing; refreshContent(); }
+  else if (action === 'crest') { setPlate(target.dataset.card, 'crest', value); refreshContent(); }
   else if (action === 'onair-show') {
     const id = target.dataset.card;
     const found = findCard(id);

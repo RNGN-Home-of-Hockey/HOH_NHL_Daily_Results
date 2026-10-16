@@ -373,3 +373,9 @@ b.good { color: var(--good); } b.bad { color: var(--bad); }
   .pc-panel > .pc-actions { grid-column: 2; grid-row: 1; grid-template-columns: 1fr; }
   .pc-panel > :not(.plate-preview):not(.pc-actions) { grid-column: 1 / -1; }
 }
+/* the operator's choice of crests under the plate: each variant says if the text fits */
+.crest-pick { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.crest-pick-label { font-size: 12px; font-weight: 700; color: var(--muted); margin-right: 2px; }
+.crest-pick .chip-btn[data-fit="small"]:not([aria-pressed="true"]) { color: var(--warn); }
+.crest-pick .chip-btn[data-fit="long"]:not([aria-pressed="true"]) { color: var(--bad); border-color: #f3c6c0; }
+.pf-odds { max-width: 140px; }

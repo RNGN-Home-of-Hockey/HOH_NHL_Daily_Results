@@ -788,15 +788,25 @@ def same_games(card: dict):
 
 def finish_plate(card: dict, ctx: dict) -> dict:
     """The plate's texts: headline (the rule's short line or the title shortened), team (player, club or the pair),
-    bet in plain words (the rule's, else the Winline label without the club's name), crest, and how they fit."""
+    bet in plain words (the rule's, else the Winline label without the club's name), crest, and how they fit.
+    Crests by default (owner 2026-10-17: «один лого, два лого — если влезает, или без лого, если не влезает»): a bet
+    on the match gets both crests when the pair and the bet fit beside them, else none (the pair gets the whole line);
+    a club or player bet gets its club's crest, or none when the bet does not fit. The operator can switch on the site."""
     plate = dict(card.get("plate") or {})
     home, away = ctx["names"][ctx["home"]], ctx["names"][ctx["away"]]
     crest = plate.get("crest") if plate.get("crest") in ("home", "away", "match") else "match"
     club = home if crest == "home" else away if crest == "away" else None
-    team = plate.get("team") or club or T.pair(home, away)
     bet = plate.get("bet") or card["market"]["label"]
     if not plate.get("bet") and club:
         bet = re.sub(r"\s{2,}", " ", bet.replace(club, " ")).strip(" :—-")
+    if crest == "match" and not plate.get("team"):
+        team = T.pair(home, away, 2)
+        if len(team) > T.TEAM_FIT[2][0] or len(bet) > T.BET_FIT[2][0]:
+            crest, team = "none", T.pair(home, away, 0)
+    else:
+        team = plate.get("team") or club or T.pair(home, away, 2)
+        if len(bet) > T.BET_FIT[T.CRESTS[crest]][0] and len(bet) <= T.BET_FIT[0][0]:
+            crest = "none"
     head = T.agree_title(plate.get("headline") or T.headline(card["title"]), (home, away))
     head = T.first_fit((head, head.replace(" последних", "")))  # a rule's own headline keeps both clubs, only the extra word goes
     out = {"headline": head, "team": team, "bet": bet, "crest": crest}
