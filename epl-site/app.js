@@ -3,7 +3,7 @@
 // against our numbers), Команды (club profiles). Nothing here talks to Winline or to the broadcast: the operator
 // picks cards for the "Эфир" queue. Plate designs (Winline) replace the placeholder preview later.
 
-import { cropPlate, oddsText, renderPlate, toBlob } from './plate.js';
+import { cropPlate, loadPlateAssets, oddsText, renderPlate, toBlob } from './plate.js';
 
 const DATA_URL = 'data/site.json';
 const QUEUE_KEY = 'hoh-epl-queue-v1';
@@ -603,6 +603,22 @@ function plateHeadline(title) {
   return text.replace(/ последних/g, '').replace(/ — в (\d+ из \d+)/, ' — $1').trim();
 }
 
+/** A combo outcome in plain words: "Исход и обе забьют: Н/Да" -> "ничья и обе забьют",
+ * "1-й тайм исход и тотал 1,5: П1/Меньше" -> "1-й тайм: П1 и тотал меньше 1,5". Other labels stay as they are. */
+function plainBet(label) {
+  const parsed = label.match(/^(.*?):\s*(.+)$/);
+  if (!parsed) return label;
+  const [, market, outcome] = parsed;
+  const line = (market.match(/(\d+(?:,\d+)?)\s*$/) || [])[1];
+  const half = /^1-й тайм/i.test(market) ? '1-й тайм: ' : /^2-й тайм/i.test(market) ? '2-й тайм: ' : '';
+  const word = (part) => ({ Н: 'ничья', Да: 'обе забьют', Нет: 'обе забьют — нет', Больше: `тотал больше ${line}`, Меньше: `тотал меньше ${line}` }[part] || part);
+  const parts = outcome.split('/').map((part) => part.trim());
+  if (/тайм\/матч/i.test(market) && parts.length === 2) return `${word(parts[0])} в перерыве, ${word(parts[1])} в матче`;
+  if (/победа с разницей/i.test(market)) return outcome.replace(/ в (\d+)( и более)?$/, (all, n, more) => ` в ${n}${more ? '+' : ''} ${goalsWord(n).replace('гол', 'мяч').replace('мячов', 'мячей')}`);
+  if (parts.length === 2 && /(исход|двойной шанс|обе забьют)/i.test(market)) return half + parts.map(word).join(' и ');
+  return label;
+}
+
 /** What the plate says by default for a card: whose bet it is (club, player or the match), the bet, the price. */
 function plateDefaults(m, c) {
   const label = c.market.label || '';
@@ -619,6 +635,7 @@ function plateDefaults(m, c) {
     bet = playerBet[2] === 'забьёт' || playerBet[2] === 'забьет' ? 'забьёт гол' : playerBet[2];
   } else if (side === 'match') {
     team = `${m.home.name_ru} – ${m.away.name_ru}`;
+    bet = plainBet(label);
   } else {
     const club = side === 'home' ? m.home : m.away;
     team = club.name_ru;
@@ -966,6 +983,7 @@ async function load(manual = false) {
   const y = window.scrollY;
   setHash(); render();
   window.scrollTo({ top: y });
+  loadPlateAssets().catch(() => {});  // fonts and template ready before the first «В эфир»
   if (manual) toast('Данные обновлены');
 }
 
