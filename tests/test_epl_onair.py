@@ -46,11 +46,12 @@ def test_show_hide_and_persistence():
             status, shown = call(base, "/api/onair/show", {"room": "1", "id": "card-1", "match": "Арсенал — Эвертон", "plate": PLATE}, key=KEY)
             assert status == 200 and shown["on"] and shown["version"] == 1 and shown["plate"]["odds"] == 3.0
             assert call(base, "/api/onair/state?room=1")[1]["plate"]["team"] == "Эвертон"
-            assert call(base, "/api/onair/state?room=2")[1]["on"] is False  # channels are separate
+            assert call(base, "/api/onair/state?room=2")[1]["on"] is False  # matches are separate
             hidden = call(base, "/api/onair/hide", {"room": "1"}, key=KEY)[1]
             assert hidden["on"] is False and hidden["version"] == 2 and hidden["plate"]["team"] == "Эвертон"  # the plate stays for a re-show
             call(base, "/api/onair/show", {"room": "2", "plate": PLATE}, key=KEY)
-            assert len(call(base, "/api/onair/off-all", {}, key=KEY)[1]["changed"]) == 1
+            assert call(base, "/api/onair/off-all", {}, key=KEY)[0] == 404  # no «everything off»: one operator cannot clear the others
+            assert call(base, "/api/onair/state?room=2")[1]["on"] is True
             assert call(base, "/api/onair/check", key=KEY)[0] == 200
         finally:
             server.shutdown()
@@ -59,6 +60,17 @@ def test_show_hide_and_persistence():
             assert call(base, "/api/onair/state?room=1")[1]["version"] == 2
         finally:
             again.shutdown()
+
+
+def test_old_matches_are_forgotten():
+    with tempfile.TemporaryDirectory() as tmp:
+        live = onair.OnAir(Path(tmp) / "onair.json", KEY)
+        live.rooms = {
+            "100": {"room": "100", "on": False, "updated_at": "2020-01-01T00:00:00.000Z"},  # a past match: dropped
+            "101": {"room": "101", "on": True, "updated_at": "2020-01-01T00:00:00.000Z"},   # still on air: kept
+        }
+        live.change("102", on=False)
+        assert sorted(live.rooms) == ["101", "102"]
 
 
 def test_bad_input_is_refused():

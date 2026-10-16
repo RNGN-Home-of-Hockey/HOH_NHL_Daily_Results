@@ -303,21 +303,24 @@ b.good { color: var(--good); } b.bad { color: var(--bad); }
 /* on air: channel, status, operator key, OBS link, phone bar */
 .onair-box { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
 .onair-head { display: flex; align-items: end; gap: 8px; }
-.onair-room { width: 70px; flex: none; }
 .onair-status { flex: 1; font-size: 12px; font-weight: 700; padding: 6px 8px; border-radius: 8px; line-height: 1.3; }
-.onair-status.live { background: var(--bad); color: #fff; }
+.onair-status.live { background: var(--bad); color: #fff; flex-basis: 100%; }  /* on air: its own full-width line */
 .onair-status.live::before { content: "● "; animation: blink 1.2s steps(2, start) infinite; }
 .onair-status.idle { background: var(--surface); color: var(--muted); border: 1px solid var(--line); }
 .onair-status.bad { background: var(--warn-soft); color: var(--warn); }
 @keyframes blink { to { visibility: hidden; } }
 .key-form { display: flex; gap: 6px; }
 .key-form input { flex: 1; min-width: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 6px 8px; }
-.onair-buttons { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.onair-buttons { display: grid; grid-template-columns: 1fr; gap: 6px; }
 .btn.big { padding: 11px 14px; font-size: 15px; font-weight: 800; }
-.btn.danger { color: var(--bad); }
 .obs summary { cursor: pointer; font-size: 12px; font-weight: 700; color: var(--muted); }
 .obs code { display: block; margin: 6px 0; padding: 6px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; word-break: break-all; }
 .qitem[data-live="true"] { border-color: var(--bad); box-shadow: inset 3px 0 0 var(--bad); }
+.wk[data-live="true"] { border-color: var(--bad); box-shadow: inset 0 0 0 1px var(--bad); }
+.wk[data-live="true"] .wk-date::before { content: "● ЭФИР "; color: var(--bad); font-weight: 800; }
+.onair-head { flex-wrap: wrap; align-items: center; }
+.onair-title { font-size: 13px; }
+.head .onair-box { background: var(--surface); }
 .qitem[data-live="true"] .qtitle::before { content: "● В ЭФИРЕ  "; color: var(--bad); font-size: 11px; }
 .onair-bar { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px;
   background: var(--bad); color: #fff; box-shadow: var(--shadow); font-size: 13px; font-weight: 700; }

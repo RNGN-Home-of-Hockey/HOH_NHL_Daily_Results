@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""On-air state of the Winline EPL plates: what each broadcast channel shows right now.
+"""On-air state of the Winline EPL plates: what each match's broadcast shows right now (one room per match).
 
   python -I tools/epl_onair.py [--port 8096] [--state PATH] [--key-file PATH]
 
 Runs on the Moscow server behind Caddy (/api/onair/* -> 127.0.0.1:8096), so the overlay page in OBS / vMix and the
 operator's phone reach it without a VPN; the Cloudflare worker forwards the same paths here.
 
-  GET  /api/onair/state?room=1     the overlay polls this: {room, version, on, plate, id, updated_at}
-  GET  /api/onair/rooms            every channel's state (the operator site shows it)
+  GET  /api/onair/state?room=<id>  the overlay polls this: {room, version, on, plate, id, updated_at}
+  GET  /api/onair/rooms            every match's state (the operator site shows it)
   POST /api/onair/show   {room, id, match, plate}   put a plate on air           (operator key)
-  POST /api/onair/hide   {room}                     take the channel's plate off (operator key)
-  POST /api/onair/off-all                           every channel off            (operator key)
+  POST /api/onair/hide   {room}                     take the match's plate off   (operator key)
   GET  /api/onair/check                             is this operator key right?  (operator key)
 
 The operator key comes in the header X-Operator-Key (or Authorization: Bearer). After MAX_FAILURES wrong keys
 within FAILURE_WINDOW seconds every keyed request is refused for the rest of the window. The state is kept in a
-JSON file (written atomically), so a restart does not drop what is on air.
+JSON file (written atomically), so a restart does not drop what is on air. There is deliberately no «everything
+off»: several broadcasts share the service, and one operator must not be able to clear the others' plates. A room is the Winline event id of the
+match (overlay.html?match=<id>); rooms that are off and untouched for ROOM_TTL_DAYS are dropped on the next change.
 """
 from __future__ import annotations
 
@@ -38,6 +39,7 @@ MAX_BODY = 16 * 1024
 MAX_FAILURES = 20
 FAILURE_WINDOW = 600
 PLATE_TEXTS = ("headline", "team", "bet")
+ROOM_TTL_DAYS = 14
 
 
 def now_iso() -> str:
@@ -103,18 +105,14 @@ class OnAir:
             state = {**self.room(name), **fields, "room": name, "updated_at": now_iso()}
             state["version"] = int(state.get("version") or 0) + 1
             self.rooms[name] = state
+            self.prune()
             self.save()
             return state
 
-    def off_all(self) -> list[dict]:
-        with self.lock:
-            changed = []
-            for state in self.rooms.values():
-                if state.get("on"):
-                    state.update(on=False, updated_at=now_iso(), version=int(state.get("version") or 0) + 1)
-                    changed.append(state)
-            self.save()
-            return changed
+    def prune(self) -> None:
+        """Forget rooms of past matches: off and not touched for ROOM_TTL_DAYS (ISO times compare as text)."""
+        cutoff = datetime.fromtimestamp(time.time() - ROOM_TTL_DAYS * 86400, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        self.rooms = {name: room for name, room in self.rooms.items() if room.get("on") or str(room.get("updated_at") or "") >= cutoff}
 
 
 def make_handler(onair: OnAir):
@@ -174,8 +172,6 @@ def make_handler(onair: OnAir):
                     raise ValueError("body must be an object")
             except ValueError as problem:
                 return self.reply(400, {"ok": False, "error": f"bad_json: {problem}"})
-            if url.path == "/api/onair/off-all":
-                return self.reply(200, {"ok": True, "changed": onair.off_all()})
             name = self.room_name(body.get("room"))
             if not name:
                 return self.reply(400, {"ok": False, "error": "bad_room"})

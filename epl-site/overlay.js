@@ -1,10 +1,10 @@
-// OBS / vMix overlay of the Winline EPL plates: polls the on-air state of one channel (?room=1) and shows or hides
+// OBS / vMix overlay of the Winline EPL plates: polls the on-air state of one match (?match=<event id>) and shows or hides
 // the plate with a short fade, drawn by plate.js exactly like the PNG files. A failed poll keeps what is on screen;
 // a long outage reloads the page. ?demo=1 shows a sample plate (to place the layer), ?check=1 a chequered background.
 import { loadPlateAssets, renderPlate } from './plate.js';
 
 const params = new URLSearchParams(location.search);
-const room = (params.get('room') || '1').toLowerCase().replace(/[^a-z0-9-]/g, '') || '1';
+const room = (params.get('match') || params.get('room') || '1').toLowerCase().replace(/[^a-z0-9-]/g, '') || '1';  // ?match=<Winline event id>
 const stage = document.getElementById('stage');
 const buffer = document.createElement('canvas');
 const POLL_MS = 700;
