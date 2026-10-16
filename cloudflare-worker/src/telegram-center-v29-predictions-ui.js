@@ -458,6 +458,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
     mountCards();
     paintSlots();
     paintMe();
+    resumePendingVote();
   }
 
   function mountAll() {
@@ -535,13 +536,32 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
     return "Не удалось сохранить прогноз. Попробуйте ещё раз.";
   }
 
+  // a website guest taps a team: the pick waits through «Войти через Telegram» (the page reloads after it) and is sent then
+  const PENDING_VOTE = "hoh-pending-vote-v1";
+  const PENDING_VOTE_MS = 15 * 60 * 1000;
+  function keepPendingVote(pk, side) {
+    try { sessionStorage.setItem(PENDING_VOTE, JSON.stringify({ pk, side, at: Date.now() })); } catch (e) { /* storage may be blocked */ }
+  }
+  function resumePendingVote() {
+    if (!signedIn()) return;
+    let p = null;
+    try { p = JSON.parse(sessionStorage.getItem(PENDING_VOTE) || "null"); } catch (e) { p = null; }
+    if (!p) return;
+    const g = st.games.get(Number(p.pk));
+    if (!g && Date.now() - Number(p.at) < PENDING_VOTE_MS) return; // the game is not loaded yet
+    try { sessionStorage.removeItem(PENDING_VOTE); } catch (e) { /* ignore */ }
+    if (g && g.open && Date.now() - Number(p.at) < PENDING_VOTE_MS && ["home", "away"].includes(p.side)) setTimeout(() => vote(Number(p.pk), p.side), 0);
+  }
+
   async function vote(pk, side) {
     const g = st.games.get(pk);
     if (!g || !g.open || st.pending.has(pk)) return;
     if (g.my && g.my.pick === side) return;
     if (!signedIn()) {
-      if (webGuest()) window.HOHAuth.login();
-      else alert("Голосовать можно в приложении, открытом из Telegram-бота.");
+      if (webGuest()) {
+        keepPendingVote(pk, side);
+        window.HOHAuth.login();
+      } else alert("Голосовать можно в приложении, открытом из Telegram-бота.");
       return;
     }
     const before = g;

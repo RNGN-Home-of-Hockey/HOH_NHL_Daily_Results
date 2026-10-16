@@ -646,6 +646,32 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   assert.equal(guest.box.calls.filter((c) => c.method === "POST").length, 0);
   guest.window.close();
 
+  // the website (the owner: «голосование где угодно»): a guest taps a team → «Войти через Telegram»; after the sign-in reloads the
+  // page the pick goes by itself
+  const web = makeApp({ signedIn: false });
+  let logins = 0;
+  web.window.HOHAuth = { signedIn: () => false, login: () => { logins += 1; }, needLogin: (t) => `<div class="hohNeedLogin">${t}</div>` };
+  await tick(250);
+  web.document.querySelector('.v29Slot [data-v29-pick="home"]').click();
+  await tick(10);
+  assert.equal(logins, 1, "the sign-in sheet, not the old alert");
+  assert.deepEqual(web.box.alerts, []);
+  const kept = JSON.parse(web.window.sessionStorage.getItem("hoh-pending-vote-v1"));
+  assert.deepEqual([kept.pk, kept.side], [9002, "home"]);
+  web.window.close();
+  const back = makeApp({ signedIn: true });
+  back.window.sessionStorage.setItem("hoh-pending-vote-v1", JSON.stringify(kept));
+  await tick(300);
+  const sent = back.box.calls.filter((c) => c.method === "POST");
+  assert.deepEqual(sent.map((c) => c.body), [{ game_pk: 9002, pick: "home" }], "the waiting pick is sent once after the sign-in");
+  assert.equal(back.window.sessionStorage.getItem("hoh-pending-vote-v1"), null);
+  back.window.close();
+  const stale = makeApp({ signedIn: true });
+  stale.window.sessionStorage.setItem("hoh-pending-vote-v1", JSON.stringify({ ...kept, at: Date.now() - 20 * 60 * 1000 }));
+  await tick(300);
+  assert.equal(stale.box.calls.filter((c) => c.method === "POST").length, 0, "a pick older than 15 minutes is dropped");
+  stale.window.close();
+
   const late = makeApp({ postError: "voting_closed" });
   await tick(250);
   late.document.querySelector('.v29Slot [data-v29-pick="home"]').click();
