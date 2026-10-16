@@ -104,7 +104,9 @@ export async function loadPlayerGoalsPayload(env, playerId, { now = Date.now() }
   const [regular, playoffs, indexResult, namesResult] = await Promise.allSettled([
     fetchJson(NHL_GAME_LOG(playerId, season, 2), { ttl: 60, timeoutMs: 6000 }),
     fetchJson(NHL_GAME_LOG(playerId, season, 3), { ttl: 60, timeoutMs: 6000 }),
-    fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 }),
+    // the copy the highlights server pushes first: Cloudflare in Frankfurt cannot reach the Moscow server, so the direct
+    // fetch timed out and every goal of a player page showed «видео временно недоступно» (Kaprizov, 2026-10-16)
+    pushedIndex(env).then((pushed) => pushed || fetchJson(`${base.replace(/\/+$/, "")}/index.json`, { ttl: 20, timeoutMs: 4000 })),
     env?.DB ? loadPlayerNames(env.DB, playerId) : Promise.resolve({ nameEn: null, nameRu: null }),
   ]);
   if (regular.status !== "fulfilled") return { ok: false, error: "nhl_unavailable", status: 502 };

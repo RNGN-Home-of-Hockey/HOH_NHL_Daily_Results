@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { gzipSync } from "node:zlib";
 import { DatabaseSync } from "node:sqlite";
 import { PUSH_PATH, PUSH_FRESH_MS, handleClipIndexPush, pushedIndex, pushedCovers, clearPushMemory } from "../cloudflare-worker/src/telegram-center-v26-clip-push.js";
-import { handleTelegramCenterV26, loadGoalsPayload } from "../cloudflare-worker/src/telegram-center-v26-goals.js";
+import { handleTelegramCenterV26, loadGoalsPayload, loadPlayerGoalsPayload } from "../cloudflare-worker/src/telegram-center-v26-goals.js";
 import { loadCoverUrls } from "../cloudflare-worker/src/telegram-center-v26-covers.js";
 
 const MIG = new URL("../migrations/", import.meta.url);
@@ -69,6 +69,8 @@ const realFetch = globalThis.fetch;
 const asked = [];
 globalThis.fetch = async (url) => {
   asked.push(String(url));
+  // the game log of the scorer: one goal, in this game
+  if (String(url).includes("/game-log/")) return new Response(JSON.stringify({ gameLog: String(url).endsWith("/2") ? [{ gameId: 2026020107, gameDate: "2026-10-15", goals: 1 }] : [] }), { status: 200 });
   if (String(url).includes("api-web.nhle.com")) {
     return new Response(JSON.stringify({ gameState: "OFF", startTimeUTC: "2026-10-15T00:30:00Z", awayTeam: { abbrev: "DAL", score: 3 }, homeTeam: { abbrev: "COL", score: 2 },
       summary: { scoring: [{ periodDescriptor: { number: 1, periodType: "REG" }, goals: [{ eventId: 78, playerId: 8475768, firstName: { default: "Jaden" }, lastName: { default: "Schwartz" }, teamAbbrev: { default: "COL" }, timeInPeriod: "01:59", awayScore: 0, homeScore: 1 }] }] } }), { status: 200 });
@@ -82,6 +84,10 @@ try {
   assert.equal(goals.clips.server_ok, true, "the pushed index counts as the server");
   assert.equal(goals.goals[0].clip.state, "ready");
   assert.equal(goals.cover_url, "https://clips.test/covers/2026020107.jpg?v=1792010806");
+  // the player page too (it asked the server directly and showed «видео временно недоступно» for every goal, Kaprizov 2026-10-16)
+  const player = await loadPlayerGoalsPayload(env, 8475768, { now: Date.parse("2026-10-16T09:00:00Z") });
+  assert.equal(player.server_ok, true, "the player page reads the pushed copy");
+  assert.deepEqual([player.listed, player.with_video, player.goals[0].clip.state], [1, 1, "ready"]);
   assert.ok(asked.every((u) => !u.includes("clips.test")), "not a single request to the clip server");
   // the route
   const refused = await handleTelegramCenterV26(new Request(`https://x.test${PUSH_PATH}`, { method: "POST", headers: { "cf-connecting-ip": "1.1.1.1" }, body: "{}" }), env, PUSH_PATH);
