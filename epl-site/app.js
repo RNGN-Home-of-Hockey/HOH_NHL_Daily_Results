@@ -3,6 +3,8 @@
 // against our numbers), Команды (club profiles). Nothing here talks to Winline or to the broadcast: the operator
 // picks cards for the "Эфир" queue. Plate designs (Winline) replace the placeholder preview later.
 
+import { cropPlate, oddsText, renderPlate, toBlob } from './plate.js';
+
 const DATA_URL = 'data/site.json';
 const QUEUE_KEY = 'hoh-epl-queue-v1';
 const UI_KEY = 'hoh-epl-ui-v2';
@@ -63,7 +65,7 @@ const defaults = () => ({
 });
 const state = {
   data: null, cards: [], playerRows: [], selected: null, tab: 'tips', tipTier: 'all', tipCategory: 'all', query: '', family: 'all', side: 'all',
-  feedLimit: FEED_PAGE, filtersOpen: false, open: new Set(), queue: loadJson(QUEUE_KEY, []), ...mergeUi(loadJson(UI_KEY, {})),
+  feedLimit: FEED_PAGE, filtersOpen: false, plateIndex: 0, open: new Set(), queue: loadJson(QUEUE_KEY, []), ...mergeUi(loadJson(UI_KEY, {})),
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -586,22 +588,147 @@ function renderTeams() {
       ${teams.map((t) => `<tr>${TEAM_COLUMNS.map(([key, label]) => labelled(t, key, label)).join('')}</tr>`).join('')}</tbody></table></div></section>`;
 }
 
-// ---------- dock (queue) ----------
-function plate(item) {
-  return `<div class="plate" aria-label="Макет плашки"><div><div class="fact">${esc(item.title)}</div><div class="mk">${esc(item.label)}</div></div><div class="big num">${odds(item.odds)}</div></div>`;
+// ---------- dock: the "Эфир" queue and the Winline plate editor ----------
+const mentions = (text, club) => [club.name_full, club.name_ru].filter(Boolean).some((name) => text.includes(name));
+const goalsWord = (number) => {
+  if (/[.,]/.test(number)) return 'гола';
+  const n = Math.abs(parseInt(number, 10)) % 100, n10 = n % 10;
+  return n10 === 1 && n !== 11 ? 'гол' : n10 >= 2 && n10 <= 4 && (n < 12 || n > 14) ? 'гола' : 'голов';
+};
+
+/** A short first line for the orange bar: the fact's first clause without the per-club breakdown. */
+function plateHeadline(title) {
+  let text = title.replace(/\s*\([^)]*\)/g, '');
+  text = text.split(/,\s(?=[А-ЯЁ])/)[0];
+  return text.replace(/ последних/g, '').replace(/ — в (\d+ из \d+)/, ' — $1').trim();
+}
+
+/** What the plate says by default for a card: whose bet it is (club, player or the match), the bet, the price. */
+function plateDefaults(m, c) {
+  const label = c.market.label || '';
+  const player = c.details?.player_id != null ? m.players.find((p) => p.pl_id === c.details.player_id) : null;
+  let side = player ? player.team : ['home', 'away'].includes(c.market.scope) ? c.market.scope : null;
+  if (!side) {
+    const home = mentions(label, m.home), away = mentions(label, m.away);
+    side = home && !away ? 'home' : away && !home ? 'away' : 'match';
+  }
+  let team, bet = label;
+  const playerBet = player && label.match(/^(.*?)\s(забь[её]т.*)$/);
+  if (playerBet) {
+    team = playerBet[1];
+    bet = playerBet[2] === 'забьёт' || playerBet[2] === 'забьет' ? 'забьёт гол' : playerBet[2];
+  } else if (side === 'match') {
+    team = `${m.home.name_ru} – ${m.away.name_ru}`;
+  } else {
+    const club = side === 'home' ? m.home : m.away;
+    team = club.name_ru;
+    for (const name of [club.name_full, club.name_ru].filter(Boolean)) bet = bet.split(name).join(' ');
+    bet = bet.replace(/\s*:\s*/g, ': ').replace(/^[\s:—–-]+|[\s:—–-]+$/g, '').replace(/\s{2,}/g, ' ').trim();
+    if (/^или ничья$/i.test(bet)) bet = 'не проиграет';
+    else if (/^победа$/i.test(bet)) bet = 'победа в матче';
+    const handicap = bet.match(/^фора ([+−-]?\d+(?:[.,]\d+)?)$/i);
+    if (handicap) bet = `фора ${handicap[1].replace('−', '-')} ${goalsWord(handicap[1])}`;
+    if (!bet) bet = label;
+  }
+  return { headline: plateHeadline(c.title), team, bet, odds: c.market.odds, crest: side };
+}
+
+function plateOf(item) {
+  if (!item.plate) {
+    const found = findCard(item.id);
+    item.plate = found ? plateDefaults(found.m, found.c) : { headline: item.title, team: item.match, bet: item.label, odds: item.odds, crest: 'none' };
+    if (found) item.sides = { home: found.m.home.id, away: found.m.away.id, homeName: found.m.home.name_ru, awayName: found.m.away.name_ru };
+  }
+  return item.plate;
+}
+
+function plateData(item) {
+  const p = plateOf(item);
+  const sides = item.sides || {};
+  const crests = { home: [sides.home], away: [sides.away], match: [sides.home, sides.away] }[p.crest] || [];
+  return { headline: p.headline, team: p.team, bet: p.bet, odds: parseFloat(String(p.odds).replace(',', '.')) || null, crests: crests.filter((id) => id != null),
+    crestWhole: p.crestSize === 'whole' };
+}
+
+function plateEditor(item) {
+  const p = plateOf(item);
+  const sides = item.sides || {};
+  const crestOptions = [['home', sides.homeName || 'хозяева'], ['away', sides.awayName || 'гости'], ['match', 'обе команды'], ['none', 'без эмблемы']]
+    .map(([value, label]) => `<option value="${value}" ${p.crest === value ? 'selected' : ''}>${esc(label)}</option>`).join('');
+  return `<div class="plate-editor">
+    <canvas id="plate-preview" class="plate-preview" width="920" height="240" aria-label="Плашка Winline" data-action="plate-zoom" title="Открыть крупно, в кадре 1920×1080"></canvas>
+    <div class="plate-status faint" id="plate-status">Загружаю шрифты…</div>
+    <label class="pf"><span>Верхняя строка</span><textarea rows="2" data-input="plate-headline">${esc(p.headline)}</textarea></label>
+    <label class="pf"><span>Команда или игрок</span><input data-input="plate-team" value="${esc(p.team)}"></label>
+    <label class="pf"><span>Ставка</span><input data-input="plate-bet" value="${esc(p.bet)}"></label>
+    <div class="pf-row"><label class="pf"><span>Кэф</span><input data-input="plate-odds" inputmode="decimal" value="${esc(p.odds)}"></label>
+      <label class="pf"><span>Эмблема</span><select data-input="plate-crest">${crestOptions}</select></label></div>
+    <label class="pf"><span>Размер эмблемы</span><select data-input="plate-crest-size"><option value="big" ${p.crestSize !== 'whole' ? 'selected' : ''}>Крупно, как в макете (края срезаны)</option>
+      <option value="whole" ${p.crestSize === 'whole' ? 'selected' : ''}>Целиком внутри плашки</option></select></label>
+    <div class="plate-actions"><button class="btn primary" data-action="plate-png" data-mode="full" title="Кадр 1920×1080 с прозрачным фоном — как присланный шаблон">PNG 1920×1080</button>
+      <button class="btn" data-action="plate-png" data-mode="crop" title="Только плашка, 920×240">PNG плашка</button>
+      <button class="btn ghost" data-action="plate-copy">Копировать</button>
+      <button class="btn ghost" data-action="plate-reset" title="Вернуть тексты из карточки">Сбросить</button></div>
+  </div>`;
+}
+
+let previewToken = 0;
+let previewTimer = null;
+async function drawPreview(item) {
+  const token = ++previewToken;
+  try {
+    const full = await renderPlate(document.createElement('canvas'), plateData(item));
+    const target = $('#plate-preview');
+    if (token !== previewToken || !target) return;
+    cropPlate(full, target);
+    const status = $('#plate-status');
+    if (status) status.textContent = '';
+  } catch (error) {
+    const status = $('#plate-status');
+    if (status) status.textContent = `Плашка недоступна: ${error.message}`;
+  }
+}
+
+function schedulePreview(item) {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => drawPreview(item), 120);
+}
+
+const plateName = (item, mode) => `АПЛ ${item.match} ${oddsText(plateData(item).odds || 0)}${mode === 'crop' ? ' плашка' : ''}.png`.replace(/[\\/:*?"<>|]/g, '');
+
+async function plateBlob(item, mode) {
+  const full = await renderPlate(document.createElement('canvas'), plateData(item));
+  return toBlob(mode === 'crop' ? cropPlate(full) : full);
+}
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
 function renderDock() {
   const q = state.queue;
+  state.plateIndex = Math.min(Math.max(0, state.plateIndex || 0), Math.max(0, q.length - 1));
+  const item = q[state.plateIndex];
   $('#dock').innerHTML = `<h2>Эфир <span class="pill">${q.length}</span></h2>
-    ${q.length ? plate(q[0]) : '<div class="empty">Выберите карточки кнопкой «В эфир»</div>'}
-    <p class="plate-note">Макет. Плашки Winline подставим, когда будут готовы.</p>
-    ${q.map((item, index) => `<div class="qitem">${item.tier ? `<span class="tier-dot" data-tier="${item.tier}">${esc(tierLabel(item.tier))}</span>` : ''}<b>${esc(item.title)}</b><div class="row"><span>${esc(item.match)}</span><span class="odds num">${odds(item.odds)}</span></div>
-      <div class="row"><span>${esc(item.label)}</span><span style="margin-left:auto"></span>
+    ${item ? plateEditor(item) : '<div class="empty">Выберите карточки кнопкой «В эфир» — здесь появится плашка Winline</div>'}
+    ${q.map((entry, index) => `<div class="qitem" data-selected="${index === state.plateIndex}">${entry.tier ? `<span class="tier-dot" data-tier="${entry.tier}">${esc(tierLabel(entry.tier))}</span>` : ''}
+      <button class="linkish qtitle" data-action="plate-select" data-index="${index}">${esc(entry.title)}</button><div class="row"><span>${esc(entry.match)}</span><span class="odds num">${odds(entry.odds)}</span></div>
+      <div class="row"><span>${esc(entry.label)}</span><span style="margin-left:auto"></span>
         <button class="btn small ghost" data-action="move" data-index="${index}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Выше">↑</button>
         <button class="btn small ghost" data-action="move" data-index="${index}" data-dir="1" ${index === q.length - 1 ? 'disabled' : ''} aria-label="Ниже">↓</button>
         <button class="btn small ghost" data-action="unqueue" data-index="${index}">Убрать</button></div></div>`).join('')}
-    ${q.length ? '<div class="toolbar"><button class="btn" data-action="copy-queue">Копировать всё</button><button class="btn ghost" data-action="clear-queue">Очистить</button></div>' : ''}`;
+    ${q.length ? '<div class="toolbar"><button class="btn" data-action="copy-queue">Копировать тексты</button><button class="btn ghost" data-action="clear-queue">Очистить</button></div>' : ''}`;
+  if (item) {
+    saveQueue();
+    drawPreview(item);
+  }
 }
 
 // ---------- render & routing ----------
@@ -664,6 +791,7 @@ function toggleQueue(id) {
   else {
     const { m, c } = found;
     state.queue.push({ id, match: pairName(m), title: c.title, label: c.market.label, odds: c.market.odds, tier: c.tier, text: cardText(m, c) });
+    state.plateIndex = state.queue.length - 1;  // the plate editor opens on the card just added
   }
   saveQueue();
 }
@@ -725,11 +853,45 @@ function onClick(event) {
   else if (action === 'details') { const id = target.dataset.card; state.open.has(id) ? state.open.delete(id) : state.open.add(id); refreshContent(); }
   else if (action === 'queue') { toggleQueue(target.dataset.card); refreshContent(); }
   else if (action === 'copy-card') { const found = findCard(target.dataset.card); if (found) copyText(cardText(found.m, found.c)); }
-  else if (action === 'unqueue') { state.queue.splice(Number(target.dataset.index), 1); saveQueue(); refreshContent(); }
+  else if (action === 'unqueue') {
+    const i = Number(target.dataset.index);
+    state.queue.splice(i, 1);
+    if (i < state.plateIndex) state.plateIndex -= 1;
+    saveQueue(); refreshContent();
+  }
   else if (action === 'move') {
     const i = Number(target.dataset.index), j = i + Number(target.dataset.dir);
-    [state.queue[i], state.queue[j]] = [state.queue[j], state.queue[i]]; saveQueue(); renderDock();
+    [state.queue[i], state.queue[j]] = [state.queue[j], state.queue[i]];
+    if (state.plateIndex === i) state.plateIndex = j; else if (state.plateIndex === j) state.plateIndex = i;
+    saveQueue(); renderDock();
   }
+  else if (action === 'plate-select') { state.plateIndex = Number(target.dataset.index); renderDock(); }
+  else if (action === 'plate-png') {
+    const item = state.queue[state.plateIndex];
+    if (item) plateBlob(item, target.dataset.mode).then((blob) => saveBlob(blob, plateName(item, target.dataset.mode))).catch((error) => toast(`Не получилось: ${error.message}`));
+  }
+  else if (action === 'plate-copy') {
+    const item = state.queue[state.plateIndex];
+    if (!item) return;
+    try {  // a promised blob keeps the click's permission to write to the clipboard
+      navigator.clipboard.write([new ClipboardItem({ 'image/png': plateBlob(item, 'full') })]).then(() => toast('Картинка скопирована'), () => toast('Браузер не дал скопировать — скачайте PNG'));
+    } catch { toast('Браузер не умеет копировать картинки — скачайте PNG'); }
+  }
+  else if (action === 'plate-zoom') {
+    const item = state.queue[state.plateIndex];
+    if (!item) return;
+    renderPlate(document.createElement('canvas'), plateData(item)).then((full) => {
+      const layer = document.createElement('div');
+      layer.className = 'plate-zoom';
+      layer.dataset.action = 'plate-zoom-close';
+      layer.innerHTML = '<div class="plate-frame"></div><p>Кадр 1920×1080 · клик — закрыть</p>';
+      full.className = 'plate-full';
+      layer.querySelector('.plate-frame').append(full);
+      document.body.append(layer);
+    });
+  }
+  else if (action === 'plate-zoom-close') target.remove();
+  else if (action === 'plate-reset') { const item = state.queue[state.plateIndex]; if (item) { delete item.plate; saveQueue(); renderDock(); } }
   else if (action === 'clear-queue') { state.queue = []; saveQueue(); refreshContent(); }
   else if (action === 'copy-queue') copyText(state.queue.map((q) => q.text).join('\n'));
   else if (action === 'reload') load(true);
@@ -739,6 +901,12 @@ function onInput(event) {
   const target = event.target;
   const kind = target.dataset?.input;
   if (!kind) return;
+  if (kind.startsWith('plate-')) {
+    const item = state.queue[state.plateIndex];
+    const field = { 'plate-headline': 'headline', 'plate-team': 'team', 'plate-bet': 'bet', 'plate-odds': 'odds', 'plate-crest': 'crest', 'plate-crest-size': 'crestSize' }[kind];
+    if (item && field) { plateOf(item)[field] = target.value; saveQueue(); schedulePreview(item); }
+    return;
+  }
   const feed = (key, val) => { state.feed[key] = val; state.feedLimit = FEED_PAGE; saveUi(); renderFeedList(); };
   const players = (key, val) => { state.players[key] = val; saveUi(); renderPlayersTable(); };
   if (kind === 'feed-query') feed('query', target.value);

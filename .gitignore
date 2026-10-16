@@ -11,3 +11,6 @@ __pycache__/
 
 # Node dependencies (wrangler, jsdom for UI tests)
 node_modules/
+
+# Winline EPL plate assets: licensed fonts, partner artwork, club crests (tools/epl_plate_assets.py) — deployed, never committed
+epl-site/assets/
