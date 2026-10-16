@@ -1,8 +1,7 @@
-// Live Center v31: the portrait of a player on his page — a hexagon of the main groups of the game NHL 27 (the game's ratings are the
-// main layer, on by default), and beside them two layers to press: «Сезон» and «5 сезонов», the real numbers under the same axes
-// (the share of the players of his position he is better than). Under the hexagon a table: every axis, every layer, the numbers.
-// A goalie: the hexagon of the game's goalie groups, his season numbers in the table. A player the game does not publish (EA shows
-// the 300 best): the season layer is the main one.
+// Live Center v31: the portrait of a player on his page — one hexagon at a time: NHL 27 (the game's main groups, the main layer),
+// «Сезон» or «5 сезонов» (his real numbers on their own axes). A chip switches the layer; nothing is drawn over anything else. The
+// game needs no words; under the season layers every axis says its number, his place among the regulars and the share of them.
+// A goalie: the game's goalie hexagon, his own pentagon for the seasons. A player the game does not publish opens on his season.
 // This function is serialized (playerProfileApp.toString()) and served as /telegram-app/v31-player.js: it must be self-contained.
 export function playerProfileApp() {
   const H = window.HOHV15;
@@ -11,14 +10,14 @@ export function playerProfileApp() {
   const API = "/api/telegram-center-v31/players/";
   const cache = new Map(); // "<id>:<season>" -> profile | null
   const busy = new Set();
+  const picked = new Map(); // "<id>:<season>" -> the layer the viewer chose on that card
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const LAYERS = [
     { k: "ea", name: "NHL 27" },
     { k: "season", name: "Сезон" },
     { k: "five", name: "5 сезонов" },
   ];
-  // what the viewer pressed (the same for every player he opens); at first the game alone
-  V31.on = { ea: true, season: false, five: false };
+  function word(n, one, few, many) { const a = Math.abs(Math.trunc(Number(n) || 0)) % 100, b = a % 10; return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many; }
 
   function css() {
     if (document.getElementById("v31css")) return;
@@ -36,26 +35,22 @@ html:not(.v15Light) .v31Layers button{border-color:#34374a}
 .v31Layers button i{width:12px;height:12px;border-radius:3px;background:var(--c);opacity:.3}
 .v31Layers button[aria-pressed="true"]{border-color:var(--c)}
 .v31Layers button[aria-pressed="true"] i{opacity:1}
-.v31Layers button small{font-size:11px;font-weight:700;color:#7d7a92}
-.v31Layers button:disabled{cursor:default;opacity:.55}
 .v31Layers button:focus-visible{outline:2px solid var(--five);outline-offset:2px}
 .v31Radar{display:block;width:100%;max-width:380px;height:auto;justify-self:center}
 .v31Radar .ring{fill:none;stroke:#d9d1ee;stroke-width:1}
 html:not(.v15Light) .v31Radar .ring{stroke:#34374a}
 .v31Radar .spoke{stroke:#e6e0f4;stroke-width:1}
 html:not(.v15Light) .v31Radar .spoke{stroke:#2a2d3c}
-.v31Radar .area{fill-opacity:.14;stroke-width:2.4;stroke-linejoin:round}
+.v31Radar .area{fill-opacity:.16;stroke-width:2.4;stroke-linejoin:round}
 .v31Radar .lab{font:800 12px Inter,Arial,sans-serif;fill:#1d1b2b}
 html:not(.v15Light) .v31Radar .lab{fill:#eeeaf8}
 .v31Radar .pct{font:900 12px Inter,Arial,sans-serif}
-.v31Tbl{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-.v31Tbl th,.v31Tbl td{padding:7px 5px;border-top:1px solid #ece7f6;text-align:left;vertical-align:top}
-html:not(.v15Light) .v31Tbl th,html:not(.v15Light) .v31Tbl td{border-top-color:#2a2d3c}
-.v31Tbl thead th{border-top:0;font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:#7d7a92;font-weight:900}
-.v31Tbl tbody th{font-weight:800}
-.v31Tbl td b{display:block;font-size:18px;font-weight:900;line-height:1.1}
-.v31Tbl td small{display:block;margin-top:2px;color:#7d7a92;font-size:11.5px;font-weight:600;line-height:1.3}
-.v31Note{font-size:12px;color:#7d7a92;font-weight:600;line-height:1.4}
+.v31Rows{display:grid}
+.v31Row{display:grid;grid-template-columns:1fr auto;gap:1px 10px;align-items:baseline;padding:8px 2px;border-top:1px solid #ece7f6}
+html:not(.v15Light) .v31Row{border-top-color:#2a2d3c}
+.v31Row b{font-size:14px;font-weight:900}
+.v31Row .v31Pct{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums}
+.v31Row small{grid-column:1 / -1;color:#7d7a92;font-size:12px;font-weight:600;line-height:1.35}
 .v31Trends{display:grid;gap:8px}
 .v31Trend{display:grid!important;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:12px 14px!important;border:0!important;border-radius:16px!important;background:linear-gradient(120deg,#6d28d9,#a855f7)!important;color:#fff!important;box-shadow:0 8px 20px -12px rgba(109,40,217,.7)}
 .v31Trend:nth-child(2){background:linear-gradient(120deg,#ea580c,#f59e0b)!important;box-shadow:0 8px 20px -12px rgba(234,88,12,.7)}
@@ -107,66 +102,43 @@ html:not(.v15Light) .v31Tbl th,html:not(.v15Light) .v31Tbl td{border-top-color:#
         + (layers.length ? `<text class="pct" x="${x.toFixed(1)}" y="${(y0 + 10 + 13 * lines.length + 1).toFixed(1)}" text-anchor="${anchor}">${vals}</text>` : "");
     }).join("");
     const said = labels.map((a, i) => `${a.label} ${layers.map((L) => (L.values[i] == null ? "—" : L.values[i])).join(" / ") || "—"}`).join(", ");
-    return `<svg class="v31Radar" viewBox="-44 0 408 290" role="img" aria-label="${esc(`Портрет игрока: ${said}`)}">${rings}${spokes}${shapes}${texts}</svg>`;
+    return `<svg class="v31Radar" viewBox="-44 0 408 302" role="img" aria-label="${esc(`Портрет игрока: ${said}`)}">${rings}${spokes}${shapes}${texts}</svg>`;
   }
 
-  // which layers this player has, and which of them are shown
-  function shown(p) {
-    const have = { ea: !!(p && p.ea), season: !!(p && p.season), five: !!(p && p.five) };
-    const on = {};
-    for (const L of LAYERS) on[L.k] = have[L.k] && !!V31.on[L.k];
-    // one layer is always on: the game, else the season, else the five seasons (a player outside the game opens on his season)
-    if (!LAYERS.some((L) => on[L.k])) { const first = LAYERS.find((L) => have[L.k]); if (first) on[first.k] = true; }
-    return { have, on };
+  // the layers this player has, and the one shown: the viewer's choice on this card, else the game, else the season
+  function layersOf(p) {
+    return LAYERS.filter((L) => p && p[L.k]);
+  }
+  function shownLayer(p, key) {
+    const have = layersOf(p);
+    const chosen = picked.get(key);
+    return have.some((L) => L.k === chosen) ? chosen : have.length ? have[0].k : null;
   }
 
-  function chips(p, have, on) {
-    const why = { season: `с ${p.min_games || 5} матчей · сыграно ${p.season_games || 0}`, five: `от ${p.min_five_games || 82} матчей · сыграно ${p.five_games || 0}`, ea: "нет в игре" };
-    return `<div class="v31Layers" role="group" aria-label="Слои портрета">${LAYERS.map((L) => {
-      const label = L.k === "ea" && have.ea ? esc(p.ea.game || L.name) : esc(L.name); // the overall rating is in the head of the card
-      return `<button type="button" data-v31-layer="${L.k}" aria-pressed="${on[L.k]}"${have[L.k] ? "" : " disabled"} style="--c:var(--${L.k})"><i></i>${label}${have[L.k] ? "" : ` <small>${esc(why[L.k])}</small>`}</button>`;
-    }).join("")}</div>`;
+  // one axis of a season layer: «Атака 63% / 0,33 гола за матч · 152-е место из 280 нападающих»
+  function rowsHtml(p, layer) {
+    const rows = layer.axes.map((a) => {
+      const place = a.place ? ` · ${esc(a.place)}-е место из ${esc(layer.of)} ${esc(p.peers_word)}` : "";
+      return `<div class="v31Row"><b>${esc(a.label)}</b><span class="v31Pct">${a.pct == null ? "—" : `${esc(a.pct)}%`}</span>${a.text || place ? `<small>${esc(a.text)}${place}</small>` : ""}</div>`;
+    }).join("");
+    return `<div class="v31Rows">${rows}</div>`;
   }
 
-  function table(rows, cols) {
-    if (!cols.length) return "";
-    const head = `<thead><tr><th scope="col">Ось</th>${cols.map((c) => `<th scope="col" style="color:var(--${c.k})">${esc(c.name)}</th>`).join("")}</tr></thead>`;
-    const body = rows.map((r, i) => `<tr><th scope="row">${esc(r.label)}</th>${cols.map((c) => {
-      const x = c.cells[i] || {};
-      return `<td><b style="color:var(--${c.k})">${x.v == null ? "—" : esc(x.v)}</b>${x.t ? `<small>${esc(x.t)}</small>` : ""}</td>`;
-    }).join("")}</tr>`).join("");
-    return `<table class="v31Tbl">${head}<tbody>${body}</tbody></table>`;
-  }
-
-  function cardHtml(p) {
-    if (!p || !(p.ea || p.season || p.five)) return "";
-    const { have, on } = shown(p);
-    const goalie = p.pos_group === "G";
-    const statCols = ["season", "five"].filter((k) => on[k]).map((k) => ({
-      k, name: LAYERS.find((L) => L.k === k).name,
-      cells: p[k].axes.map((a) => ({ v: a.pct, t: a.text })),
-    }));
-    const statRows = (p.season || p.five || {}).axes || [];
-    const eaCol = on.ea ? { k: "ea", name: p.ea.game || "NHL 27", cells: p.ea.axes.map((a) => ({ v: a.value, t: "" })) } : null;
-    let radar, tables;
-    if (goalie && have.ea && on.ea) {
-      // the game's goalie groups are not his numbers: the hexagon of the game, his season below it
-      radar = radarSvg(p.ea.axes, [{ k: "ea", values: p.ea.axes.map((a) => a.value) }]);
-      tables = table(p.ea.axes, [eaCol]) + (statCols.length ? table(statRows, statCols) : "");
+  function cardHtml(p, key) {
+    const have = layersOf(p);
+    if (!have.length) return "";
+    const k = shownLayer(p, key);
+    const chips = `<div class="v31Layers" role="group" aria-label="Портрет игрока">${have.map((L) => `<button type="button" data-v31-layer="${L.k}" aria-pressed="${L.k === k}" style="--c:var(--${L.k})"><i></i>${esc(L.k === "ea" ? p.ea.game || L.name : L.name)}</button>`).join("")}</div>`;
+    let head, body;
+    if (k === "ea") {
+      head = p.ea.overall ? `общий рейтинг ${esc(p.ea.overall)}` : "";
+      body = radarSvg(p.ea.axes, [{ k: "ea", values: p.ea.axes.map((a) => a.value) }]);
     } else {
-      const labels = goalie && statRows.length ? statRows : (p.ea || p.season || p.five).axes;
-      const layers = [];
-      if (eaCol) layers.push({ k: "ea", values: p.ea.axes.map((a) => a.value) });
-      for (const c of statCols) layers.push({ k: c.k, values: c.cells.map((x) => x.v) });
-      radar = radarSvg(labels, layers);
-      tables = table(labels, [eaCol, ...statCols].filter(Boolean));
+      const layer = p[k];
+      head = `${esc(layer.games)} ${word(layer.games, "матч", "матча", "матчей")}`;
+      body = radarSvg(layer.axes, [{ k, values: layer.axes.map((a) => a.pct) }]) + rowsHtml(p, layer);
     }
-    const notes = [];
-    if (on.ea) notes.push(`${p.ea.game || "NHL 27"} — средняя оценка игры EA SPORTS по группе навыков, из 99${p.ea.overall ? `; общий рейтинг ${p.ea.overall}` : ""}.`);
-    if (on.season || on.five) notes.push(`Сезон и 5 сезонов — лучше скольких ${p.peers_word}, в процентах (в сезоне — от ${p.min_games || 5} матчей, за 5 сезонов — от ${p.min_five_games || 82}).`);
-    if (!have.ea) notes.push("Рейтинга NHL 27 у игрока нет: EA показывает только 300 лучших игроков лиги.");
-    const head = have.ea ? `${esc(p.ea.game || "NHL 27")}${p.ea.overall ? ` · общий ${esc(p.ea.overall)}` : ""}` : `лучше скольких ${esc(p.peers_word)}, %`;
-    return `<section class="v31Portrait" data-v31-portrait="1"><div class="v31PHead"><b>Портрет игрока</b><small>${head}</small></div>${chips(p, have, on)}${radar}${tables}${notes.map((t) => `<div class="v31Note">${esc(t)}</div>`).join("")}</section>`;
+    return `<section class="v31Portrait" data-v31-portrait="1" data-v31-shown="${k}"><div class="v31PHead"><b>Портрет игрока</b><small>${head}</small></div>${chips}${body}</section>`;
   }
 
   async function load(id, season) {
@@ -195,7 +167,7 @@ html:not(.v15Light) .v31Tbl th,html:not(.v15Light) .v31Tbl td{border-top-color:#
     const have = page.querySelector("[data-v31-portrait]");
     if (have && have.dataset.key === key) return;
     if (!cache.has(key)) { load(id, season); return; }
-    const html = cardHtml(cache.get(key));
+    const html = cardHtml(cache.get(key), key);
     if (have) have.remove();
     if (!html) return;
     const box = document.createElement("div");
@@ -206,22 +178,18 @@ html:not(.v15Light) .v31Tbl th,html:not(.v15Light) .v31Tbl td{border-top-color:#
     if (anchor) anchor.after(card);
   }
 
-  // a layer pressed: the same card drawn again in its place
+  // a chip pressed: that layer alone, the same card drawn again in its place
   function press(btn) {
     const card = btn.closest("[data-v31-portrait]");
     const k = btn.dataset.v31Layer;
-    if (!card || btn.disabled || !LAYERS.some((L) => L.k === k)) return;
-    const p = cache.get(card.dataset.key);
-    const { have, on } = shown(p);
-    if (on[k] && LAYERS.filter((L) => on[L.k]).length === 1) return; // the last layer stays
-    // what this player shows is what the viewer sees; a layer he lacks (the game) keeps the earlier choice
-    for (const L of LAYERS) if (have[L.k]) V31.on[L.k] = on[L.k];
-    V31.on[k] = !on[k];
+    if (!card || !LAYERS.some((L) => L.k === k) || card.dataset.v31Shown === k) return;
+    const key = card.dataset.key;
+    picked.set(key, k);
     const box = document.createElement("div");
-    box.innerHTML = cardHtml(p);
+    box.innerHTML = cardHtml(cache.get(key), key);
     const next = box.firstElementChild;
     if (!next) return;
-    next.dataset.key = card.dataset.key;
+    next.dataset.key = key;
     card.replaceWith(next);
     const again = next.querySelector(`[data-v31-layer="${k}"]`);
     if (again) again.focus();

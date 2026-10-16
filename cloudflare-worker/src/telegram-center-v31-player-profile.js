@@ -1,23 +1,24 @@
-// Live Center v31: the portrait of a player — the hexagon on his page. Since 2026-10-17 (the owner: «Нужны те характеристики из
-// NHL 27, которые считаются основными. И под них уже подстраиваем реальные цифры сезона. Пусть рейтинг игры будет основным, а сезон
-// и 5 сезонов рядом можно будет нажать») it has three layers on the same six axes:
-//   • NHL 27 — the main groups of characteristics of the game EA SPORTS NHL (skating, offense, puck skills, defense, physicality,
-//     general; a goalie: high, low, positioning, rebounds, breakaways, skating), each the average of the game's ratings (up to 99).
-//     EA publishes the ~300 best rated players; they are kept in player_game_ratings (migration 0057). EA's site did not give
-//     them to the Worker (2026-10-17), so GitHub Actions reads them twice a week (tools/import_game_ratings.mjs, the same
-//     storeGameRatings below); the Worker's own weekly try stays as the second way;
-//   • Сезон — the real numbers of the season under the same axes: the share of the players of his position he is better than,
-//     among those with 5+ games (he gets this layer from his 5th game);
-//   • 5 сезонов — the same over the last five regular seasons together, among those with 82+ games.
-// Skating comes from NHL EDGE (top speed, bursts over 20 mph), loaded daily into nhl_edge_features. The NHL stats reports are read
-// every 6 hours into player_season_profiles (the season under its id, the five seasons under "last5"), so the page reads three rows.
+// Live Center v31: the portrait of a player — the hexagon on his page, one layer at a time (the owner, 2026-10-17: «никакой
+// корреляции между цифрами игры NHL 27 и статистикой сезона нет… если ты нажимаешь сезон, то пропадает NHL 27 и появляются цифры
+// этого сезона… чтобы не было такого, что у каждого 99–100%… если ты опережаешь 95% лиги, то ты прям исключительный игрок»):
+//   • NHL 27 (the main one) — the main groups of characteristics of the game EA SPORTS NHL (skating, offense, puck skills, defense,
+//     physicality, general; a goalie: high, low, positioning, rebounds, breakaways, skating), each the average of the game's ratings.
+//     EA publishes the ~300 best rated players; they are kept in player_game_ratings (migration 0057). EA's site did not give them
+//     to the Worker, so GitHub Actions reads them twice a week (tools/import_game_ratings.mjs, the same storeGameRatings below);
+//     the Worker's own weekly try stays as the second way;
+//   • Сезон / 5 сезонов — his real numbers on their own axes (attack, shots, passing, ice time, defence, hits; a goalie: saves,
+//     goals against, wins, starts, shutouts): his place among the REGULAR players of his position and the share of them he is
+//     ahead of. Regular = 5+ games in the season (82+ in five seasons) and, for a skater, 13+ minutes a game (a defenceman 17+):
+//     the fourth lines and the call-ups would make every regular look exceptional.
+// The NHL stats reports are read every 6 hours into player_season_profiles (the season under its id, the five seasons under
+// "last5"), so the page reads three rows.
 import { playerProfileApp } from "./telegram-center-v31-player-profile-ui.js";
 
 export const SCRIPT_PATH = "/telegram-app/v31-player.js";
 const API = /^\/api\/telegram-center-v31\/players\/(\d{1,9})\/profile$/;
 const NHL_STATS = "https://api.nhle.com/stats/rest/en";
-const META_KEY = "player_profiles_v31b"; // b: the axes of the game (a new key, so the first run rebuilds every portrait)
-const TRY_KEY = "player_profiles_v31b_try";
+const META_KEY = "player_profiles_v31c"; // c: own axes again, among the regulars (a new key: the first run rebuilds every portrait)
+const TRY_KEY = "player_profiles_v31c_try";
 const FRESH_MS = 6 * 3600 * 1000;
 const RETRY_MS = 30 * 60 * 1000; // the NHL stats down: the next try in half an hour, not every 5 minutes
 export const MIN_GAMES = 5;
@@ -28,7 +29,6 @@ const EA_META = "player_game_ratings_v1";
 const EA_TRY = "player_game_ratings_v1_try";
 const EA_FRESH_MS = 7 * 86400 * 1000;
 const EA_RETRY_MS = 12 * 3600 * 1000;
-const MPH_KMH = 1.609344;
 
 // the main groups of the game, as its player pages show them (ea.com/games/nhl/ratings/player-ratings/…)
 export const EA_SKATER_GROUPS = {
@@ -53,40 +53,45 @@ export const EA_GOALIE_AXES = [
   { key: "rebounds", label: "Добивания" }, { key: "breakaway", label: "Выходы один на один" }, { key: "skating", label: "Катание" },
 ];
 
-// the axes of a skater, in the order of the hexagon (clockwise from the top): the groups of the game, and under each the real numbers
-// that show the same thing on the ice (each part is a percentile among his position; the axis is their average)
+// the game's own groups, in the order of its hexagon (clockwise from the top)
+export const EA_SKATER_AXES = [
+  { key: "skating", label: "Катание" }, { key: "offense", label: "Атака" }, { key: "puck", label: "Владение шайбой" },
+  { key: "defense", label: "Оборона" }, { key: "physical", label: "Физика" }, { key: "general", label: "Общие" },
+];
+
+// the season and the five seasons of a skater: his numbers, in the order of the hexagon (clockwise from the top)
 export const SKATER_AXES = [
-  { key: "skating", label: "Катание", parts: [(r) => r.speedMax, (r) => (r.bursts == null ? null : r.bursts / r.gp)],
-    text: (r) => (r.speedMax == null ? "скорость ещё не измерена" : `до ${kmh(r.speedMax)} км/ч${r.bursts == null ? "" : ` · ${fixed(r.bursts / r.gp, 1)} ${word(r.bursts / r.gp, "рывок", "рывка", "рывков")} быстрее 32 км/ч за матч`}`) },
-  { key: "offense", label: "Атака", parts: [(r) => r.goals / r.gp, (r) => r.shots / r.gp],
-    text: (r) => `${fixed(r.goals / r.gp, 2)} ${word(r.goals / r.gp, "гол", "гола", "голов")} и ${fixed(r.shots / r.gp, 1)} ${word(r.shots / r.gp, "бросок", "броска", "бросков")} за матч` },
-  { key: "puck", label: "Владение шайбой", parts: [(r) => r.assists / r.gp],
+  { key: "attack", label: "Атака", value: (r) => r.goals / r.gp,
+    text: (r) => `${fixed(r.goals / r.gp, 2)} ${word(r.goals / r.gp, "гол", "гола", "голов")} за матч` },
+  { key: "shots", label: "Бросок", value: (r) => r.shots / r.gp,
+    text: (r) => `${fixed(r.shots / r.gp, 1)} ${word(r.shots / r.gp, "бросок", "броска", "бросков")} за матч` },
+  { key: "passing", label: "Пас", value: (r) => r.assists / r.gp,
     text: (r) => `${fixed(r.assists / r.gp, 2)} ${word(r.assists / r.gp, "передача", "передачи", "передач")} за матч` },
-  { key: "defense", label: "Оборона", parts: [(r) => (r.takeaways + r.blocks) / r.gp],
-    text: (r) => `${fixed((r.takeaways + r.blocks) / r.gp, 1)} ${word((r.takeaways + r.blocks) / r.gp, "отбор или блок", "отбора или блока", "отборов и блоков")} за матч` },
-  { key: "physical", label: "Физика", parts: [(r) => r.hits / r.gp],
-    text: (r) => `${fixed(r.hits / r.gp, 1)} ${word(r.hits / r.gp, "силовой приём", "силовых приёма", "силовых приёмов", "силового приёма")} за матч` },
-  { key: "general", label: "Общие", parts: [(r) => r.toi],
+  { key: "toi", label: "Игровое время", value: (r) => r.toi,
     text: (r) => `${clock(r.toi)} на льду за матч` },
+  { key: "defense", label: "Оборона", value: (r) => (r.takeaways + r.blocks) / r.gp,
+    text: (r) => `${fixed((r.takeaways + r.blocks) / r.gp, 1)} ${word((r.takeaways + r.blocks) / r.gp, "отбор или блок", "отбора или блока", "отборов и блоков")} за матч` },
+  { key: "physical", label: "Сила", value: (r) => r.hits / r.gp,
+    text: (r) => `${fixed(r.hits / r.gp, 1)} ${word(r.hits / r.gp, "силовой приём", "силовых приёма", "силовых приёмов", "силового приёма")} за матч` },
 ];
-// a goalie's season and five seasons: his own numbers, shown under the hexagon of the game
+// a goalie's season and five seasons: a pentagon of his own numbers
 export const GOALIE_AXES = [
-  { key: "save", label: "Отражения", parts: [(r) => r.savePct], text: (r) => `${(r.savePct * 100).toFixed(1).replace(".", ",")}% отражённых бросков` },
-  { key: "gaa", label: "Надёжность", parts: [(r) => -r.gaa], text: (r) => `пропускает ${fixed(r.gaa, 2)} ${word(r.gaa, "гол", "гола", "голов")} за матч` },
-  { key: "wins", label: "Победы", parts: [(r) => r.wins / r.gp], text: (r) => `${r.wins} ${word(r.wins, "победа", "победы", "побед")} в ${r.gp} ${word(r.gp, "матче", "матчах", "матчах")}` },
-  { key: "load", label: "Нагрузка", parts: [(r) => r.starts], text: (r) => `${r.starts} ${word(r.starts, "старт", "старта", "стартов")}` },
-  { key: "shutouts", label: "Сухие", parts: [(r) => r.shutouts / r.gp], text: (r) => `${r.shutouts} ${word(r.shutouts, "сухой матч", "сухих матча", "сухих матчей")}` },
+  { key: "save", label: "Отражения", value: (r) => r.savePct, text: (r) => `${(r.savePct * 100).toFixed(1).replace(".", ",")}% отражённых бросков` },
+  { key: "gaa", label: "Надёжность", value: (r) => -r.gaa, text: (r) => `пропускает ${fixed(r.gaa, 2)} ${word(r.gaa, "гол", "гола", "голов")} за матч` },
+  { key: "wins", label: "Победы", value: (r) => r.wins / r.gp, text: (r) => `${r.wins} ${word(r.wins, "победа", "победы", "побед")} в ${r.gp} ${word(r.gp, "матче", "матчах", "матчах")}` },
+  { key: "load", label: "Нагрузка", value: (r) => r.starts, text: (r) => `${r.starts} ${word(r.starts, "старт", "старта", "стартов")}` },
+  { key: "shutouts", label: "Сухие", value: (r) => r.shutouts / r.gp, text: (r) => `${r.shutouts} ${word(r.shutouts, "сухой матч", "сухих матча", "сухих матчей")}` },
 ];
+// the yardstick: the regular players of his position (about three quarters of those who play)
+export const REGULAR_TOI = { F: 13 * 60, D: 17 * 60 };
 const PEERS = { F: "нападающих", D: "защитников", G: "вратарей" };
 
 // 1,14 → "1,14"; 0,50 → "0,5"; 0 → "0"
 function fixed(v, d) { return Number(v || 0).toFixed(d).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "").replace(".", ","); }
 function clock(sec) { const s = Math.round(Number(sec) || 0); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
-const kmh = (mph) => (Number(mph) * MPH_KMH).toFixed(1).replace(".", ",");
 // a fraction takes the genitive singular: "1,14 гола", "0,43 передачи", "0,4 силового приёма" (frac: when it differs from «2 …»)
 function word(n, one, few, many, frac = few) { const v = Math.round((Number(n) || 0) * 100) / 100; if (!Number.isInteger(v)) return frac; const a = Math.abs(Math.trunc(v)) % 100, b = a % 10; return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many; }
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-const orNull = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 export const groupOf = (pos) => { const p = String(pos || "").toUpperCase(); return p === "D" ? "D" : p === "G" ? "G" : "F"; };
 // the game writes CEN, LW, RW, LD, RD, G
 export const gamePositionGroup = (pos) => { const p = String(pos || "").toUpperCase(); return p === "G" ? "G" : p === "LD" || p === "RD" || p === "D" ? "D" : "F"; };
@@ -99,19 +104,16 @@ export function percentile(value, others) {
   return Math.round((100 * (below + equal / 2)) / others.length);
 }
 
-// the reports of the NHL stats API (+ EDGE skating) → one portrait layer per player
-export function computeProfiles({ summary = [], realtime = [], toi = [], goalies = [], edge = new Map() }, { minGames = MIN_GAMES } = {}) {
+// the reports of the NHL stats API → one portrait layer per player: on every axis the share of the regulars he is ahead of and his
+// place among them (a player outside the regulars is placed among them as one more: «7-е место из 281»)
+export function computeProfiles({ summary = [], realtime = [], goalies = [] }, { minGames = MIN_GAMES } = {}) {
   const rt = new Map(realtime.map((r) => [Number(r.playerId), r]));
-  const ti = new Map(toi.map((r) => [Number(r.playerId), r]));
   const skaters = summary.map((s) => {
     const id = Number(s.playerId);
     const r = rt.get(id) || {};
-    const t = ti.get(id) || {};
-    const e = edge.get(id) || {};
     return {
       id, group: groupOf(s.positionCode), gp: num(s.gamesPlayed), goals: num(s.goals), assists: num(s.assists), shots: num(s.shots),
-      toi: num(s.timeOnIcePerGame || t.timeOnIcePerGame), hits: num(r.hits), blocks: num(r.blockedShots), takeaways: num(r.takeaways),
-      speedMax: orNull(e.speedMax), bursts: orNull(e.bursts),
+      toi: num(s.timeOnIcePerGame), hits: num(r.hits), blocks: num(r.blockedShots), takeaways: num(r.takeaways),
     };
   }).filter((x) => x.id && x.gp > 0);
   const keepers = goalies.map((g) => ({
@@ -119,17 +121,19 @@ export function computeProfiles({ summary = [], realtime = [], toi = [], goalies
     savePct: num(g.savePct), gaa: num(g.goalsAgainstAverage),
   })).filter((x) => x.id && x.gp > 0);
   const out = [];
-  const valueOf = (part, x) => { const v = part(x); return v === null || v === undefined || !Number.isFinite(v) ? null : v; };
   const build = (list, axes, group) => {
-    const peers = list.filter((x) => x.group === group && x.gp >= minGames);
-    const columns = axes.map((a) => a.parts.map((part) => peers.map((x) => valueOf(part, x)).filter((v) => v !== null)));
-    for (const x of list.filter((p) => p.group === group)) {
-      const ax = {};
+    const regular = (x) => x.gp >= minGames && (group === "G" || x.toi >= REGULAR_TOI[group]);
+    const players = list.filter((x) => x.group === group);
+    const peers = players.filter(regular);
+    const columns = axes.map((a) => peers.map((x) => a.value(x)));
+    for (const x of players) {
+      const pct = {}, ranks = {};
       axes.forEach((a, i) => {
-        const pcts = a.parts.map((part, j) => { const v = valueOf(part, x); return v === null ? null : percentile(v, columns[i][j]); }).filter((v) => v !== null);
-        ax[a.key] = pcts.length ? Math.round(pcts.reduce((s, v) => s + v, 0) / pcts.length) : null;
+        const v = a.value(x);
+        pct[a.key] = percentile(v, columns[i]);
+        ranks[a.key] = peers.length ? 1 + columns[i].filter((o) => o > v).length : null;
       });
-      out.push({ player_id: x.id, pos_group: group, games: x.gp, axes: ax, peers: peers.length, raw: x });
+      out.push({ player_id: x.id, pos_group: group, games: x.gp, axes: pct, ranks, of: peers.length + (regular(x) ? 0 : 1), peers: peers.length, raw: x });
     }
   };
   build(skaters, SKATER_AXES, "F");
@@ -138,12 +142,12 @@ export function computeProfiles({ summary = [], realtime = [], toi = [], goalies
   return out;
 }
 
-// a stored layer → what the page shows: every axis with its percentile and the real numbers behind it
+// a stored layer → what the page shows: every axis with his share, his place and the real numbers behind them
 export function layerOf(stored, axes) {
   const raw = { ...stored.raw, gp: stored.games || stored.raw.gp };
   return axes.map((a) => {
     const pct = stored.axes[a.key] ?? null;
-    return { key: a.key, label: a.label, pct, text: pct === null && a.key !== "skating" ? "" : a.text(raw) };
+    return { key: a.key, label: a.label, pct, place: pct === null ? null : stored.ranks?.[a.key] ?? null, text: pct === null ? "" : a.text(raw) };
   });
 }
 
@@ -160,7 +164,7 @@ export function gameLayer(row) {
   if (!row) return null;
   let groups;
   try { groups = JSON.parse(row.groups_json) || {}; } catch { return null; }
-  const axes = gamePositionGroup(row.position) === "G" ? EA_GOALIE_AXES : SKATER_AXES;
+  const axes = gamePositionGroup(row.position) === "G" ? EA_GOALIE_AXES : EA_SKATER_AXES;
   return { game: String(row.game || "NHL"), overall: Number(row.overall) || null, axes: axes.map((a) => ({ key: a.key, label: a.label, value: groups[a.key] ?? null })) };
 }
 
@@ -177,21 +181,6 @@ export function currentSeason(now = Date.now()) {
 }
 // "20262027" → the five seasons up to it, the newest first
 export const lastSeasons = (season, n = 5) => { const y = Number(String(season).slice(0, 4)); return Array.from({ length: n }, (_, i) => `${y - i}${y - i + 1}`); };
-
-// NHL EDGE skating (nhl_edge_features): the season's own row; the five seasons take his best top speed
-export async function loadEdge(db, seasons) {
-  const rows = (await db.prepare(`SELECT season_id,entity_id,skating_speed_max_mph AS speed,bursts_over_20 AS bursts FROM nhl_edge_features
-    WHERE entity_type='skater' AND game_type=2 AND season_id IN (${seasons.map(() => "?").join(",")});`).bind(...seasons).all().catch(() => ({ results: [] }))).results || [];
-  const season = new Map(), five = new Map();
-  for (const r of rows) {
-    const id = Number(r.entity_id), speed = orNull(r.speed);
-    if (String(r.season_id) === seasons[0]) season.set(id, { speedMax: speed, bursts: orNull(r.bursts) });
-    const best = five.get(id) || { speedMax: null, bursts: null };
-    if (speed !== null && (best.speedMax === null || speed > best.speedMax)) best.speedMax = speed;
-    five.set(id, best);
-  }
-  return { season, five };
-}
 
 const setMeta = (db, key, value) => db.prepare(`INSERT INTO data_core_meta(meta_key,meta_value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)
   ON CONFLICT(meta_key) DO UPDATE SET meta_value=excluded.meta_value,updated_at=CURRENT_TIMESTAMP;`).bind(key, value).run();
@@ -211,21 +200,19 @@ export async function runPlayerProfileMaintenance(env, { now = Date.now(), force
   const seasons = lastSeasons(season);
   const one = `seasonId=${season} and gameTypeId=2`;
   const all = `seasonId>=${seasons[4]} and seasonId<=${season} and gameTypeId=2`;
-  const [summary, realtime, toi, goalies, summary5, realtime5, goalies5] = await Promise.all([
+  const [summary, realtime, goalies, summary5, realtime5, goalies5] = await Promise.all([
     report(fetcher, "skater/summary", one, "points"),
     report(fetcher, "skater/realtime", one, "hits"),
-    report(fetcher, "skater/timeonice", one, "timeOnIce"),
     report(fetcher, "goalie/summary", one, "wins"),
     report(fetcher, "skater/summary", all, "points", true),
     report(fetcher, "skater/realtime", all, "hits", true),
     report(fetcher, "goalie/summary", all, "wins", true),
   ]);
   if (summary.length < 100) return { ok: false, error: "nhl_stats_incomplete", skaters: summary.length };
-  const edge = await loadEdge(db, seasons);
   const layers = [
-    [season, computeProfiles({ summary, realtime, toi, goalies, edge: edge.season })],
+    [season, computeProfiles({ summary, realtime, goalies })],
     // the five seasons: only a full answer (a short one would make the strong look weak)
-    [FIVE_KEY, summary5.length >= 100 ? computeProfiles({ summary: summary5, realtime: realtime5, goalies: goalies5, edge: edge.five }, { minGames: MIN_FIVE_GAMES }) : []],
+    [FIVE_KEY, summary5.length >= 100 ? computeProfiles({ summary: summary5, realtime: realtime5, goalies: goalies5 }, { minGames: MIN_FIVE_GAMES }) : []],
   ];
   for (const [key, profiles] of layers) {
     for (let i = 0; i < profiles.length; i += 60) {
@@ -234,7 +221,7 @@ export async function runPlayerProfileMaintenance(env, { now = Date.now(), force
         VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
         ON CONFLICT(season_id,player_id) DO UPDATE SET pos_group=excluded.pos_group,games=excluded.games,axes_json=excluded.axes_json,
           values_json=excluded.values_json,peers=excluded.peers,updated_at=CURRENT_TIMESTAMP;
-      `).bind(key, p.player_id, p.pos_group, p.games, JSON.stringify(p.axes), JSON.stringify({ raw: p.raw }), p.peers)));
+      `).bind(key, p.player_id, p.pos_group, p.games, JSON.stringify(p.axes), JSON.stringify({ raw: p.raw, ranks: p.ranks, of: p.of }), p.peers)));
     }
   }
   await setMeta(db, META_KEY, JSON.stringify({ season, players: layers[0][1].length, five: layers[1][1].length }));
@@ -361,14 +348,22 @@ export async function handleTelegramCenterV31(request, env, path, { now = Date.n
   const stored = (key) => {
     const row = (rows.results || []).find((r) => String(r.season_id) === key);
     if (!row) return null;
-    try { return { pos_group: row.pos_group, games: Number(row.games) || 0, peers: Number(row.peers) || 0, axes: JSON.parse(row.axes_json), raw: JSON.parse(row.values_json).raw || {} }; } catch { return undefined; }
+    try {
+      const values = JSON.parse(row.values_json);
+      return { pos_group: row.pos_group, games: Number(row.games) || 0, peers: Number(row.peers) || 0, of: Number(values.of) || Number(row.peers) || 0, axes: JSON.parse(row.axes_json), ranks: values.ranks || {}, raw: values.raw || {} };
+    } catch { return undefined; }
   };
   const one = stored(season), five = current ? stored(FIVE_KEY) : null;
   if (one === undefined || five === undefined) return json({ ok: false, error: "profile_broken" }, 500);
   const ea = gameLayer(rating);
   const pos = (one || five || {}).pos_group || gamePositionGroup(rating && rating.position);
   const axes = pos === "G" ? GOALIE_AXES : SKATER_AXES;
-  const layer = (x, min) => (x && x.games >= min ? { games: x.games, peers: x.peers, axes: layerOf(x, axes) } : null);
+  // a layer from his first regular game count, and only if its numbers are of today's axes (an old row has none of them)
+  const layer = (x, min) => {
+    if (!x || x.games < min) return null;
+    const list = layerOf(x, axes);
+    return list.some((a) => a.pct !== null) ? { games: x.games, peers: x.peers, of: x.of, axes: list } : null;
+  };
   const seasonLayer = layer(one, MIN_GAMES), fiveLayer = layer(five, MIN_FIVE_GAMES);
   // nothing to draw yet (a few games, not in the game): no portrait rather than an empty one
   if (!ea && !seasonLayer && !fiveLayer) return json({ ok: true, season, player_id: id, profile: null }, 200, "public, max-age=300");

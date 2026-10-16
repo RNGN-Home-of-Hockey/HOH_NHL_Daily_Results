@@ -7,9 +7,6 @@ on:
         description: "Seasons, comma separated (empty = the current season)"
         required: false
         default: ""
-  # every day the current season: the player portrait compares skating speed (top speed, bursts) with this season's league
-  schedule:
-    - cron: "40 9 * * *"
   push:
     branches: [main]
     paths:

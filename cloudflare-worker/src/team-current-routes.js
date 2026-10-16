@@ -203,7 +203,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       "/telegram-app/v28-backdrop.js?build=28.0",
       "/telegram-app/v29-predict.js?build=29.0",
       "/telegram-app/v30-nav.js?build=30.0",
-      "/telegram-app/v31-player.js?build=31.1",
+      "/telegram-app/v31-player.js?build=31.2",
       "/telegram-app/v32-live.js?build=32.0",
       "/telegram-app/v33-fan.js?build=33.0",
       "/telegram-app/v34-recap.js?build=34.0",
