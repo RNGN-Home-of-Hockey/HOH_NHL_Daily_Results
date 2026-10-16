@@ -586,11 +586,15 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
 
   const chips = [...sec(ctx, "strip").querySelectorAll(".v27Chip")];
   assert.equal(chips.length, 3);
-  assert.match(text(sec(ctx, "strip").querySelector(".v27Head b")), /^Итоги · /, "the night is over: results, not schedule");
+  assert.equal(sec(ctx, "strip").querySelector(".v27Head"), null, "no line «Итоги · …» above the strip: the day switch says it (owner, 2026-10-16)");
+  assert.match(sec(ctx, "strip").querySelector(".v27Strip").getAttribute("aria-label"), /^Итоги · /, "the night is over: results, not schedule");
   assert.equal(text(chips[0]), "Финал3 : 5FLA · BUF");
   assert.equal(text(chips[1]), "Финал · ОТ4 : 1OTT · NJD");
   assert.ok(chips[0].querySelectorAll("img").length === 2, "both logos");
-  assert.equal(sec(ctx, "strip").querySelectorAll("[data-v27-all]").length, 2, "'Все матчи' in the header and at the end of the strip");
+  assert.equal(sec(ctx, "strip").querySelectorAll("[data-v27-all]").length, 1, "'Все матчи' once, at the end of the strip");
+  // «Финал · ОТ» is not under the VK badge: a card with VK starts its top line at the left edge
+  assert.ok(chips.every((c) => c.classList.contains("vk") === Boolean(c.parentElement.querySelector(".v27Vk"))));
+  assert.match(css, /\.v27Chip\.vk \.v27ChipTop\{justify-self:start;margin-left:3px;max-width:calc\(100% - 34px\)\}/);
 
   assert.equal(sec(ctx, "russians").style.order, "2", "the Russians come right under the strip");
   assert.equal(sec(ctx, "goals").style.order, "3", "results: the goals come before the match of the day");
@@ -677,7 +681,7 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.ok(chips[1].classList.contains("up"));
   assert.equal(text(chips[1].querySelector(".v27ChipMid")), "—");
   assert.equal(text(chips[1].querySelector(".v27ChipTop")), new Date(data.games[1].start).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
-  assert.match(text(sec(ctx, "strip").querySelector(".v27Head b")), /^(Сегодня|\d+ [а-я]+) · 3 матча$/);
+  assert.match(sec(ctx, "strip").querySelector(".v27Strip").getAttribute("aria-label"), /^(Сегодня|\d+ [а-я]+) · 3 матча$/);
   assert.match(text(sec(ctx, "goals").querySelector(".v27Head")), /Голы в эфире/);
   const hero = sec(ctx, "hero");
   assert.ok(hero.querySelector(".v27HeroMid .v27LiveBadge"), "no cover: the red LIVE sits in the middle, above the score");
@@ -734,7 +738,7 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.equal(ctx.opened.length, 0, "a link on the card does not open the match screen");
   let broadcasts = 0;
   ctx.document.querySelector('.tab[data-tab="broadcasts"]').addEventListener("click", () => { broadcasts += 1; });
-  sec(ctx, "strip").querySelector(".v27Head [data-v27-all]").click();
+  sec(ctx, "strip").querySelector(".v27ChipMore[data-v27-all]").click();
   assert.equal(broadcasts, 1, "'Все матчи' opens the Matches tab");
   ctx.window.close();
 }
@@ -984,6 +988,12 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   const rec = (w, l, otl) => ({ gp: w + l + otl, w, l, otl, pts: 2 * w + otl });
   const upcoming = makeHome({ data: homeData({ featured: featured({ away_record: rec(3, 2, 1), home_record: rec(5, 0, 0) }) }) });
   await tick(420);
+  // with a cover an upcoming match does not repeat the teams and the time under it; a live one keeps its score
+  const withCover = makeHome({ data: homeData({ featured: featured({ cover_url: "https://clips.test/covers/9.jpg" }) }) });
+  await tick(420);
+  assert.ok(sec(withCover, "hero").querySelector(".v27HeroCover") && !sec(withCover, "hero").querySelector(".v27HeroTeams"), "the cover says it");
+  assert.ok(sec(withCover, "hero").querySelector(".v29Slot"), "the vote stays");
+  withCover.window.close();
   const names = [...sec(upcoming, "hero").querySelectorAll(".v27HeroTeams > div")].map(text);
   assert.match(names[0], /Сиэтл Кракен\(3–2–1\)/);
   assert.match(names[2], /Филадельфия Флайерз\(5–0–0\)/);
@@ -1163,8 +1173,8 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   const block = sec(ctx, "russians");
   assert.ok(!block.hidden);
   assert.equal(block.style.order, "2", "between the strip and the goals");
-  assert.equal(text(block.querySelector(".v27Head b")), "Русские: как сыграли");
-  assert.match(text(block.querySelector(".v27Head")), /голы \+ передачи/);
+  assert.equal(block.querySelector(".v27Head"), null, "no title above the Russians (owner, 2026-10-16)");
+  assert.equal(block.querySelector(".v27Rus").getAttribute("aria-label"), "Русские: как сыграли · голы + передачи");
   const chips = [...block.querySelectorAll(".v27Ru")];
   assert.equal(chips.length, 3);
   assert.match(text(chips[0]), /Капризов/);
@@ -1184,7 +1194,7 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   const hidden = [...sec(ctx, "russians").querySelectorAll(".v27Ru")].map(text);
   assert.ok(!hidden.some((t) => /2\+1|27 из 29/.test(t)), "no spoilers: no stats");
   assert.ok(hidden[0].includes("•"));
-  assert.ok(!/голы \+ передачи/.test(text(sec(ctx, "russians").querySelector(".v27Head"))));
+  assert.ok(!/голы \+ передачи/.test(sec(ctx, "russians").querySelector(".v27Rus").getAttribute("aria-label")));
   ctx.window.close();
 
   // titles by mood
@@ -1192,7 +1202,7 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   for (const [mode, day] of [["live", localDay()], ["schedule", localDay()], ["schedule", "2026-01-05"]]) {
     const c = makeHome({ data: homeData({ mode, russians: { ok: true, day, items: homeData().russians.items } }) });
     await tick(420);
-    titles[`${mode}:${day === localDay() ? "today" : "other"}`] = text(sec(c, "russians").querySelector(".v27Head b"));
+    titles[`${mode}:${day === localDay() ? "today" : "other"}`] = sec(c, "russians").querySelector(".v27Rus").getAttribute("aria-label").replace(" · голы + передачи", "");
     c.window.close();
   }
   assert.deepEqual(titles, { "live:today": "Русские в игре", "schedule:today": "Русские сегодня", "schedule:other": "Русские · 5 янв" });
@@ -1287,7 +1297,7 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   const hint = sec(nobody, "strip").querySelector(".v27Hint");
   assert.ok(hint, "an invitation to choose teams");
   assert.ok(!sec(nobody, "strip").querySelector(".v27Seg"), "no switch without games of mine");
-  assert.ok(sec(nobody, "strip").querySelector(".v27Head > [data-v27-all]"));
+  assert.equal(sec(nobody, "strip").querySelector(".v27Head"), null, "and no line above the strip at all");
   let teamsTab = 0;
   nobody.document.querySelector('.tab[data-tab="teams"]').addEventListener("click", () => { teamsTab += 1; });
   hint.querySelector("[data-v27-follow]").click();

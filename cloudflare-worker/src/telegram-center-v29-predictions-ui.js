@@ -53,8 +53,9 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 .v29Btn{position:relative;overflow:hidden;display:flex;align-items:center;gap:5px;min-width:0;min-height:44px;padding:6px 8px;border-radius:12px;border:1.5px solid var(--v29-line);background:var(--v29-btn);color:inherit;font:inherit;cursor:pointer;text-align:left}
 .v29Btn>*{position:relative;z-index:1}
 .v29Btn img{width:22px;height:22px;object-fit:contain;flex:0 0 auto}
-.v29Btn .v29Nm{display:grid;min-width:0;line-height:1.15}
-.v29Btn .v29T{display:flex;align-items:center;gap:3px;white-space:nowrap}
+.v29Btn{justify-content:center;text-align:center}
+.v29Btn .v29Nm{display:grid;min-width:0;line-height:1.15;justify-items:center}
+.v29Btn .v29T{display:flex;align-items:center;justify-content:center;gap:3px;white-space:nowrap}
 .v29Btn b{font-size:14px;font-weight:800}
 .v29Btn .v29Tick{font-style:normal;font-weight:900;font-size:13px;color:var(--v29-pick)}
 .v29Btn .v29Pc{font-size:11px;font-weight:700;color:var(--v29-muted)}

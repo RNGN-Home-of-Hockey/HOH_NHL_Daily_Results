@@ -355,6 +355,7 @@ html.v15Light .v27Composer button{background:#efe6fa;color:#3b1d6e}
 .v27Star{font-style:normal;font-size:11px;line-height:1;color:var(--c-accent)}
 .v27ChipBox{flex:0 0 112px;scroll-snap-align:start;position:relative;display:flex}
 .v27ChipBox .v27Chip{flex:1 1 auto;min-width:0}
+.v27Chip.vk .v27ChipTop{justify-self:start;margin-left:3px;max-width:calc(100% - 34px)}
 .v27Vk{position:absolute;right:6px;top:6px;display:inline-flex;align-items:center;height:16px;padding:0 6px;border-radius:6px;background:#2787f5;color:#fff!important;font-size:10px;font-weight:800;letter-spacing:.3px;text-decoration:none}
 .v27Why{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:700;color:var(--c-accent)}
 .v27Seg{display:inline-flex;border:1px solid var(--c-line);border-radius:999px;overflow:hidden;background:var(--c-card)}
@@ -417,7 +418,7 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     const vkUrl = webUrl(g.vk_url);
     const vk = vkUrl ? `<a class="v27Vk" href="${esc(vkUrl)}" target="_blank" rel="noopener" aria-label="${live ? "Смотреть в VK" : done ? "Запись в VK" : "Трансляция в VK"}">VK</a>` : "";
     const reason = why ? `<span class="v27Why"><i class="v27Star" aria-hidden="true">★</i> ${esc(why)}</span>` : "";
-    return `<div class="v27ChipBox"><button type="button" class="v27Chip ${live ? "live" : done ? "done" : "up"}${why ? " mine" : ""}" data-v27-game="${esc(g.game_pk)}" aria-label="${esc(label)}${why ? ` (${esc(why)})` : ""}"><span class="v27ChipTop">${status}</span><span class="v27ChipMid"><img src="${esc(away.logo || "")}" alt="">${mid}<img src="${esc(homeTeam.logo || "")}" alt=""></span><span class="v27ChipTri">${esc(away.tri || "")} · ${esc(homeTeam.tri || "")}</span>${reason}</button>${vk}</div>`;
+    return `<div class="v27ChipBox"><button type="button" class="v27Chip ${live ? "live" : done ? "done" : "up"}${why ? " mine" : ""}${vk ? " vk" : ""}" data-v27-game="${esc(g.game_pk)}" aria-label="${esc(label)}${why ? ` (${esc(why)})` : ""}"><span class="v27ChipTop">${status}</span><span class="v27ChipMid"><img src="${esc(away.logo || "")}" alt="">${mid}<img src="${esc(homeTeam.logo || "")}" alt=""></span><span class="v27ChipTri">${esc(away.tri || "")} · ${esc(homeTeam.tri || "")}</span>${reason}</button>${vk}</div>`;
   }
 
   // ---- «Вчера · 16 матчей | Сегодня · 2 матча»: the two days of the strip and of the Russians ---------------------------------
@@ -454,20 +455,20 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     const hide = noSpoilers();
     const today = localToday();
     const day = d.otherDay ? relDay(d.strip_day, d.today || today).toLowerCase() : d.strip_day === today ? "сегодня" : shortDate(d.strip_day);
-    const caption = d.mode === "results" ? `Итоги · ${day}` : `${day.charAt(0).toUpperCase()}${day.slice(1)} · ${games.length} ${plural(games.length, "матч", "матча", "матчей")}`;
+    const caption = d.mode === "results" ? `Итоги · ${day}` : `${day.charAt(0).toUpperCase()}${day.slice(1)} · ${games.length} ${plural(games.length, "матч", "матча", "матчей")}`; // for screen readers
     // my games come right after the ones that are on; with "Мои" only they are alone
     let list = games.map((g) => ({ g, why: mineReason(g) }));
     const mineCount = list.filter((x) => x.why).length;
     const onlyMine = st.mineOnly && mineCount > 0;
     list.sort((a, b) => (a.g.phase === "live" ? 0 : 1) * 2 + (a.why ? 0 : 1) - ((b.g.phase === "live" ? 0 : 1) * 2 + (b.why ? 0 : 1)));
     if (onlyMine) list = list.filter((x) => x.why);
-    const right = mineCount > 0
-      ? `<span class="v27Seg"><button type="button" data-v27-seg="all"${onlyMine ? "" : ' class="on"'}>Все</button><button type="button" data-v27-seg="mine"${onlyMine ? ' class="on"' : ""}>★ Мои</button></span>`
-      : '<button type="button" data-v27-all="1">Все матчи ›</button>';
+    const head = mineCount > 0
+      ? `<div class="v27Head v27HeadSeg"><span class="v27Seg"><button type="button" data-v27-seg="all"${onlyMine ? "" : ' class="on"'}>Все</button><button type="button" data-v27-seg="mine"${onlyMine ? ' class="on"' : ""}>★ Мои</button></span></div>`
+      : "";
     const hint = mineOn() && st.follows && st.follows.ok && !followed() && !st.hintHidden
       ? '<div class="v27Hint"><button type="button" data-v27-follow="1">☆ Выберите любимые команды: их матчи будут первыми</button><button type="button" data-v27-hint-close="1" aria-label="Скрыть">×</button></div>'
       : "";
-    return `<div class="v27Head"><b>${esc(caption)}</b>${right}</div><div class="v27Strip">${list.map((x) => chipHtml(x.g, hide, x.why)).join("")}<button type="button" class="v27ChipMore" data-v27-all="1">Все матчи</button></div>${hint}`;
+    return `${head}<div class="v27Strip" aria-label="${esc(caption)}">${list.map((x) => chipHtml(x.g, hide, x.why)).join("")}<button type="button" class="v27ChipMore" data-v27-all="1">Все матчи</button></div>${hint}`;
   }
 
   function russiansTitle(d) {
@@ -497,7 +498,7 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     const items = r.items.map((p) => ({ p, mine: mineIds.has(p.player_id) }));
     items.sort((a, b) => Number(b.mine) - Number(a.mine));
     const hasStats = !hide && r.items.some((p) => p.line);
-    return `<div class="v27Head"><b>${esc(russiansTitle(d))}</b>${hasStats ? "<small>голы + передачи</small>" : ""}</div><div class="v27Rus v27Shelf">${items.map((x) => russianHtml(x.p, hide, x.mine)).join("")}</div>`;
+    return `<div class="v27Rus v27Shelf" aria-label="${esc(russiansTitle(d))}${hasStats ? " · голы + передачи" : ""}">${items.map((x) => russianHtml(x.p, hide, x.mine)).join("")}</div>`;
   }
 
   function oddHtml(label, value, gamePk) {
@@ -543,7 +544,8 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
         : `<div class="v27HeroMid">${lab}<strong>${esc(clock(g.scheduled_start_utc))}</strong><small>${esc(whenWord(g.scheduled_start_utc))}</small></div>`;
     const vkText = live ? "Смотреть матч в VK Видео" : done ? "Смотреть запись в VK Видео" : "Трансляция в VK Видео";
     const vk = esc(g.vk_url || "https://vkvideo.ru/@nhl_home_of_hockey/lives");
-    return `<article class="v27Hero" data-game="${esc(g.game_pk)}">${cover ? `<div class="v27HeroCover"><img src="${esc(cover)}" alt="${esc(`${awayName} — ${homeName}`)}">${live ? badge : ""}</div>` : ""}<div class="v27HeroBody"><div class="v27HeroTeams"><div><img src="${esc(away.logo || "")}" alt=""><span class="nm">${esc(awayName)}</span>${showRecords ? recordHtml(g.away_record) : ""}</div>${mid}<div><img src="${esc(homeTeam.logo || "")}" alt=""><span class="nm">${esc(homeName)}</span>${showRecords ? recordHtml(g.home_record) : ""}</div></div><div class="v29Slot" data-v29-game="${esc(g.game_pk)}">${predictSlot(g.game_pk)}</div>${winlineHtml(g)}<a class="v27Cta" href="${vk}" target="_blank" rel="noopener"><span>${vkText}</span><span>→</span></a></div></article>`;
+    const teamsRow = cover && !live && !done ? "" : `<div class="v27HeroTeams"><div><img src="${esc(away.logo || "")}" alt=""><span class="nm">${esc(awayName)}</span>${showRecords ? recordHtml(g.away_record) : ""}</div>${mid}<div><img src="${esc(homeTeam.logo || "")}" alt=""><span class="nm">${esc(homeName)}</span>${showRecords ? recordHtml(g.home_record) : ""}</div></div>`;
+    return `<article class="v27Hero" data-game="${esc(g.game_pk)}">${cover ? `<div class="v27HeroCover"><img src="${esc(cover)}" alt="${esc(`${awayName} — ${homeName}`)}">${live ? badge : ""}</div>` : ""}<div class="v27HeroBody">${teamsRow}<div class="v29Slot" data-v29-game="${esc(g.game_pk)}">${predictSlot(g.game_pk)}</div>${winlineHtml(g)}<a class="v27Cta" href="${vk}" target="_blank" rel="noopener"><span>${vkText}</span><span>→</span></a></div></article>`;
   }
 
   // "Кто победит?" of the game of the fans (v29) inside the match of the day; empty until that layer knows the game
