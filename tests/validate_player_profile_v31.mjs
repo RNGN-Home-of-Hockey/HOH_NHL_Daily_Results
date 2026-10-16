@@ -12,6 +12,7 @@ import {
   runPlayerProfileMaintenance, refreshGameRatings, handleTelegramCenterV31,
 } from "../cloudflare-worker/src/telegram-center-v31-player-profile.js";
 import { handleTeamCurrentRequest } from "../cloudflare-worker/src/team-current-routes.js";
+import { literal, inline, ratingsSql } from "../tools/import_game_ratings.mjs";
 import { handleTelegramCenterV23PlayerUi } from "../cloudflare-worker/src/telegram-center-v23-player-ui.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -333,6 +334,27 @@ const seasonAxes = (id) => JSON.parse(raw.prepare("SELECT axes_json FROM player_
   await assert.rejects(refreshGameRatings(env, { now: WEEK + 14 * 3600 * 1000, fetcher, force: true }), /ea_ratings_incomplete_9/, "a cut list of the game (9 of 300) does not replace the ratings");
   site.short = false;
   assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM player_game_ratings").get().n, 8);
+}
+
+// ---- 4b) the same rows written from GitHub Actions (EA's site did not give the ratings to the Worker) ----------------------------------------
+{
+  assert.equal(literal("Ryan O'Reilly"), "'Ryan O''Reilly'");
+  assert.deepEqual([literal(null), literal(undefined), literal(NaN), literal(97)], ["NULL", "NULL", "NULL", "97"]);
+  assert.equal(inline("VALUES(?,?)", [1, "a?b"]), "VALUES(1,'a?b')", "a ? inside a value is not a placeholder");
+  const extra = { player_id: 90, first_name_en: "Ryan", last_name_en: "O'Reilly", full_name_en: "Ryan O'Reilly", current_team_tri: "MIN", sweater_number: 90 };
+  const items = [...EA_ITEMS, ea(9010, "Ryan", "O'Reilly", "Minnesota Wild", 90, "CEN", 88, { passing: 90 })];
+  const { sql, result } = await ratingsSql({ game: "NHL 27", items }, [...playerRows, extra], TEAMS.map(([tri_code, name_en]) => ({ tri_code, name_en })), NOW);
+  assert.deepEqual(result, { ok: true, game: "NHL 27", players: 9, missed: 1 });
+  const other = new DatabaseSync(":memory:");
+  other.exec(createOf("0010_data_core_meta.sql", "data_core_meta"));
+  other.exec(createOf("0057_player_game_ratings.sql", "player_game_ratings"));
+  other.exec(sql);
+  assert.equal(other.prepare("SELECT ea_name FROM player_game_ratings WHERE player_id=90").get().ea_name, "Ryan O'Reilly", "a name with an apostrophe is written whole");
+  assert.deepEqual({ ...other.prepare("SELECT groups_json,overall,team_tri FROM player_game_ratings WHERE player_id=1").get() }, { groups_json: JSON.stringify(gameGroups(STAR, false)), overall: 97, team_tri: "MIN" }, "the same rows as the Worker writes");
+  assert.equal(JSON.parse(other.prepare("SELECT meta_value FROM data_core_meta WHERE meta_key='player_game_ratings_v1'").get().meta_value).players, 9, "and the mark that keeps the Worker from asking EA for a week");
+  const flow = fs.readFileSync(new URL("../.github/workflows/import-game-ratings.yml", import.meta.url), "utf8");
+  assert.match(flow, /run: node tools\/import_game_ratings\.mjs/);
+  assert.match(flow, /schedule:\s*\n\s*- cron: "20 6 \* \* 1,4"/, "twice a week: inside the Worker's 7 days of freshness");
 }
 
 // ---- 5) the API, the script and the card on the player page --------------------------------------------------------------------------------

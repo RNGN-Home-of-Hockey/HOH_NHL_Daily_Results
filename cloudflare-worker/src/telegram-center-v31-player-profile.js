@@ -3,7 +3,9 @@
 // и 5 сезонов рядом можно будет нажать») it has three layers on the same six axes:
 //   • NHL 27 — the main groups of characteristics of the game EA SPORTS NHL (skating, offense, puck skills, defense, physicality,
 //     general; a goalie: high, low, positioning, rebounds, breakaways, skating), each the average of the game's ratings (up to 99).
-//     EA publishes the ~300 best rated players; they are read once a week into player_game_ratings (migration 0057);
+//     EA publishes the ~300 best rated players; they are kept in player_game_ratings (migration 0057). EA's site did not give
+//     them to the Worker (2026-10-17), so GitHub Actions reads them twice a week (tools/import_game_ratings.mjs, the same
+//     storeGameRatings below); the Worker's own weekly try stays as the second way;
 //   • Сезон — the real numbers of the season under the same axes: the share of the players of his position he is better than,
 //     among those with 5+ games (he gets this layer from his 5th game);
 //   • 5 сезонов — the same over the last five regular seasons together, among those with 82+ games.

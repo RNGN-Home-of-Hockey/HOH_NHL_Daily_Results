@@ -1,0 +1,48 @@
+name: Import NHL 27 Game Ratings
+
+# The ratings of the game EA SPORTS NHL for the player portrait (the main layer of the hexagon). EA's site did not give them to the
+# Worker on Cloudflare, so they are read here twice a week and written to D1 (player_game_ratings); the Worker sees them fresh and
+# does not ask EA itself. Only counts go to the log: the repo is public.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 6 * * 1,4"
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-game-ratings.yml'
+      - 'tools/import_game_ratings.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: import-game-ratings
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.RNGN_CF_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: f7f0376bf1c44c4e3cef4a24adf1b66a
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 2; }
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Import the ratings of the game
+        run: node tools/import_game_ratings.mjs
