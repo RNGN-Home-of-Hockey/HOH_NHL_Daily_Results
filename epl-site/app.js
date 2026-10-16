@@ -1,12 +1,12 @@
-// HOH Football operator console v2 (light theme). Static page: reads data/site.json built by tools/epl_site_data.py.
-// Pages: Лента (every card of every match with filters), Матчи (one match in depth), Игроки (Winline player lines
-// against our numbers), Команды (club profiles). Nothing here talks to Winline or to the broadcast: the operator
-// picks cards for the "Эфир" queue. Plate designs (Winline) replace the placeholder preview later.
+// HOH Football operator console (light theme). Static page: reads data/site.json built by tools/epl_site_data.py.
+// Pages: Матчи (one match: its OBS / vMix link up top, its plates below), Лента (every plate of every match),
+// Игроки (Winline player lines against our numbers), Команды (club profiles). A plate card shows the final text
+// of the plate; a click opens the plate right there with «Дать в эфир» / «Снять с эфира» and «Редактировать».
 
 import { cropPlate, loadPlateAssets, oddsText, renderPlate, toBlob } from './plate.js';
 
 const DATA_URL = 'data/site.json';
-const QUEUE_KEY = 'hoh-epl-queue-v1';
+const PLATES_KEY = 'hoh-epl-plates-v1';  // the operator's own edits of plate texts, per card, on this device
 const UI_KEY = 'hoh-epl-ui-v2';
 const KEY_STORE = 'hoh-epl-operator-key';  // the operator key of the on-air buttons, kept on this device
 const AUTO_RELOAD_MS = 5 * 60 * 1000;
@@ -34,12 +34,6 @@ const FAMILY = {
 };
 const FAMILY_ORDER = Object.keys(FAMILY);
 const PERIOD_ORDER = { FT: 0, '1H': 1, '2H': 2 };
-const DETAIL_LABELS = {
-  results_newest_first: 'Результаты (новые слева)', totals_newest_first: 'Голов в матче (новые слева)', goals_newest_first: 'Голы команды (новые слева)',
-  values_vs_opponent_newest_first: 'Значения против этого соперника', mean_vs_opponent: 'В среднем против этого соперника',
-  mean_vs_others: 'В среднем против остальных', metric: 'Показатель', goals_by_gameweek: 'Голы по матчам (новые справа)',
-  xg_per_90: 'xG за 90 минут (с поправкой)', expected_minutes: 'Ожидаемые минуты', goals: 'Голы по встречам (новые слева)',
-};
 const STAT_ROWS = [
   ['goals_for', 'Голы забито'], ['goals_against', 'Голы пропущено'], ['xg_proxy', 'xG (модель, без пенальти)'], ['shots', 'Удары'], ['shots_on_target', 'В створ'],
   ['shots_inside_box', 'Удары из штрафной'], ['touches_in_opp_box', 'Касания в штрафной соперника'], ['possession_pct', 'Владение, %'],
@@ -59,14 +53,15 @@ const PERCENT_KEYS = new Set(['over_2_5', 'btts', 'clean_sheets', 'failed_to_sco
 const ASCENDING_FIRST = new Set(['anytime', 'first', 'last', 'kickoff', 'name', 'next', 'goals_against', 'xg_against', 'failed_to_score']);
 
 const defaults = () => ({
-  page: 'feed',
+  page: 'matches',  // owner: «ты заходишь, у тебя матч»
   feed: { tiers: ['fire', 'strong', 'solid'], category: 'all', basis: 'all', match: 'all', team: 'all', minOdds: '', maxOdds: '', query: '', sort: 'score' },
   players: { match: 'all', team: 'all', position: 'all', query: '', sort: 'score', dir: -1, withModel: false, withCard: false },
   teams: { sort: 'hot', dir: -1 },
 });
 const state = {
-  data: null, cards: [], playerRows: [], selected: null, tab: 'tips', tipTier: 'all', tipCategory: 'all', query: '', family: 'all', side: 'all',
-  feedLimit: FEED_PAGE, filtersOpen: false, plateIndex: 0, operatorKey: loadJson(KEY_STORE, ''), onair: {}, onairOk: true, open: new Set(), queue: loadJson(QUEUE_KEY, []), ...mergeUi(loadJson(UI_KEY, {})),
+  data: null, cards: [], playerRows: [], selected: null, tab: 'tips', tipCategory: 'all', query: '', family: 'all', side: 'all',
+  feedLimit: FEED_PAGE, filtersOpen: false, openCard: null, editing: false, plates: loadJson(PLATES_KEY, {}), liveKey: '',
+  operatorKey: loadJson(KEY_STORE, ''), onair: {}, onairOk: true, ...mergeUi(loadJson(UI_KEY, {})),
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -77,7 +72,6 @@ const line = (value) => String(value).replace('.', ',');
 const signed = (value) => (value == null ? '' : value > 0 ? `+${line(value)}` : value < 0 ? `−${line(Math.abs(value))}` : '0');
 const pct = (value) => (value == null ? '—' : `${Math.round(value * 100)}%`);
 const lineKey = (mk) => mk.line ?? (Number.isFinite(Number(mk.param)) ? Number(mk.param) : 0);
-const starsText = (n) => '★'.repeat(n) + '☆'.repeat(Math.max(0, 5 - n));
 const kickoff = (m) => `${shortDayFmt.format(new Date(m.starts_at))}, ${timeFmt.format(new Date(m.starts_at))}`;
 const fullName = (club) => club.name_full || club.name_ru;
 const pairName = (m) => `${fullName(m.home)} — ${fullName(m.away)}`;
@@ -101,11 +95,12 @@ function saveJson(key, value) {
 }
 function mergeUi(saved) {
   const base = defaults();
-  return { page: saved.page || base.page, feed: { ...base.feed, ...(saved.feed || {}) }, players: { ...base.players, ...(saved.players || {}) },
+  return { page: base.page, feed: { ...base.feed, ...(saved.feed || {}) }, players: { ...base.players, ...(saved.players || {}) },
     teams: { ...base.teams, ...(saved.teams || {}) } };
 }
 const saveUi = () => saveJson(UI_KEY, { page: state.page, feed: state.feed, players: state.players, teams: state.teams });
-const saveQueue = () => saveJson(QUEUE_KEY, state.queue);
+const savePlates = () => saveJson(PLATES_KEY, state.plates);
+const parseOdds = (value) => parseFloat(String(value ?? '').replace(',', '.')) || null;
 
 function mono(club) {
   const words = String(club.name_ru || club.name).split(/\s+/);
@@ -142,8 +137,7 @@ const freshHtml = (f) => `<i></i><span class="wide-only">Линии Winline:&nbs
 
 function renderHeader() {
   const f = freshness();
-  const stats = state.data?.generated_at ? timeFmt.format(new Date(state.data.generated_at)) : '—';
-  const nav = [['feed', 'Лента', state.cards.length], ['matches', 'Матчи', state.data?.matches.length], ['players', 'Игроки', state.playerRows.length],
+  const nav = [['matches', 'Матчи', state.data?.matches.length], ['feed', 'Лента', state.cards.length], ['players', 'Игроки', state.playerRows.length],
     ['teams', 'Команды', state.data?.teams.length]];
   $('#top').innerHTML = `
     <div class="brand"><span class="brand-mark">HOH</span><div>Футбол · АПЛ<small>пульт оператора</small></div></div>
@@ -151,8 +145,6 @@ function renderHeader() {
       `<button class="nav-btn" data-action="page" data-page="${id}" aria-current="${state.page === id}">${label}${count ? `<span class="count">${count}</span>` : ''}</button>`).join('')}</nav>
     <div class="status">
       <span class="pill ${f.cls}" id="fresh" title="${esc(f.text)}">${freshHtml(f)}</span>
-      <span class="pill wide-only"><i></i>Данные: ${stats} МСК</span>
-      <button class="btn phone-only" data-action="to-dock">Эфир · ${state.queue.length}</button>
       <button class="btn" data-action="reload">Обновить</button>
     </div>`;
 }
@@ -182,43 +174,45 @@ function renderStrip() {
   renderOnair();
 }
 
-// ---------- card (used by the feed and the match page) ----------
-function tierBadge(c) {
-  return `<div class="tierb" data-tier="${c.tier}" title="${esc(TIER_HINT[c.tier] || '')}. Оценка ${c.score} из 100 — редакционная ценность, не вероятность">
-    <b class="num">${c.score}</b><span>${esc(c.tier_label)}</span><i aria-hidden="true">${starsText(c.stars)}</i></div>`;
+// ---------- plate card (match page and feed): the final plate text; a click opens the plate right there ----------
+function tierTag(c) {
+  return `<span class="pc-tier" data-tier="${c.tier}" title="${esc(TIER_HINT[c.tier] || '')}. Оценка ${c.score} из 100 — редакционная ценность, не вероятность">${c.score} · ${esc(c.tier_label)}</span>`;
 }
 
-function detailValue(key, value) {
-  if (key === 'results_newest_first') return [...value].map(resultPill).join('');
-  if (Array.isArray(value)) return value.join(' · ');
-  return esc(typeof value === 'number' ? num(value, 2) : value);
-}
-
-function cardHtml(m, c, { showMatch = false } = {}) {
+function plateCard(m, c, { showMatch = false } = {}) {
   const id = cardId(m, c);
-  const queued = state.queue.some((q) => q.id === id);
-  const e = c.evidence;
-  const alts = (c.alternatives || []).map((a) => `<span>${esc(a.label)} · <b class="num">${odds(a.odds)}</b></span>`).join('');
-  const details = Object.entries(c.details || {}).filter(([k]) => DETAIL_LABELS[k]).map(([k, v]) => `<dt>${esc(DETAIL_LABELS[k])}</dt><dd>${detailValue(k, v)}</dd>`).join('');
-  return `<article class="tip" data-tier="${c.tier}">
-    ${tierBadge(c)}
-    <div class="tip-body">
-      ${showMatch ? `<div class="tip-match"><button class="linkish" data-action="open-match" data-id="${m.event_id}">${mono(m.home)}${esc(fullName(m.home))} — ${esc(fullName(m.away))}${mono(m.away)}</button><span class="faint">${esc(kickoff(m))} МСК</span></div>` : ''}
-      <div class="tip-meta"><span class="tag cat">${esc(c.category)}</span><span class="tag basis">${esc(c.basis)}</span>${(c.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</div>
-      <h3>${esc(c.title)}</h3>
-      ${c.support?.length ? `<div class="support"><b>Ещё в пользу этой ставки:</b> ${c.support.map(esc).join(' · ')}</div>` : ''}
-      <div class="evidence">История <b class="num">${e.hits} из ${e.sample}</b> (${pct(e.rate)}, осторожно ${pct(e.rate_conservative)}) · цена Winline подразумевает <b class="num">${pct(e.implied_by_price)}</b>${e.span ? ` · ${esc(e.span)}` : ''}</div>
-      <div class="tip-market"><span class="label">${esc(c.market.label)}</span>${moveBadge(c.market.odds, c.market.was)}<span class="odds num">${odds(c.market.odds)}</span>${alts ? `<div class="alts">Ещё линии: ${alts}</div>` : ''}</div>
-    </div>
-    <div class="tip-actions">
-      <button class="btn ${queued ? 'on' : 'primary'}" data-action="queue" data-card="${esc(id)}">${queued ? 'В эфире ✓' : 'В эфир'}</button>
-      <button class="btn" data-action="copy-card" data-card="${esc(id)}">Копировать</button>
-      <button class="btn ghost" data-action="details" data-card="${esc(id)}">${state.open.has(id) ? 'Скрыть' : 'Детали'}</button>
-    </div>
-    <div class="tip-details" ${state.open.has(id) ? '' : 'hidden'}><dl class="kv">${details}<dt>Окно данных</dt><dd>${esc(e.window)}</dd>
-      <dt>Почему такой уровень</dt><dd>${esc((c.reasons || []).join(' · '))}</dd>
-      <dt>Рынок Winline</dt><dd>№${c.market.market_id}${c.market.line != null ? ` · линия ${line(c.market.line)}` : ''}</dd></dl></div>
+  const p = plateOf(id);
+  const open = state.openCard === id;
+  return `<article class="pcard" data-tier="${c.tier}" data-card-id="${esc(id)}" data-open="${open}" data-live="${liveId(m.event_id) === id}">
+    <button class="pc-face" data-action="pick" data-card="${esc(id)}" aria-expanded="${open}">
+      <span class="pc-top">${tierTag(c)}<span class="pc-cat">${esc(c.category)}</span>${showMatch ? `<span class="pc-match">${esc(pairName(m))} · ${esc(kickoff(m))}</span>` : ''}
+        ${state.plates[id] ? '<span class="pc-edited">изменено</span>' : ''}<span class="pc-live">● В ЭФИРЕ</span></span>
+      <span class="pc-head">${esc(p.headline)}</span>
+      <span class="pc-bet"><span><b>${esc(p.team)}</b> · ${esc(p.bet)}</span><b class="pc-odds num">${odds(parseOdds(p.odds))}</b></span>
+    </button>
+    ${open ? platePanel(m, c, id) : ''}
   </article>`;
+}
+
+/** The opened card: the plate as it goes on air, «Дать в эфир» (or «Снять с эфира» when it is on air) and «Редактировать». */
+function platePanel(m, c, id) {
+  const e = c.evidence;
+  const live = liveId(m.event_id);
+  const aired = state.onair[String(m.event_id)]?.plate;
+  const data = plateData(id);
+  const changed = live === id && aired && (['headline', 'team', 'bet', 'odds', 'crestWhole'].some((k) => String(aired[k] ?? '') !== String(data[k] ?? ''))
+    || String(aired.crests || []) !== String(data.crests));  // edited after it went on air
+  const action = live === id
+    ? `${changed ? `<button class="btn primary big" data-action="onair-show" data-card="${esc(id)}">↻ Обновить в эфире</button>` : ''}<button class="btn danger big" data-action="onair-hide" data-room="${m.event_id}">■ Снять с эфира</button>`
+    : `<button class="btn primary big" data-action="onair-show" data-card="${esc(id)}">${live ? '▶ Заменить в эфире' : '▶ Дать в эфир'}</button>`;
+  return `<div class="pc-panel">
+    <canvas class="plate-preview" data-preview="${esc(id)}" width="920" height="240" data-action="plate-zoom" data-card="${esc(id)}" title="Открыть крупно, в кадре 1920×1080"></canvas>
+    ${keyForm()}
+    <div class="pc-actions">${action}<button class="btn big" data-action="edit" aria-pressed="${state.editing}">✎ Редактировать</button></div>
+    ${live && live !== id ? '<p class="plate-note">Сейчас в эфире этого матча другая плашка — она сменится на эту.</p>' : ''}
+    ${state.editing ? plateEditor(m, id) : ''}
+    <p class="pc-why">${esc(c.title)}. История ${e.hits} из ${e.sample}, цена Winline ${pct(e.implied_by_price)}.</p>
+  </div>`;
 }
 
 // ---------- page: Лента ----------
@@ -255,37 +249,29 @@ function renderFeedSide() {
   const tiers = TIER_ORDER.map((t) => `<button class="tier-chip" data-tier="${t}" data-action="feed-tier" data-value="${t}" aria-pressed="${f.tiers.includes(t)}" title="${esc(TIER_HINT[t])}">
       <span>${esc(tierLabel(t))}</span><b class="num">${count((x) => x.c.tier === t)}</b></button>`).join('');
   const cats = [['all', 'Все', all.length], ...(state.data?.categories || []).map((cat) => [cat, cat, count((x) => x.c.category === cat)])].filter(([, , n]) => n);
-  const bases = [['all', 'Все', null], ...(state.data?.bases || []).map((b) => [b, b, count((x) => x.c.basis === b)])].filter(([, , n]) => n !== 0);
-  const teamOptions = [...(state.data?.teams || [])].sort((a, b) => a.name_ru.localeCompare(b.name_ru, 'ru'))
-    .map((t) => `<option value="${t.id}" ${f.team === String(t.id) ? 'selected' : ''}>${esc(t.name_ru)}</option>`).join('');
-  const presets = [['', '', 'любой'], ['2', '', 'от 2,00'], ['3', '', 'от 3,00'], ['1.5', '2.5', '1,50–2,50']];
+  const team = f.team !== 'all' ? state.data?.teams.find((t) => String(t.id) === f.team) : null;
   $('#side').innerHTML = `
     <div class="side-head phone-only"><b>Фильтры</b><button class="btn primary" id="filters-done" data-action="toggle-filters">Показать</button></div>
+    ${team ? `<div class="fgroup"><button class="chip-btn" aria-pressed="true" data-action="feed-team-clear">Команда: ${esc(team.name_ru)} ✕</button></div>` : ''}
     <div class="fgroup"><h4>Крутизна</h4><div class="tier-chips">${tiers}</div></div>
-    <div class="fgroup"><h4>Рынок</h4><div class="chips">${chipRow('feed-category', f.category, cats)}</div></div>
-    <div class="fgroup"><h4>Основание</h4><div class="chips">${chipRow('feed-basis', f.basis, bases)}</div></div>
-    <div class="fgroup"><h4>Поиск</h4><input type="search" data-input="feed-query" placeholder="Игрок, рынок, слово" value="${esc(f.query)}" aria-label="Поиск по карточкам"></div>
-    <div class="fgroup"><h4>Команда</h4><select data-input="feed-team" aria-label="Команда"><option value="all">Все команды</option>${teamOptions}</select></div>
-    <div class="fgroup"><h4>Кэф Winline</h4><div class="range"><input type="text" inputmode="decimal" data-input="feed-min" placeholder="от" value="${esc(f.minOdds)}" aria-label="Кэф от">
-      <span>—</span><input type="text" inputmode="decimal" data-input="feed-max" placeholder="до" value="${esc(f.maxOdds)}" aria-label="Кэф до"></div>
-      <div class="chips">${presets.map(([lo, hi, label]) =>
-        `<button class="chip-btn" data-action="feed-odds" data-lo="${lo}" data-hi="${hi}" aria-pressed="${f.minOdds === lo && f.maxOdds === hi}">${label}</button>`).join('')}</div></div>
-    <div class="fgroup"><button class="btn ghost" data-action="feed-reset">Сбросить фильтры</button></div>`;
+    <div class="fgroup"><h4>Тема</h4><div class="chips">${chipRow('feed-category', f.category, cats)}</div></div>
+    <div class="fgroup"><h4>Поиск</h4><input type="search" data-input="feed-query" placeholder="Игрок, команда, слово" value="${esc(f.query)}" aria-label="Поиск по плашкам"></div>`;
 }
 
 function renderFeedList() {
   const shown = feedSorted(state.cards.filter(feedMatches));
-  const body = shown.slice(0, state.feedLimit).map(({ m, c }) => cardHtml(m, c, { showMatch: true })).join('');
+  const body = shown.slice(0, state.feedLimit).map(({ m, c }) => plateCard(m, c, { showMatch: true })).join('');
   const rest = shown.length - state.feedLimit;
   const more = rest > 0 ? `<button class="btn more" data-action="feed-more">Показать ещё ${Math.min(FEED_PAGE, rest)} (осталось ${rest})</button>` : '';
-  $('#feed-list').innerHTML = (body || '<div class="empty">Ничего не нашлось. Ослабьте фильтры: добавьте уровни «Рабочая» и «Фон» или расширьте диапазон кэфа.</div>') + more;
+  $('#feed-list').innerHTML = (body || '<div class="empty">Ничего не нашлось. Добавьте уровни «Рабочая» и «Фон» или очистите поиск.</div>') + more;
   $('#feed-count').textContent = `${shown.length} из ${state.cards.length}`;
   const f = state.feed, base = defaults().feed;
-  const active = ['category', 'basis', 'team', 'minOdds', 'maxOdds', 'query'].filter((k) => f[k] !== base[k]).length + (f.tiers.join() !== base.tiers.join() ? 1 : 0);
+  const active = ['category', 'team', 'query'].filter((k) => f[k] !== base[k]).length + (f.tiers.join() !== base.tiers.join() ? 1 : 0);
   const button = $('#filters-btn');
   if (button) button.textContent = `Фильтры${active ? ` · ${active}` : ''}`;
   const done = $('#filters-done');
   if (done) done.textContent = `Показать ${shown.length}`;
+  if (state.openCard) drawPreview(state.openCard);
 }
 
 function renderFeed() {
@@ -295,7 +281,6 @@ function renderFeed() {
       <div class="toolbar"><button class="btn phone-only" id="filters-btn" data-action="toggle-filters">Фильтры</button>
         <select data-input="feed-sort" aria-label="Сортировка">${FEED_SORTS.map(([v, label]) => `<option value="${v}" ${f.sort === v ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <span class="faint" id="feed-count"></span></div>
-      <p class="plate-note wide-only">Каждая карточка — факт из нашей базы, привязанный к линии, которую Winline сейчас реально даёт на матч. Крутизна: Огонь ≥ 80, Сильная ≥ 65, Рабочая ≥ 50, Фон ≥ 35 (сила истории против цены, выборка, кэф, яркость факта). Сильная и Огонь — только если факт повторился хотя бы 4 раза. Кэф в карточках — не ниже 1,50. Стрелка ↓/↑ «было» — как кэф изменился примерно за сутки (от 3%).</p>
     </section><div class="list" id="feed-list"></div>`;
   renderFeedList();
 }
@@ -312,7 +297,7 @@ function renderRail() {
     const top = m.insights[0];
     const hot = m.insights.filter((c) => c.tier === 'fire' || c.tier === 'strong').length;
     const x = m.quick.x12;
-    html += `<button class="match" data-action="select" data-id="${m.event_id}" aria-current="${m.event_id === state.selected}">
+    html += `<button class="match" data-action="select" data-id="${m.event_id}" aria-current="${m.event_id === state.selected}" data-live="${Boolean(liveId(m.event_id))}">
       <div class="time num">${timeFmt.format(new Date(m.starts_at))}<small>МСК</small></div>
       <div class="teams"><div class="team">${mono(m.home)}<span>${esc(fullName(m.home))}</span></div><div class="team">${mono(m.away)}<span>${esc(fullName(m.away))}</span></div>
         ${x ? `<div class="mini-odds num"><b>${odds(x[0])}</b><b>${odds(x[1])}</b><b>${odds(x[2])}</b></div>` : ''}</div>
@@ -334,21 +319,18 @@ function quickGroups(m) {
 }
 
 function renderHead(m) {
-  const tiers = TIER_ORDER.map((t) => [t, m.insights.filter((c) => c.tier === t).length]).filter(([, n]) => n);
   return `<section class="card head">
     <div class="head-top">
       <div class="versus">${mono(m.home)}<span>${esc(fullName(m.home))}</span><span class="vs">—</span>${mono(m.away)}<span>${esc(fullName(m.away))}</span></div>
       <div class="kick"><b class="num">${timeFmt.format(new Date(m.starts_at))} МСК</b>${esc(dayFmt.format(new Date(m.starts_at)))} · АПЛ</div>
     </div>
-    <div class="quick">${quickGroups(m)}</div>
-    ${tiers.length ? `<div class="tier-sum">${tiers.map(([t, n]) => `<span class="tier-dot" data-tier="${t}">${esc(tierLabel(t))} <b class="num">${n}</b></span>`).join('')}</div>` : ''}
-    ${matchOnair(m.event_id, { linkOpen: true })}
+    ${obsBox(m)}
   </section>`;
 }
 
 function tabs(m) {
   const items = [
-    ['tips', 'Карточки', m.insights.length], ['markets', 'Рынки Winline', m.summary.market_lines], ['players', 'Игроки', m.players.length],
+    ['tips', 'Плашки', m.insights.length], ['markets', 'Рынки Winline', m.summary.market_lines], ['players', 'Игроки', m.players.length],
     ['h2h', 'Личные встречи', m.h2h.played], ['form', 'Форма и статистика', null],
   ];
   return `<div class="card tabs" role="tablist">${items.map(([id, label, count], i) =>
@@ -357,12 +339,10 @@ function tabs(m) {
 
 function renderTips(m) {
   const cats = [...new Set(m.insights.map((c) => c.category))];
-  const tips = m.insights.filter((c) => (state.tipTier === 'all' || c.tier === state.tipTier) && (state.tipCategory === 'all' || c.category === state.tipCategory));
-  const tierItems = [['all', 'Все уровни', m.insights.length], ...TIER_ORDER.map((t) => [t, tierLabel(t), m.insights.filter((c) => c.tier === t).length]).filter(([, , n]) => n)];
-  const catItems = [['all', 'Все рынки', null], ...cats.map((cat) => [cat, cat, m.insights.filter((c) => c.category === cat).length])];
-  const body = tips.length ? tips.map((c) => cardHtml(m, c)).join('') : '<div class="empty">Нет карточек по этим фильтрам. Карточка появляется, только если у Winline есть нужная линия и в данных есть убедительная выборка.</div>';
-  return `<div class="toolbar">${chipRow('tip-tier', state.tipTier, tierItems)}</div><div class="toolbar">${chipRow('tip-category', state.tipCategory, catItems)}</div>${body}
-    <p class="plate-note">Оценка — редакционная ценность факта (сила истории против цены, размер выборки, пригодность кэфа, яркость), а не вероятность и не совет делать ставку.</p>`;
+  const tips = m.insights.filter((c) => state.tipCategory === 'all' || c.category === state.tipCategory);
+  const catItems = [['all', 'Все', m.insights.length], ...cats.map((cat) => [cat, cat, m.insights.filter((c) => c.category === cat).length])];
+  const body = tips.length ? tips.map((c) => plateCard(m, c)).join('') : '<div class="empty">Плашек нет: нужна линия Winline и убедительная история.</div>';
+  return `<div class="toolbar">${chipRow('tip-category', state.tipCategory, catItems)}</div><div class="list">${body}</div>`;
 }
 
 function marketTitle(m, mk) {
@@ -455,6 +435,8 @@ function renderMatches() {
   if (!m) { $('#main').innerHTML = `<div class="empty card">${state.data ? 'Выберите матч слева' : 'Данные не найдены. Запустите tools/epl_site_data.py и обновите страницу.'}</div>`; return; }
   const body = { tips: renderTips, markets: renderMarkets, players: renderMatchPlayers, h2h: renderH2H, form: renderForm }[state.tab](m);
   $('#main').innerHTML = renderHead(m) + tabs(m) + `<section class="card panel" role="tabpanel">${body}</section>`;
+  renderOnair();
+  if (state.openCard) drawPreview(state.openCard);
 }
 
 // ---------- page: Игроки ----------
@@ -484,7 +466,6 @@ function playerTable(rows, { showMatch = true } = {}) {
       ${th('goals', 'Голы / xG')}<th>Последние 5</th>${th('vs', 'Против соп.')}${th('score', 'Лучшая карточка', '')}</tr></thead><tbody>
     ${rows.map(({ m, p }) => {
       const id = p.best_card ? bestCardId(m, p) : null;
-      const queued = id && state.queue.some((q) => q.id === id);
       const club = p.team === 'home' ? m.home : m.away;
       const opp = p.team === 'home' ? m.away : m.home;
       return `<tr><td class="lead"><div class="pname">${mono(club)}<div><b>${esc(p.name_ru || p.name)}</b>${p.penalty_taker ? '<span class="pen">пенальти</span>' : ''}${p.fit === 'out' ? '<span class="fit out">вне игры</span>' : p.fit === 'doubt' ? '<span class="fit doubt">под вопросом</span>' : ''}
@@ -495,7 +476,7 @@ function playerTable(rows, { showMatch = true } = {}) {
         <td class="r" data-label="Голы / xG">${p.goals != null ? `${p.goals} / ${num(p.xg, 1)}` : '—'}</td><td data-label="Последние 5">${spark(p.last5)}</td>
         <td class="r" data-label="Против соп.">${p.vs_opponent?.apps ? `${p.vs_opponent.scored_in} из ${p.vs_opponent.apps}` : '—'}</td>
         <td class="best" data-label="Лучшая карточка">${p.best_card ? `<span class="tier-dot" data-tier="${p.tier}">${esc(p.tier_label)} ${p.score}</span><div class="small">${esc(p.best_card)}</div>
-          ${id ? `<button class="btn small ${queued ? 'on' : ''}" data-action="queue" data-card="${esc(id)}">${queued ? 'В эфире ✓' : 'В эфир'}</button>` : ''}` : '<span class="faint">—</span>'}</td></tr>`;
+          ${id ? `<button class="btn small" data-action="open-card" data-card="${esc(id)}">Открыть плашку</button>` : ''}` : '<span class="faint">—</span>'}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
 
@@ -591,7 +572,7 @@ function renderTeams() {
       ${teams.map((t) => `<tr>${TEAM_COLUMNS.map(([key, label]) => labelled(t, key, label)).join('')}</tr>`).join('')}</tbody></table></div></section>`;
 }
 
-// ---------- dock: the "Эфир" queue and the Winline plate editor ----------
+// ---------- plate texts: the engine's defaults, the operator's edits, the editor and the preview ----------
 const mentions = (text, club) => [club.name_full, club.name_ru].filter(Boolean).some((name) => text.includes(name));
 const goalsWord = (number) => {
   if (/[.,]/.test(number)) return 'гола';
@@ -655,22 +636,29 @@ function plateDefaults(m, c) {
   return { headline: plateHeadline(c.title), team, bet, odds: c.market.odds, crest: side };
 }
 
-function plateOf(item) {
-  if (item.plate && !item.plate.v && findCard(item.id)?.c.plate?.headline) delete item.plate;  // queued before the texts were rewritten
-  if (!item.plate) {
-    const found = findCard(item.id);
-    item.plate = found ? plateDefaults(found.m, found.c) : { headline: item.title, team: item.match, bet: item.label, odds: item.odds, crest: 'none' };
-    if (found) item.sides = { home: found.m.home.id, away: found.m.away.id, homeName: found.m.home.name_ru, awayName: found.m.away.name_ru };
-  }
-  return item.plate;
+function plateBase(id) {
+  const found = findCard(id);
+  return found ? { crestSize: 'big', ...plateDefaults(found.m, found.c) } : null;
 }
 
-function plateData(item) {
-  const p = plateOf(item);
-  const sides = item.sides || {};
-  const crests = { home: [sides.home], away: [sides.away], match: [sides.home, sides.away] }[p.crest] || [];
-  return { headline: p.headline, team: p.team, bet: p.bet, odds: parseFloat(String(p.odds).replace(',', '.')) || null, crests: crests.filter((id) => id != null),
-    crestWhole: p.crestSize === 'whole' };
+/** The plate's final texts: the engine's, with this device's edits on top (state.plates[id]). */
+function plateOf(id) {
+  return { ...(plateBase(id) || { headline: '', team: '', bet: '', odds: null, crest: 'none', crestSize: 'big' }), ...(state.plates[id] || {}) };
+}
+
+function setPlate(id, field, value) {
+  const base = plateBase(id) || {};
+  const edits = { ...(state.plates[id] || {}), [field]: value };
+  if (String(base[field] ?? '') === String(value)) delete edits[field];
+  if (Object.keys(edits).length) state.plates[id] = edits; else delete state.plates[id];
+  savePlates();
+}
+
+function plateData(id) {
+  const found = findCard(id);
+  const p = plateOf(id);
+  const crests = found ? ({ home: [found.m.home.id], away: [found.m.away.id], match: [found.m.home.id, found.m.away.id] }[p.crest] || []) : [];
+  return { headline: p.headline, team: p.team, bet: p.bet, odds: parseOdds(p.odds), crests: crests.filter((x) => x != null), crestWhole: p.crestSize === 'whole' };
 }
 
 // how many characters each line takes at the designer's font size, and up to where it may shrink (measured, see tools/epl_text.py)
@@ -682,59 +670,54 @@ function fitLevel(field, text) {
 function fitNote(field, text) {
   const { n, full, level } = fitLevel(field, text);
   const hint = { ok: '', small: ' — шрифт станет чуть меньше', long: ' — слишком длинно, сократите' }[level];
-  return `<em class="pf-count" data-count="${field}" data-level="${level}">${n} / ${full}${hint}</em>`;
+  return `<em class="pf-count" data-level="${level}">${n} / ${full}${hint}</em>`;
 }
 
-function plateEditor(item) {
-  const p = plateOf(item);
-  const sides = item.sides || {};
-  const crestOptions = [['home', sides.homeName || 'хозяева'], ['away', sides.awayName || 'гости'], ['match', 'обе команды'], ['none', 'без эмблемы']]
-    .map(([value, label]) => `<option value="${value}" ${p.crest === value ? 'selected' : ''}>${esc(label)}</option>`).join('');
+function plateEditor(m, id) {
+  const p = plateOf(id);
+  const option = (value, label, current) => `<option value="${value}" ${current === value ? 'selected' : ''}>${esc(label)}</option>`;
+  const crests = [['home', m.home.name_ru], ['away', m.away.name_ru], ['match', 'обе команды'], ['none', 'без эмблемы']].map(([v, l]) => option(v, l, p.crest)).join('');
+  const sizes = [['big', 'крупно, как в макете'], ['whole', 'целиком']].map(([v, l]) => option(v, l, p.crestSize)).join('');
+  const field = (name) => `data-input="plate-${name}" data-card="${esc(id)}"`;
   return `<div class="plate-editor">
-    <canvas id="plate-preview" class="plate-preview" width="920" height="240" aria-label="Плашка Winline" data-action="plate-zoom" title="Открыть крупно, в кадре 1920×1080"></canvas>
-    <div class="plate-status faint" id="plate-status">Загружаю шрифты…</div>
-    <label class="pf"><span>Верхняя строка ${fitNote('headline', p.headline)}</span><textarea rows="2" data-input="plate-headline">${esc(p.headline)}</textarea></label>
-    <label class="pf"><span>Команда или игрок ${fitNote('team', p.team)}</span><input data-input="plate-team" value="${esc(p.team)}"></label>
-    <label class="pf"><span>Ставка ${fitNote('bet', p.bet)}</span><input data-input="plate-bet" value="${esc(p.bet)}"></label>
-    <div class="pf-row"><label class="pf"><span>Кэф</span><input data-input="plate-odds" inputmode="decimal" value="${esc(p.odds)}"></label>
-      <label class="pf"><span>Эмблема</span><select data-input="plate-crest">${crestOptions}</select></label></div>
-    <label class="pf"><span>Размер эмблемы</span><select data-input="plate-crest-size"><option value="big" ${p.crestSize !== 'whole' ? 'selected' : ''}>Крупно, как в макете (края срезаны)</option>
-      <option value="whole" ${p.crestSize === 'whole' ? 'selected' : ''}>Целиком внутри плашки</option></select></label>
-    <button class="btn primary big" data-action="onair-show">▶ Дать в эфир</button>
-    <div class="plate-actions"><button class="btn" data-action="plate-png" data-mode="full" title="Кадр 1920×1080 с прозрачным фоном — как присланный шаблон">PNG 1920×1080</button>
-      <button class="btn" data-action="plate-png" data-mode="crop" title="Только плашка, 920×240">PNG плашка</button>
-      <button class="btn ghost" data-action="plate-copy">Копировать</button>
-      <button class="btn ghost" data-action="plate-reset" title="Вернуть тексты из карточки">Сбросить</button></div>
+    <label class="pf"><span>Верхняя строка ${fitNote('headline', p.headline)}</span><textarea rows="2" ${field('headline')}>${esc(p.headline)}</textarea></label>
+    <div class="pf-row2"><label class="pf"><span>Команда или игрок ${fitNote('team', p.team)}</span><input ${field('team')} value="${esc(p.team)}"></label>
+      <label class="pf"><span>Ставка ${fitNote('bet', p.bet)}</span><input ${field('bet')} value="${esc(p.bet)}"></label></div>
+    <div class="pf-row3"><label class="pf"><span>Кэф</span><input ${field('odds')} inputmode="decimal" value="${esc(p.odds)}"></label>
+      <label class="pf"><span>Эмблема</span><select ${field('crest')}>${crests}</select></label>
+      <label class="pf"><span>Размер эмблемы</span><select ${field('crest-size')}>${sizes}</select></label></div>
+    <div class="plate-actions"><button class="btn primary" data-action="edit">Готово</button>
+      ${state.plates[id] ? `<button class="btn ghost" data-action="plate-reset" data-card="${esc(id)}">Вернуть исходный текст</button>` : ''}
+      <button class="btn ghost" data-action="plate-png" data-card="${esc(id)}">Скачать картинку</button></div>
   </div>`;
 }
 
 let previewToken = 0;
 let previewTimer = null;
-async function drawPreview(item) {
+async function drawPreview(id) {
   const token = ++previewToken;
   try {
-    const full = await renderPlate(document.createElement('canvas'), plateData(item));
-    const target = $('#plate-preview');
+    const full = await renderPlate(document.createElement('canvas'), plateData(id));
+    const target = document.querySelector(`canvas[data-preview="${CSS.escape(id)}"]`);
     if (token !== previewToken || !target) return;
     cropPlate(full, target);
-    const status = $('#plate-status');
-    if (status) status.textContent = '';
   } catch (error) {
-    const status = $('#plate-status');
-    if (status) status.textContent = `Плашка недоступна: ${error.message}`;
+    toast(`Плашка недоступна: ${error.message}`);
   }
 }
 
-function schedulePreview(item) {
+function schedulePreview(id) {
   clearTimeout(previewTimer);
-  previewTimer = setTimeout(() => drawPreview(item), 120);
+  previewTimer = setTimeout(() => drawPreview(id), 120);
 }
 
-const plateName = (item, mode) => `АПЛ ${item.match} ${oddsText(plateData(item).odds || 0)}${mode === 'crop' ? ' плашка' : ''}.png`.replace(/[\\/:*?"<>|]/g, '');
+function plateName(id) {
+  const found = findCard(id);
+  return `АПЛ ${found ? pairName(found.m) : ''} ${oddsText(plateData(id).odds || 0)}.png`.replace(/[\\/:*?"<>|]/g, '');
+}
 
-async function plateBlob(item, mode) {
-  const full = await renderPlate(document.createElement('canvas'), plateData(item));
-  return toBlob(mode === 'crop' ? cropPlate(full) : full);
+async function plateBlob(id) {
+  return toBlob(await renderPlate(document.createElement('canvas'), plateData(id)));
 }
 
 function saveBlob(blob, name) {
@@ -751,10 +734,8 @@ function saveBlob(blob, name) {
 // ---------- on air: one OBS / vMix overlay link per match (overlay.html?match=<id>) and the operator's buttons ----------
 const OVERLAY_ORIGIN = 'https://epl.109-172-113-187.sslip.io';  // the Moscow server: opens without a VPN, no Cloudflare limits
 const overlayUrl = (eventId) => `${OVERLAY_ORIGIN}/overlay.html?match=${encodeURIComponent(eventId)}`;
-const eventOf = (item) => String(item?.id || '').split('|')[0];
-const matchById = (eventId) => state.data?.matches.find((m) => String(m.event_id) === String(eventId)) || null;
-const liveRooms = () => Object.values(state.onair).filter((room) => room.on && room.plate && /^\d+$/.test(room.room));
-const matchesWord = (n) => { const n10 = n % 10, n100 = n % 100; return n10 === 1 && n100 !== 11 ? 'матч' : n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14) ? 'матча' : 'матчей'; };
+/** The card id on air in this match, or null. */
+const liveId = (eventId) => { const room = state.onair[String(eventId)]; return room?.on && room.plate ? room.id : null; };
 
 async function onairCall(path, body) {
   if (!state.operatorKey) throw new Error('Нужен ключ оператора — откройте свою ссылку оператора');
@@ -786,55 +767,47 @@ async function pollOnair() {
   renderOnair();
 }
 
-function onairText(room) {
-  if (!state.onairOk) return { cls: 'bad', text: 'Нет связи с сервером эфира' };
-  if (!room?.on || !room.plate) return { cls: 'idle', text: 'Эфир пуст' };
-  const p = room.plate;
-  return { cls: 'live', text: `В ЭФИРЕ: ${[p.team, p.bet].filter(Boolean).join(' · ')}${p.odds ? ` · ${oddsText(p.odds)}` : ''}` };
-}
-
 const keyForm = () => (state.operatorKey ? '' : `<div class="key-form"><input type="password" id="operator-key" autocomplete="off" placeholder="Ключ оператора">
-    <button class="btn" data-action="onair-key">Сохранить</button></div><p class="plate-note">Ключ нужен один раз на устройство (или откройте свою ссылку оператора) — без него кнопки эфира не работают.</p>`);
+    <button class="btn" data-action="onair-key">Сохранить</button></div><p class="plate-note">Без ключа кнопки эфира не работают: откройте свою ссылку оператора или введите ключ один раз.</p>`);
 
-/** The match's own on-air block: status, «Убрать» and the match's link for OBS / vMix. No «switch everything off»:
- *  several broadcasts share the site, and one operator must not be able to clear the others' plates. */
-function matchOnair(eventId, { linkOpen = false } = {}) {
-  const m = matchById(eventId);
-  return `<div class="onair-box">
-    <div class="onair-head"><b class="onair-title">Эфир матча${m ? ` ${esc(pairName(m))}` : ''}</b><span class="onair-status" data-onair-status="${esc(eventId)}"></span></div>
+/** The match's link for OBS / vMix, big and first, with what is on air now. No «switch everything off»: several
+ *  broadcasts share the site, and one operator must not be able to clear the others' plates. */
+function obsBox(m) {
+  const url = overlayUrl(m.event_id);
+  return `<div class="obs-box">
+    <div class="obs-label">Ссылка матча для OBS / vMix</div>
+    <div class="obs-row"><code class="obs-url" data-action="onair-copy-link" data-room="${m.event_id}" title="Нажмите, чтобы скопировать">${esc(url)}</code>
+      <button class="btn primary" data-action="onair-copy-link" data-room="${m.event_id}">Копировать</button></div>
+    <div class="obs-live" data-onair-line="${m.event_id}"></div>
+    <p class="obs-hint">OBS: Источник → Браузер · vMix: Web Browser · 1920×1080</p>
     ${keyForm()}
-    <div class="onair-buttons"><button class="btn" data-action="onair-hide" data-room="${esc(eventId)}">■ Убрать из эфира</button></div>
-    <details class="obs" ${linkOpen ? 'open' : ''}><summary>Ссылка матча для OBS / vMix</summary>
-      <code>${esc(overlayUrl(eventId))}</code>
-      <div class="toolbar"><button class="btn small" data-action="onair-copy-link" data-room="${esc(eventId)}">Копировать ссылку</button><a class="btn small ghost" href="${esc(overlayUrl(eventId))}&demo=1&check=1" target="_blank" rel="noopener">Проверить</a></div>
-      <p class="plate-note">У каждого матча своя ссылка — добавьте её в трансляцию этого матча. OBS: «Источники» → «+» → «Браузер», ширина 1920, высота 1080. vMix: Add Input → Web Browser, 1920×1080. Слой прозрачный: плашки этого матча появятся на нём по кнопке «Дать в эфир».</p>
-    </details>
-  </div>`;
-}
-
-/** The dock's block when no plate is selected: how many matches are on air (for information, no buttons). */
-function liveSummary() {
-  const live = liveRooms();
-  return `<div class="onair-box">
-    <div class="onair-head"><b class="onair-title">Эфир</b><span class="onair-status ${live.length ? 'live' : 'idle'}">${live.length ? `В ЭФИРЕ: ${live.length} ${matchesWord(live.length)}` : 'Эфир пуст'}</span></div>
-    ${keyForm()}
-    <p class="plate-note">Ссылка для OBS / vMix — у каждого матча своя: «Матчи» → матч → «Ссылка матча для OBS / vMix».</p>
   </div>`;
 }
 
 function renderOnair() {
-  document.querySelectorAll('[data-onair-status]').forEach((el) => {
-    const { cls, text } = onairText(state.onair[el.dataset.onairStatus]);
-    el.className = `onair-status ${cls}`;
-    el.textContent = text;
+  document.querySelectorAll('[data-onair-line]').forEach((el) => {
+    const id = el.dataset.onairLine;
+    const room = state.onair[id];
+    if (!state.onairOk) { el.className = 'obs-live bad'; el.textContent = 'Нет связи с сервером эфира'; return; }
+    if (room?.on && room.plate) {
+      const p = room.plate;
+      el.className = 'obs-live live';
+      el.innerHTML = `<span class="txt">● В ЭФИРЕ: ${esc([p.team, p.bet].filter(Boolean).join(' · '))}${p.odds ? ` · ${esc(oddsText(p.odds))}` : ''}</span>
+        <button class="btn small" data-action="onair-hide" data-room="${esc(id)}">Снять с эфира</button>`;
+    } else {
+      el.className = 'obs-live idle';
+      el.textContent = 'Сейчас в эфире ничего — нажмите на плашку ниже';
+    }
   });
-  document.querySelectorAll('.qitem[data-qid]').forEach((el) => {
-    const room = state.onair[el.dataset.qid.split('|')[0]];
-    el.dataset.live = String(Boolean(room?.on && room.id === el.dataset.qid));
-  });
-  document.querySelectorAll('.wk[data-value]').forEach((el) => { el.dataset.live = String(Boolean(state.onair[el.dataset.value]?.on)); });
-  // the phone bar: only the operator's own match (the opened match, else the selected plate's match), never the others'
-  const own = [state.page === 'matches' && state.selected ? String(state.selected) : '', eventOf(state.queue[state.plateIndex])];
+  document.querySelectorAll('.wk[data-value], .match[data-id]').forEach((el) => { el.dataset.live = String(Boolean(liveId(el.dataset.value || el.dataset.id))); });
+  // the plate cards: redraw when what is on air changed (not while the operator types in the editor)
+  const key = JSON.stringify(Object.values(state.onair).filter((room) => room.on).map((room) => room.id).sort());
+  if (key !== state.liveKey) {
+    state.liveKey = key;
+    if (!state.editing && state.data && ['matches', 'feed'].includes(state.page)) refreshContent();
+  }
+  // the phone bar: only the operator's own match (the opened match, else the opened plate's match), never the others'
+  const own = [state.page === 'matches' && state.selected ? String(state.selected) : '', String(state.openCard || '').split('|')[0]];
   const room = own.map((id) => (id ? state.onair[id] : null)).find((r) => r?.on && r.plate);
   const bar = $('#onair-bar');
   if (bar) {
@@ -843,29 +816,8 @@ function renderOnair() {
     if (!bar.hidden) {
       const p = room.plate;
       bar.innerHTML = `<span class="dot"></span><span class="txt">В ЭФИРЕ · ${esc(room.match || '')}: ${esc([p.team, p.odds ? oddsText(p.odds) : ''].filter(Boolean).join(' · '))}</span>
-        <button class="btn small" data-action="onair-hide" data-room="${esc(room.room)}">Убрать</button>`;
+        <button class="btn small" data-action="onair-hide" data-room="${esc(room.room)}">Снять</button>`;
     }
-  }
-}
-
-function renderDock() {
-  const q = state.queue;
-  state.plateIndex = Math.min(Math.max(0, state.plateIndex || 0), Math.max(0, q.length - 1));
-  const item = q[state.plateIndex];
-  $('#dock').innerHTML = `<h2>Эфир <span class="pill">${q.length}</span></h2>
-    ${item ? matchOnair(eventOf(item)) : liveSummary()}
-    ${item ? plateEditor(item) : '<div class="empty">Выберите карточки кнопкой «В эфир» — здесь появится плашка Winline</div>'}
-    ${q.map((entry, index) => `<div class="qitem" data-qid="${esc(entry.id)}" data-selected="${index === state.plateIndex}">${entry.tier ? `<span class="tier-dot" data-tier="${entry.tier}">${esc(tierLabel(entry.tier))}</span>` : ''}
-      <button class="linkish qtitle" data-action="plate-select" data-index="${index}">${esc(entry.title)}</button><div class="row"><span>${esc(entry.match)}</span><span class="odds num">${odds(entry.odds)}</span></div>
-      <div class="row"><span>${esc(entry.label)}</span><span style="margin-left:auto"></span>
-        <button class="btn small ghost" data-action="move" data-index="${index}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Выше">↑</button>
-        <button class="btn small ghost" data-action="move" data-index="${index}" data-dir="1" ${index === q.length - 1 ? 'disabled' : ''} aria-label="Ниже">↓</button>
-        <button class="btn small ghost" data-action="unqueue" data-index="${index}">Убрать</button></div></div>`).join('')}
-    ${q.length ? '<div class="toolbar"><button class="btn" data-action="copy-queue">Копировать тексты</button><button class="btn ghost" data-action="clear-queue">Очистить</button></div>' : ''}`;
-  renderOnair();
-  if (item) {
-    saveQueue();
-    drawPreview(item);
   }
 }
 
@@ -879,7 +831,6 @@ function render() {
   else if (state.page === 'matches') renderMatches();
   else if (state.page === 'players') renderPlayersPage();
   else renderTeams();
-  renderDock();
 }
 
 function setHash() {
@@ -897,7 +848,7 @@ function go(page, selected) {
   state.page = page;
   state.filtersOpen = false;
   document.body.classList.remove('locked');
-  if (selected != null) { state.selected = selected; state.open.clear(); }
+  if (selected != null) { state.selected = selected; state.openCard = null; state.editing = false; }
   saveUi(); setHash(); render();
   window.scrollTo({ top: 0 });
 }
@@ -919,21 +870,6 @@ async function copyText(text) {
   toast('Скопировано');
 }
 
-const cardText = (m, c) => `${pairName(m)}. ${c.title}. ${c.market.label}: ${odds(c.market.odds)} (Winline)`;
-
-function toggleQueue(id) {
-  const found = findCard(id);
-  if (!found) return;
-  const at = state.queue.findIndex((q) => q.id === id);
-  if (at >= 0) state.queue.splice(at, 1);
-  else {
-    const { m, c } = found;
-    state.queue.push({ id, match: pairName(m), title: c.title, label: c.market.label, odds: c.market.odds, tier: c.tier, text: cardText(m, c) });
-    state.plateIndex = state.queue.length - 1;  // the plate editor opens on the card just added
-  }
-  saveQueue();
-}
-
 function refreshContent() {
   const y = window.scrollY;
   renderHeader();
@@ -941,7 +877,6 @@ function refreshContent() {
   else if (state.page === 'players') renderPlayersTable();
   else if (state.page === 'matches') renderMatches();
   else renderTeams();
-  renderDock();
   window.scrollTo({ top: y });
 }
 
@@ -965,18 +900,15 @@ function onClick(event) {
     document.body.classList.toggle('locked', state.filtersOpen);
     if (!state.filtersOpen) $('#main').scrollIntoView({ block: 'start' });
   }
-  else if (action === 'to-dock') $('#dock').scrollIntoView({ behavior: 'smooth', block: 'start' });
   else if (action === 'team-dir') { state.teams.dir = -state.teams.dir; saveUi(); renderTeams(); }
   else if (action === 'select' || action === 'open-match') { state.tab = 'tips'; go('matches', Number(target.dataset.id)); }
   else if (action === 'tab') { state.tab = target.dataset.tab; render(); }
-  else if (action === 'tip-tier') { state.tipTier = value; refreshContent(); }
   else if (action === 'tip-category') { state.tipCategory = value; refreshContent(); }
   else if (action === 'family') { state.family = value; refreshContent(); }
   else if (action === 'side') { state.side = value; refreshContent(); }
   else if (action === 'feed-tier') { f.tiers = f.tiers.includes(value) ? f.tiers.filter((t) => t !== value) : [...f.tiers, value]; feedChanged(); }
   else if (action === 'feed-category') { f.category = value; feedChanged(); }
-  else if (action === 'feed-basis') { f.basis = value; feedChanged(); }
-  else if (action === 'feed-odds') { f.minOdds = target.dataset.lo; f.maxOdds = target.dataset.hi; state.feedLimit = FEED_PAGE; saveUi(); renderFeed(); }
+  else if (action === 'feed-team-clear') { f.team = 'all'; feedChanged(); }
   else if (action === 'feed-reset') { state.feed = defaults().feed; state.feedLimit = FEED_PAGE; saveUi(); renderFeed(); }
   else if (action === 'feed-more') { state.feedLimit += FEED_PAGE; refreshContent(); }
   else if (action === 'team-feed') { state.feed = { ...defaults().feed, team: target.dataset.id, tiers: [...TIER_ORDER] }; state.feedLimit = FEED_PAGE; go('feed'); }
@@ -988,39 +920,37 @@ function onClick(event) {
     const t = state.teams;
     t.dir = t.sort === value ? -t.dir : (ASCENDING_FIRST.has(value) ? 1 : -1); t.sort = value; saveUi(); renderTeams();
   }
-  else if (action === 'details') { const id = target.dataset.card; state.open.has(id) ? state.open.delete(id) : state.open.add(id); refreshContent(); }
-  else if (action === 'queue') {
-    const adding = !state.queue.some((q) => q.id === target.dataset.card);
-    toggleQueue(target.dataset.card);
+  else if (action === 'pick') {
+    const id = target.dataset.card;
+    state.openCard = state.openCard === id ? null : id;
+    state.editing = false;
     refreshContent();
-    if (adding && window.matchMedia('(max-width: 880px)').matches) $('#dock').scrollIntoView({ behavior: 'smooth', block: 'start' });  // on a phone: straight to the plate and «Дать в эфир»
+    if (state.openCard) document.querySelector(`[data-card-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
-  else if (action === 'copy-card') { const found = findCard(target.dataset.card); if (found) copyText(cardText(found.m, found.c)); }
-  else if (action === 'unqueue') {
-    const i = Number(target.dataset.index);
-    state.queue.splice(i, 1);
-    if (i < state.plateIndex) state.plateIndex -= 1;
-    saveQueue(); refreshContent();
+  else if (action === 'open-card') {
+    const id = target.dataset.card;
+    state.tab = 'tips';
+    state.tipCategory = 'all';
+    go('matches', Number(id.split('|')[0]));
+    state.openCard = id;
+    refreshContent();
+    document.querySelector(`[data-card-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center' });
   }
-  else if (action === 'move') {
-    const i = Number(target.dataset.index), j = i + Number(target.dataset.dir);
-    [state.queue[i], state.queue[j]] = [state.queue[j], state.queue[i]];
-    if (state.plateIndex === i) state.plateIndex = j; else if (state.plateIndex === j) state.plateIndex = i;
-    saveQueue(); renderDock();
-  }
+  else if (action === 'edit') { state.editing = !state.editing; refreshContent(); }
   else if (action === 'onair-show') {
-    const item = state.queue[state.plateIndex];
-    if (!item) return;
+    const id = target.dataset.card;
+    const found = findCard(id);
+    if (!found) return;
     target.disabled = true;
-    onairCall('show', { room: eventOf(item), id: item.id, match: item.match, plate: plateData(item) })
-      .then((data) => { state.onair[data.room] = data; state.onairOk = true; renderOnair(); toast(`В эфире: ${item.match}`); })
+    onairCall('show', { room: String(found.m.event_id), id, match: pairName(found.m), plate: plateData(id) })
+      .then((data) => { state.onair[data.room] = data; state.onairOk = true; renderOnair(); if (!state.editing) refreshContent(); toast('В эфире'); })
       .catch((error) => toast(error.message)).finally(() => { target.disabled = false; });
   }
   else if (action === 'onair-hide') {
-    const room = target.dataset.room || eventOf(state.queue[state.plateIndex]);
+    const room = target.dataset.room;
     if (!room) return;
     onairCall('hide', { room })
-      .then((data) => { state.onair[data.room] = data; renderOnair(); toast('Убрано из эфира'); })
+      .then((data) => { state.onair[data.room] = data; renderOnair(); toast('Снято с эфира'); })
       .catch((error) => toast(error.message));
   }
   else if (action === 'onair-key') {
@@ -1033,22 +963,12 @@ function onClick(event) {
     }).catch(() => toast('Нет связи с сервером эфира'));
   }
   else if (action === 'onair-copy-link') copyText(overlayUrl(target.dataset.room));
-  else if (action === 'plate-select') { state.plateIndex = Number(target.dataset.index); renderDock(); }
   else if (action === 'plate-png') {
-    const item = state.queue[state.plateIndex];
-    if (item) plateBlob(item, target.dataset.mode).then((blob) => saveBlob(blob, plateName(item, target.dataset.mode))).catch((error) => toast(`Не получилось: ${error.message}`));
-  }
-  else if (action === 'plate-copy') {
-    const item = state.queue[state.plateIndex];
-    if (!item) return;
-    try {  // a promised blob keeps the click's permission to write to the clipboard
-      navigator.clipboard.write([new ClipboardItem({ 'image/png': plateBlob(item, 'full') })]).then(() => toast('Картинка скопирована'), () => toast('Браузер не дал скопировать — скачайте PNG'));
-    } catch { toast('Браузер не умеет копировать картинки — скачайте PNG'); }
+    const id = target.dataset.card;
+    plateBlob(id).then((blob) => saveBlob(blob, plateName(id))).catch((error) => toast(`Не получилось: ${error.message}`));
   }
   else if (action === 'plate-zoom') {
-    const item = state.queue[state.plateIndex];
-    if (!item) return;
-    renderPlate(document.createElement('canvas'), plateData(item)).then((full) => {
+    renderPlate(document.createElement('canvas'), plateData(target.dataset.card)).then((full) => {
       const layer = document.createElement('div');
       layer.className = 'plate-zoom';
       layer.dataset.action = 'plate-zoom-close';
@@ -1059,9 +979,7 @@ function onClick(event) {
     });
   }
   else if (action === 'plate-zoom-close') target.remove();
-  else if (action === 'plate-reset') { const item = state.queue[state.plateIndex]; if (item) { delete item.plate; saveQueue(); renderDock(); } }
-  else if (action === 'clear-queue') { state.queue = []; saveQueue(); refreshContent(); }
-  else if (action === 'copy-queue') copyText(state.queue.map((q) => q.text).join('\n'));
+  else if (action === 'plate-reset') { delete state.plates[target.dataset.card]; savePlates(); refreshContent(); }
   else if (action === 'reload') load(true);
 }
 
@@ -1070,14 +988,19 @@ function onInput(event) {
   const kind = target.dataset?.input;
   if (!kind) return;
   if (kind.startsWith('plate-')) {
-    const item = state.queue[state.plateIndex];
+    const id = target.dataset.card;
     const field = { 'plate-headline': 'headline', 'plate-team': 'team', 'plate-bet': 'bet', 'plate-odds': 'odds', 'plate-crest': 'crest', 'plate-crest-size': 'crestSize' }[kind];
-    if (item && field) {
-      plateOf(item)[field] = target.value;
-      saveQueue();
-      schedulePreview(item);
-      const note = document.querySelector(`[data-count="${field}"]`);
-      if (note) note.outerHTML = fitNote(field, target.value);
+    if (!id || !field) return;
+    setPlate(id, field, target.value);
+    schedulePreview(id);
+    const note = target.closest('.pf')?.querySelector('.pf-count');
+    if (note && PLATE_FIT[field]) note.outerHTML = fitNote(field, target.value);
+    const card = document.querySelector(`[data-card-id="${CSS.escape(id)}"]`);
+    if (card) {
+      const p = plateOf(id);
+      card.querySelector('.pc-head').textContent = p.headline;
+      card.querySelector('.pc-bet span').innerHTML = `<b>${esc(p.team)}</b> · ${esc(p.bet)}`;
+      card.querySelector('.pc-odds').textContent = odds(parseOdds(p.odds));
     }
     return;
   }
@@ -1085,10 +1008,6 @@ function onInput(event) {
   const players = (key, val) => { state.players[key] = val; saveUi(); renderPlayersTable(); };
   if (kind === 'feed-query') feed('query', target.value);
   else if (kind === 'feed-sort') feed('sort', target.value);
-  else if (kind === 'feed-min') feed('minOdds', target.value);
-  else if (kind === 'feed-max') feed('maxOdds', target.value);
-  else if (kind === 'feed-match') feed('match', target.value);
-  else if (kind === 'feed-team') feed('team', target.value);
   else if (kind === 'player-query') players('query', target.value);
   else if (kind === 'player-match') players('match', target.value);
   else if (kind === 'player-team') players('team', target.value);
@@ -1119,7 +1038,7 @@ function onKey(event) {
 // ---------- boot ----------
 function shell() {
   $('#app').innerHTML = `<div class="shell"><header class="topbar" id="top"></header>
-    <div class="layout" id="layout"><section class="card strip" id="strip" aria-label="Матчи недели"></section><aside class="card side" id="side" aria-label="Фильтры и матчи"></aside><main class="main" id="main"></main><aside class="card dock" id="dock" aria-label="Эфир"></aside></div></div><div class="onair-bar" id="onair-bar" hidden></div>`;
+    <div class="layout" id="layout"><section class="card strip" id="strip" aria-label="Матчи недели"></section><aside class="card side" id="side" aria-label="Фильтры и матчи"></aside><main class="main" id="main"></main></div></div><div class="onair-bar" id="onair-bar" hidden></div>`;
 }
 
 async function load(manual = false) {
@@ -1140,7 +1059,7 @@ async function load(manual = false) {
   const y = window.scrollY;
   setHash(); render();
   window.scrollTo({ top: y });
-  loadPlateAssets().catch(() => {});  // fonts and template ready before the first «В эфир»
+  loadPlateAssets().catch(() => {});  // fonts and template ready before the first plate opens
   if (manual) toast('Данные обновлены');
 }
 
