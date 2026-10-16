@@ -366,8 +366,7 @@ b.good { color: var(--good); } b.bad { color: var(--bad); }
 .btn.danger:hover { background: #a93226; border-color: #a93226; }
 .pc-why { margin: 0; font-size: 12px; color: var(--faint); }
 .pf-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.pf-row3 { display: grid; grid-template-columns: 90px 1fr 1fr; gap: 8px; }
-@media (max-width: 700px) { .pf-row2, .pf-row3, .pc-actions { grid-template-columns: 1fr; } .pc-head { font-size: 15px; } .pc-face { padding: 11px 12px; } .pc-panel { padding: 0 12px 12px; } }
+@media (max-width: 700px) { .pf-row2, .pc-actions { grid-template-columns: 1fr; } .pc-head { font-size: 15px; } .pc-face { padding: 11px 12px; } .pc-panel { padding: 0 12px 12px; } }
 @media (min-width: 1000px) {  /* wide screens: the buttons right next to the plate */
   .pc-panel { grid-template-columns: minmax(0, 640px) minmax(200px, 280px); align-items: start; }
   .pc-panel > .plate-preview { grid-column: 1; grid-row: 1 / span 2; }

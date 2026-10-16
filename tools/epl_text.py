@@ -6,9 +6,11 @@ Club names in cases ("встреч Эвертона и Челси", "проти�
 "3+ гола"), and the three short texts of a plate (headline, team, bet) sized to what fits on it.
 
 Plate sizes were measured with the plate's own font (PF DIN Text Compressed Pro, the designer's sizes, -0.01 em):
-the orange headline takes 52 characters at full size (825 px at 40 px), the team line 19 (300 px at 40 px), the bet
-line 28 (300 px at 29.45 px). Up to HEADLINE_MAX / TEAM_MAX / BET_MAX the renderer shrinks the font a little; longer
-text gets too small for the air, so the texts here are built to stay inside the full-size numbers where possible.
+the orange headline takes 52 characters at full size (825 px at 40 px). The team (40 px) and bet (29.45 px) lines start
+after the crests (every crest 77 px, designer 2026-10-16) and end before the WINLINE logo: 429 px with no crest, 335 px
+with one, 248 px with two -> team 26 / 20 / 15 characters, bet 41 / 32 / 24. Up to the second numbers the renderer
+shrinks the font a little; longer text gets too small for the air, so the texts here stay inside the full-size numbers
+where possible ("Манчестер Юнайтед", 17, fits beside one crest, not beside two).
 """
 from __future__ import annotations
 
@@ -16,8 +18,10 @@ import math
 import re
 
 HEADLINE_FULL, HEADLINE_MAX = 52, 60
-TEAM_FULL, TEAM_MAX = 19, 24
-BET_FULL, BET_MAX = 28, 34
+# (full size, most) characters by the number of crests on the plate: 0, 1, 2
+TEAM_FIT = ((26, 31), (20, 24), (15, 18))
+BET_FIT = ((41, 49), (32, 38), (24, 29))
+CRESTS = {"none": 0, "home": 1, "away": 1, "match": 2}
 
 # genitive, dative, instrumental of the current clubs (the rest follow the rules in `cases`)
 CASES = {
@@ -254,9 +258,10 @@ def sides_headline(prefix: str, home: str, home_text: str, hh: int, nh: int, awa
 
 # ---------- plates ----------
 
-def pair(home: str, away: str) -> str:
-    full = f"{home} – {away}"
-    return full if len(full) <= TEAM_FULL else f"{SHORT.get(home, home)} – {SHORT.get(away, away)}"
+def pair(home: str, away: str, crests: int = 2) -> str:
+    """The match on the team line: full names if they fit beside the crests, else the short ones (Ман Сити, Ноттингем)."""
+    full, short = f"{home} – {away}", f"{SHORT.get(home, home)} – {SHORT.get(away, away)}"
+    return full if len(full) <= TEAM_FIT[crests][0] else short
 
 
 def headline(title: str) -> str:
@@ -272,5 +277,6 @@ def fits(plate: dict) -> dict:
     def level(text, full, most):
         n = len(text or "")
         return "ok" if n <= full else "small" if n <= most else "long"
-    return {"headline": level(plate.get("headline"), HEADLINE_FULL, HEADLINE_MAX), "team": level(plate.get("team"), TEAM_FULL, TEAM_MAX),
-            "bet": level(plate.get("bet"), BET_FULL, BET_MAX)}
+    crests = CRESTS.get(plate.get("crest"), 1)
+    return {"headline": level(plate.get("headline"), HEADLINE_FULL, HEADLINE_MAX), "team": level(plate.get("team"), *TEAM_FIT[crests]),
+            "bet": level(plate.get("bet"), *BET_FIT[crests])}

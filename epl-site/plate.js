@@ -10,18 +10,20 @@ const FONT_FILES = { boldItalic: 'PFDinTextCompPro-BoldItal.ttf', regular: 'PFDi
 const family = (key) => `EPL Plate ${key}`;
 export const LAYOUT = {
   headline: { font: 'boldItalic', size: 40, x: 120, baseline: 856, maxWidth: 825, minSize: 26, tracking: -0.01, color: '#ffffff' },
-  team: { font: 'boldItalic', size: 40, x: 211, baseline: 921, maxWidth: 300, minSize: 26, tracking: -0.01, color: '#ffffff' },
-  bet: { font: 'regular', size: 29.45, x: 211, baseline: 954, maxWidth: 300, minSize: 20, tracking: -0.01, color: '#ffffff' },
+  team: { font: 'boldItalic', size: 40, baseline: 921, minSize: 26, tracking: -0.01, color: '#ffffff' },  // x and width: textLeft()
+  bet: { font: 'regular', size: 29.45, baseline: 954, minSize: 20, tracking: -0.01, color: '#ffffff' },
   odds: { font: 'bold', size: 63.14, center: 861, baseline: 947, maxWidth: 165, minSize: 40, color: '#ffffff' },
   profit: { font: 'boldItalic', size: 34.15, right: 913.5, baseline: 1005, maxWidth: 225, minSize: 24, color: '#ff6a13' },
   stake: { font: 'light', size: 23.91, right: 911, baseline: 1027, maxWidth: 225, minSize: 18, color: '#ffffff' },
 };
-// The crest slot: the left end of the black bar (its bottom-left corner is rounded). One crest is drawn big and cut by
-// the bar like in the example; two crests (a bet on the match) are drawn whole, side by side.
-const SLOT = { left: 69, top: 877, right: 205, bottom: 972, radius: 12 };
-const ONE_CREST = { size: 170, right: 205, centerY: 924.5 };
-const WHOLE_CREST = { size: 86, centerX: 137, centerY: 924.5 };  // the operator's alternative: the crest uncut inside the bar
-const TWO_CRESTS = { size: 78, centers: [104, 170], centerY: 924.5 };
+// Crests (designer, 2026-10-16): every crest 77 px high, whole, at the left end of the black bar, vertically centred;
+// one or two side by side (10 px apart), and the team and bet lines start 17 px after the last crest. Measured on the
+// designer's two examples: crests at x 85-162 and 172-249, text at x 179 (one crest) / 266 (two). The text ends at
+// x 514, before the WINLINE logo (x 530): 335 px for the text with one crest, 248 px with two, 429 px with none.
+const BAR = { left: 85, right: 514, centerY: 923.5 };
+const CREST = { size: 77, gap: 10, textGap: 17 };
+export const textLeft = (crests) => (crests ? BAR.left + crests * CREST.size + (crests - 1) * CREST.gap + CREST.textGap : BAR.left);
+export const textWidth = (crests) => BAR.right - textLeft(crests);
 export const STAKE = 1000;
 
 let assets = null;
@@ -98,52 +100,62 @@ function drawText(ctx, spec, text) {
   ctx.restore();
 }
 
-function slotPath(ctx) {
-  const { left, top, right, bottom, radius } = SLOT;
-  ctx.beginPath();
-  ctx.moveTo(left, top);
-  ctx.lineTo(right, top);
-  ctx.lineTo(right, bottom);
-  ctx.lineTo(left + radius, bottom);
-  ctx.arcTo(left, bottom, left, bottom - radius, radius);
-  ctx.closePath();
+const crestBoxes = new Map();
+
+/** The crest image and the box of its visible pixels: the badge files have transparent margins of different sizes,
+ *  so the crest is cut to what is visible before it is scaled to 77 px. */
+async function loadCrest(base, id) {
+  const src = `${base}badges/${id}.png`;
+  if (!crestBoxes.has(src)) {
+    crestBoxes.set(src, loadImage(src).then((image) => {
+      if (!image) return null;
+      const probe = document.createElement('canvas');
+      probe.width = image.naturalWidth;
+      probe.height = image.naturalHeight;
+      const ctx = probe.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      const alpha = ctx.getImageData(0, 0, probe.width, probe.height).data;
+      let x0 = probe.width, y0 = probe.height, x1 = -1, y1 = -1;
+      for (let y = 0; y < probe.height; y++) {
+        for (let x = 0; x < probe.width; x++) {
+          if (alpha[(y * probe.width + x) * 4 + 3] > 20) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+        }
+      }
+      return x1 < 0 ? null : { image, x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    }));
+  }
+  return crestBoxes.get(src);
 }
 
-function drawContained(ctx, image, cx, cy, size) {
-  const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
-  const w = image.naturalWidth * scale, h = image.naturalHeight * scale;
-  ctx.drawImage(image, cx - w / 2, cy - h / 2, w, h);
-}
-
-async function drawCrests(ctx, base, crests, whole = false) {
-  const list = (await Promise.all((crests || []).slice(0, 2).map((id) => loadImage(`${base}badges/${id}.png`)))).filter(Boolean);
-  if (!list.length) return;
-  ctx.save();
-  slotPath(ctx);
-  ctx.clip();
-  if (list.length === 1 && whole) drawContained(ctx, list[0], WHOLE_CREST.centerX, WHOLE_CREST.centerY, WHOLE_CREST.size);
-  else if (list.length === 1) drawContained(ctx, list[0], ONE_CREST.right - ONE_CREST.size / 2, ONE_CREST.centerY, ONE_CREST.size);
-  else list.forEach((image, i) => drawContained(ctx, image, TWO_CRESTS.centers[i], TWO_CRESTS.centerY, TWO_CRESTS.size));
-  ctx.restore();
+/** Each crest whole, 77 px high (a wide one 77 px wide), centred in its 77 px slot. */
+function drawCrests(ctx, crests) {
+  crests.forEach((crest, i) => {
+    const scale = Math.min(CREST.size / crest.w, CREST.size / crest.h);
+    const w = crest.w * scale, h = crest.h * scale;
+    const cx = BAR.left + i * (CREST.size + CREST.gap) + CREST.size / 2;
+    ctx.drawImage(crest.image, crest.x, crest.y, crest.w, crest.h, cx - w / 2, BAR.centerY - h / 2, w, h);
+  });
 }
 
 const caps = (text) => String(text || '').replace(/\s+-\s+/g, ' – ').trim().toUpperCase();
 
 /**
  * Renders a plate on `canvas` (resized to 1920x1080, transparent outside the plate).
- * plate = { headline, team, bet, odds, crests: [club ids], crestWhole?: one crest uncut instead of big, stake? }
+ * plate = { headline, team, bet, odds, crests: [club ids, up to two], stake? }; the team and bet lines move with the crests.
  */
 export async function renderPlate(canvas, plate) {
   const { base, template } = await loadPlateAssets();
+  const crests = (await Promise.all((plate.crests || []).slice(0, 2).map((id) => loadCrest(base, id)))).filter(Boolean);
   canvas.width = SIZE.width;
   canvas.height = SIZE.height;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, SIZE.width, SIZE.height);
   ctx.drawImage(template, 0, 0, SIZE.width, SIZE.height);
-  await drawCrests(ctx, base, plate.crests, plate.crestWhole);
+  drawCrests(ctx, crests);
+  const lines = { x: textLeft(crests.length), maxWidth: textWidth(crests.length) };
   drawText(ctx, LAYOUT.headline, caps(plate.headline));
-  drawText(ctx, LAYOUT.team, caps(plate.team));
-  drawText(ctx, LAYOUT.bet, caps(plate.bet));
+  drawText(ctx, { ...LAYOUT.team, ...lines }, caps(plate.team));
+  drawText(ctx, { ...LAYOUT.bet, ...lines }, caps(plate.bet));
   if (plate.odds) {
     drawText(ctx, LAYOUT.odds, oddsText(plate.odds));
     const stake = plate.stake || STAKE;

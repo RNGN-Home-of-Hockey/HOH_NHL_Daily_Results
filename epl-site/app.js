@@ -200,7 +200,7 @@ function platePanel(m, c, id) {
   const live = liveId(m.event_id);
   const aired = state.onair[String(m.event_id)]?.plate;
   const data = plateData(id);
-  const changed = live === id && aired && (['headline', 'team', 'bet', 'odds', 'crestWhole'].some((k) => String(aired[k] ?? '') !== String(data[k] ?? ''))
+  const changed = live === id && aired && (['headline', 'team', 'bet', 'odds'].some((k) => String(aired[k] ?? '') !== String(data[k] ?? ''))
     || String(aired.crests || []) !== String(data.crests));  // edited after it went on air
   const action = live === id
     ? `${changed ? `<button class="btn primary big" data-action="onair-show" data-card="${esc(id)}">↻ Обновить в эфире</button>` : ''}<button class="btn danger big" data-action="onair-hide" data-room="${m.event_id}">■ Снять с эфира</button>`
@@ -638,12 +638,13 @@ function plateDefaults(m, c) {
 
 function plateBase(id) {
   const found = findCard(id);
-  return found ? { crestSize: 'big', ...plateDefaults(found.m, found.c) } : null;
+  return found ? plateDefaults(found.m, found.c) : null;
 }
 
 /** The plate's final texts: the engine's, with this device's edits on top (state.plates[id]). */
 function plateOf(id) {
-  return { ...(plateBase(id) || { headline: '', team: '', bet: '', odds: null, crest: 'none', crestSize: 'big' }), ...(state.plates[id] || {}) };
+  const { crestSize, ...edits } = state.plates[id] || {};  // the crest size choice is gone: every crest is 77 px now
+  return { ...(plateBase(id) || { headline: '', team: '', bet: '', odds: null, crest: 'none' }), ...edits };
 }
 
 function setPlate(id, field, value) {
@@ -658,17 +659,21 @@ function plateData(id) {
   const found = findCard(id);
   const p = plateOf(id);
   const crests = found ? ({ home: [found.m.home.id], away: [found.m.away.id], match: [found.m.home.id, found.m.away.id] }[p.crest] || []) : [];
-  return { headline: p.headline, team: p.team, bet: p.bet, odds: parseOdds(p.odds), crests: crests.filter((x) => x != null), crestWhole: p.crestSize === 'whole' };
+  return { headline: p.headline, team: p.team, bet: p.bet, odds: parseOdds(p.odds), crests: crests.filter((x) => x != null) };
 }
 
-// how many characters each line takes at the designer's font size, and up to where it may shrink (measured, see tools/epl_text.py)
-const PLATE_FIT = { headline: [52, 60], team: [19, 24], bet: [28, 34] };
-function fitLevel(field, text) {
-  const n = String(text || '').length, [full, most] = PLATE_FIT[field];
+// How many characters each line takes at the designer's font size, and up to where it may shrink (measured with the
+// plate font, see tools/epl_text.py). The team and bet lines start after the crests, so their room depends on how
+// many crests the plate has: 429 px with none, 335 px with one, 248 px with two.
+const CREST_COUNT = { none: 0, home: 1, away: 1, match: 2 };
+const PLATE_FIT = { headline: [[52, 60]] , team: [[26, 31], [20, 24], [15, 18]], bet: [[41, 49], [32, 38], [24, 29]] };
+function fitLevel(field, text, crests = 1) {
+  const sizes = PLATE_FIT[field];
+  const n = String(text || '').length, [full, most] = sizes[Math.min(crests, sizes.length - 1)];
   return { n, full, level: n <= full ? 'ok' : n <= most ? 'small' : 'long' };
 }
-function fitNote(field, text) {
-  const { n, full, level } = fitLevel(field, text);
+function fitNote(field, text, crests = 1) {
+  const { n, full, level } = fitLevel(field, text, crests);
   const hint = { ok: '', small: ' — шрифт станет чуть меньше', long: ' — слишком длинно, сократите' }[level];
   return `<em class="pf-count" data-level="${level}">${n} / ${full}${hint}</em>`;
 }
@@ -677,15 +682,14 @@ function plateEditor(m, id) {
   const p = plateOf(id);
   const option = (value, label, current) => `<option value="${value}" ${current === value ? 'selected' : ''}>${esc(label)}</option>`;
   const crests = [['home', m.home.name_ru], ['away', m.away.name_ru], ['match', 'обе команды'], ['none', 'без эмблемы']].map(([v, l]) => option(v, l, p.crest)).join('');
-  const sizes = [['big', 'крупно, как в макете'], ['whole', 'целиком']].map(([v, l]) => option(v, l, p.crestSize)).join('');
   const field = (name) => `data-input="plate-${name}" data-card="${esc(id)}"`;
+  const count = CREST_COUNT[p.crest] ?? 1;
   return `<div class="plate-editor">
     <label class="pf"><span>Верхняя строка ${fitNote('headline', p.headline)}</span><textarea rows="2" ${field('headline')}>${esc(p.headline)}</textarea></label>
-    <div class="pf-row2"><label class="pf"><span>Команда или игрок ${fitNote('team', p.team)}</span><input ${field('team')} value="${esc(p.team)}"></label>
-      <label class="pf"><span>Ставка ${fitNote('bet', p.bet)}</span><input ${field('bet')} value="${esc(p.bet)}"></label></div>
-    <div class="pf-row3"><label class="pf"><span>Кэф</span><input ${field('odds')} inputmode="decimal" value="${esc(p.odds)}"></label>
-      <label class="pf"><span>Эмблема</span><select ${field('crest')}>${crests}</select></label>
-      <label class="pf"><span>Размер эмблемы</span><select ${field('crest-size')}>${sizes}</select></label></div>
+    <div class="pf-row2"><label class="pf"><span>Команда или игрок ${fitNote('team', p.team, count)}</span><input ${field('team')} value="${esc(p.team)}"></label>
+      <label class="pf"><span>Ставка ${fitNote('bet', p.bet, count)}</span><input ${field('bet')} value="${esc(p.bet)}"></label></div>
+    <div class="pf-row2"><label class="pf"><span>Кэф</span><input ${field('odds')} inputmode="decimal" value="${esc(p.odds)}"></label>
+      <label class="pf"><span>Эмблемы</span><select ${field('crest')}>${crests}</select></label></div>
     <div class="plate-actions"><button class="btn primary" data-action="edit">Готово</button>
       ${state.plates[id] ? `<button class="btn ghost" data-action="plate-reset" data-card="${esc(id)}">Вернуть исходный текст</button>` : ''}
       <button class="btn ghost" data-action="plate-png" data-card="${esc(id)}">Скачать картинку</button></div>
@@ -989,12 +993,13 @@ function onInput(event) {
   if (!kind) return;
   if (kind.startsWith('plate-')) {
     const id = target.dataset.card;
-    const field = { 'plate-headline': 'headline', 'plate-team': 'team', 'plate-bet': 'bet', 'plate-odds': 'odds', 'plate-crest': 'crest', 'plate-crest-size': 'crestSize' }[kind];
+    const field = { 'plate-headline': 'headline', 'plate-team': 'team', 'plate-bet': 'bet', 'plate-odds': 'odds', 'plate-crest': 'crest' }[kind];
     if (!id || !field) return;
     setPlate(id, field, target.value);
+    if (field === 'crest') { refreshContent(); return; }  // the crests move the text: new room, new counters, new preview
     schedulePreview(id);
     const note = target.closest('.pf')?.querySelector('.pf-count');
-    if (note && PLATE_FIT[field]) note.outerHTML = fitNote(field, target.value);
+    if (note && PLATE_FIT[field]) note.outerHTML = fitNote(field, target.value, CREST_COUNT[plateOf(id).crest] ?? 1);
     const card = document.querySelector(`[data-card-id="${CSS.escape(id)}"]`);
     if (card) {
       const p = plateOf(id);

@@ -41,7 +41,10 @@ def test_plate_texts_fit():
     assert head == "Во 2-м тайме Эвертон — без поражений в 7 из 8 матчей", head
     assert T.headline("Челси пропускал во втором тайме в 7 из 8 последних матчей") == "Челси пропускал во 2-м тайме в 7 из 8 матчей"
     assert T.headline("Эвертон не пропускал в первом тайме в 6 из 8 последних матчей, Челси — нет") == "Эвертон не пропускал в 1-м тайме в 6 из 8 матчей"
-    assert T.fits({"headline": "x" * 52, "team": "x" * 20, "bet": "x" * 40}) == {"headline": "ok", "team": "small", "bet": "long"}
+    # the team and bet lines start after the crests (77 px each): more crests, less room
+    assert T.fits({"headline": "x" * 52, "team": "Манчестер Юнайтед", "bet": "x" * 25, "crest": "home"}) == {"headline": "ok", "team": "ok", "bet": "ok"}
+    assert T.fits({"headline": "x" * 61, "team": "Манчестер Юнайтед", "bet": "x" * 25, "crest": "match"}) == {"headline": "long", "team": "small", "bet": "small"}
+    assert T.fits({"team": "x" * 26, "bet": "x" * 41, "crest": "none"}) == {"headline": "ok", "team": "ok", "bet": "ok"}
 
 
 def test_same_fact_on_nested_lines_is_one_card():
