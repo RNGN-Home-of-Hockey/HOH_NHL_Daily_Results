@@ -18,6 +18,11 @@ epl.109-172-113-187.sslip.io {
 		X-Robots-Tag "noindex, nofollow"
 	}
 
+	# on-air state for the OBS/vMix overlay and the operator's buttons (tools/epl_onair.py, hoh-epl-onair.service)
+	handle /api/onair/* {
+		reverse_proxy 127.0.0.1:8096
+	}
+
 	handle /data/site.json {
 		root * /opt/hoh-epl/repo/local-data/epl/site
 		rewrite * /site.json

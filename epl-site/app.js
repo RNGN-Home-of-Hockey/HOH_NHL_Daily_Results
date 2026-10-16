@@ -8,6 +8,8 @@ import { cropPlate, loadPlateAssets, oddsText, renderPlate, toBlob } from './pla
 const DATA_URL = 'data/site.json';
 const QUEUE_KEY = 'hoh-epl-queue-v1';
 const UI_KEY = 'hoh-epl-ui-v2';
+const KEY_STORE = 'hoh-epl-operator-key';  // the operator key of the on-air buttons, kept on this device
+const ROOMS = ['1', '2', '3', '4'];  // on-air channels: one overlay link per broadcast
 const AUTO_RELOAD_MS = 5 * 60 * 1000;
 const FEED_PAGE = 60;
 const MSK = { timeZone: 'Europe/Moscow' };
@@ -65,7 +67,7 @@ const defaults = () => ({
 });
 const state = {
   data: null, cards: [], playerRows: [], selected: null, tab: 'tips', tipTier: 'all', tipCategory: 'all', query: '', family: 'all', side: 'all',
-  feedLimit: FEED_PAGE, filtersOpen: false, plateIndex: 0, open: new Set(), queue: loadJson(QUEUE_KEY, []), ...mergeUi(loadJson(UI_KEY, {})),
+  feedLimit: FEED_PAGE, filtersOpen: false, plateIndex: 0, operatorKey: loadJson(KEY_STORE, ''), onair: {}, onairOk: true, open: new Set(), queue: loadJson(QUEUE_KEY, []), ...mergeUi(loadJson(UI_KEY, {})),
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -100,10 +102,10 @@ function saveJson(key, value) {
 }
 function mergeUi(saved) {
   const base = defaults();
-  return { page: saved.page || base.page, feed: { ...base.feed, ...(saved.feed || {}) }, players: { ...base.players, ...(saved.players || {}) },
+  return { page: saved.page || base.page, room: ROOMS.includes(saved.room) ? saved.room : '1', feed: { ...base.feed, ...(saved.feed || {}) }, players: { ...base.players, ...(saved.players || {}) },
     teams: { ...base.teams, ...(saved.teams || {}) } };
 }
-const saveUi = () => saveJson(UI_KEY, { page: state.page, feed: state.feed, players: state.players, teams: state.teams });
+const saveUi = () => saveJson(UI_KEY, { page: state.page, room: state.room, feed: state.feed, players: state.players, teams: state.teams });
 const saveQueue = () => saveJson(QUEUE_KEY, state.queue);
 
 function mono(club) {
@@ -682,7 +684,8 @@ function plateEditor(item) {
       <label class="pf"><span>Эмблема</span><select data-input="plate-crest">${crestOptions}</select></label></div>
     <label class="pf"><span>Размер эмблемы</span><select data-input="plate-crest-size"><option value="big" ${p.crestSize !== 'whole' ? 'selected' : ''}>Крупно, как в макете (края срезаны)</option>
       <option value="whole" ${p.crestSize === 'whole' ? 'selected' : ''}>Целиком внутри плашки</option></select></label>
-    <div class="plate-actions"><button class="btn primary" data-action="plate-png" data-mode="full" title="Кадр 1920×1080 с прозрачным фоном — как присланный шаблон">PNG 1920×1080</button>
+    <button class="btn primary big" data-action="onair-show">▶ Дать в эфир</button>
+    <div class="plate-actions"><button class="btn" data-action="plate-png" data-mode="full" title="Кадр 1920×1080 с прозрачным фоном — как присланный шаблон">PNG 1920×1080</button>
       <button class="btn" data-action="plate-png" data-mode="crop" title="Только плашка, 920×240">PNG плашка</button>
       <button class="btn ghost" data-action="plate-copy">Копировать</button>
       <button class="btn ghost" data-action="plate-reset" title="Вернуть тексты из карточки">Сбросить</button></div>
@@ -729,19 +732,95 @@ function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
+// ---------- on air: the OBS / vMix overlay (overlay.html) and the operator's buttons ----------
+const OVERLAY_ORIGIN = 'https://epl.109-172-113-187.sslip.io';  // the Moscow server: opens without a VPN, no Cloudflare limits
+const overlayUrl = () => `${OVERLAY_ORIGIN}/overlay.html?room=${encodeURIComponent(state.room)}`;
+const onAirNow = () => state.onair[state.room] || null;
+
+async function onairCall(path, body) {
+  if (!state.operatorKey) throw new Error('Введите ключ оператора в блоке «Эфир»');
+  const response = await fetch(`/api/onair/${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Operator-Key': state.operatorKey }, body: JSON.stringify(body || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    state.operatorKey = '';
+    saveJson(KEY_STORE, '');
+    renderDock();
+    throw new Error('Неверный ключ оператора');
+  }
+  if (response.status === 429) throw new Error('Слишком много неверных ключей — подождите 10 минут');
+  if (!response.ok || !data.ok) throw new Error(data.error || `ошибка сервера ${response.status}`);
+  return data;
+}
+
+async function pollOnair() {
+  try {
+    const response = await fetch('/api/onair/rooms', { cache: 'no-store' });
+    if (!response.ok) throw new Error(String(response.status));
+    const data = await response.json();
+    state.onair = Object.fromEntries((data.rooms || []).map((room) => [room.room, room]));
+    state.onairOk = true;
+  } catch {
+    state.onairOk = false;
+  }
+  renderOnair();
+}
+
+function onairText(room) {
+  if (!state.onairOk) return { cls: 'bad', text: 'Нет связи с сервером эфира' };
+  if (!room?.on || !room.plate) return { cls: 'idle', text: 'Эфир пуст' };
+  const p = room.plate;
+  return { cls: 'live', text: `В ЭФИРЕ: ${[p.team, p.bet].filter(Boolean).join(' · ')}${p.odds ? ` · ${oddsText(p.odds)}` : ''}` };
+}
+
+function onairBox() {
+  const keyForm = state.operatorKey ? '' : `<div class="key-form"><input type="password" id="operator-key" autocomplete="off" placeholder="Ключ оператора">
+    <button class="btn" data-action="onair-key">Сохранить</button></div><p class="plate-note">Ключ нужен один раз на устройство — без него кнопки эфира не работают.</p>`;
+  return `<div class="onair-box">
+    <div class="onair-head"><label class="pf onair-room"><span>Канал</span><select data-input="onair-room">${ROOMS.map((r) => `<option value="${r}" ${state.room === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+      <span class="onair-status" id="onair-status"></span></div>
+    ${keyForm}
+    <div class="onair-buttons"><button class="btn" data-action="onair-hide">■ Убрать из эфира</button><button class="btn ghost danger" data-action="onair-off-all">Выключить всё</button></div>
+    <details class="obs"><summary>Подключить OBS / vMix</summary>
+      <code id="overlay-url">${esc(overlayUrl())}</code>
+      <div class="toolbar"><button class="btn small" data-action="onair-copy-link">Копировать ссылку</button><a class="btn small ghost" href="${esc(overlayUrl())}&demo=1&check=1" target="_blank" rel="noopener">Проверить</a></div>
+      <p class="plate-note">OBS: «Источники» → «+» → «Браузер», вставьте ссылку, ширина 1920, высота 1080. vMix: Add Input → Web Browser, та же ссылка, 1920×1080. Слой прозрачный: плашка появится сама, когда нажмёте «Дать в эфир». Каждый канал — своя ссылка, для разных трансляций.</p>
+    </details>
+  </div>`;
+}
+
+function renderOnair() {
+  const now = onAirNow();
+  const { cls, text } = onairText(now);
+  const status = $('#onair-status');
+  if (status) { status.className = `onair-status ${cls}`; status.textContent = text; }
+  const url = $('#overlay-url');
+  if (url) url.textContent = overlayUrl();
+  document.querySelectorAll('.qitem[data-qid]').forEach((el) => { el.dataset.live = String(Boolean(now?.on && now.id === el.dataset.qid)); });
+  const bar = $('#onair-bar');
+  if (bar) {
+    bar.hidden = !(now?.on && now.plate);
+    document.body.classList.toggle('has-onair-bar', !bar.hidden);
+    if (!bar.hidden) bar.innerHTML = `<span class="dot"></span><span class="txt">${esc(text)}</span><button class="btn small" data-action="onair-hide">Убрать</button>`;
+  }
+}
+
 function renderDock() {
   const q = state.queue;
   state.plateIndex = Math.min(Math.max(0, state.plateIndex || 0), Math.max(0, q.length - 1));
   const item = q[state.plateIndex];
   $('#dock').innerHTML = `<h2>Эфир <span class="pill">${q.length}</span></h2>
+    ${onairBox()}
     ${item ? plateEditor(item) : '<div class="empty">Выберите карточки кнопкой «В эфир» — здесь появится плашка Winline</div>'}
-    ${q.map((entry, index) => `<div class="qitem" data-selected="${index === state.plateIndex}">${entry.tier ? `<span class="tier-dot" data-tier="${entry.tier}">${esc(tierLabel(entry.tier))}</span>` : ''}
+    ${q.map((entry, index) => `<div class="qitem" data-qid="${esc(entry.id)}" data-selected="${index === state.plateIndex}">${entry.tier ? `<span class="tier-dot" data-tier="${entry.tier}">${esc(tierLabel(entry.tier))}</span>` : ''}
       <button class="linkish qtitle" data-action="plate-select" data-index="${index}">${esc(entry.title)}</button><div class="row"><span>${esc(entry.match)}</span><span class="odds num">${odds(entry.odds)}</span></div>
       <div class="row"><span>${esc(entry.label)}</span><span style="margin-left:auto"></span>
         <button class="btn small ghost" data-action="move" data-index="${index}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Выше">↑</button>
         <button class="btn small ghost" data-action="move" data-index="${index}" data-dir="1" ${index === q.length - 1 ? 'disabled' : ''} aria-label="Ниже">↓</button>
         <button class="btn small ghost" data-action="unqueue" data-index="${index}">Убрать</button></div></div>`).join('')}
     ${q.length ? '<div class="toolbar"><button class="btn" data-action="copy-queue">Копировать тексты</button><button class="btn ghost" data-action="clear-queue">Очистить</button></div>' : ''}`;
+  renderOnair();
   if (item) {
     saveQueue();
     drawPreview(item);
@@ -868,7 +947,12 @@ function onClick(event) {
     t.dir = t.sort === value ? -t.dir : (ASCENDING_FIRST.has(value) ? 1 : -1); t.sort = value; saveUi(); renderTeams();
   }
   else if (action === 'details') { const id = target.dataset.card; state.open.has(id) ? state.open.delete(id) : state.open.add(id); refreshContent(); }
-  else if (action === 'queue') { toggleQueue(target.dataset.card); refreshContent(); }
+  else if (action === 'queue') {
+    const adding = !state.queue.some((q) => q.id === target.dataset.card);
+    toggleQueue(target.dataset.card);
+    refreshContent();
+    if (adding && window.matchMedia('(max-width: 880px)').matches) $('#dock').scrollIntoView({ behavior: 'smooth', block: 'start' });  // on a phone: straight to the plate and «Дать в эфир»
+  }
   else if (action === 'copy-card') { const found = findCard(target.dataset.card); if (found) copyText(cardText(found.m, found.c)); }
   else if (action === 'unqueue') {
     const i = Number(target.dataset.index);
@@ -882,6 +966,33 @@ function onClick(event) {
     if (state.plateIndex === i) state.plateIndex = j; else if (state.plateIndex === j) state.plateIndex = i;
     saveQueue(); renderDock();
   }
+  else if (action === 'onair-show') {
+    const item = state.queue[state.plateIndex];
+    if (!item) return;
+    target.disabled = true;
+    onairCall('show', { room: state.room, id: item.id, match: item.match, plate: plateData(item) })
+      .then((data) => { state.onair[data.room] = data; state.onairOk = true; renderOnair(); toast(`В эфире, канал ${data.room}`); })
+      .catch((error) => toast(error.message)).finally(() => { target.disabled = false; });
+  }
+  else if (action === 'onair-hide') {
+    onairCall('hide', { room: state.room })
+      .then((data) => { state.onair[data.room] = data; renderOnair(); toast('Убрано из эфира'); })
+      .catch((error) => toast(error.message));
+  }
+  else if (action === 'onair-off-all') {
+    if (!confirm('Убрать плашки из эфира на всех каналах?')) return;
+    onairCall('off-all').then(() => { toast('Эфир выключен на всех каналах'); pollOnair(); }).catch((error) => toast(error.message));
+  }
+  else if (action === 'onair-key') {
+    const input = $('#operator-key');
+    const key = (input?.value || '').trim();
+    if (!key) return;
+    fetch('/api/onair/check', { headers: { 'X-Operator-Key': key }, cache: 'no-store' }).then((response) => {
+      if (response.ok) { state.operatorKey = key; saveJson(KEY_STORE, key); renderDock(); toast('Ключ сохранён'); }
+      else toast(response.status === 429 ? 'Слишком много попыток — подождите 10 минут' : 'Неверный ключ');
+    }).catch(() => toast('Нет связи с сервером эфира'));
+  }
+  else if (action === 'onair-copy-link') copyText(overlayUrl());
   else if (action === 'plate-select') { state.plateIndex = Number(target.dataset.index); renderDock(); }
   else if (action === 'plate-png') {
     const item = state.queue[state.plateIndex];
@@ -918,6 +1029,7 @@ function onInput(event) {
   const target = event.target;
   const kind = target.dataset?.input;
   if (!kind) return;
+  if (kind === 'onair-room') { state.room = target.value; saveUi(); renderOnair(); return; }
   if (kind.startsWith('plate-')) {
     const item = state.queue[state.plateIndex];
     const field = { 'plate-headline': 'headline', 'plate-team': 'team', 'plate-bet': 'bet', 'plate-odds': 'odds', 'plate-crest': 'crest', 'plate-crest-size': 'crestSize' }[kind];
@@ -962,7 +1074,7 @@ function onKey(event) {
 // ---------- boot ----------
 function shell() {
   $('#app').innerHTML = `<div class="shell"><header class="topbar" id="top"></header>
-    <div class="layout" id="layout"><section class="card strip" id="strip" aria-label="Матчи недели"></section><aside class="card side" id="side" aria-label="Фильтры и матчи"></aside><main class="main" id="main"></main><aside class="card dock" id="dock" aria-label="Эфир"></aside></div></div>`;
+    <div class="layout" id="layout"><section class="card strip" id="strip" aria-label="Матчи недели"></section><aside class="card side" id="side" aria-label="Фильтры и матчи"></aside><main class="main" id="main"></main><aside class="card dock" id="dock" aria-label="Эфир"></aside></div></div><div class="onair-bar" id="onair-bar" hidden></div>`;
 }
 
 async function load(manual = false) {
@@ -989,6 +1101,14 @@ async function load(manual = false) {
 
 shell();
 readHash();
+const linkKey = new URLSearchParams(location.search).get('key');
+if (linkKey) {  // the operator link carries the key once; it is kept on this device and dropped from the address bar
+  state.operatorKey = linkKey.trim();
+  saveJson(KEY_STORE, state.operatorKey);
+  history.replaceState(null, '', location.pathname + location.hash);
+}
+pollOnair();
+setInterval(() => { if (document.visibilityState === 'visible') pollOnair(); }, 5000);
 document.addEventListener('click', onClick);
 document.addEventListener('input', onInput);
 document.addEventListener('keydown', onKey);

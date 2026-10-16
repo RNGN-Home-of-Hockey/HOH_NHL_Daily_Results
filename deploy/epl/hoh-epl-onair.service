@@ -1,0 +1,20 @@
+[Unit]
+Description=HOH EPL: on-air state of the Winline plates (OBS/vMix overlay + the operator's buttons)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3.14 -I /opt/hoh-epl/repo/tools/epl_onair.py --port 8096
+DynamicUser=yes
+StateDirectory=hoh-epl-onair
+LoadCredential=operator.key:/opt/hoh-epl/secrets/operator.key
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+MemoryMax=200M
+
+[Install]
+WantedBy=multi-user.target
