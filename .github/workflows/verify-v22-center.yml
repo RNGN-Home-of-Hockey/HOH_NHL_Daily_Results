@@ -233,7 +233,7 @@ jobs:
           const unauth=await raw('/api/telegram-center-v22/me');
           if(unauth.r.status!==401)throw new Error('profile API must require Telegram auth, got '+unauth.r.status);
           const centerStatus=await json('/api/telegram/center/status');
-          if(String(centerStatus.mini_app_url||'')!=='https://hoh-nhl-daily-results.rngn.workers.dev/telegram-app-v24?build=24.8.0')throw new Error('Center mini app URL is not exact current build '+centerStatus.mini_app_url);
+          if(String(centerStatus.mini_app_url||'')!=='https://hoh.109-172-113-187.sslip.io/telegram-app-v24?build=24.8.0')throw new Error('Center mini app URL is not exact current build '+centerStatus.mini_app_url);
           if(String(centerStatus.menu_button?.value?.web_app?.url||'')!==centerStatus.mini_app_url)throw new Error('Telegram menu button build mismatch '+JSON.stringify(centerStatus.menu_button));
           if(centerStatus.menu_button_matches_build!==true)throw new Error('Telegram menu build contract false '+JSON.stringify(centerStatus));
 

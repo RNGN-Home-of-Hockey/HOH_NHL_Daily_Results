@@ -167,7 +167,7 @@ jobs:
           if(!d.delivery_setup?.ok||d.delivery_setup?.mode!=='polling')throw new Error('Telegram Center polling setup failed '+JSON.stringify(d.delivery_setup));
           if(!d.commands?.ok||!(d.commands.items||[]).some(x=>x.command==='menu'))throw new Error('Telegram Center commands missing '+JSON.stringify(d.commands));
           if(!d.menu_button?.ok||d.menu_button?.value?.type!=='web_app')throw new Error('Telegram Center menu button missing '+JSON.stringify(d.menu_button));
-          if(String(d.menu_button?.value?.web_app?.url||'')!=='https://hoh-nhl-daily-results.rngn.workers.dev/telegram-app-v24?build=24.8.0')throw new Error('Telegram Center menu button is not on exact current build '+JSON.stringify(d.menu_button));
+          if(String(d.menu_button?.value?.web_app?.url||'')!=='https://hoh.109-172-113-187.sslip.io/telegram-app-v24?build=24.8.0')throw new Error('Telegram Center menu button is not on exact current build '+JSON.stringify(d.menu_button));
           if(d.menu_button_matches_build!==true)throw new Error('Telegram Center menu build contract failed '+JSON.stringify(d));
           const origin='https://hoh-nhl-daily-results.rngn.workers.dev';
           const browserAssets=['/telegram-app/v9.js','/telegram-app/v15-core.js','/telegram-app/v15-team.js','/telegram-app/v19.js','/telegram-app/v20.js','/telegram-app/v21.js','/telegram-app/v22.js','/telegram-app/v23-player.js','/telegram-app/v24-visual.js'];
