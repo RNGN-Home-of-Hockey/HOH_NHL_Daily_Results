@@ -94,8 +94,8 @@ def test_pooled_card_gate_and_titles():
     spec = {"on": "FT", "res": "h", "total": ("over", 2.5)}
     card = mk.pooled_card("combo_result_total", EVENT_NAMES, ctx, m, m["outcomes"][0], spec, sides, min_rate=0.4)
     assert card and card["evidence"]["hits"] == 10 and card["evidence"]["sample"] == 16
-    assert card["title"].startswith("Арсенал побеждал при тотале больше 2,5 в 5 из 8"), card["title"]
-    assert "Ноттингем проигрывал при тотале больше 2,5 — в 5 из 8" in card["title"]
+    assert card["title"] == "Арсенал — победы и 3+ гола в 5 из 8 последних матчей, Ноттингем — поражения и 3+ гола в 5 из 8", card["title"]
+    assert card["plate"]["crest"] == "home" and card["plate"]["bet"] == "победит и тотал больше 2,5"
     assert card["market"]["label"] == "Исход и тотал 2,5: П1/Больше"
     draw = mk.pooled_card("combo_result_total", EVENT_NAMES, ctx, m, m["outcomes"][1], {"on": "FT", "res": "d", "total": ("over", 2.5)}, sides, min_rate=0.4)
     assert draw is None  # no draw had three goals
@@ -104,10 +104,19 @@ def test_pooled_card_gate_and_titles():
 
 
 def test_margin_words():
-    assert mk.goal_margin_text(">", 0) == "побеждал" and mk.goal_margin_text(">", 1) == "побеждал в 2 мяча и больше"
-    assert mk.goal_margin_text("<", 1) == "не побеждал" and mk.goal_margin_text("=", -1) == "проигрывал ровно в 1 мяч"
-    assert mk.corner_margin_text("<", 5.5) == "подавал больше соперника не больше чем на 5 угловых"
-    assert mk.corner_margin_text(">", -1.5) == "уступал по угловым не больше чем на 1"
+    assert mk.margin_noun(">", 0) == "победы" and mk.margin_noun(">", 1) == "победы в 2+ мяча"
+    assert mk.margin_noun("<", 1) == "без побед" and mk.margin_noun("=", -1) == "поражения ровно в 1 мяч"
+    assert mk.margin_bet(">", -1) == "не проиграет" and mk.margin_bet(">", -2) == "фора +1,5" and mk.margin_bet(">", 1) == "победит в 2+ мяча"
+    assert mk.corner_noun(">", -0.5) == "не меньше угловых, чем у соперника" and mk.corner_noun("<", 0.5) == "не больше угловых, чем у соперника"
+
+
+def test_second_half_european_handicap_reads_plainly():
+    # owner 2026-10-16: «2-й тайм европейский гандикап 1:0» is too hard — the plate says «2-й тайм: не проиграет»
+    spec = {"on": "2H", "eh": mk.european_start({"param": "1:0"}), "res": "h"}  # the home side starts a goal up
+    assert mk.favoured(spec) == "h" and mk.club_bet(spec, "h") == "2-й тайм: не проиграет"
+    assert mk.club_view(spec, "h") == "без поражений" and mk.club_view(spec, "a") == "без побед"
+    assert mk.match_fact({"on": "1H", "count": (2, 2)}) == "ровно 2 гола в первом тайме"
+    assert mk.match_bet({"on": "FT", "res": "d", "total": ("under", 4.5)}) == "ничья и тотал меньше 4,5"
 
 
 def test_card_facts_from_match_pages():

@@ -91,7 +91,8 @@ def test_clean_sheet_and_total_rules():
     clean = eng.rule_clean_sheet(event, ctx)
     assert len(clean) == 1 and "не пропускал в 6 из 8" in clean[0]["title"] and clean[0]["market"]["odds"] == 2.2
     totals = eng.rule_match_total_form(event, ctx)
-    assert len(totals) == 1 and totals[0]["market"]["side"] == "under" and "15 из 16" in totals[0]["title"]
+    assert len(totals) == 1 and totals[0]["market"]["side"] == "under" and totals[0]["evidence"]["hits"] == 15
+    assert totals[0]["title"].startswith("Не больше 2 голов — в "), totals[0]["title"]  # whole goals, each club's own record
 
 
 def test_scores_first_reads_the_goal_order():

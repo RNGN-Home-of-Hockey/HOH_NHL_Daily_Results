@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import epl_engine as eng  # noqa: E402
 import epl_insights as ins  # noqa: E402
+import epl_text as T  # noqa: E402
 
 MIN_HITS = 4
 SIDE_MIN = 0.25
@@ -208,39 +209,71 @@ def directional(spec: dict) -> bool:  # the outcome favours one side, so each cl
             or spec.get("only") in ("h", "a") or bool(spec.get("hcap")) or spec.get("first_card") in ("h", "a") or "eh" in spec)
 
 
-PERIOD_PREFIX = {"1H": "Первый тайм: ", "2H": "Второй тайм: ", "cards_1H": "Первый тайм: "}
-RES_VERB = {"FT": {"h": "побеждал", "d": "играл вничью", "a": "проигрывал", "hd": "не проигрывал", "da": "не побеждал", "ha": "не играл вничью"},
-            "corners": {"h": "подавал больше угловых", "d": "подавал столько же угловых", "a": "подавал меньше угловых",
-                        "hd": "подавал угловых не меньше соперника", "da": "подавал угловых не больше соперника", "ha": "подавал не столько же угловых"},
-            "cards": {"h": "получал больше карточек", "d": "получал столько же карточек", "a": "получал меньше карточек",
-                      "hd": "получал карточек не меньше соперника", "da": "получал карточек не больше соперника", "ha": "получал не столько же карточек"}}
+PERIOD_IN = {"1H": "В первом тайме ", "2H": "Во втором тайме ", "cards_1H": "В первом тайме "}
+PERIOD_SHORT = {"1H": "В 1-м тайме ", "2H": "Во 2-м тайме ", "cards_1H": "В 1-м тайме "}
+PERIOD_SUFFIX = {"1H": " в первом тайме", "2H": " во втором тайме", "cards_1H": " в первом тайме"}
+PERIOD_BET = {"1H": "1-й тайм: ", "2H": "2-й тайм: ", "cards_1H": "1-й тайм: "}
+# an outcome in one club's own matches ("Эвертон — без поражений в 7 из 8") and as a bet on that club ("не проиграет")
+RES_NOUN = {"FT": {"h": "победы", "d": "ничьи", "a": "поражения", "hd": "без поражений", "da": "без побед", "ha": "без ничьих"},
+            "corners": {"h": "больше угловых, чем у соперника", "d": "поровну угловых с соперником", "a": "меньше угловых, чем у соперника",
+                        "hd": "не меньше угловых, чем у соперника", "da": "не больше угловых, чем у соперника", "ha": "не поровну угловых"},
+            "cards": {"h": "больше карточек, чем у соперника", "d": "поровну карточек с соперником", "a": "меньше карточек, чем у соперника",
+                      "hd": "не меньше карточек, чем у соперника", "da": "не больше карточек, чем у соперника", "ha": "не поровну карточек"}}
+RES_VERB = {"h": "побеждал", "d": "играл вничью", "a": "проигрывал", "hd": "не проигрывал", "da": "не побеждал", "ha": "не играл вничью"}
+RES_BET = {"FT": {"h": "победит", "d": "ничья", "a": "проиграет", "hd": "не проиграет", "da": "не победит", "ha": "без ничьей"},
+           "corners": {"h": "больше угловых", "d": "поровну угловых", "a": "меньше угловых", "hd": "не меньше угловых", "da": "не больше угловых",
+                       "ha": "не поровну угловых"},
+           "cards": {"h": "больше карточек", "d": "поровну карточек", "a": "меньше карточек", "hd": "не меньше карточек", "da": "не больше карточек",
+                     "ha": "не поровну карточек"}}
+HT_NOUN = {"h": "впереди после первого тайма", "d": "ничья после первого тайма", "a": "позади после первого тайма",
+           "hd": "не позади после первого тайма", "da": "не впереди после первого тайма", "ha": "без ничьей к перерыву"}
+HT_WORD = {"h": "победа", "d": "ничья", "a": "поражение", "hd": "не проиграет", "da": "не победит", "ha": "без ничьей"}
 
 
-def balls(n: int) -> str:
-    return ins.count_word(n, "мяч", "мяча", "мячей")
+def period_of(spec: dict) -> str:
+    return "cards_1H" if spec.get("first_card_by") else spec.get("on", "FT")
 
 
-def goal_margin_text(op: str, t: int) -> str:
-    """The club's own goal difference m against t ('>' / '=' / '<') in words (European handicap)."""
+def kind_of(on: str) -> str:
+    return "corners" if on == "corners" else "cards" if on.startswith("cards") else "FT"
+
+
+def unit_of(on: str) -> str:
+    return "corner" if on == "corners" else "card" if on.startswith("cards") else "goal"
+
+
+def margin_noun(op: str, t: int) -> str:
+    """The club's own goal difference m against t ('>' / '=' / '<') over its matches (European handicap)."""
+    balls = lambda k: f"{k}+ {T.word(k, 'ball')}"  # noqa: E731
     if op == "=":
-        return f"побеждал ровно в {t} {balls(t)}" if t > 0 else "играл вничью" if t == 0 else f"проигрывал ровно в {-t} {balls(-t)}"
+        return f"победы ровно в {T.count(t, 'ball')}" if t > 0 else "ничьи" if t == 0 else f"поражения ровно в {T.count(-t, 'ball')}"
     if op == ">":
         k = t + 1  # m >= k
-        return "побеждал" if k == 1 else f"побеждал в {k} {balls(k)} и больше" if k > 1 else "не проигрывал" if k == 0 else f"не проигрывал в {1 - k} {balls(1 - k)} и больше"
+        return f"победы в {balls(k)}" if k >= 2 else "победы" if k == 1 else "без поражений" if k == 0 else f"без поражений в {balls(1 - k)}"
     k = t - 1  # m <= k
-    return "проигрывал" if k == -1 else f"проигрывал в {-k} {balls(-k)} и больше" if k < -1 else "не побеждал" if k == 0 else f"не побеждал в {k + 1} {balls(k + 1)} и больше"
+    return f"поражения в {balls(-k)}" if k <= -2 else "поражения" if k == -1 else "без побед" if k == 0 else f"без побед в {balls(k + 1)}"
 
 
-def corner_margin_text(op: str, t: float) -> str:
-    """The club's own corner difference m against a half line t ('>' or '<') in words (corner handicap)."""
-    word = lambda n: ins.count_word(n, "угловой", "угловых", "угловых")  # noqa: E731
+def margin_bet(op: str, t: int) -> str:
+    """The same condition as a bet on the club: 'не проиграет', 'победит в 2+ мяча', 'фора +1,5'."""
+    if op == "=":
+        return f"победит ровно в {T.count(t, 'ball')}" if t > 0 else "ничья" if t == 0 else f"проиграет ровно в {T.count(-t, 'ball')}"
+    if op == ">":
+        k = t + 1
+        return f"победит в {k}+ {T.word(k, 'ball')}" if k >= 2 else "победит" if k == 1 else "не проиграет" if k == 0 else f"фора +{T.line(0.5 - k)}"
+    k = t - 1
+    return f"проиграет в {-k}+ {T.word(-k, 'ball')}" if k <= -2 else "проиграет" if k == -1 else "не победит" if k == 0 else f"фора -{T.line(k + 0.5)}"
+
+
+def corner_noun(op: str, t: float) -> str:
+    """The club's own corner difference m against a half line t ('>' or '<') over its matches (corner handicap)."""
     if op == ">":
         k = math.floor(t) + 1  # m >= k
-        return (f"подавал минимум на {k} {word(k)} больше соперника" if k >= 1 else "подавал угловых не меньше соперника" if k == 0
-                else f"уступал по угловым не больше чем на {-k}")
+        return (f"на {k}+ угловых больше соперника" if k >= 2 else "больше угловых, чем у соперника" if k == 1
+                else "не меньше угловых, чем у соперника" if k == 0 else f"отставание по угловым не больше {-k}")
     k = math.ceil(t) - 1  # m <= k
-    return (f"уступал по угловым минимум на {-k}" if k <= -1 else "подавал угловых не больше соперника" if k == 0
-            else f"подавал больше соперника не больше чем на {k} {word(k)}")
+    return (f"на {-k}+ угловых меньше соперника" if k <= -2 else "меньше угловых, чем у соперника" if k == -1
+            else "не больше угловых, чем у соперника" if k == 0 else f"перевес по угловым не больше {k}")
 
 
 def handicap_condition(spec: dict, side: str) -> tuple[str, float] | None:
@@ -259,86 +292,163 @@ def handicap_condition(spec: dict, side: str) -> tuple[str, float] | None:
     return None
 
 
-def side_clause(spec: dict, side: str, name: str) -> str:
-    """What the outcome means for one club in its own matches ('h' = the home club, 'a' = the away club, mirrored),
-    as a clause with the club's name. The period goes into the title's prefix, not here."""
+def favoured(spec: dict) -> str | None:
+    """The side ('h' / 'a') a directional outcome is a bet on, None when it favours neither."""
+    if "eh" in spec:
+        res, k = spec["res"], spec["eh"]
+        return "h" if res == "h" else "a" if res == "a" else ("h" if k > 0 else "a" if k < 0 else None)
+    for key in ("hcap", "first_card", "first", "only"):
+        value = spec.get(key)
+        if isinstance(value, tuple):
+            return value[0]
+        if value in ("h", "a"):
+            return value
+    res = spec.get("res") or spec.get("ht")
+    return "h" if res in ("h", "hd") else "a" if res in ("a", "da") else None
+
+
+def club_view(spec: dict, side: str) -> str:
+    """What the outcome means in one club's own matches ('h' = the home club, 'a' = the away club, mirrored), as a short
+    phrase after the club's name: 'без поражений', 'без побед и 4+ гола', 'первым получал карточку'. No period words."""
     mine = lambda value: value if side == "h" else MIRROR.get(value, value)  # noqa: E731
     on = spec.get("on", "FT")
     condition = handicap_condition(spec, side)
     if condition:
         op, t = condition
-        return f"{name} {corner_margin_text(op, t) if spec.get('hcap') else goal_margin_text(op, int(t))}"
+        return corner_noun(op, t) if spec.get("hcap") else margin_noun(op, int(t))
     if spec.get("first_card") in ("h", "a"):
-        return f"{name} первым получал карточку" if spec["first_card"] == side else f"в матчах {name} первую карточку получал соперник"
+        return "первым получал карточку" if spec["first_card"] == side else "первую карточку получал соперник"
     parts = []
     if spec.get("first") in ("h", "a"):
-        parts.append("забивал первым" if spec["first"] == side else "пропускал первым")
+        parts.append("открывал счёт" if spec["first"] == side else "пропускал первым")
     if spec.get("ht"):
-        parts.append({"h": "вёл после первого тайма", "d": "уходил на перерыв при ничьей", "a": "уступал после первого тайма",
-                      "hd": "не уступал после первого тайма", "da": "не вёл после первого тайма", "ha": "не уходил на перерыв при ничьей"}[mine(spec["ht"])])
+        parts.append(HT_NOUN[mine(spec["ht"])])
     if spec.get("res"):
-        kind = "corners" if on == "corners" else "cards" if on.startswith("cards") else "FT"
-        verb = RES_VERB[kind][mine(spec["res"])]
+        if spec.get("first") in ("h", "a"):
+            parts.append(RES_VERB[mine(spec["res"])])
+        else:
+            noun = RES_NOUN[kind_of(on)][mine(spec["res"])]
+            if spec.get("margin"):
+                low, high = spec["margin"]
+                noun += f" ровно в {T.count(low, 'ball')}" if high == low else f" в {low}+ {T.word(low, 'ball')}"
+            parts.append(noun)
+    if spec.get("only") in ("h", "a"):
+        parts.append("забивал, не пропуская" if spec["only"] == side else "пропускал, не забивая")
+    if spec.get("total"):
+        parts.append(T.total(*spec["total"], unit=unit_of(on)))
+    if spec.get("btts") is not None:
+        parts.append("обе забивали" if spec["btts"] else "хотя бы одна команда не забила")
+    return " и ".join(parts) or "так"
+
+
+def club_bet(spec: dict, side: str) -> str:
+    """The outcome as a bet on the club `side` for the plate: 'не проиграет', '2-й тайм: не проиграет',
+    'не проиграет и тотал больше 3,5', 'угловые: фора +0,5', 'забьёт первым и победит'."""
+    mine = lambda value: value if side == "h" else MIRROR.get(value, value)  # noqa: E731
+    on = spec.get("on", "FT")
+    prefix = PERIOD_BET.get(period_of(spec), "")
+    condition = handicap_condition(spec, side)
+    if spec.get("hcap"):
+        return f"угловые: фора {T.signed(spec['hcap'][1])}"
+    if condition:
+        return prefix + margin_bet(condition[0], int(condition[1]))
+    if spec.get("first_card") in ("h", "a"):
+        return prefix + "получит первую карточку"
+    parts = []
+    if spec.get("first") in ("h", "a"):
+        parts.append("забьёт первым" if spec["first"] == side else "пропустит первым")
+    if spec.get("ht") and spec.get("res"):
+        parts.append(f"{HT_WORD[mine(spec['ht'])]} в перерыве, {HT_WORD[mine(spec['res'])]} в матче")
+    elif spec.get("ht"):
+        parts.append(f"1-й тайм: {RES_BET['FT'][mine(spec['ht'])]}")
+    elif spec.get("res"):
+        text = RES_BET[kind_of(on)][mine(spec["res"])]
         if spec.get("margin"):
             low, high = spec["margin"]
-            verb += f" ровно в {low} {balls(low)}" if high == low else f" в {low} {balls(low)} и больше"
-        parts.append(verb)
+            text += f" ровно в {T.count(low, 'ball')}" if high == low else f" в {low}+ {T.word(low, 'ball')}"
+        parts.append(text)
     if spec.get("only") in ("h", "a"):
-        parts.append("забивал, не пропуская" if spec["only"] == side else "не забивал, но пропускал")
-    text = " и ".join(parts) if parts else "играл"
+        parts.append("победит всухую" if spec["only"] == side else "проиграет всухую")
     if spec.get("total"):
-        text += f" при тотале {'больше' if spec['total'][0] == 'over' else 'меньше'} {ins.fmt_line(spec['total'][1])}"
+        side_word, value = spec["total"]
+        parts.append(f"тотал {'больше' if side_word == 'over' else 'меньше'} {T.line(value)}")
     if spec.get("btts") is not None:
-        text += " (обе команды забивали)" if spec["btts"] else " (одна из команд не забила)"
-    return f"{name} {text}"
+        parts.append("обе забьют" if spec["btts"] else "обе забьют — нет")
+    return prefix + " и ".join(parts)
 
 
-def neutral_text(spec: dict) -> str:
-    """The outcome as a phrase about a match, for outcomes that do not favour one side (no period words)."""
+def match_fact(spec: dict) -> str:
+    """The outcome as a fact about a match, for outcomes that favour neither side, with its period:
+    'ничья во втором тайме', 'ровно 2 карточки в первом тайме', 'ничья и не больше 4 голов'."""
     on = spec.get("on", "FT")
+    unit = unit_of(on)
     bits = []
     if spec.get("ht") == "d" and spec.get("res") == "d":
         bits.append("ничья и в перерыве, и в итоге")
     elif spec.get("ht") == "d":
-        bits.append("ничья после первого тайма")
+        bits.append("ничья к перерыву")
     elif spec.get("res") == "d":
-        bits.append({"corners": "равенство по угловым", "cards": "поровну карточек", "cards_1H": "поровну карточек"}.get(on, "ничья"))
+        bits.append({"corners": "поровну угловых", "cards": "поровну карточек", "cards_1H": "поровну карточек"}.get(on, "ничья"))
     if spec.get("res") == "ha":
-        bits.append("кто-то побеждал")
+        bits.append("без ничьей")
     if spec.get("total"):
-        side, line = spec["total"]
-        unit = f"{ins.fmt_line(line)} карточки" if on.startswith("cards") else ins.goals_phrase(line)
-        bits.append(f"{'больше' if side == 'over' else 'меньше'} {unit}")
+        bits.append(T.total(*spec["total"], unit=unit))
     if spec.get("count"):
-        low, high = spec["count"]
-        forms = {"corners": ("угловой", "угловых", "угловых"), "cards": ("карточка", "карточки", "карточек"),
-                 "cards_1H": ("карточка", "карточки", "карточек")}.get(on, ("гол", "гола", "голов"))
-        if high is None:
-            bits.append(f"{low} и больше {forms[2]}")
-        elif high == low:
-            bits.append("без голов" if (low == 0 and forms[0] == "гол") else f"ровно {low} {ins.count_word(low, *forms)}")
-        else:
-            bits.append(f"{low}–{high} {forms[2]}")
+        bits.append(T.between(*spec["count"], unit=unit))
     if spec.get("btts") is not None:
-        bits.append("обе команды забивали" if spec["btts"] else "забивала не больше одной команды")
+        bits.append("обе команды забили" if spec["btts"] else "хотя бы одна команда не забила")
     if spec.get("btts_halves"):
         first, second = spec["btts_halves"]
-        bits.append(f"обе забивали в первом тайме — {'да' if first else 'нет'}, во втором — {'да' if second else 'нет'}")
+        bits.append({(True, True): "обе команды забивали в каждом тайме", (True, False): "обе забивали в первом тайме, но не во втором",
+                     (False, True): "обе забивали во втором тайме, но не в первом",
+                     (False, False): "ни в одном тайме не забили обе"}[(first, second)])
     if spec.get("halves_total"):
-        side, line, want = spec["halves_total"]
-        bits.append(f"{'' if want else 'не '}в обоих таймах {'больше' if side == 'over' else 'меньше'} {ins.goals_phrase(line)}")
+        side, value, want = spec["halves_total"]
+        bits.append(f"{'' if want else 'не '}в каждом тайме {T.total(side, value)}")
     if spec.get("first_min"):
         low, high = spec["first_min"]
-        bits.append(f"первый гол на {low}–{high} минуте")
+        bits.append(f"первый гол на {low}–{high}-й минуте")
     if spec.get("first") == "none":
         bits.append("без голов")
     if spec.get("first_card") == "none":
         bits.append("без карточек")
-    return " и ".join(bits) or "так"
+    return " и ".join(bits) + PERIOD_SUFFIX.get(period_of(spec), "") if bits else "так"
 
 
-def prefix_of(spec: dict) -> str:
-    return "Первый тайм: " if spec.get("first_card_by") else PERIOD_PREFIX.get(spec.get("on", "FT"), "")
+def match_bet(spec: dict) -> str | None:
+    """A bet on the match for the plate ('ничья и тотал меньше 4,5', '1-й тайм: ровно 2 карточки'); None = use the label."""
+    on = spec.get("on", "FT")
+    unit = unit_of(on)
+    bits = []
+    if spec.get("btts_halves"):
+        return None
+    if spec.get("ht") == "d" and spec.get("res") == "d":
+        bits.append("ничья в перерыве и в матче")
+    elif spec.get("ht") == "d":
+        bits.append("ничья в перерыве")
+    elif spec.get("res") == "d":
+        bits.append({"corners": "поровну угловых", "cards": "поровну карточек", "cards_1H": "поровну карточек"}.get(on, "ничья"))
+    if spec.get("res") == "ha":
+        bits.append("кто-то победит")
+    if spec.get("total"):
+        side, value = spec["total"]
+        noun = {"goal": "тотал", "corner": "угловых", "card": "карточек"}[unit]
+        bits.append(f"{noun} {'больше' if side == 'over' else 'меньше'} {T.line(value)}")
+    if spec.get("count"):
+        bits.append(T.between(*spec["count"], unit=unit))
+    if spec.get("btts") is not None:
+        bits.append("обе забьют" if spec["btts"] else "обе забьют — нет")
+    if spec.get("halves_total"):
+        side, value, want = spec["halves_total"]
+        bits.append(f"{'' if want else 'не '}в каждом тайме {T.total(side, value)}")
+    if spec.get("first_min"):
+        low, high = spec["first_min"]
+        bits.append(f"первый гол на {low}–{high}-й минуте")
+    if spec.get("first") == "none":
+        bits.append("без голов")
+    if spec.get("first_card") == "none":
+        bits.append("без карточек")
+    return PERIOD_BET.get(period_of(spec), "") + " и ".join(bits) if bits else None
 
 
 def pooled_card(rule: str, event: dict, ctx: dict, market: dict, outcome: dict | None, spec: dict | None, sides, *,
@@ -358,25 +468,30 @@ def pooled_card(rule: str, event: dict, ctx: dict, market: dict, outcome: dict |
         return None
     names = ctx["names"]
     home, away = names[ctx["home"]], names[ctx["away"]]
-    prefix = prefix_of(spec)
+    period = period_of(spec)
     if directional(spec):
-        title = f"{prefix}{side_clause(spec, 'h', home)} в {hh} из {nh} последних матчей, {side_clause(spec, 'a', away)} — в {ha} из {na}"
+        th, ta = T.agree(home, club_view(spec, "h")), T.agree(away, club_view(spec, "a"))
+        title = T.sides_title(PERIOD_IN.get(period, ""), home, th, hh, nh, away, ta, ha, na)
+        team = favoured(spec)
+        plate = {"crest": {"h": "home", "a": "away"}.get(team, "match"), "bet": club_bet(spec, team) if team else match_bet(spec),
+                 "headline": T.sides_headline(PERIOD_SHORT.get(period, ""), home, th, hh, nh, away, ta, ha, na, prefer=team)}
     else:
-        text = neutral_text(spec)
-        text = text if prefix else f"{text[:1].upper()}{text[1:]}"
-        title = f"{prefix}{text} — в {hits} из {n} последних матчей {home} и {away} ({home} {hh} из {nh}, {away} {ha} из {na})"
+        fact = match_fact(spec)
+        title = T.pooled_title(fact, home, away, hh, nh, ha, na)
+        plate = {"crest": "match", "bet": match_bet(spec), "headline": T.pooled_headline(fact, home, away, hh, nh, ha, na)}
     rows = [v["row"] for v in home_views + away_views]
     label = f"{market_name(market, event)}: {outcome['label']}"
     card = eng.make(rule, title, market, outcome, label, hits=hits, n=n, window="последние матчи обеих команд", sample_rows=rows,
-                    weight=weight, tags=[f"{hits} из {n}", *(tags or [])])
+                    weight=weight, tags=[f"{hits} из {n}", *(tags or [])], plate=plate)
     if card and min(hh / nh, ha / na) < STRONG_SIDE and card["score"] >= eng.TIERS[0][0]:
         card = eng.finish({**card, "score": eng.TIERS[0][0] - 1})  # Огонь needs both clubs behind the fact, not one of them
     return card
 
 
 def club_card(rule: str, event: dict, ctx: dict, market: dict, outcome: dict | None, club: int, rows: list[dict], predicate, title, *,
-              min_rate: float, weight: float = 0.5, tags=None):
-    """A fact about one club's own recent matches tied to a market about that club."""
+              min_rate: float, weight: float = 0.5, tags=None, bet: str | None = None, headline=None):
+    """A fact about one club's own recent matches tied to a market about that club; `bet` is the plate's bet line,
+    `headline(name, hits, n)` its own short plate line when the title shortened would not read well."""
     if not outcome or not outcome.get("odds"):
         return None
     known = [x for x in (predicate(r) for r in rows) if x is not None]
@@ -384,8 +499,11 @@ def club_card(rule: str, event: dict, ctx: dict, market: dict, outcome: dict | N
     if n < eng.FORM_MIN or not passes(hits, n, outcome["odds"], min_rate):
         return None
     label = f"{market_name(market, event)}: {outcome['label']}"
-    return eng.make(rule, title(ctx["names"][club], hits, n), market, outcome, label, hits=hits, n=n, window=f"последние {n} матчей АПЛ",
-                    sample_rows=rows, weight=weight, tags=[f"{hits} из {n}", *(tags or [])])
+    name = ctx["names"][club]
+    return eng.make(rule, T.agree(name, title(name, hits, n)), market, outcome, label, hits=hits, n=n, window=f"последние {n} матчей АПЛ",
+                    sample_rows=rows, weight=weight, tags=[f"{hits} из {n}", *(tags or [])],
+                    plate={"crest": "home" if club == ctx["home"] else "away", "bet": bet,
+                           **({"headline": T.agree(name, headline(name, hits, n))} if headline else {})})
 
 
 def markets_by_id(event: dict, *ids: int) -> list[dict]:
@@ -512,13 +630,15 @@ def rule_team_halves(event, ctx):
             on, family = market["period"], market["family"]
             key = "ht" if on == "1H" else "h2"
             where = "в первом тайме" if on == "1H" else "во втором тайме"
+            half = "в 1-м тайме" if on == "1H" else "во 2-м тайме"
             if family == "total" and on in ("1H", "2H") and market.get("line") is not None and not (on == "1H" and market["line"] == 0.5):
                 line = market["line"]
                 for s, word in (("over", "больше"), ("under", "меньше")):
+                    fact = (("забивал " if s == "over" else "не забивал ") + where) if line == 0.5 else f"забивал {where} {T.total(s, line)}"
+                    bet = (("забьёт " if s == "over" else "не забьёт ") + half) if line == 0.5 else f"{PERIOD_BET[on]}инд. тотал {word} {T.line(line)}"
                     out.append(club_card("team_half_total", event, ctx, market, ins.outcome(market, s), club, rows,
                                          lambda r, s=s, line=line, key=key: (r[key][0] > line) if s == "over" else (r[key][0] < line),
-                                         lambda n, h, t, word=word, line=line, where=where: f"{n} забивал {where} {word} {ins.goals_phrase(line)} в {h} из {t} последних матчей",
-                                         min_rate=0.5))
+                                         lambda n, h, t, fact=fact: f"{n} {fact} в {h} из {t} последних матчей", min_rate=0.5, bet=bet))
             elif family == "clean_sheet" and on in ("1H", "2H"):
                 for outcome in market["outcomes"]:
                     if outcome.get("label") in ("Да", "Нет"):
@@ -526,7 +646,7 @@ def rule_team_halves(event, ctx):
                         out.append(club_card("half_clean_sheet", event, ctx, market, outcome, club, rows,
                                              lambda r, yes=yes, key=key: (r[key][1] == 0) == yes,
                                              lambda n, h, t, yes=yes, where=where: f"{n} {'не пропускал' if yes else 'пропускал'} {where} в {h} из {t} последних матчей",
-                                             min_rate=0.5))
+                                             min_rate=0.5, bet=f"{PERIOD_BET[on]}{'не пропустит' if yes else 'пропустит'}"))
             elif family == "halves" and market["market_id"] in (218, 219):
                 for outcome in market["outcomes"]:
                     pick = {"В 1-ом тайме": "first", "Во 2-ом тайме": "second", "Равны": "equal"}.get((outcome.get("label") or "").strip())
@@ -534,10 +654,13 @@ def rule_team_halves(event, ctx):
                         continue
                     test_half = {"first": lambda r: r["ht"][0] > r["h2"][0], "second": lambda r: r["h2"][0] > r["ht"][0],
                                  "equal": lambda r: r["h2"][0] == r["ht"][0]}[pick]
-                    text = {"first": "забивал в первом тайме больше, чем во втором", "second": "забивал во втором тайме больше, чем в первом",
+                    text = {"first": "забивал в первом тайме больше, чем во втором,", "second": "забивал во втором тайме больше, чем в первом,",
                             "equal": "забивал в таймах поровну"}[pick]
+                    bet = {"first": "забьёт больше в 1-м тайме", "second": "забьёт больше во 2-м тайме", "equal": "забьёт поровну в таймах"}[pick]
+                    short = {"first": "больше голов в 1-м тайме", "second": "больше голов во 2-м тайме", "equal": "поровну голов в таймах"}[pick]
                     out.append(club_card("team_better_half", event, ctx, market, outcome, club, rows, test_half,
-                                         lambda n, h, t, text=text: f"{n} {text} в {h} из {t} последних матчей", min_rate=0.45))
+                                         lambda n, h, t, text=text: f"{n} {text} в {h} из {t} последних матчей", min_rate=0.45, bet=bet,
+                                         headline=lambda n, h, t, short=short: T.first_fit((f"{n}: {short} в {h} из {t} матчей", f"{n}: {short}, {h} из {t}"))))
     return out
 
 
@@ -584,11 +707,11 @@ def rule_goals(event, ctx):
                 if not bounds:
                     continue
                 low, high = bounds
-                text = ("не забивал" if high == 0 else f"забивал {low}–{high} {ins.count_word(high, 'гол', 'гола', 'голов')}" if high is not None
-                        else f"забивал {low} и больше голов")
+                text = "не забивал" if high == 0 else f"забивал {T.between(low, high)}"
+                bet = "не забьёт" if high == 0 else f"забьёт {T.between(low, high)}"
                 out.append(club_card("team_goal_range", event, ctx, market, outcome, club, rows,
                                      lambda r, low=low, high=high: low <= r["gf"] and (high is None or r["gf"] <= high),
-                                     lambda n, h, t, text=text: f"{n} {text} в {h} из {t} последних матчей", min_rate=0.4))
+                                     lambda n, h, t, text=text: f"{n} {text} в {h} из {t} последних матчей", min_rate=0.4, bet=bet))
     return out
 
 
@@ -631,11 +754,12 @@ def rule_cards(event, ctx):
                 if not bounds:
                     continue
                 low, high = bounds
-                text = (f"получал{where} {low}–{high} карточки" if high not in (None, low) else f"получал{where} {low} и больше карточек" if high is None
-                        else f"получал{where} ровно {low} {ins.count_word(low, 'карточку', 'карточки', 'карточек')}")
+                text = (f"не получал карточек{where}" if high == 0 else f"получал{where} ровно одну карточку" if low == high == 1
+                        else f"получал{where} {T.between(low, high, 'card')}")
+                bet = ("1-й тайм: " if market["period"] == "1H" else "") + T.between(low, high, "card")
                 out.append(club_card("team_cards_count", event, ctx, market, outcome, club, rows,
                                      lambda r, low=low, high=high, key=key: low <= r[key][0] and (high is None or r[key][0] <= high),
-                                     lambda n, h, t, text=text: f"{n} {text} в {h} из {t} последних матчей", min_rate=0.35, tags=tags))
+                                     lambda n, h, t, text=text: f"{n} {text} в {h} из {t} последних матчей", min_rate=0.35, tags=tags, bet=bet))
     return out
 
 
@@ -653,7 +777,7 @@ def rule_corners(event, ctx):
                 spec, rule = {"on": "corners", "res": RES[label]}, "corners_result"
             elif variant == "count" and scope == "match" and count_range(label):
                 spec, rule = {"on": "corners", "count": count_range(label)}, "corners_count"
-            elif variant == "handicap" and outcome.get("line") is not None and outcome.get("side") in ("home", "away"):
+            elif variant == "handicap" and outcome.get("line") is not None and abs(outcome["line"]) < 1 and outcome.get("side") in ("home", "away"):
                 spec, rule = {"on": "corners", "hcap": ("h" if outcome["side"] == "home" else "a", outcome["line"])}, "corners_handicap"
             if spec:
                 out.append(pooled_card(rule, event, ctx, market, outcome, spec, sides, min_rate=0.35 if rule == "corners_count" else 0.45))
@@ -667,11 +791,11 @@ def rule_corners(event, ctx):
                 if not bounds:
                     continue
                 low, high = bounds
-                text = (f"подавал {low}–{high} угловых" if high not in (None, low) else f"подавал {low} и больше угловых" if high is None
-                        else f"подавал ровно {low} {ins.count_word(low, 'угловой', 'угловых', 'угловых')}")
+                text = "не подавал угловых" if high == 0 else f"подавал {T.between(low, high, 'corner')}"
                 out.append(club_card("team_corners_count", event, ctx, market, outcome, club, rows,
                                      lambda r, low=low, high=high: low <= r["corners"][0] and (high is None or r["corners"][0] <= high),
-                                     lambda n, h, t, text=text: f"{n} {text} в {h} из {t} последних матчей", min_rate=0.35))
+                                     lambda n, h, t, text=text: f"{n} {text} в {h} из {t} последних матчей", min_rate=0.35,
+                                     bet=T.between(low, high, "corner")))
     return out
 
 

@@ -55,10 +55,10 @@ def test_h2h_win_rule_and_freshness():
     cands = ins.rule_h2h_results(event, ctx_for(head_to_head(8, 10)))
     assert len(cands) == 1
     c = cands[0]
-    assert c["rule"] == "h2h_win_rate" and "Арсенал выиграл 8 из последних 10" in c["title"]
+    assert c["rule"] == "h2h_win_rate" and "Арсенал выиграл 8 из 10 последних матчей с Ноттингемом" in c["title"]
     assert (c["market"]["side"], c["market"]["odds"], c["evidence"]["span"]) == ("home", 2.4, "2021–2025")
     mirrored = ins.rule_h2h_results(event, ctx_for(head_to_head(3, 10)))  # Arsenal won 3, so Nottingham won 7
-    assert [c["market"]["side"] for c in mirrored] == ["away"] and "Ноттингем выиграл 7 из последних 10" in mirrored[0]["title"]
+    assert [c["market"]["side"] for c in mirrored] == ["away"] and "Ноттингем выиграл 7 из 10 последних матчей с Арсеналом" in mirrored[0]["title"]
     assert ins.rule_h2h_results(event, ctx_for(head_to_head(5, 5))) == []  # sample below the minimum
     old = [match(1 + i, f"2010-0{1 + i}-01", 1, 2, 2, 0) for i in range(8)]
     assert ins.rule_h2h_results(event, ctx_for(old)) == []  # the latest meeting is far too old
@@ -78,7 +78,7 @@ def test_totals_ignore_pushes():
     lows = [match(i, f"202{1 + i // 2}-0{1 + i % 2 * 5}-01", 1, 2, 1, 0) for i in range(10)]
     low_event = {"markets": [market(1049, "total", [("over", 2.4), ("under", 1.6)], line=2.5)]}
     found = [c for c in ins.rule_h2h_goals(low_event, ctx_for(lows)) if c["rule"] == "h2h_total"]
-    assert len(found) == 1 and found[0]["market"]["side"] == "under" and "забито меньше 2,5 гола" in found[0]["title"]
+    assert len(found) == 1 and found[0]["market"]["side"] == "under" and "забито не больше 2 голов" in found[0]["title"]
     assert found[0]["evidence"]["hits"] == 10 and found[0]["evidence"]["sample"] == 10
 
 
@@ -95,7 +95,8 @@ def test_chance_creation_groups_lines_into_one_card():
                          market(1050, "total", [("over", 4.0), ("under", 1.2)], scope="home", line=2.5, key="b")]}
     cards = ins.build_match_insights(event, ctx_for(games + meets, stats))
     chance = [c for c in cards if c["rule"] == "chance_creation"]
-    assert len(chance) == 1 and len(chance[0]["alternatives"]) == 1 and "создаёт гораздо больше моментов" in chance[0]["title"]
+    assert len(chance) == 1 and len(chance[0]["alternatives"]) == 1, chance
+    assert chance[0]["title"].endswith("чаще бьёт из штрафной против Ноттингема: в среднем 9 ударов за матч, в остальных играх — 5"), chance[0]["title"]
     assert chance[0]["details"]["mean_vs_opponent"] == 9.0 and chance[0]["details"]["mean_vs_others"] == 5.0
 
 

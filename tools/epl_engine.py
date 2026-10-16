@@ -20,11 +20,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import epl_insights as ins  # noqa: E402
+import epl_text as T  # noqa: E402
 
 TIERS = ((80, "fire", "Огонь", 5), (65, "strong", "Сильная", 4), (50, "solid", "Рабочая", 3), (35, "background", "Фон", 2))
 PER_RULE_LIMIT = 3
 MATCH_LIMIT = 60
 SUPPORT_LIMIT = 3
+# owner 2026-10-16: «Не должно быть слишком много одинаковой информации» (seven corner cards in one match)
+CATEGORY_LIMIT = {"Угловые": 2, "Карточки": 2, "Комбо": 3, "Игроки": 6}
+CATEGORY_DEFAULT = 5
 MIN_ODDS = 1.50  # owner 2026-10-15: no card on a price below 1.50 (the line is dropped before the cards are grouped)
 FORM_N = 8
 FORM_MIN = 6
@@ -183,14 +187,14 @@ def span_rows(rows: list[dict]) -> str:
 
 
 def make(rule: str, title: str, market: dict, picked: dict | None, label: str, *, hits: int, n: int, window: str, sample_rows=None,
-         weight: float = 0.55, run: int | None = None, tags=None, details=None) -> dict | None:
+         weight: float = 0.55, run: int | None = None, tags=None, details=None, plate: dict | None = None) -> dict | None:
     if not picked or n <= 0:
         return None
     evidence = {"sample": n, "hits": hits, "window": window}
     if sample_rows:
         evidence["span"] = span_rows(sample_rows)
     card = ins.make_candidate(rule, title, evidence, market, picked, label, weight=weight, tags=tags or [f"{hits} из {n}"],
-                              details=details or {}, wow=wow_factor(hits, n, picked["odds"], run))
+                              details=details or {}, wow=wow_factor(hits, n, picked["odds"], run), plate=plate)
     return finish(card)
 
 
@@ -215,9 +219,10 @@ def rule_form_win_rate(event: dict, ctx: dict) -> list:
         wins = sum(1 for r in rows if r["gf"] > r["ga"])
         if wins / len(rows) >= 0.7:
             for market in ins.find_markets(event, "match_result", variant=None):
-                out.append(make("form_win_rate", f"{ctx['names'][club]} выиграл {wins} из {len(rows)} последних матчей АПЛ", market,
-                                ins.outcome(market, side), f"Победа {ctx['names'][club]}", hits=wins, n=len(rows),
-                                window=f"последние {len(rows)} матчей АПЛ", sample_rows=rows, weight=0.5))
+                name = ctx["names"][club]
+                out.append(make("form_win_rate", T.agree(name, f"{name} выиграл {wins} из {len(rows)} последних матчей АПЛ"), market,
+                                ins.outcome(market, side), f"Победа {name}", hits=wins, n=len(rows),
+                                window=f"последние {len(rows)} матчей АПЛ", sample_rows=rows, weight=0.5, plate={"crest": side, "bet": "победа в матче"}))
     return out
 
 
@@ -234,17 +239,18 @@ def rule_venue_form(event: dict, ctx: dict) -> list:
         name = ctx["names"][club]
         if wins / len(rows) >= 0.7:
             for market in ins.find_markets(event, "match_result", variant=None):
-                out.append(make("venue_form", f"{name} выиграл {wins} из {len(rows)} последних матчей {where}", market, ins.outcome(market, side),
-                                f"Победа {name}", hits=wins, n=len(rows), window=f"матчи {where}", sample_rows=rows))
+                out.append(make("venue_form", T.agree(name, f"{name} выиграл {wins} из {len(rows)} последних матчей {where}"), market,
+                                ins.outcome(market, side), f"Победа {name}", hits=wins, n=len(rows), window=f"матчи {where}", sample_rows=rows,
+                                plate={"crest": side, "bet": "победа в матче"}))
         elif unbeaten / len(rows) >= 0.85:
             for market in ins.find_markets(event, "double_chance"):
-                out.append(make("venue_form", f"{name} не проигрывал в {unbeaten} из {len(rows)} последних матчей {where}", market,
+                out.append(make("venue_form", T.agree(name, f"{name} не проигрывал в {unbeaten} из {len(rows)} последних матчей {where}"), market,
                                 ins.outcome(market, "home_draw" if side == "home" else "draw_away"), f"{name} или ничья",
-                                hits=unbeaten, n=len(rows), window=f"матчи {where}", sample_rows=rows))
+                                hits=unbeaten, n=len(rows), window=f"матчи {where}", sample_rows=rows, plate={"crest": side, "bet": "не проиграет"}))
     return out
 
 
-def yes_no_rule(event, ctx, *, rule, family, predicate, title, label, period="FT", threshold=0.5, need=None, weight=0.55, template=None):
+def yes_no_rule(event, ctx, *, rule, family, predicate, title, label, period="FT", threshold=0.5, need=None, weight=0.55, template=None, bet=""):
     """A Да/Нет market about one club (scope home/away): share of its recent matches where `predicate` held."""
     out = []
     for club, _, side in clubs(ctx):
@@ -257,34 +263,41 @@ def yes_no_rule(event, ctx, *, rule, family, predicate, title, label, period="FT
         for market in ins.find_markets(event, family, period=period, scope=side):
             if template and template not in market["template"].lower():
                 continue
-            out.append(make(rule, title(ctx["names"][club], hits, len(rows)), market, by_label(market, "Да"), label(ctx["names"][club]),
-                            hits=hits, n=len(rows), window=f"последние {len(rows)} матчей АПЛ", sample_rows=rows, weight=weight))
+            name = ctx["names"][club]
+            out.append(make(rule, T.agree(name, title(name, hits, len(rows))), market, by_label(market, "Да"), label(name),
+                            hits=hits, n=len(rows), window=f"последние {len(rows)} матчей АПЛ", sample_rows=rows, weight=weight,
+                            plate={"crest": side, "bet": bet}))
     return out
 
 
 def rule_win_to_nil(event, ctx):
     return yes_no_rule(event, ctx, rule="win_to_nil", family="win_to_nil", predicate=lambda r: r["gf"] > 0 and r["ga"] == 0, threshold=0.5,
-                       title=lambda n, h, t: f"{n} выигрывал всухую в {h} из {t} последних матчей", label=lambda n: f"{n} победит всухую — да")
+                       title=lambda n, h, t: f"{n} выигрывал всухую в {h} из {t} последних матчей", label=lambda n: f"{n} победит всухую — да",
+                       bet="победит всухую")
 
 
 def rule_clean_sheet(event, ctx):
     return yes_no_rule(event, ctx, rule="clean_sheet", family="clean_sheet", predicate=lambda r: r["ga"] == 0, threshold=0.5,
-                       title=lambda n, h, t: f"{n} не пропускал в {h} из {t} последних матчей", label=lambda n: f"{n} не пропустит — да")
+                       title=lambda n, h, t: f"{n} не пропускал в {h} из {t} последних матчей", label=lambda n: f"{n} не пропустит — да",
+                       bet="не пропустит")
 
 
 def rule_scores_both_halves(event, ctx):
     return yes_no_rule(event, ctx, rule="scores_both_halves", family="halves", need="ht", template="забьет в обоих", threshold=0.5,
                        predicate=lambda r: r["ht"][0] > 0 and r["h2"][0] > 0,
-                       title=lambda n, h, t: f"{n} забивал в обоих таймах в {h} из {t} последних матчей", label=lambda n: f"{n} забьёт в обоих таймах — да")
+                       title=lambda n, h, t: f"{n} забивал в обоих таймах в {h} из {t} последних матчей", label=lambda n: f"{n} забьёт в обоих таймах — да",
+                       bet="забьёт в обоих таймах")
 
 
 def rule_wins_a_half(event, ctx):
     out = yes_no_rule(event, ctx, rule="wins_a_half", family="halves", need="ht", template="одном из таймов", threshold=0.75,
                       predicate=lambda r: r["ht"][0] > r["ht"][1] or r["h2"][0] > r["h2"][1],
-                      title=lambda n, h, t: f"{n} выигрывал хотя бы один тайм в {h} из {t} последних матчей", label=lambda n: f"{n} выиграет хотя бы один тайм — да")
+                      title=lambda n, h, t: f"{n} выигрывал хотя бы один тайм в {h} из {t} последних матчей", label=lambda n: f"{n} выиграет хотя бы один тайм — да",
+                      bet="выиграет хотя бы один тайм")
     out += yes_no_rule(event, ctx, rule="wins_a_half", family="halves", need="ht", template="победит в обоих", threshold=0.5,
                        predicate=lambda r: r["ht"][0] > r["ht"][1] and r["h2"][0] > r["h2"][1],
-                       title=lambda n, h, t: f"{n} выигрывал оба тайма в {h} из {t} последних матчей", label=lambda n: f"{n} выиграет оба тайма — да")
+                       title=lambda n, h, t: f"{n} выигрывал оба тайма в {h} из {t} последних матчей", label=lambda n: f"{n} выиграет оба тайма — да",
+                       bet="выиграет оба тайма")
     return out
 
 
@@ -309,51 +322,58 @@ def rule_handicap_margin(event, ctx):
         if passing:  # one card per club: the boldest line the record still covers
             _, market, picked, hits = max(passing, key=lambda x: x[0])
             name, line = ctx["names"][club], picked["line"]
-            out.append(make("handicap_margin", f"{name}: фора {signed(line)} проходила бы в {hits} из {len(rows)} последних матчей", market,
+            fact = T.margin_verb(math.floor(-line) + 1)  # hit when the difference + line > 0, i.e. difference >= floor(-line) + 1
+            out.append(make("handicap_margin", T.agree(name, f"{name} {fact} в {hits} из {len(rows)} последних матчей"), market,
                             picked, f"{name} фора {signed(line)}", hits=hits, n=len(rows), window=f"последние {len(rows)} матчей АПЛ",
-                            sample_rows=rows))
+                            sample_rows=rows, plate={"crest": side, "bet": f"фора {T.signed(line)} {T.word(abs(line), 'goal')}"}))
     return out
 
 
-def pooled(ctx: dict, need: str | None = None) -> list[dict]:
-    """Both clubs' recent matches together (each needs at least FORM_MIN)."""
+def pooled_sides(ctx: dict, need: str | None = None) -> tuple[list[dict], list[dict]] | None:
+    """Each club's recent matches (each needs at least FORM_MIN), or None."""
     home, away = recent_rows(ctx, ctx["home"], need=need), recent_rows(ctx, ctx["away"], need=need)
-    return home + away if len(home) >= FORM_MIN and len(away) >= FORM_MIN else []
+    return (home, away) if len(home) >= FORM_MIN and len(away) >= FORM_MIN else None
 
 
-def two_names(ctx: dict) -> str:
-    return f"{ctx['names'][ctx['home']]} и {ctx['names'][ctx['away']]}"
+def pooled_make(rule, ctx, sides, test, fact, market, picked, label, *, bet, threshold):
+    """A fact about the kind of match seen in both clubs' own matches: 'не больше 2 голов — в 6 из 8 последних матчей
+    Эвертона и в 5 из 8 у Челси'. `test(row)` -> bool; a card when the pooled share reaches `threshold`."""
+    home_rows, away_rows = sides
+    hh, ha = sum(1 for r in home_rows if test(r)), sum(1 for r in away_rows if test(r))
+    nh, na = len(home_rows), len(away_rows)
+    if (hh + ha) / (nh + na) < threshold:
+        return None
+    home, away = ctx["names"][ctx["home"]], ctx["names"][ctx["away"]]
+    return make(rule, T.pooled_title(fact, home, away, hh, nh, ha, na), market, picked, label, hits=hh + ha, n=nh + na,
+                window="последние матчи обеих команд", sample_rows=home_rows + away_rows,
+                plate={"crest": "match", "bet": bet, "headline": T.pooled_headline(fact, home, away, hh, nh, ha, na)})
 
 
-def over_under_rule(event, ctx, *, rule, value, markets, title, label, need=None, threshold=0.75, unit=ins.goals_phrase):
-    rows = pooled(ctx, need)
-    if not rows:
+def over_under_rule(event, ctx, *, rule, value, markets, label, bet, need=None, threshold=0.75, unit="goal", where=""):
+    sides = pooled_sides(ctx, need)
+    if not sides:
         return []
-    values = [value(r) for r in rows]
     out = []
     for market in markets:
         line = market.get("line")
         if line is None:
             continue
         for side, word in (("over", "больше"), ("under", "меньше")):
-            hits = ins.side_hits(values, line, side)
-            if hits / len(values) >= threshold:
-                out.append(make(rule, title(word, unit(line), hits, len(values)), market, ins.outcome(market, side), label(word, ins.fmt_line(line)),
-                                hits=hits, n=len(values), window="последние матчи обеих команд", sample_rows=rows))
-    return out
+            test = lambda r, side=side, line=line: ins.side_hits([value(r)], line, side) == 1  # noqa: E731
+            out.append(pooled_make(rule, ctx, sides, test, T.total(side, line, unit) + where, market, ins.outcome(market, side),
+                                   label(word, ins.fmt_line(line)), bet=bet(word, ins.fmt_line(line)), threshold=threshold))
+    return [c for c in out if c]
 
 
 def rule_match_total_form(event, ctx):
     return over_under_rule(event, ctx, rule="match_total_form", value=lambda r: r["gf"] + r["ga"], markets=ins.find_markets(event, "total"),
-                           title=lambda w, u, h, n: f"{w.capitalize()} {u} в {h} из {n} последних матчей {two_names(ctx)}",
-                           label=lambda w, l: f"Тотал {w} {l}")
+                           label=lambda w, l: f"Тотал {w} {l}", bet=lambda w, l: f"тотал {w} {l}")
 
 
 def rule_first_half_total(event, ctx):
     return over_under_rule(event, ctx, rule="first_half_total", need="ht", value=lambda r: r["ht"][0] + r["ht"][1],
-                           markets=ins.find_markets(event, "total", period="1H"),
-                           title=lambda w, u, h, n: f"Первый тайм: {w} {u} в {h} из {n} последних матчей {two_names(ctx)}",
-                           label=lambda w, l: f"1-й тайм: тотал {w} {l}")
+                           markets=ins.find_markets(event, "total", period="1H"), where=" в первом тайме",
+                           label=lambda w, l: f"1-й тайм: тотал {w} {l}", bet=lambda w, l: f"1-й тайм: тотал {w} {l}")
 
 
 def corner_markets(event: dict, scope: str) -> list[dict]:
@@ -361,11 +381,9 @@ def corner_markets(event: dict, scope: str) -> list[dict]:
 
 
 def rule_corners_total_form(event, ctx):
-    corners = lambda l: f"{ins.fmt_line(l)} угловых"  # noqa: E731
     out = over_under_rule(event, ctx, rule="corners_total_form", need="corners", value=lambda r: r["corners"][0] + r["corners"][1],
-                          markets=corner_markets(event, "match"), unit=corners,
-                          title=lambda w, u, h, n: f"Угловые: {w} {u} в {h} из {n} последних матчей {two_names(ctx)}",
-                          label=lambda w, l: f"Тотал угловых {w} {l}")
+                          markets=corner_markets(event, "match"), unit="corner", where=" за матч",
+                          label=lambda w, l: f"Тотал угловых {w} {l}", bet=lambda w, l: f"угловых {w} {l}")
     for club, _, side in clubs(ctx):
         rows = recent_rows(ctx, club, need="corners")
         if len(rows) < FORM_MIN:
@@ -376,18 +394,18 @@ def rule_corners_total_form(event, ctx):
                 hits = ins.side_hits(values, market["line"], s)
                 if hits / len(values) >= 0.75:
                     name = ctx["names"][club]
-                    out.append(make("team_corners", f"{name} подавал {word} {corners(market['line'])} в {hits} из {len(values)} последних матчей",
-                                    market, ins.outcome(market, s), f"Угловые {name} {word} {ins.fmt_line(market['line'])}",
-                                    hits=hits, n=len(values), window="последние матчи", sample_rows=rows))
+                    fact = f"{name} подавал {T.total(s, market['line'], 'corner')} в {hits} из {len(values)} последних матчей"
+                    out.append(make("team_corners", T.agree(name, fact), market, ins.outcome(market, s), f"Угловые {name} {word} {ins.fmt_line(market['line'])}",
+                                    hits=hits, n=len(values), window="последние матчи", sample_rows=rows,
+                                    plate={"crest": side, "bet": f"угловые: {word} {ins.fmt_line(market['line'])}"}))
     return out
 
 
 def rule_cards_total_form(event, ctx):
-    cards = lambda l: f"{ins.fmt_line(l)} карточек"  # noqa: E731
     markets = [m for m in event["markets"] if m["family"] == "cards" and m["variant"] == "total" and m["scope"] == "match" and m["period"] == "FT"]
     out = over_under_rule(event, ctx, rule="cards_total_form", need="cards", value=lambda r: r["cards"][0] + r["cards"][1], markets=markets,
-                          title=lambda w, u, h, n: f"Карточки: {w} {u} в {h} из {n} последних матчей {two_names(ctx)}",
-                          label=lambda w, l: f"Тотал карточек {w} {l}", unit=cards, threshold=0.8)
+                          label=lambda w, l: f"Тотал карточек {w} {l}", bet=lambda w, l: f"карточек {w} {l}", unit="card", where=" за матч",
+                          threshold=0.8)
     for card in out:
         if card:
             card["tags"].append("карточки: сверить правила подсчёта Winline")
@@ -395,18 +413,16 @@ def rule_cards_total_form(event, ctx):
 
 
 def rule_btts_form(event, ctx):
-    rows = pooled(ctx)
-    if not rows:
+    sides = pooled_sides(ctx)
+    if not sides:
         return []
-    both = sum(1 for r in rows if r["gf"] > 0 and r["ga"] > 0)
     out = []
     for market in ins.find_markets(event, "btts"):
-        for side, hits, text in (("yes", both, "обе команды забивали"), ("no", len(rows) - both, "забивала не больше одной команды")):
-            if hits / len(rows) >= 0.75:
-                out.append(make("btts_form", f"В {hits} из {len(rows)} последних матчей {two_names(ctx)} {text}", market, ins.outcome(market, side),
-                                "Обе забьют — Да" if side == "yes" else "Обе забьют — Нет", hits=hits, n=len(rows),
-                                window="последние матчи обеих команд", sample_rows=rows))
-    return out
+        for side, yes, text in (("yes", True, "обе команды забили"), ("no", False, "хотя бы одна команда не забила")):
+            out.append(pooled_make("btts_form", ctx, sides, lambda r, yes=yes: (r["gf"] > 0 and r["ga"] > 0) == yes, text, market,
+                                   ins.outcome(market, side), "Обе забьют — Да" if yes else "Обе забьют — Нет",
+                                   bet="обе забьют" if yes else "обе забьют — нет", threshold=0.75))
+    return [c for c in out if c]
 
 
 def rule_team_goals_bucket(event, ctx):
@@ -424,10 +440,11 @@ def rule_team_goals_bucket(event, ctx):
                 if hits / len(rows) < 0.5:
                     continue
                 name = ctx["names"][club]
-                text = ("не забивал" if bucket["max"] == 0 else f"забивал {bucket['min']} и больше" if bucket["max"] is None
-                        else f"забивал ровно {bucket['min']}")
-                out.append(make("team_goals_bucket", f"{name} {text} в {hits} из {len(rows)} последних матчей", market, o,
-                                f"{name}: {o['label']}", hits=hits, n=len(rows), window=f"последние {len(rows)} матчей", sample_rows=rows))
+                amount = T.at_least(bucket["min"]) if bucket["max"] is None else f"ровно {T.count(bucket['min'], 'goal')}"
+                text, bet = ("не забивал", "не забьёт") if bucket["max"] == 0 else (f"забивал {amount}", f"забьёт {amount}")
+                out.append(make("team_goals_bucket", T.agree(name, f"{name} {text} в {hits} из {len(rows)} последних матчей"), market, o,
+                                f"{name}: {o['label']}", hits=hits, n=len(rows), window=f"последние {len(rows)} матчей", sample_rows=rows,
+                                plate={"crest": side, "bet": bet}))
     return out
 
 
@@ -445,26 +462,24 @@ def rule_team_first_half_goal(event, ctx):
                 hits = ins.side_hits(values, 0.5, s)
                 if hits / len(values) >= 0.75:
                     name = ctx["names"][club]
-                    out.append(make("team_first_half_goal", f"{name} {word} в первом тайме в {hits} из {len(values)} последних матчей", market,
-                                    ins.outcome(market, s), f"1-й тайм: тотал {name} {'больше' if s == 'over' else 'меньше'} 0,5",
-                                    hits=hits, n=len(values), window="последние матчи", sample_rows=rows))
+                    out.append(make("team_first_half_goal", T.agree(name, f"{name} {word} в первом тайме в {hits} из {len(values)} последних матчей"),
+                                    market, ins.outcome(market, s), f"1-й тайм: тотал {name} {'больше' if s == 'over' else 'меньше'} 0,5",
+                                    hits=hits, n=len(values), window="последние матчи", sample_rows=rows,
+                                    plate={"crest": side, "bet": "забьёт в 1-м тайме" if s == "over" else "не забьёт в 1-м тайме"}))
     return out
 
 
 def rule_second_half_heavier(event, ctx):
-    rows = pooled(ctx, "ht")
-    if not rows:
+    sides = pooled_sides(ctx, "ht")
+    if not sides:
         return []
-    second = sum(1 for r in rows if sum(r["h2"]) > sum(r["ht"]))
-    first = sum(1 for r in rows if sum(r["ht"]) > sum(r["h2"]))
     out = []
     for market in [m for m in ins.find_markets(event, "halves") if "результативный тайм" in m["template"].lower()]:
-        for label, hits, text in (("2-й тайм", second, "второй тайм был результативнее первого"), ("1-й тайм", first, "первый тайм был результативнее второго")):
-            if hits / len(rows) >= 0.6:
-                out.append(make("second_half_heavier", f"В {hits} из {len(rows)} последних матчей {two_names(ctx)} {text}", market,
-                                by_label(market, label), f"Самый результативный тайм — {label}", hits=hits, n=len(rows),
-                                window="последние матчи обеих команд", sample_rows=rows))
-    return out
+        for label, test, text, bet in (("2-й тайм", lambda r: sum(r["h2"]) > sum(r["ht"]), "второй тайм результативнее первого", "больше голов во 2-м тайме"),
+                                       ("1-й тайм", lambda r: sum(r["ht"]) > sum(r["h2"]), "первый тайм результативнее второго", "больше голов в 1-м тайме")):
+            out.append(pooled_make("second_half_heavier", ctx, sides, test, text, market, by_label(market, label),
+                                   f"Самый результативный тайм — {label}", bet=bet, threshold=0.6))
+    return [c for c in out if c]
 
 
 def rule_half_time_lead(event, ctx):
@@ -477,8 +492,9 @@ def rule_half_time_lead(event, ctx):
         if hits / len(rows) >= 0.6:
             for market in ins.find_markets(event, "match_result", period="1H", variant=None):
                 name = ctx["names"][club]
-                out.append(make("half_time_lead", f"{name} вёл после первого тайма в {hits} из {len(rows)} последних матчей", market,
-                                ins.outcome(market, side), f"1-й тайм: победа {name}", hits=hits, n=len(rows), window="последние матчи", sample_rows=rows))
+                out.append(make("half_time_lead", T.agree(name, f"{name} вёл после первого тайма в {hits} из {len(rows)} последних матчей"), market,
+                                ins.outcome(market, side), f"1-й тайм: победа {name}", hits=hits, n=len(rows), window="последние матчи", sample_rows=rows,
+                                plate={"crest": side, "bet": "1-й тайм: победа"}))
     return out
 
 
@@ -494,8 +510,9 @@ def goal_order_rule(event, ctx, *, rule, key, variant, title):
         markets = [m for m in ins.find_markets(event, "goal_sequence", variant=variant) if variant != "next" or m.get("param") == "1"]
         for market in markets:
             name = ctx["names"][club]
-            out.append(make(rule, title(name, hits, len(rows)), market, by_label(market, "1" if side == "home" else "2"),
-                            f"{'Первый' if key == 'first' else 'Последний'} гол — {name}", hits=hits, n=len(rows), window="последние матчи", sample_rows=rows))
+            out.append(make(rule, T.agree(name, title(name, hits, len(rows))), market, by_label(market, "1" if side == "home" else "2"),
+                            f"{'Первый' if key == 'first' else 'Последний'} гол — {name}", hits=hits, n=len(rows), window="последние матчи", sample_rows=rows,
+                            plate={"crest": side, "bet": "забьёт первым" if key == "first" else "забьёт последний гол"}))
     return out
 
 
@@ -510,8 +527,8 @@ def rule_last_goal(event, ctx):
 
 
 def rule_early_goal(event, ctx):
-    rows = pooled(ctx, "first")
-    if not rows:
+    sides = pooled_sides(ctx, "first")
+    if not sides:
         return []
     out = []
     for market in [m for m in ins.find_markets(event, "goal_sequence", variant="interval") if m.get("param") == "1"]:
@@ -520,11 +537,10 @@ def rule_early_goal(event, ctx):
             if not match:
                 continue
             limit = int(match.group(1))
-            hits = sum(1 for r in rows if r["first_min"] is not None and r["first_min"] <= limit)
-            if hits / len(rows) >= 0.45:
-                out.append(make("early_goal", f"Первый гол до {limit}-й минуты в {hits} из {len(rows)} последних матчей {two_names(ctx)}", market, o,
-                                f"Первый гол на 1–{limit} минуте", hits=hits, n=len(rows), window="последние матчи обеих команд", sample_rows=rows))
-    return out
+            out.append(pooled_make("early_goal", ctx, sides, lambda r, limit=limit: r["first_min"] is not None and r["first_min"] <= limit,
+                                   f"первый гол до {limit}-й минуты", market, o, f"Первый гол на 1–{limit} минуте",
+                                   bet=f"первый гол до {limit}-й минуты", threshold=0.45))
+    return [c for c in out if c]
 
 
 # ----------------------------------------------------------------------------------------------------
@@ -618,13 +634,15 @@ def rule_player_xg_value(event, ctx):
         if prob < XG_MIN_PROBABILITY or picked["odds"] > XG_MAX_ODDS or prob / implied < 1.15:
             continue
         name = player.get("surname_ru") or entry["name"]
-        title = (f"{name}: xG {ins.fmt_line(round(xg90, 2))} за 90 минут, в среднем {round(mins)} мин. в последних 5 турах — "
-                 f"по модели шанс забить {round(prob * 100)}%, кэф подразумевает {round(implied * 100)}%")
+        xg = T.num(xg90, 2)
+        title = (f"{name}: {xg} ожидаемого гола (xG) за 90 минут, играет в среднем {round(mins)} минут — "
+                 f"по нашей модели шанс забить {round(prob * 100)}%, кэф даёт {round(implied * 100)}%")
         confidence = min(1.0, ((player.get("season_2026_27") or {}).get("minutes") or 0) / 900)
         card = ins.make_candidate("player_xg_value", title, {"sample": played, "hits": round(prob * played), "window": "сезон 2026/27, xG Opta (Fantasy)"},
                                   market, picked, f"{name} забьёт", weight=0.7, tags=[f"модель {round(prob * 100)}%", f"цена {round(implied * 100)}%"],
                                   details={"player_id": player["pl_id"], "xg_per_90": round(xg90, 3), "expected_minutes": round(mins)},
-                                  rate_low=prob * (0.75 + 0.25 * confidence), wow=0.5 if prob / implied >= 1.4 else 0.2)
+                                  rate_low=prob * (0.75 + 0.25 * confidence), wow=0.5 if prob / implied >= 1.4 else 0.2,
+                                  plate={"crest": entry["team"], "team": name, "bet": "забьёт гол", "headline": f"{name}: {xg} ожидаемого гола за 90 минут"})
         out.append(finish(card))
     return out
 
@@ -644,9 +662,10 @@ def rule_player_vs_opponent(event, ctx):
         if hits / len(apps) < 0.5:
             continue
         name = player.get("surname_ru") or entry["name"]
-        out.append(make("player_vs_opponent", f"{name} забивал {ctx['names'][opp]} в {hits} из {len(apps)} последних встреч", market,
+        out.append(make("player_vs_opponent", f"{name} забивал {T.dat(ctx['names'][opp])} в {hits} из {len(apps)} последних встреч", market,
                         ins.outcome(market, "yes"), f"{name} забьёт", hits=hits, n=len(apps), window="встречи с этим соперником",
-                        weight=0.7, details={"player_id": player["pl_id"], "goals": [a["goals"] for a in apps]}))
+                        weight=0.7, details={"player_id": player["pl_id"], "goals": [a["goals"] for a in apps]},
+                        plate={"crest": entry["team"], "team": name, "bet": "забьёт гол"}))
     return out
 
 
@@ -669,7 +688,7 @@ def rule_player_first_scorer(event, ctx):
             if hits / len(apps) >= 0.2:
                 out.append(make("player_first_scorer", f"{name} забивал {text} гол матча в {hits} из {len(apps)} последних матчей", market,
                                 ins.outcome(market, "yes"), f"{name} забьёт {text} гол", hits=hits, n=len(apps), window="матчи за год", weight=0.6,
-                                details={"player_id": player["pl_id"]}))
+                                details={"player_id": player["pl_id"]}, plate={"crest": entry["team"], "team": name, "bet": f"забьёт {text} гол"}))
     return out
 
 
@@ -725,28 +744,64 @@ def build_cards(event: dict, ctx: dict) -> list[dict]:
             continue
         seen.add(key)
         grouped.setdefault(card["title"], []).append(card)  # one fact = one card, its other lines and markets as alternatives
+    merged: dict = {}
+    for group in grouped.values():  # the same games behind two lines of one market ("не больше 4 угловых" in 6 of 8 = "не больше 5")
+        merged.setdefault(same_games(group[0]) or id(group), []).extend(group)
     cards = []
-    for group in grouped.values():
+    for group in merged.values():
         group.sort(key=lambda c: -c["score"])
         best = dict(group[0])
         best["alternatives"] = [{"label": c["market"]["label"], "odds": c["market"]["odds"], "line": c["market"]["line"], "score": c["score"],
                                  "market_id": c["market"]["market_id"], "key": c["market"]["key"]} for c in group[1:]]
         cards.append(best)
     cards.sort(key=lambda c: (-c["score"], -c["evidence"]["sample"]))
-    per_rule, by_bet, out = Counter(), {}, []
+    per_rule, per_category, by_bet, out = Counter(), Counter(), {}, []
     for card in cards:
         kept = by_bet.get(card["market"]["key"])
         if kept is not None:  # the same bet backed by another fact: one card, the weaker fact listed as support
             if len(kept["support"]) < SUPPORT_LIMIT:
                 kept["support"].append(card["title"])
             continue
-        if per_rule[card["rule"]] >= PER_RULE_LIMIT:
+        if per_rule[card["rule"]] >= PER_RULE_LIMIT or per_category[card["category"]] >= CATEGORY_LIMIT.get(card["category"], CATEGORY_DEFAULT):
             continue
         per_rule[card["rule"]] += 1
+        per_category[card["category"]] += 1
         card["support"] = []
         by_bet[card["market"]["key"]] = card
         out.append(card)
+    names = (ctx["names"][ctx["home"]], ctx["names"][ctx["away"]])
+    for card in out:
+        card["title"] = T.agree_title(card["title"], names)
+        card["plate"] = finish_plate(card, ctx)
     return out[:MATCH_LIMIT]
+
+
+def same_games(card: dict):
+    """Key of a fact that only differs by the line: same rule, market, side, subject and the same hits of the same sample
+    (on nested lines that means the same games). Only over/under lines merge; buckets and results never do."""
+    m, e = card["market"], card["evidence"]
+    if m.get("line") is None or m.get("side") not in ("over", "under"):
+        return None
+    return (card["rule"], m["family"], m["period"], m["scope"], m["side"], e["hits"], e["sample"], (card.get("plate") or {}).get("crest"),
+            (card.get("details") or {}).get("player_id"))
+
+
+def finish_plate(card: dict, ctx: dict) -> dict:
+    """The plate's texts: headline (the rule's short line or the title shortened), team (player, club or the pair),
+    bet in plain words (the rule's, else the Winline label without the club's name), crest, and how they fit."""
+    plate = dict(card.get("plate") or {})
+    home, away = ctx["names"][ctx["home"]], ctx["names"][ctx["away"]]
+    crest = plate.get("crest") if plate.get("crest") in ("home", "away", "match") else "match"
+    club = home if crest == "home" else away if crest == "away" else None
+    team = plate.get("team") or club or T.pair(home, away)
+    bet = plate.get("bet") or card["market"]["label"]
+    if not plate.get("bet") and club:
+        bet = re.sub(r"\s{2,}", " ", bet.replace(club, " ")).strip(" :—-")
+    head = T.agree_title(plate.get("headline") or T.headline(card["title"]), (home, away))
+    head = T.first_fit((head, head.replace(" последних", "")))  # a rule's own headline keeps both clubs, only the extra word goes
+    out = {"headline": head, "team": team, "bet": bet, "crest": crest}
+    out["fit"] = T.fits(out)
+    return out
 
 
 # ----------------------------------------------------------------------------------------------------

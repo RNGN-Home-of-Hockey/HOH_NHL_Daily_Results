@@ -622,8 +622,10 @@ function plainBet(label) {
   return label;
 }
 
-/** What the plate says by default for a card: whose bet it is (club, player or the match), the bet, the price. */
+/** What the plate says by default for a card: whose bet it is (club, player or the match), the bet, the price.
+ * The engine writes these texts (card.plate, sized to the plate); the rest is the fallback for older data. */
 function plateDefaults(m, c) {
+  if (c.plate?.headline) return { v: 2, headline: c.plate.headline, team: c.plate.team, bet: c.plate.bet, odds: c.market.odds, crest: c.plate.crest || 'match' };
   const label = c.market.label || '';
   const player = c.details?.player_id != null ? m.players.find((p) => p.pl_id === c.details.player_id) : null;
   let side = player ? player.team : ['home', 'away'].includes(c.market.scope) ? c.market.scope : null;
@@ -654,6 +656,7 @@ function plateDefaults(m, c) {
 }
 
 function plateOf(item) {
+  if (item.plate && !item.plate.v && findCard(item.id)?.c.plate?.headline) delete item.plate;  // queued before the texts were rewritten
   if (!item.plate) {
     const found = findCard(item.id);
     item.plate = found ? plateDefaults(found.m, found.c) : { headline: item.title, team: item.match, bet: item.label, odds: item.odds, crest: 'none' };
@@ -670,6 +673,18 @@ function plateData(item) {
     crestWhole: p.crestSize === 'whole' };
 }
 
+// how many characters each line takes at the designer's font size, and up to where it may shrink (measured, see tools/epl_text.py)
+const PLATE_FIT = { headline: [52, 60], team: [19, 24], bet: [28, 34] };
+function fitLevel(field, text) {
+  const n = String(text || '').length, [full, most] = PLATE_FIT[field];
+  return { n, full, level: n <= full ? 'ok' : n <= most ? 'small' : 'long' };
+}
+function fitNote(field, text) {
+  const { n, full, level } = fitLevel(field, text);
+  const hint = { ok: '', small: ' — шрифт станет чуть меньше', long: ' — слишком длинно, сократите' }[level];
+  return `<em class="pf-count" data-count="${field}" data-level="${level}">${n} / ${full}${hint}</em>`;
+}
+
 function plateEditor(item) {
   const p = plateOf(item);
   const sides = item.sides || {};
@@ -678,9 +693,9 @@ function plateEditor(item) {
   return `<div class="plate-editor">
     <canvas id="plate-preview" class="plate-preview" width="920" height="240" aria-label="Плашка Winline" data-action="plate-zoom" title="Открыть крупно, в кадре 1920×1080"></canvas>
     <div class="plate-status faint" id="plate-status">Загружаю шрифты…</div>
-    <label class="pf"><span>Верхняя строка</span><textarea rows="2" data-input="plate-headline">${esc(p.headline)}</textarea></label>
-    <label class="pf"><span>Команда или игрок</span><input data-input="plate-team" value="${esc(p.team)}"></label>
-    <label class="pf"><span>Ставка</span><input data-input="plate-bet" value="${esc(p.bet)}"></label>
+    <label class="pf"><span>Верхняя строка ${fitNote('headline', p.headline)}</span><textarea rows="2" data-input="plate-headline">${esc(p.headline)}</textarea></label>
+    <label class="pf"><span>Команда или игрок ${fitNote('team', p.team)}</span><input data-input="plate-team" value="${esc(p.team)}"></label>
+    <label class="pf"><span>Ставка ${fitNote('bet', p.bet)}</span><input data-input="plate-bet" value="${esc(p.bet)}"></label>
     <div class="pf-row"><label class="pf"><span>Кэф</span><input data-input="plate-odds" inputmode="decimal" value="${esc(p.odds)}"></label>
       <label class="pf"><span>Эмблема</span><select data-input="plate-crest">${crestOptions}</select></label></div>
     <label class="pf"><span>Размер эмблемы</span><select data-input="plate-crest-size"><option value="big" ${p.crestSize !== 'whole' ? 'selected' : ''}>Крупно, как в макете (края срезаны)</option>
@@ -1057,7 +1072,13 @@ function onInput(event) {
   if (kind.startsWith('plate-')) {
     const item = state.queue[state.plateIndex];
     const field = { 'plate-headline': 'headline', 'plate-team': 'team', 'plate-bet': 'bet', 'plate-odds': 'odds', 'plate-crest': 'crest', 'plate-crest-size': 'crestSize' }[kind];
-    if (item && field) { plateOf(item)[field] = target.value; saveQueue(); schedulePreview(item); }
+    if (item && field) {
+      plateOf(item)[field] = target.value;
+      saveQueue();
+      schedulePreview(item);
+      const note = document.querySelector(`[data-count="${field}"]`);
+      if (note) note.outerHTML = fitNote(field, target.value);
+    }
     return;
   }
   const feed = (key, val) => { state.feed[key] = val; state.feedLimit = FEED_PAGE; saveUi(); renderFeedList(); };

@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import epl_collect as epl  # noqa: E402  (result_for)
+import epl_text as T  # noqa: E402  (Russian wording, plate texts)
 
 H2H_WINDOW = 10
 H2H_MIN = 6
@@ -33,6 +34,12 @@ CHANCE_MIN_MEETINGS = 4
 CHANCE_MIN_BASELINE = 20
 CHANCE_METRICS = (("xg_proxy", "ожидаемых голов (модель)"), ("shots_inside_box", "ударов из штрафной"),
                   ("shots_on_target", "ударов в створ"), ("shots", "ударов"))
+# how the chance metrics read in a card: (more, fewer, noun after the average: None = "ожидаемого гола", else shots + tail).
+# Shots are shots, not "моменты" (owner 2026-10-16: «удар это не момент»).
+CHANCE_WORDS = {"xg_proxy": ("создаёт больше моментов", "создаёт меньше моментов", None),
+                "shots_inside_box": ("чаще бьёт из штрафной", "реже бьёт из штрафной", ""),
+                "shots_on_target": ("чаще попадает в створ", "реже попадает в створ", " в створ"),
+                "shots": ("чаще бьёт по воротам", "реже бьёт по воротам", "")}
 CHANCE_GAP = {"xg_proxy": 0.5, "shots_inside_box": 1.5, "shots_on_target": 1.5, "shots": 2.0}  # absolute difference that counts (xG model: ~3x its 0.18 error of a 6-match average)
 MIN_SCORE = 35
 
@@ -125,7 +132,9 @@ def market_ref(market: dict, picked: dict, label: str) -> dict:
 
 def make_candidate(rule: str, title: str, evidence: dict, market: dict, picked: dict, label: str, *, weight: float = 0.5,
                    tags: list[str] | None = None, details: dict | None = None, wow: float | None = None,
-                   rate_low: float | None = None) -> dict | None:
+                   rate_low: float | None = None, plate: dict | None = None) -> dict | None:
+    """plate: what the Winline plate says — {crest: home/away/match, bet, team (default: the crest's club or the pair),
+    headline (default: the title shortened)}; epl_engine.build_cards completes it."""
     if rate_low is None:
         rate_low = wilson_lower(evidence["hits"], evidence["sample"])
     if wow is None:
@@ -137,7 +146,7 @@ def make_candidate(rule: str, title: str, evidence: dict, market: dict, picked: 
                 "implied_by_price": round(1.0 / picked["odds"], 3)}
     return {
         "rule": rule, "title": title, "evidence": evidence, "market": market_ref(market, picked, label),
-        "score": score, "tags": tags or [], "details": details or {},
+        "score": score, "tags": tags or [], "details": details or {}, "plate": plate or {},
     }
 
 
@@ -181,10 +190,11 @@ def rule_h2h_results(event: dict, ctx: dict) -> list[dict]:
             for market in result_markets:
                 picked = outcome(market, side_win)
                 if picked:
-                    title = f"{names[club]} выиграл {wins} из последних {n} матчей с {names[other]}"
+                    title = T.agree(names[club], f"{names[club]} выиграл {wins} из {n} последних матчей с {T.ins(names[other])}")
                     out.append(make_candidate("h2h_win_rate", title, {"sample": n, "hits": wins, "window": "личные встречи АПЛ", "span": span(sample)},
                                               market, picked, f"Победа {names[club]}", weight=0.7, tags=[f"{wins} из {n}"],
-                                              details={"results_newest_first": "".join(results), "match_ids": [m["id"] for m in sample]}))
+                                              details={"results_newest_first": "".join(results), "match_ids": [m["id"] for m in sample]},
+                                              plate={"crest": side_win, "bet": "победа в матче"}))
         run = 0
         for result in results:
             if result == "L":
@@ -195,10 +205,11 @@ def rule_h2h_results(event: dict, ctx: dict) -> list[dict]:
                 picked = outcome(market, side_dc)
                 if picked:
                     word = count_word(run, "матч", "матча", "матчей")
-                    title = f"{names[club]} не проигрывает {names[other]} {run} {word} подряд"
+                    title = f"{names[club]} не проигрывает {T.dat(names[other])} {run} {word} подряд"
                     out.append(make_candidate("h2h_unbeaten_run", title, {"sample": run, "hits": run, "window": "серия личных встреч", "span": span(sample[:run])},
                                               market, picked, f"{names[club]} или ничья", weight=0.8, tags=[f"серия {run}"],
-                                              details={"match_ids": [m["id"] for m in sample[:run]]}))
+                                              details={"match_ids": [m["id"] for m in sample[:run]]},
+                                              plate={"crest": side_win, "bet": "не проиграет"}))
     return [c for c in out if c]
 
 
@@ -220,19 +231,23 @@ def rule_h2h_goals(event: dict, ctx: dict) -> list[dict]:
             if hits / n >= 0.7:
                 picked = outcome(market, side)
                 if picked:
-                    title = f"В {hits} из последних {n} встреч {names[home]} и {names[away]} забито {word} {goals_phrase(line)}"
+                    title = f"В {hits} из {n} последних встреч {T.gen(names[home])} и {T.gen(names[away])} забито {T.total(side, line)}"
                     out.append(make_candidate("h2h_total", title, {"sample": n, "hits": hits, **window}, market, picked,
                                               f"Тотал {word} {fmt_line(line)}", weight=0.6, tags=[f"{hits} из {n}", f"линия {fmt_line(line)}"],
-                                              details={"totals_newest_first": totals}))
+                                              details={"totals_newest_first": totals},
+                                              plate={"crest": "match", "bet": f"тотал {word} {fmt_line(line)}",
+                                                     "headline": f"{T.cap(T.total(side, line))} в {hits} из {n} последних встреч"}))
     both = sum(1 for m in sample if m["home"]["score"] > 0 and m["away"]["score"] > 0)
     for market in find_markets(event, "btts"):
-        for side, hits, word in (("yes", both, "забивали обе команды"), ("no", n - both, "забивала не больше одной команды")):
+        for side, hits, word in (("yes", both, "забивали обе команды"), ("no", n - both, "хотя бы одна команда не забила")):
             if hits / n >= 0.7:
                 picked = outcome(market, side)
                 if picked:
-                    title = f"В {hits} из последних {n} встреч {names[home]} и {names[away]}: {word}"
+                    title = f"В {hits} из {n} последних встреч {T.gen(names[home])} и {T.gen(names[away])} {word}"
                     out.append(make_candidate("h2h_btts", title, {"sample": n, "hits": hits, **window}, market, picked,
-                                              "Обе забьют — Да" if side == "yes" else "Обе забьют — Нет", weight=0.55, tags=[f"{hits} из {n}"]))
+                                              "Обе забьют — Да" if side == "yes" else "Обе забьют — Нет", weight=0.55, tags=[f"{hits} из {n}"],
+                                              plate={"crest": "match", "bet": "обе забьют" if side == "yes" else "обе забьют — нет",
+                                                     "headline": f"{T.cap(word)} в {hits} из {n} последних встреч"}))
     return [c for c in out if c]
 
 
@@ -254,10 +269,11 @@ def rule_team_scoring_form(event: dict, ctx: dict) -> list[dict]:
                 if hits / n >= 0.75:
                     picked = outcome(market, side)
                     if picked:
-                        title = f"{names[club]}: в {hits} из последних {n} матчей АПЛ забито {word} {goals_phrase(line)}"
+                        title = T.agree(names[club], f"{names[club]} забивал {T.total(side, line)} в {hits} из {n} последних матчей АПЛ")
                         out.append(make_candidate("team_scoring_form", title, {"sample": n, "hits": hits, "window": f"последние {n} матчей АПЛ", "span": span(sample)},
                                                   market, picked, f"Тотал {names[club]} {word} {fmt_line(line)}", weight=0.6,
-                                                  tags=[f"{hits} из {n}", f"линия {fmt_line(line)}"], details={"goals_newest_first": scored}))
+                                                  tags=[f"{hits} из {n}", f"линия {fmt_line(line)}"], details={"goals_newest_first": scored},
+                                                  plate={"crest": scope, "bet": f"инд. тотал {word} {fmt_line(line)}"}))
     return [c for c in out if c]
 
 
@@ -298,16 +314,21 @@ def rule_chance_creation(event: dict, ctx: dict) -> list[dict]:
                 picked = outcome(market, "over" if more else "under")
                 if not picked:
                     continue
-                verb = "создаёт гораздо больше моментов" if more else "создаёт гораздо меньше моментов"
+                more_text, fewer_text, tail = CHANCE_WORDS[key]
+                verb = more_text if more else fewer_text
                 digits = 2 if key == "xg_proxy" else 1
-                title = (f"{names[club]} {verb} против {names[other]}: в среднем {mean_vs:.{digits}f} {label} "
-                         f"({len(versus)} матч.) против {mean_base:.{digits}f} в остальных ({len(baseline)})")
+                value, usual = T.num(mean_vs, digits), T.num(mean_base, digits)
+                noun = "ожидаемого гола" if tail is None else T.word(round(mean_vs, digits), "shot") + tail
+                title = f"{names[club]} {verb} против {T.gen(names[other])}: в среднем {value} {noun} за матч, в остальных играх — {usual}"
                 hits = sum(1 for v in versus if (v > mean_base if more else v < mean_base))
                 out.append(make_candidate("chance_creation", title, {"sample": len(versus), "hits": hits, "window": f"{label}: встречи против остальных"},
                                           market, picked, f"Тотал {names[club]} {'больше' if more else 'меньше'} {fmt_line(line)}", weight=0.9,
                                           tags=[f"×{ratio:.2f} к обычному", label],
                                           details={"metric": key, "mean_vs_opponent": round(mean_vs, 2), "mean_vs_others": round(mean_base, 2),
-                                                   "values_vs_opponent_newest_first": versus}))
+                                                   "values_vs_opponent_newest_first": versus, "meetings": len(versus), "baseline_matches": len(baseline)},
+                                          plate={"crest": scope, "bet": f"инд. тотал {'больше' if more else 'меньше'} {fmt_line(line)}",
+                                                 "headline": T.first_fit((f"{names[club]} {verb} против {T.gen(names[other])}: {value} против {usual}",
+                                                                          f"{names[club]} {verb} против {T.gen(names[other])}"))}))
             break  # the first metric that shows a real gap is enough for one club
     return [c for c in out if c]
 
@@ -329,7 +350,8 @@ def rule_form_run(event: dict, ctx: dict) -> list[dict]:
                     word = count_word(unbeaten, "матч", "матча", "матчей")
                     out.append(make_candidate("form_unbeaten_run", f"{names[club]} не проигрывает в АПЛ {unbeaten} {word} подряд",
                                               {"sample": unbeaten, "hits": unbeaten, "window": "текущая серия в АПЛ"}, market, picked,
-                                              f"{names[club]} или ничья", weight=0.5, tags=[f"серия {unbeaten}"]))
+                                              f"{names[club]} или ничья", weight=0.5, tags=[f"серия {unbeaten}"],
+                                              plate={"crest": "home" if side_dc == "home_draw" else "away", "bet": "не проиграет"}))
     return [c for c in out if c]
 
 
@@ -368,13 +390,14 @@ def rule_player_scorer(event: dict, ctx: dict) -> list[dict]:
         n = len(played)
         season_goals = season.get("goals_scored") or 0
         if scored / n >= 0.6:
-            title = f"{player['surname_ru']} забивал в {scored} из последних {n} матчей АПЛ" + (" и бьёт пенальти" if taker else "")
+            title = f"{player['surname_ru']} забивал в {scored} из {n} последних матчей АПЛ" + (" и бьёт пенальти" if taker else "")
         else:
             title = f"{player['surname_ru']} бьёт пенальти и забил {season_goals} {count_word(season_goals, 'гол', 'гола', 'голов')} в сезоне АПЛ"
         out.append(make_candidate("player_scorer_form", title, {"sample": n, "hits": scored, "window": f"последние {n} матчей с игровым временем"},
                                   market, picked, f"{player['surname_ru']} забьёт", weight=0.6,
                                   tags=[f"{scored} из {n}"] + (["пенальти"] if taker else []),
-                                  details={"player_id": player["pl_id"], "goals_by_gameweek": [row.get("goals_scored") for row in played]}))
+                                  details={"player_id": player["pl_id"], "goals_by_gameweek": [row.get("goals_scored") for row in played]},
+                                  plate={"crest": subject["team"], "team": player["surname_ru"], "bet": "забьёт гол"}))
     return [c for c in out if c]
 
 

@@ -342,6 +342,9 @@ b.good { color: var(--good); } b.bad { color: var(--bad); }
 .pf input, .pf textarea, .pf select { width: 100%; border: 1px solid var(--line-strong); background: var(--surface); border-radius: var(--radius-sm); padding: 6px 8px; color: var(--text); font-size: 13px; }
 .pf textarea { resize: vertical; min-height: 44px; font: inherit; color: var(--text); }
 .pf-row { display: grid; grid-template-columns: 90px 1fr; gap: 8px; }
+.pf-count { font-style: normal; font-size: 11px; color: var(--faint); margin-left: 4px; }
+.pf-count[data-level="small"] { color: var(--warn); }
+.pf-count[data-level="long"] { color: var(--bad); font-weight: 700; }
 .plate-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .qitem[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .qtitle { font-weight: 700; font-size: 13px; line-height: 1.3; display: block; }
