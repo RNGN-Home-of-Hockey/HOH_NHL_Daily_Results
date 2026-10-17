@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import epl_collect as epl  # noqa: E402
 import epl_engine as eng  # noqa: E402
+import epl_text as T  # noqa: E402
 import epl_markets  # noqa: E402,F401 - registers the market rules' categories before the payload lists them
 import epl_insights as ins  # noqa: E402
 
@@ -145,9 +146,74 @@ def apply_live(cards: list[dict], live_event: dict) -> None:
         odds = prices.get((market_key, int(index))) if index.isdigit() else None
         card["market"]["odds_prematch"] = card["market"]["odds"]
         if odds:
-            card["market"].update(odds=odds, live="open")
+            card["market"].update(odds=odds, live="open" if odds >= eng.MIN_ODDS else "low")  # under 1.50: no plate (owner rule)
         else:
             card["market"]["live"] = "closed"
+
+
+def live_cards(live_event: dict, ctx: dict, covered: set) -> list[dict]:
+    """Plates of the standard bets of the live line for a match being played (owner 2026-10-17: «во втором тайме нет
+    даже стандартных — победа, ничья, тотал»): each club's win, the draw, «не проиграет», the main total over / under,
+    both to score yes / no — at 1.50 or more, except a bet a pre-match plate already carries live (`covered` keys).
+    No history behind them: the headline says it is a bet in play, the price is the live one."""
+    names = ctx["names"]
+    home, away = names[ctx["home"]], names[ctx["away"]]
+    out = []
+
+    def add(market, outcome, subject, bet, crest, label):
+        odds = outcome.get("odds")
+        key = f"{market['key']}#{outcome['index']}"
+        if not odds or odds < eng.MIN_ODDS or key in covered:
+            return
+        card = {"rule": "live_line", "title": f"{subject}: ставка по ходу матча по лайв-линии Winline",
+                "evidence": {"sample": 0, "hits": 0, "rate": None, "rate_conservative": None, "implied_by_price": round(1 / odds, 3),
+                             "window": "лайв-линия Winline"},
+                "market": {"market_id": market["market_id"], "family": market["family"], "period": market["period"], "scope": market["scope"],
+                           "line": outcome.get("line", market.get("line")), "side": outcome.get("side"), "odds": odds, "label": label, "key": key,
+                           "live": "open"},
+                "score": 55, "tags": ["лайв"], "details": {}, "category": "Лайв", "basis": "Лайв-линия", "tier": "solid", "tier_label": "Лайв",
+                "stars": 3, "reasons": ["кэф лайв-линии Winline"], "alternatives": [], "support": [],
+                "plate": {"crest": crest, "bet": bet, "headline": T.first_fit((f"{subject} — ставка в лайве", subject))}}
+        card["plate"] = eng.finish_plate(card, ctx)
+        out.append(card)
+
+    totals = []
+    for market in live_event["markets"]:
+        if market["period"] != "FT" or market["scope"] != "match" or not market["outcomes"]:
+            continue
+        family, by_side = market["family"], {o.get("side"): o for o in market["outcomes"]}
+        # only the main markets (the live line also has «result at minute 80» and the like): 490 result, 114 double
+        # chance, 58 both to score, 1049 match total
+        if market["market_id"] not in (490, 114, 58, 1049):
+            continue
+        if family == "match_result" and market.get("variant") is None:
+            if "home" in by_side:
+                add(market, by_side["home"], f"Победа {T.gen(home)}", "победа в матче", "home", f"Победа {home}")
+            if "draw" in by_side:
+                add(market, by_side["draw"], "Ничья", "ничья", "match", "Ничья")
+            if "away" in by_side:
+                add(market, by_side["away"], f"Победа {T.gen(away)}", "победа в матче", "away", f"Победа {away}")
+        elif family == "double_chance":
+            if "home_draw" in by_side:
+                add(market, by_side["home_draw"], f"{home} не проиграет", "не проиграет", "home", f"{home} или ничья")
+            if "draw_away" in by_side:
+                add(market, by_side["draw_away"], f"{away} не проиграет", "не проиграет", "away", f"{away} или ничья")
+        elif family == "btts" and market["market_id"] == 58:
+            if "yes" in by_side:
+                add(market, by_side["yes"], "Обе команды забьют", "обе забьют", "match", "Обе забьют — Да")
+            if "no" in by_side:
+                add(market, by_side["no"], "Хотя бы одна команда не забьёт", "обе забьют — нет", "match", "Обе забьют — Нет")
+        elif family == "total" and market.get("line") is not None and {"over", "under"} <= set(by_side):
+            totals.append(market)
+    if totals:  # the main total: the line with the most even prices
+        def spread(m):
+            prices = {o.get("side"): o["odds"] for o in m["outcomes"]}
+            return abs(prices["over"] - prices["under"])
+        market = min(totals, key=spread)
+        by_side, line = {o.get("side"): o for o in market["outcomes"]}, market["line"]
+        add(market, by_side["over"], f"{T.cap(T.total('over', line))} в матче", f"тотал больше {T.line(line)}", "match", f"Тотал больше {T.line(line)}")
+        add(market, by_side["under"], f"{T.cap(T.total('under', line))} в матче", f"тотал меньше {T.line(line)}", "match", f"Тотал меньше {T.line(line)}")
+    return out
 
 
 def mark_moves(cards: list[dict], players: list[dict], event: dict, prices: dict) -> None:
@@ -312,6 +378,8 @@ def main(argv: list[str] | None = None) -> int:
         live_odds = event.get("frozen_at") and event["event_id"] in live_events
         if live_odds:
             apply_live(cards, live_events[event["event_id"]])
+            covered = {c["market"]["key"] for c in cards if c["market"].get("live") == "open"}
+            cards = live_cards(live_events[event["event_id"]], ctx, covered) + cards
         out_matches.append({
             "event_id": event["event_id"], "starts_at": before, "live": event.get("live", False), "captured_at": event.get("captured_at"),
             "frozen_at": event.get("frozen_at"), "live_odds_at": live_at if live_odds else None,

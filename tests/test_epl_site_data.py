@@ -50,6 +50,24 @@ def test_live_lines_are_read_only_while_the_match_is_played():
         assert site.started_ids(root, line, at(11, 0)) == []            # nothing kicked off yet
 
 
+def test_standard_live_plates_while_the_match_is_played():
+    # 2026-10-17: in the second half the commentators had no plate at all — not even the win, the draw, the total
+    ctx = {"names": {1: "Брентфорд", 2: "Ливерпуль"}, "home": 1, "away": 2}
+
+    def market(market_id, family, key, outcomes, line=None, variant=None):
+        return {"market_id": market_id, "family": family, "period": "FT", "scope": "match", "key": key, "line": line, "variant": variant,
+                "outcomes": [{"index": i, "side": side, "odds": odds} for i, (side, odds) in enumerate(outcomes)]}
+    live = {"markets": [market(490, "match_result", "490", [("home", 1.67), ("draw", 3.75), ("away", 5.5)]),
+                        market(1234, "match_result", "1234:80", [("home", 1.2), ("draw", 4.0), ("away", 9.0)]),  # «result at minute 80»
+                        market(114, "double_chance", "114", [("home_draw", 1.1), ("draw_away", 2.2)]),
+                        market(1049, "total", "1049:2.5", [("over", 1.65), ("under", 2.25)], line=2.5),
+                        market(1049, "total", "1049:3.5", [("over", 3.4), ("under", 1.3)], line=3.5)]}
+    cards = site.live_cards(live, ctx, covered={"490#2"})  # the away win is on a pre-match plate already
+    bets = sorted((c["market"]["key"], c["market"]["odds"]) for c in cards)
+    assert bets == [("1049:2.5#0", 1.65), ("1049:2.5#1", 2.25), ("114#1", 2.2), ("490#0", 1.67), ("490#1", 3.75)]
+    assert all(c["rule"] == "live_line" and c["market"]["live"] == "open" and c["plate"]["bet"] for c in cards)
+
+
 def main() -> None:
     for name, function in sorted(globals().items()):
         if name.startswith("test_") and callable(function):

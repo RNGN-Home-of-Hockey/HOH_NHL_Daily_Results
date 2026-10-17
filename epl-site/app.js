@@ -188,8 +188,11 @@ function plateCard(m, c, { showMatch = false } = {}) {
     <button class="pc-face" data-action="pick" data-card="${esc(id)}" aria-expanded="${open}">
       <span class="pc-top">${tierTag(c)}<span class="pc-cat">${esc(c.category)}</span>${showMatch ? `<span class="pc-match">${esc(pairName(m))} · ${esc(kickoff(m))}</span>` : ''}
         ${state.plates[id] ? '<span class="pc-edited">изменено</span>' : ''}<span class="pc-live">● В ЭФИРЕ</span>
-        ${c.market.live === 'open' ? `<span class="pc-inplay" title="Кэф из лайв-линии Winline; до матча был ${odds(c.market.odds_prematch)}">лайв · было ${odds(c.market.odds_prematch)}</span>` : ''}
-        ${c.market.live === 'closed' ? '<span class="pc-closed">в лайве закрыта</span>' : ''}</span>
+        ${c.market.live === 'open' ? (c.market.odds_prematch != null
+          ? `<span class="pc-inplay" title="Кэф из лайв-линии Winline; до матча был ${odds(c.market.odds_prematch)}">лайв · было ${odds(c.market.odds_prematch)}</span>`
+          : '<span class="pc-inplay" title="Ставка из лайв-линии Winline">лайв</span>') : ''}
+        ${c.market.live === 'closed' ? '<span class="pc-closed">в лайве закрыта</span>' : ''}
+        ${c.market.live === 'low' ? '<span class="pc-closed">в лайве кэф ниже 1,50</span>' : ''}</span>
       <span class="pc-head">${esc(p.headline)}</span>
       <span class="pc-bet"><span><b>${esc(p.team)}</b> · ${esc(p.bet)}</span><b class="pc-odds num">${odds(parseOdds(p.odds))}</b></span>
     </button>
@@ -216,7 +219,8 @@ function platePanel(m, c, id) {
     ${live && live !== id ? '<p class="plate-note">Сейчас в эфире этого матча другая плашка — она сменится на эту.</p>' : ''}
     ${c.market.live === 'closed' ? `<p class="live-note warn">В лайве Winline эту ставку сейчас не принимает — кэф ${odds(c.market.odds)} остался с линии до матча.</p>` : ''}
     ${state.editing ? plateEditor(m, id) : ''}
-    <p class="pc-why">${esc(c.title)}. История ${e.hits} из ${e.sample}, цена Winline ${pct(e.implied_by_price)}.</p>
+    <p class="pc-why">${c.rule === 'live_line' ? 'Ставка по ходу матча из лайв-линии Winline: кэф обновляется каждые пару минут, истории за ней нет.'
+      : `${esc(c.title)}. История ${e.hits} из ${e.sample}, цена Winline ${pct(e.implied_by_price)}.`}</p>
   </div>`;
 }
 
@@ -352,7 +356,7 @@ function tabs(m) {
 function renderTips(m) {
   const cats = [...new Set(m.insights.map((c) => c.category))];
   const tips = m.insights.filter((c) => state.tipCategory === 'all' || c.category === state.tipCategory)
-    .map((c, i) => [c, i]).sort(([a, i], [b, j]) => (a.market.live === 'closed') - (b.market.live === 'closed') || i - j)  // in play: bettable first
+    .map((c, i) => [c, i]).sort(([a, i], [b, j]) => ['closed', 'low'].includes(a.market.live) - ['closed', 'low'].includes(b.market.live) || i - j)  // in play: bettable first
     .map(([c]) => c);
   const catItems = [['all', 'Все', m.insights.length], ...cats.map((cat) => [cat, cat, m.insights.filter((c) => c.category === cat).length])];
   const body = tips.length ? tips.map((c) => plateCard(m, c)).join('') : '<div class="empty">Плашек нет: нужна линия Winline и убедительная история.</div>';
