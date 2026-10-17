@@ -63,6 +63,37 @@ def reference_prices(winline_dir: Path, now: datetime) -> tuple[str | None, dict
     return None, {}
 
 
+LIVE_KEEP_HOURS = 3  # a match stays on the site this long after its kickoff
+LIVE_LOOKBACK = 60  # snapshots searched (newest first) for a match that left the pre-match line
+
+
+def started_events(winline_dir: Path, now: datetime, current_ids: set) -> list[dict]:
+    """Matches that kicked off and so left Winline's pre-match line (owner 2026-10-17: a live match vanished from the
+    list): the newest kept snapshot that still had each one, for LIVE_KEEP_HOURS after the kickoff, marked live, with
+    the same event id — so the match page, its plates and its OBS link stay the same. Its lines are the last pre-match
+    ones (`frozen_at` = that snapshot's capture time)."""
+    folders = sorted(((f, snapshot_time(f)) for f in (winline_dir / "snapshots").glob("*") if f.is_dir() and snapshot_time(f)),
+                     key=lambda x: x[1], reverse=True)[:LIVE_LOOKBACK]
+    found: dict = {}
+    for folder, _ in folders:
+        gz, plain = folder / "index.json.gz", folder / "index.json"
+        if not (gz.exists() or plain.exists()):
+            continue
+        payload = json.loads(gzip.decompress(gz.read_bytes()) if gz.exists() else plain.read_bytes())
+        for event in payload.get("events") or []:
+            if event["event_id"] in current_ids or event["event_id"] in found:
+                continue
+            try:
+                start = datetime.fromisoformat(str(event["starts_at"]).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            if start <= now <= start + timedelta(hours=LIVE_KEEP_HOURS):
+                found[event["event_id"]] = {**event, "live": True, "frozen_at": payload.get("captured_at")}
+    return list(found.values())
+
+
 def mark_moves(cards: list[dict], players: list[dict], event: dict, prices: dict) -> None:
     """Odds of the reference snapshot as `was` on the cards and `odds_was` on the player rows (when they differ)."""
     if not prices:
@@ -198,8 +229,9 @@ def main(argv: list[str] | None = None) -> int:
           if (epl.NORM / "xg_proxy.json").exists() else {})
 
     move_since, prices = reference_prices(Path(args.winline).parent, datetime.now(timezone.utc))
+    started = started_events(Path(args.winline).parent, datetime.now(timezone.utc), {e["event_id"] for e in snapshot["events"]})
     out_matches, skipped = [], []
-    for event in snapshot["events"]:
+    for event in snapshot["events"] + started:
         home, away = club_for(event["home"], teams), club_for(event["away"], teams)
         if not home or not away:
             skipped.append(f"{event['home']} - {event['away']}")
@@ -212,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
         mark_moves(cards, board, event, prices)
         out_matches.append({
             "event_id": event["event_id"], "starts_at": before, "live": event.get("live", False), "captured_at": event.get("captured_at"),
+            "frozen_at": event.get("frozen_at"),
             "home": {"id": home["id"], "name": home["name"], "name_ru": names[home["id"]], "name_full": event["home"]},
             "away": {"id": away["id"], "name": away["name"], "name_ru": names[away["id"]], "name_full": event["away"]},
             "quick": quick_odds(event), "summary": event["summary"], "markets": event["markets"], "players": board,

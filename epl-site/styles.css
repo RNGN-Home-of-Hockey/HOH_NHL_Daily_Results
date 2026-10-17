@@ -379,3 +379,7 @@ b.good { color: var(--good); } b.bad { color: var(--bad); }
 .crest-pick .chip-btn[data-fit="small"]:not([aria-pressed="true"]) { color: var(--warn); }
 .crest-pick .chip-btn[data-fit="long"]:not([aria-pressed="true"]) { color: var(--bad); border-color: #f3c6c0; }
 .pf-odds { max-width: 140px; }
+/* a match that has kicked off: its lines are the last pre-match ones */
+.live-note { padding: 9px 12px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-size: 13px; line-height: 1.4; }
+.live-note b { font-weight: 800; }
+.live-note.warn { background: var(--warn-soft); color: var(--warn); }

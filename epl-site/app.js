@@ -325,6 +325,9 @@ function renderHead(m) {
       <div class="versus">${mono(m.home)}<span>${esc(fullName(m.home))}</span><span class="vs">—</span>${mono(m.away)}<span>${esc(fullName(m.away))}</span></div>
       <div class="kick"><b class="num">${timeFmt.format(new Date(m.starts_at))} МСК</b>${esc(dayFmt.format(new Date(m.starts_at)))} · АПЛ</div>
     </div>
+    ${m.live ? `<div class="live-note"><b>● Матч идёт.</b> Кэфы — последняя линия Winline${m.frozen_at ? ` (${timeFmt.format(new Date(m.frozen_at))} МСК)` : ''}, в лайве они другие — проверяйте перед «Дать в эфир».</div>` : ''}
+    ${!m.live && liveId(m.event_id) && new Date(m.starts_at) - Date.now() > 3 * 3600 * 1000
+      ? `<div class="live-note warn"><b>Этот матч ещё не начался (${esc(kickoff(m))}), а его плашка в эфире.</b> Если вы ведёте другой матч — откройте свой матч и проверьте ссылку в OBS.</div>` : ''}
     ${obsBox(m)}
   </section>`;
 }
