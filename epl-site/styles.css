@@ -115,12 +115,19 @@ button { cursor: pointer; }
 .wk-count { font-size: 11px; color: var(--faint); font-weight: 650; margin-top: 2px; white-space: nowrap; }
 .wk[aria-pressed="true"] .wk-date, .wk[aria-pressed="true"] .wk-count { color: rgba(255, 255, 255, 0.72); }
 .wk.all .wk-team { font-size: 17px; }
+/* finished matches (kept a week for the operators): after the current ones, greyed */
+.wk-sep { grid-column: 1 / -1; align-self: center; margin-top: 6px; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.wk[data-finished="true"]:not([aria-pressed="true"]) { background: var(--surface-2); }
+.wk[data-finished="true"]:not([aria-pressed="true"]) .wk-team { color: var(--muted); }
+.day.past { margin-top: 10px; border-top: 1px solid var(--line-strong); text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; }
+.match[data-finished="true"] .team span { color: var(--muted); }
 @media (max-width: 880px) {
   .strip { padding: 8px 0 8px 10px; }
   .strip h4 { margin-bottom: 6px; }
   .week { display: flex; overflow-x: auto; scroll-snap-type: x proximity; padding: 0 10px 4px 0; scrollbar-width: thin; }
   .wk { flex: 0 0 auto; width: 150px; scroll-snap-align: start; }
   .wk.all { width: 92px; }
+  .wk-sep { flex: 0 0 auto; margin: 0 2px 0 6px; writing-mode: vertical-rl; transform: rotate(180deg); }
 }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }

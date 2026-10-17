@@ -84,6 +84,20 @@ def test_a_match_missing_from_one_live_capture_keeps_its_prices():
         assert {i: e["live_captured_at"][11:16] for i, e in events.items()} == {1: "15:38", 2: "15:36"}  # 3 is too old
 
 
+def test_finished_matches_stay_a_week_for_the_operators():
+    # owner 2026-10-17: «я не вижу старые закрытые матчи… прошедшие нельзя. Исправь для операторов»
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        kicked = [{"event_id": 1, "starts_at": "2026-10-17T14:00:00.999Z", "markets": [], "live": True, "frozen_at": "2026-10-17T13:55:00Z"},
+                  {"event_id": 2, "starts_at": "2026-10-09T14:00:00.999Z", "markets": [], "live": True},
+                  {"event_id": 3, "starts_at": "2026-10-17T19:00:00.999Z", "markets": [], "live": True}]
+        site.archive_started(root, kicked)
+        at = datetime(2026, 10, 17, 20, 0, tzinfo=timezone.utc)
+        out = site.finished_events(root, at, skip_ids=set())
+        assert [(e["event_id"], e["live"], e["finished"]) for e in out] == [(1, False, True)]  # 2: over a week ago, 3: being played
+        assert site.finished_events(root, at, skip_ids={1}) == []  # back in the line (or being played): not twice
+
+
 def main() -> None:
     for name, function in sorted(globals().items()):
         if name.startswith("test_") and callable(function):

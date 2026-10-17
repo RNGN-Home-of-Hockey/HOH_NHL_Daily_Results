@@ -152,11 +152,15 @@ function renderHeader() {
 
 // ---------- strip: the week's matches as buttons (feed and players filter, match page navigation on phones) ----------
 function weekMatches() {
-  const matches = state.data?.matches || [];
+  const matches = (state.data?.matches || []).filter((m) => !m.finished);
   const now = Date.now();
   const week = matches.filter((m) => { const t = new Date(m.starts_at).getTime(); return t >= now - 3 * 3600 * 1000 && t < now + WEEK_MS; });
   return week.length ? week : matches.slice(0, 10);
 }
+
+// finished matches (the server keeps them a week): newest first, after the current ones — same page, same OBS link
+// (owner 2026-10-17: «я не вижу старые закрытые матчи… прошедшие нельзя. Исправь для операторов»)
+const pastMatches = () => (state.data?.matches || []).filter((m) => m.finished).sort((a, b) => b.starts_at.localeCompare(a.starts_at));
 
 function renderStrip() {
   const strip = $('#strip');
@@ -167,11 +171,14 @@ function renderStrip() {
   const unit = state.page === 'players' ? 'игроков' : 'карточек';
   const all = state.page === 'matches' ? '' : `<button class="wk all" data-action="strip" data-value="all" aria-pressed="${current === 'all'}">
       <span class="wk-date">Все матчи</span><span class="wk-team">${state.page === 'players' ? state.playerRows.length : state.cards.length}</span><span class="wk-count">${unit}</span></button>`;
-  strip.innerHTML = `<h4>Матчи недели</h4><div class="week">${all}${weekMatches().map((m) => `
-    <button class="wk" data-action="strip" data-value="${m.event_id}" aria-pressed="${current === String(m.event_id)}" title="${esc(pairName(m))}">
+  const button = (m) => `
+    <button class="wk" data-action="strip" data-value="${m.event_id}" aria-pressed="${current === String(m.event_id)}" data-finished="${Boolean(m.finished)}" title="${esc(pairName(m))}">
       <span class="wk-date">${m.live ? '<span class="live-dot"></span>' : ''}${esc(kickoff(m))}</span>
       <span class="wk-team">${esc(fullName(m.home))}</span><span class="wk-team">${esc(fullName(m.away))}</span>
-      <span class="wk-count">${count(m)} ${unit}${hot(m) ? ` · ${hot(m)}★` : ''}</span></button>`).join('')}</div>`;
+      <span class="wk-count">${m.finished ? 'завершён · ' : ''}${count(m)} ${unit}${hot(m) ? ` · ${hot(m)}★` : ''}</span></button>`;
+  const past = state.page === 'matches' ? pastMatches() : [];
+  strip.innerHTML = `<h4>Матчи недели</h4><div class="week">${all}${weekMatches().map(button).join('')}${past.length
+    ? `<span class="wk-sep">Прошедшие</span>${past.map(button).join('')}` : ''}</div>`;
   renderOnair();
 }
 
@@ -300,13 +307,15 @@ function renderRail() {
   if (!matches.length) { $('#side').innerHTML = '<div class="empty">Матчей нет</div>'; return; }
   let html = '';
   let lastDay = '';
-  for (const m of matches) {
-    const day = dayKeyFmt.format(new Date(m.starts_at));
+  const past = pastMatches();
+  for (const m of [...matches.filter((x) => !x.finished), ...past]) {
+    const day = (m.finished ? 'past ' : '') + dayKeyFmt.format(new Date(m.starts_at));
+    if (m === past[0]) html += '<div class="day past">Прошедшие матчи</div>';
     if (day !== lastDay) { html += `<div class="day">${esc(dayFmt.format(new Date(m.starts_at)))}</div>`; lastDay = day; }
     const top = m.insights[0];
     const hot = m.insights.filter((c) => c.tier === 'fire' || c.tier === 'strong').length;
     const x = m.quick.x12;
-    html += `<button class="match" data-action="select" data-id="${m.event_id}" aria-current="${m.event_id === state.selected}" data-live="${Boolean(liveId(m.event_id))}">
+    html += `<button class="match" data-action="select" data-id="${m.event_id}" aria-current="${m.event_id === state.selected}" data-live="${Boolean(liveId(m.event_id))}" data-finished="${Boolean(m.finished)}">
       <div class="time num">${timeFmt.format(new Date(m.starts_at))}<small>МСК</small></div>
       <div class="teams"><div class="team">${mono(m.home)}<span>${esc(fullName(m.home))}</span></div><div class="team">${mono(m.away)}<span>${esc(fullName(m.away))}</span></div>
         ${x ? `<div class="mini-odds num"><b>${odds(x[0])}</b><b>${odds(x[1])}</b><b>${odds(x[2])}</b></div>` : ''}</div>
@@ -338,6 +347,9 @@ function renderHead(m) {
       : Date.now() - new Date(m.starts_at) > 115 * 60 * 1000
         ? `Скорее всего, матч уже завершён: лайв-линии Winline по нему нет. Кэфы на плашках — с линии до матча.`
         : `Кэфы — последняя линия Winline до матча${m.frozen_at ? ` (${timeFmt.format(new Date(m.frozen_at))} МСК)` : ''}, в лайве они другие — проверяйте перед «Дать в эфир».`}</div>` : ''}
+    ${m.finished ? (liveId(m.event_id)
+      ? '<div class="live-note warn"><b>Матч завершён, а его плашка всё ещё в эфире.</b> Если трансляция закончилась — нажмите «Снять с эфира» в блоке ссылки OBS.</div>'
+      : '<div class="live-note"><b>Матч завершён.</b> Ставки по нему Winline уже не принимает: плашки и кэфы — с линии до матча. Ссылка OBS та же.</div>') : ''}
     ${!m.live && liveId(m.event_id) && new Date(m.starts_at) - Date.now() > 3 * 3600 * 1000
       ? `<div class="live-note warn"><b>Этот матч ещё не начался (${esc(kickoff(m))}), а его плашка в эфире.</b> Если вы ведёте другой матч — откройте свой матч и проверьте ссылку в OBS.</div>` : ''}
     ${obsBox(m)}
@@ -346,7 +358,7 @@ function renderHead(m) {
 
 function tabs(m) {
   const items = [
-    ['tips', 'Плашки', m.insights.length], ['markets', 'Рынки Winline', m.summary.market_lines], ['players', 'Игроки', m.players.length],
+    ['tips', 'Плашки', m.insights.length], ['markets', 'Рынки Winline', m.finished ? 0 : m.summary.market_lines], ['players', 'Игроки', m.players.length],
     ['h2h', 'Личные встречи', m.h2h.played], ['form', 'Форма и статистика', null],
   ];
   return `<div class="card tabs" role="tablist">${items.map(([id, label, count], i) =>
@@ -380,6 +392,7 @@ function outcomeLabel(m, mk, o) {
 }
 
 function renderMarkets(m) {
+  if (m.finished) return '<div class="empty">Матч завершён — линия Winline по нему закрыта.</div>';
   const query = state.query.trim().toLowerCase();
   const all = m.markets.filter((mk) => mk.family !== 'player_goal');
   const counts = {};
@@ -1107,9 +1120,10 @@ async function load(manual = false) {
   if (!data && state.data) { if (manual) toast('Не удалось обновить данные'); return; }
   state.data = data;
   const matches = data?.matches || [];
-  state.cards = matches.flatMap((m) => m.insights.map((c) => ({ m, c })));
-  state.playerRows = matches.flatMap((m) => m.players.map((p) => ({ m, p })));
-  if (!matches.some((m) => m.event_id === state.selected)) state.selected = (matches.find((m) => m.insights.length) || matches[0])?.event_id ?? null;
+  const current = matches.filter((m) => !m.finished);  // the feed, players and the opening match: not the finished ones
+  state.cards = current.flatMap((m) => m.insights.map((c) => ({ m, c })));
+  state.playerRows = current.flatMap((m) => m.players.map((p) => ({ m, p })));
+  if (!matches.some((m) => m.event_id === state.selected)) state.selected = (current.find((m) => m.insights.length) || current[0] || matches[0])?.event_id ?? null;
   const known = new Set(matches.map((m) => String(m.event_id)));
   if (state.feed.match !== 'all' && !known.has(state.feed.match)) state.feed.match = 'all';
   if (state.players.match !== 'all' && !known.has(state.players.match)) state.players.match = 'all';

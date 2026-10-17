@@ -64,18 +64,49 @@ def reference_prices(winline_dir: Path, now: datetime) -> tuple[str | None, dict
     return None, {}
 
 
-LIVE_KEEP_HOURS = 3  # a match stays on the site this long after its kickoff
+LIVE_KEEP_HOURS = 3  # a match is shown as being played this long after its kickoff
 LIVE_LOOKBACK = 60  # snapshots searched (newest first) for a match that left the pre-match line
+FINISHED_KEEP_DAYS = 7  # then it stays on the site as finished (owner 2026-10-17: «прошедшие нельзя… исправь для операторов»)
+ARCHIVE = "kicked-off"  # winline/kicked-off/<event id>.json.gz: each match as it was frozen at its kickoff
 
 
-def started_events(winline_dir: Path, now: datetime, current_ids: set) -> list[dict]:
+def archive_started(winline_dir: Path, events: list[dict]) -> None:
+    """Keep each kicked-off match as it was frozen (the snapshots it is read from are searched only LIVE_LOOKBACK deep)."""
+    folder = winline_dir / ARCHIVE
+    folder.mkdir(parents=True, exist_ok=True)
+    for event in events:
+        path = folder / f"{event['event_id']}.json.gz"
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_bytes(gzip.compress(json.dumps(event, ensure_ascii=False).encode("utf-8")))
+        tmp.replace(path)
+
+
+def finished_events(winline_dir: Path, now: datetime, skip_ids: set) -> list[dict]:
+    """Matches over (more than LIVE_KEEP_HOURS after the kickoff) in the last FINISHED_KEEP_DAYS, from the archive: the
+    operators still open them — the same page and OBS link, a plate left on air can be taken off."""
+    out = []
+    for path in sorted((winline_dir / ARCHIVE).glob("*.json.gz")):
+        try:
+            event = json.loads(gzip.decompress(path.read_bytes()))
+            start = datetime.fromisoformat(str(event["starts_at"]).replace("Z", "+00:00"))
+        except (OSError, ValueError, KeyError):
+            continue
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if event["event_id"] not in skip_ids and start + timedelta(hours=LIVE_KEEP_HOURS) < now <= start + timedelta(days=FINISHED_KEEP_DAYS):
+            out.append({**event, "live": False, "finished": True})
+    return out
+
+
+def started_events(winline_dir: Path, now: datetime, current_ids: set, keep: timedelta = timedelta(hours=LIVE_KEEP_HOURS),
+                   lookback: int | None = LIVE_LOOKBACK) -> list[dict]:
     """Matches that kicked off and so left Winline's pre-match line (owner 2026-10-17: a live match vanished from the
     list): the newest kept snapshot that still had each one, for LIVE_KEEP_HOURS after the kickoff, marked live, with
     the same event id — so the match page, its plates and its OBS link stay the same. Its plates are built on the last
     snapshot taken before the kickoff (Winline keeps a match in the pre-match line for ~25 minutes after it, already
     with in-play prices), else on the newest one (`frozen_at` = that snapshot's capture time)."""
     folders = sorted(((f, snapshot_time(f)) for f in (winline_dir / "snapshots").glob("*") if f.is_dir() and snapshot_time(f)),
-                     key=lambda x: x[1], reverse=True)[:LIVE_LOOKBACK]
+                     key=lambda x: x[1], reverse=True)[:lookback]
     before_kickoff: dict = {}
     newest: dict = {}
     for folder, taken in folders:
@@ -92,7 +123,7 @@ def started_events(winline_dir: Path, now: datetime, current_ids: set) -> list[d
                 continue
             if start.tzinfo is None:
                 start = start.replace(tzinfo=timezone.utc)
-            if not start <= now <= start + timedelta(hours=LIVE_KEEP_HOURS):
+            if not start <= now <= start + keep:
                 continue
             kept = {**event, "live": True, "frozen_at": payload.get("captured_at")}
             newest.setdefault(event["event_id"], kept)
@@ -348,11 +379,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=str(epl.OUT / "site" / "site.json"))
     parser.add_argument("--live", default=str(epl.OUT / "winline-live"), help="folder of the live lines (deploy/epl/run_live.sh)")
     parser.add_argument("--live-ids", action="store_true", help="print the event ids of the matches being played and stop")
+    parser.add_argument("--archive-backfill", action="store_true", help="archive every match kicked off in the last week from all snapshots and stop")
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
     if args.live_ids:
         snapshot = json.loads(Path(args.winline).read_text(encoding="utf-8"))
         print(",".join(str(i) for i in started_ids(Path(args.winline).parent, snapshot, datetime.now(timezone.utc))))
+        return 0
+    if args.archive_backfill:  # once: every match of the last FINISHED_KEEP_DAYS from all the snapshots kept
+        events = started_events(Path(args.winline).parent, datetime.now(timezone.utc), set(), keep=timedelta(days=FINISHED_KEEP_DAYS), lookback=None)
+        archive_started(Path(args.winline).parent, events)
+        print(f"archived {len(events)} kicked-off matches: " + ", ".join(f"{e['home']} - {e['away']}" for e in events))
         return 0
 
     teams, matches, h2h = load("teams.json"), load("matches.json"), load("h2h.json")
@@ -376,11 +413,13 @@ def main(argv: list[str] | None = None) -> int:
     # every match that kicked off — gone from the pre-match line or still in it (Winline keeps it ~25 min, already with
     # in-play prices) — is built on its last snapshot before the kickoff and gets the live prices (2026-10-17)
     started = started_events(Path(args.winline).parent, datetime.now(timezone.utc), set())
+    archive_started(Path(args.winline).parent, started)
     kicked_off = {e["event_id"] for e in started}
     snapshot["events"] = [e for e in snapshot["events"] if e["event_id"] not in kicked_off]
+    finished = finished_events(Path(args.winline).parent, datetime.now(timezone.utc), kicked_off | {e["event_id"] for e in snapshot["events"]})
     live_at, live_events = load_live(Path(args.live), datetime.now(timezone.utc))
     out_matches, skipped = [], []
-    for event in snapshot["events"] + started:
+    for event in snapshot["events"] + started + finished:
         home, away = club_for(event["home"], teams), club_for(event["away"], teams)
         if not home or not away:
             skipped.append(f"{event['home']} - {event['away']}")
@@ -391,17 +430,19 @@ def main(argv: list[str] | None = None) -> int:
         cards = eng.build_cards(event, ctx)
         board = eng.player_board_rows(event, ctx, cards)
         mark_moves(cards, board, event, prices)
-        live_odds = event.get("frozen_at") and event["event_id"] in live_events
+        live_odds = event.get("frozen_at") and not event.get("finished") and event["event_id"] in live_events
         if live_odds:
             apply_live(cards, live_events[event["event_id"]])
             covered = {c["market"]["key"] for c in cards if c["market"].get("live") == "open"}
             cards = live_cards(live_events[event["event_id"]], ctx, covered) + cards
         out_matches.append({
-            "event_id": event["event_id"], "starts_at": before, "live": event.get("live", False), "captured_at": event.get("captured_at"),
+            "event_id": event["event_id"], "starts_at": before, "live": event.get("live", False), "finished": event.get("finished", False),
+            "captured_at": event.get("captured_at"),
             "frozen_at": event.get("frozen_at"), "live_odds_at": live_events[event["event_id"]]["live_captured_at"] if live_odds else None,
             "home": {"id": home["id"], "name": home["name"], "name_ru": names[home["id"]], "name_full": event["home"]},
             "away": {"id": away["id"], "name": away["name"], "name_ru": names[away["id"]], "name_full": event["away"]},
-            "quick": quick_odds(event), "summary": event["summary"], "markets": event["markets"], "players": board,
+            # a finished match without its ~1000 closed Winline lines (~375 KB each): the plates and the OBS link are what is used
+            "quick": quick_odds(event), "summary": event["summary"], "markets": [] if event.get("finished") else event["markets"], "players": board,
             "h2h": h2h_block(h2h, home["id"], away["id"], matches_by_id, names, people, before),
             "form": {"home": form_rows(by_club, home["id"], before, names), "away": form_rows(by_club, away["id"], before, names)},
             "stats": {side: {"recent": averages(by_club, stats, club["id"], before, STATS_RECENT),
@@ -414,7 +455,7 @@ def main(argv: list[str] | None = None) -> int:
     teams_board = []
     for team in teams:
         club = team["id"]
-        upcoming = next((m for m in out_matches if club in (m["home"]["id"], m["away"]["id"])), None)
+        upcoming = next((m for m in out_matches if not m["finished"] and club in (m["home"]["id"], m["away"]["id"])), None)
         tiers = Counter(c["tier"] for m in out_matches if club in (m["home"]["id"], m["away"]["id"]) for c in m["insights"])
         teams_board.append({"id": club, "name": team["name"], "name_ru": names[club], "abbr": team.get("abbr"),
                             "profile": eng.team_profile(rows.get(club, []), now, xg, club), "cards_by_tier": dict(tiers),
