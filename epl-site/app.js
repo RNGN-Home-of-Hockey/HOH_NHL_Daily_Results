@@ -330,7 +330,9 @@ function renderHead(m) {
     </div>
     ${m.live ? `<div class="live-note"><b>● Матч идёт.</b> ${m.live_odds_at
       ? `Кэфы — лайв Winline (${timeFmt.format(new Date(m.live_odds_at))} МСК, обновляются каждые несколько минут). Плашки собраны до матча: счёт они не учитывают.`
-      : `Кэфы — последняя линия Winline до матча${m.frozen_at ? ` (${timeFmt.format(new Date(m.frozen_at))} МСК)` : ''}, в лайве они другие — проверяйте перед «Дать в эфир».`}</div>` : ''}
+      : Date.now() - new Date(m.starts_at) > 115 * 60 * 1000
+        ? `Скорее всего, матч уже завершён: лайв-линии Winline по нему нет. Кэфы на плашках — с линии до матча.`
+        : `Кэфы — последняя линия Winline до матча${m.frozen_at ? ` (${timeFmt.format(new Date(m.frozen_at))} МСК)` : ''}, в лайве они другие — проверяйте перед «Дать в эфир».`}</div>` : ''}
     ${!m.live && liveId(m.event_id) && new Date(m.starts_at) - Date.now() > 3 * 3600 * 1000
       ? `<div class="live-note warn"><b>Этот матч ещё не начался (${esc(kickoff(m))}), а его плашка в эфире.</b> Если вы ведёте другой матч — откройте свой матч и проверьте ссылку в OBS.</div>` : ''}
     ${obsBox(m)}
