@@ -68,6 +68,22 @@ def test_standard_live_plates_while_the_match_is_played():
     assert all(c["rule"] == "live_line" and c["market"]["live"] == "open" and c["plate"]["bet"] for c in cards)
 
 
+def test_a_match_missing_from_one_live_capture_keeps_its_prices():
+    # 2026-10-17: Ман Сити—Ипсвич did not open once (timeout) and lost every live plate until the next capture
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        live = lambda at, ids: {"captured_at": at, "events": [{"event_id": i, "markets": [{"key": "490"}]} for i in ids]}  # noqa: E731
+        for name, at, ids in (("2026-10-17T15-30-00-000Z", "2026-10-17T15:30:00.000Z", [1, 2, 3]),
+                              ("2026-10-17T15-36-00-000Z", "2026-10-17T15:36:00.000Z", [1, 2]),
+                              ("2026-10-17T15-38-00-000Z", "2026-10-17T15:38:00.000Z", [1])):
+            (root / "snapshots" / name).mkdir(parents=True)
+            (root / "snapshots" / name / "index.json.gz").write_bytes(gzip.compress(json.dumps(live(at, ids)).encode("utf-8")))
+        (root / "latest.json").write_text(json.dumps(live("2026-10-17T15:38:00.000Z", [1])), encoding="utf-8")
+        at, events = site.load_live(root, datetime(2026, 10, 17, 15, 39, tzinfo=timezone.utc))
+        assert at == "2026-10-17T15:38:00.000Z"
+        assert {i: e["live_captured_at"][11:16] for i, e in events.items()} == {1: "15:38", 2: "15:36"}  # 3 is too old
+
+
 def main() -> None:
     for name, function in sorted(globals().items()):
         if name.startswith("test_") and callable(function):

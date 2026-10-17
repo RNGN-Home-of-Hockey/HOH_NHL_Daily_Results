@@ -102,6 +102,7 @@ def started_events(winline_dir: Path, now: datetime, current_ids: set) -> list[d
 
 
 LIVE_FRESH_MINUTES = 20  # older live lines are not shown as live prices
+LIVE_GRACE_MINUTES = 6  # a match missing from the last live capture keeps the prices of one this recent
 
 
 LIVE_CAPTURE_MINUTES = 135  # a league match is over by then (2 x 45 + break + stoppages); it stays ON THE SITE LIVE_KEEP_HOURS
@@ -133,7 +134,22 @@ def load_live(live_dir: Path, now: datetime) -> tuple[str | None, dict]:
         return None, {}
     if now - taken > timedelta(minutes=LIVE_FRESH_MINUTES):
         return None, {}
-    return payload["captured_at"], {e["event_id"]: e for e in payload.get("events") or [] if e.get("markets")}
+    events = {e["event_id"]: dict(e, live_captured_at=payload["captured_at"]) for e in payload.get("events") or [] if e.get("markets")}
+    # a match whose page did not open this time (2026-10-17: Ман Сити—Ипсвич timed out once and lost every live plate)
+    # keeps its prices from a capture of the last few minutes
+    folders = sorted((p for p in (live_dir / "snapshots").glob("*") if (p / "index.json.gz").exists()), reverse=True)[:8]
+    for folder in folders:
+        try:
+            older = json.loads(gzip.decompress((folder / "index.json.gz").read_bytes()))
+            at = datetime.fromisoformat(str(older.get("captured_at")).replace("Z", "+00:00"))
+        except (OSError, ValueError):
+            continue
+        if now - at > timedelta(minutes=LIVE_GRACE_MINUTES):
+            break
+        for e in older.get("events") or []:
+            if e.get("markets") and e["event_id"] not in events:
+                events[e["event_id"]] = dict(e, live_captured_at=older["captured_at"])
+    return payload["captured_at"], events
 
 
 def apply_live(cards: list[dict], live_event: dict) -> None:
@@ -382,7 +398,7 @@ def main(argv: list[str] | None = None) -> int:
             cards = live_cards(live_events[event["event_id"]], ctx, covered) + cards
         out_matches.append({
             "event_id": event["event_id"], "starts_at": before, "live": event.get("live", False), "captured_at": event.get("captured_at"),
-            "frozen_at": event.get("frozen_at"), "live_odds_at": live_at if live_odds else None,
+            "frozen_at": event.get("frozen_at"), "live_odds_at": live_events[event["event_id"]]["live_captured_at"] if live_odds else None,
             "home": {"id": home["id"], "name": home["name"], "name_ru": names[home["id"]], "name_full": event["home"]},
             "away": {"id": away["id"], "name": away["name"], "name_ru": names[away["id"]], "name_full": event["away"]},
             "quick": quick_odds(event), "summary": event["summary"], "markets": event["markets"], "players": board,
