@@ -351,7 +351,9 @@ function tabs(m) {
 
 function renderTips(m) {
   const cats = [...new Set(m.insights.map((c) => c.category))];
-  const tips = m.insights.filter((c) => state.tipCategory === 'all' || c.category === state.tipCategory);
+  const tips = m.insights.filter((c) => state.tipCategory === 'all' || c.category === state.tipCategory)
+    .map((c, i) => [c, i]).sort(([a, i], [b, j]) => (a.market.live === 'closed') - (b.market.live === 'closed') || i - j)  // in play: bettable first
+    .map(([c]) => c);
   const catItems = [['all', 'Все', m.insights.length], ...cats.map((cat) => [cat, cat, m.insights.filter((c) => c.category === cat).length])];
   const body = tips.length ? tips.map((c) => plateCard(m, c)).join('') : '<div class="empty">Плашек нет: нужна линия Winline и убедительная история.</div>';
   return `<div class="toolbar">${chipRow('tip-category', state.tipCategory, catItems)}</div><div class="list">${body}</div>`;
