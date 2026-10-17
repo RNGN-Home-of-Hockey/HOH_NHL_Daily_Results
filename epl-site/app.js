@@ -334,7 +334,7 @@ function renderHead(m) {
       <div class="kick"><b class="num">${timeFmt.format(new Date(m.starts_at))} МСК</b>${esc(dayFmt.format(new Date(m.starts_at)))} · АПЛ</div>
     </div>
     ${m.live ? `<div class="live-note"><b>● Матч идёт.</b> ${m.live_odds_at
-      ? `Кэфы — лайв Winline (${timeFmt.format(new Date(m.live_odds_at))} МСК, обновляются каждые несколько минут). Плашки собраны до матча: счёт они не учитывают.`
+      ? `Кэфы — лайв Winline (${timeFmt.format(new Date(m.live_odds_at))} МСК, обновляются каждые пару минут). «Лайв» — ставки лайв-линии; остальные плашки собраны до матча, счёт они не учитывают.`
       : Date.now() - new Date(m.starts_at) > 115 * 60 * 1000
         ? `Скорее всего, матч уже завершён: лайв-линии Winline по нему нет. Кэфы на плашках — с линии до матча.`
         : `Кэфы — последняя линия Winline до матча${m.frozen_at ? ` (${timeFmt.format(new Date(m.frozen_at))} МСК)` : ''}, в лайве они другие — проверяйте перед «Дать в эфир».`}</div>` : ''}
