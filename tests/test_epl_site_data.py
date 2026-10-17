@@ -36,6 +36,20 @@ def test_moves_are_marked_on_cards():
     assert cards[0]["market"]["was"] == 2.2 and "was" not in cards[1]["market"]
 
 
+def test_live_lines_are_read_only_while_the_match_is_played():
+    # 2026-10-17: Эвертон—Челси was over ~2 h after the kickoff; reading its page in the third hour failed every time
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "snapshots").mkdir()
+        line = {"events": [{"event_id": 1, "starts_at": "2026-10-17T11:30:00.999Z", "markets": []},
+                           {"event_id": 2, "starts_at": "2026-10-17T14:00:00.999Z", "markets": []}]}
+        at = lambda h, m: datetime(2026, 10, 17, h, m, tzinfo=timezone.utc)  # noqa: E731
+        assert site.started_ids(root, line, at(13, 27)) == [1]          # 117 minutes in: still played
+        assert site.started_ids(root, line, at(13, 50)) == []           # 140 minutes: over (it stays on the site)
+        assert site.started_ids(root, line, at(14, 5)) == [2]           # the next one kicked off
+        assert site.started_ids(root, line, at(11, 0)) == []            # nothing kicked off yet
+
+
 def main() -> None:
     for name, function in sorted(globals().items()):
         if name.startswith("test_") and callable(function):

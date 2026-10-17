@@ -103,16 +103,21 @@ def started_events(winline_dir: Path, now: datetime, current_ids: set) -> list[d
 LIVE_FRESH_MINUTES = 20  # older live lines are not shown as live prices
 
 
+LIVE_CAPTURE_MINUTES = 135  # a league match is over by then (2 x 45 + break + stoppages); it stays ON THE SITE LIVE_KEEP_HOURS
+
+
 def started_ids(winline_dir: Path, snapshot: dict, now: datetime) -> list[int]:
-    """Event ids of the matches being played: kicked off in the last LIVE_KEEP_HOURS (still in the pre-match line or not)."""
-    ids = [e["event_id"] for e in started_events(winline_dir, now, {e["event_id"] for e in snapshot["events"]})]
-    for event in snapshot["events"]:
+    """Event ids of the matches being played: kicked off in the last LIVE_CAPTURE_MINUTES (still in the pre-match line or
+    not). 2026-10-17: Эвертон—Челси was over ~2 h after the kickoff, its Winline page had no line any more and every
+    capture of the third hour failed - hoh-epl-live «упала» and the live prices of the other matches were not published."""
+    def since_kickoff(event: dict) -> timedelta:
         start = datetime.fromisoformat(str(event["starts_at"]).replace("Z", "+00:00"))
         if start.tzinfo is None:
             start = start.replace(tzinfo=timezone.utc)
-        if start <= now <= start + timedelta(hours=LIVE_KEEP_HOURS):
-            ids.append(event["event_id"])
-    return ids
+        return now - start
+    window = timedelta(minutes=LIVE_CAPTURE_MINUTES)
+    started = started_events(winline_dir, now, {e["event_id"] for e in snapshot["events"]})
+    return [e["event_id"] for e in [*started, *snapshot["events"]] if timedelta(0) <= since_kickoff(e) <= window]
 
 
 def load_live(live_dir: Path, now: datetime) -> tuple[str | None, dict]:
