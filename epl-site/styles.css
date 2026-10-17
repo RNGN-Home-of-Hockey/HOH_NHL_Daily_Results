@@ -383,3 +383,5 @@ b.good { color: var(--good); } b.bad { color: var(--bad); }
 .live-note { padding: 9px 12px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-size: 13px; line-height: 1.4; }
 .live-note b { font-weight: 800; }
 .live-note.warn { background: var(--warn-soft); color: var(--warn); }
+.pc-inplay { color: #fff; background: var(--good); font-weight: 800; padding: 1px 8px; border-radius: 999px; }
+.pc-closed { color: var(--warn); background: var(--warn-soft); font-weight: 800; padding: 1px 8px; border-radius: 999px; }

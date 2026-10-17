@@ -1,0 +1,11 @@
+[Unit]
+Description=HOH EPL: live lines every 3 minutes (counted from the end of the previous run)
+
+[Timer]
+OnBootSec=4min
+OnActiveSec=30s
+OnUnitInactiveSec=3min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

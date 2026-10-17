@@ -1,0 +1,11 @@
+[Unit]
+Description=HOH EPL: live lines of the matches being played -> site data -> epl worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/hoh-epl/repo/deploy/epl/run_live.sh
+Nice=5
+MemoryMax=3G
+TimeoutStartSec=15min

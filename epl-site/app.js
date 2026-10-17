@@ -186,7 +186,9 @@ function plateCard(m, c, { showMatch = false } = {}) {
   return `<article class="pcard" data-tier="${c.tier}" data-card-id="${esc(id)}" data-open="${open}" data-live="${liveId(m.event_id) === id}">
     <button class="pc-face" data-action="pick" data-card="${esc(id)}" aria-expanded="${open}">
       <span class="pc-top">${tierTag(c)}<span class="pc-cat">${esc(c.category)}</span>${showMatch ? `<span class="pc-match">${esc(pairName(m))} · ${esc(kickoff(m))}</span>` : ''}
-        ${state.plates[id] ? '<span class="pc-edited">изменено</span>' : ''}<span class="pc-live">● В ЭФИРЕ</span></span>
+        ${state.plates[id] ? '<span class="pc-edited">изменено</span>' : ''}<span class="pc-live">● В ЭФИРЕ</span>
+        ${c.market.live === 'open' ? `<span class="pc-inplay" title="Кэф из лайв-линии Winline; до матча был ${odds(c.market.odds_prematch)}">лайв · было ${odds(c.market.odds_prematch)}</span>` : ''}
+        ${c.market.live === 'closed' ? '<span class="pc-closed">в лайве закрыта</span>' : ''}</span>
       <span class="pc-head">${esc(p.headline)}</span>
       <span class="pc-bet"><span><b>${esc(p.team)}</b> · ${esc(p.bet)}</span><b class="pc-odds num">${odds(parseOdds(p.odds))}</b></span>
     </button>
@@ -211,6 +213,7 @@ function platePanel(m, c, id) {
     ${keyForm()}
     <div class="pc-actions">${action}<button class="btn big" data-action="edit" aria-pressed="${state.editing}">✎ Редактировать</button></div>
     ${live && live !== id ? '<p class="plate-note">Сейчас в эфире этого матча другая плашка — она сменится на эту.</p>' : ''}
+    ${c.market.live === 'closed' ? `<p class="live-note warn">В лайве Winline эту ставку сейчас не принимает — кэф ${odds(c.market.odds)} остался с линии до матча.</p>` : ''}
     ${state.editing ? plateEditor(m, id) : ''}
     <p class="pc-why">${esc(c.title)}. История ${e.hits} из ${e.sample}, цена Winline ${pct(e.implied_by_price)}.</p>
   </div>`;
@@ -325,7 +328,9 @@ function renderHead(m) {
       <div class="versus">${mono(m.home)}<span>${esc(fullName(m.home))}</span><span class="vs">—</span>${mono(m.away)}<span>${esc(fullName(m.away))}</span></div>
       <div class="kick"><b class="num">${timeFmt.format(new Date(m.starts_at))} МСК</b>${esc(dayFmt.format(new Date(m.starts_at)))} · АПЛ</div>
     </div>
-    ${m.live ? `<div class="live-note"><b>● Матч идёт.</b> Кэфы — последняя линия Winline${m.frozen_at ? ` (${timeFmt.format(new Date(m.frozen_at))} МСК)` : ''}, в лайве они другие — проверяйте перед «Дать в эфир».</div>` : ''}
+    ${m.live ? `<div class="live-note"><b>● Матч идёт.</b> ${m.live_odds_at
+      ? `Кэфы — лайв Winline (${timeFmt.format(new Date(m.live_odds_at))} МСК, обновляются каждые несколько минут). Плашки собраны до матча: счёт они не учитывают.`
+      : `Кэфы — последняя линия Winline до матча${m.frozen_at ? ` (${timeFmt.format(new Date(m.frozen_at))} МСК)` : ''}, в лайве они другие — проверяйте перед «Дать в эфир».`}</div>` : ''}
     ${!m.live && liveId(m.event_id) && new Date(m.starts_at) - Date.now() > 3 * 3600 * 1000
       ? `<div class="live-note warn"><b>Этот матч ещё не начался (${esc(kickoff(m))}), а его плашка в эфире.</b> Если вы ведёте другой матч — откройте свой матч и проверьте ссылку в OBS.</div>` : ''}
     ${obsBox(m)}
