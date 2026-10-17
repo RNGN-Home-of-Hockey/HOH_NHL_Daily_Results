@@ -291,7 +291,11 @@ def main(argv: list[str] | None = None) -> int:
           if (epl.NORM / "xg_proxy.json").exists() else {})
 
     move_since, prices = reference_prices(Path(args.winline).parent, datetime.now(timezone.utc))
-    started = started_events(Path(args.winline).parent, datetime.now(timezone.utc), {e["event_id"] for e in snapshot["events"]})
+    # every match that kicked off — gone from the pre-match line or still in it (Winline keeps it ~25 min, already with
+    # in-play prices) — is built on its last snapshot before the kickoff and gets the live prices (2026-10-17)
+    started = started_events(Path(args.winline).parent, datetime.now(timezone.utc), set())
+    kicked_off = {e["event_id"] for e in started}
+    snapshot["events"] = [e for e in snapshot["events"] if e["event_id"] not in kicked_off]
     live_at, live_events = load_live(Path(args.live), datetime.now(timezone.utc))
     out_matches, skipped = [], []
     for event in snapshot["events"] + started:

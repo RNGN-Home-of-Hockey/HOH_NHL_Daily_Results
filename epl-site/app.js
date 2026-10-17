@@ -10,6 +10,7 @@ const PLATES_KEY = 'hoh-epl-plates-v1';  // the operator's own edits of plate te
 const UI_KEY = 'hoh-epl-ui-v2';
 const KEY_STORE = 'hoh-epl-operator-key';  // the operator key of the on-air buttons, kept on this device
 const AUTO_RELOAD_MS = 5 * 60 * 1000;
+const LIVE_RELOAD_MS = 2 * 60 * 1000;
 const FEED_PAGE = 60;
 const MSK = { timeZone: 'Europe/Moscow' };
 const timeFmt = new Intl.DateTimeFormat('ru-RU', { ...MSK, hour: '2-digit', minute: '2-digit' });
@@ -1128,5 +1129,10 @@ document.addEventListener('input', onInput);
 document.addEventListener('keydown', onKey);
 window.addEventListener('hashchange', () => { readHash(); render(); });
 setInterval(() => { const el = $('#fresh'); if (el && state.data) { const f = freshness(); el.className = `pill ${f.cls}`; el.innerHTML = freshHtml(f); } }, 30000);
-setInterval(() => { if (!/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '')) load(false); }, AUTO_RELOAD_MS);
+// fresh data every 5 minutes, every 2 while a match is being played (its live prices change; 2026-10-17)
+let lastLoad = Date.now();
+setInterval(() => {
+  const every = state.data?.matches.some((m) => m.live) ? LIVE_RELOAD_MS : AUTO_RELOAD_MS;
+  if (Date.now() - lastLoad >= every && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '')) { lastLoad = Date.now(); load(false); }
+}, 15000);
 load();
