@@ -1,8 +1,8 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
-  "eliteprospects_audio_matched": 565,
-  "eliteprospects_profiles_resolved": 760,
-  "matched": 572,
+  "eliteprospects_audio_matched": 566,
+  "eliteprospects_profiles_resolved": 762,
+  "matched": 573,
   "nhl_audio_fallback_matched": 7,
   "players": {
     "8470613": {
@@ -11113,6 +11113,29 @@
       "team_tri": "MTL",
       "upstream_verified": true,
       "weight_kg": 88
+    },
+    "8482781": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8482781.mp3",
+      "birth_country": "CAN",
+      "birth_date": "2003-01-14",
+      "eliteprospects_id": "472875",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Carson%20Lambos",
+      "eliteprospects_slug": "carson-lambos",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/472875/carson-lambos",
+      "first_name": "Carson",
+      "full_name_en": "Carson Lambos",
+      "height_cm": 185,
+      "last_name": "Lambos",
+      "player_id": 8482781,
+      "position_code": "D",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/carson_lambos.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 55,
+      "team_tri": "MIN",
+      "upstream_verified": true,
+      "weight_kg": 89
     },
     "8482802": {
       "audio_cached": true,
@@ -27317,6 +27340,29 @@
       "upstream_verified": true,
       "weight_kg": 88
     },
+    "8482781": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8482781.mp3",
+      "birth_country": "CAN",
+      "birth_date": "2003-01-14",
+      "eliteprospects_id": "472875",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Carson%20Lambos",
+      "eliteprospects_slug": "carson-lambos",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/472875/carson-lambos",
+      "first_name": "Carson",
+      "full_name_en": "Carson Lambos",
+      "height_cm": 185,
+      "last_name": "Lambos",
+      "player_id": 8482781,
+      "position_code": "D",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/carson_lambos.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 55,
+      "team_tri": "MIN",
+      "upstream_verified": true,
+      "weight_kg": 89
+    },
     "8482784": {
       "audio_cached": false,
       "birth_country": "CAN",
@@ -27884,6 +27930,27 @@
       "team_tri": "CHI",
       "upstream_verified": true,
       "weight_kg": 88
+    },
+    "8483452": {
+      "audio_cached": false,
+      "birth_country": "CAN",
+      "birth_date": "2004-04-04",
+      "eliteprospects_id": "603614",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Hunter%20Haight",
+      "eliteprospects_slug": "hunter-haight",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/603614/hunter-haight",
+      "first_name": "Hunter",
+      "full_name_en": "Hunter Haight",
+      "height_cm": 178,
+      "last_name": "Haight",
+      "player_id": 8483452,
+      "position_code": "C",
+      "pronunciation_available": false,
+      "reason": "no_verified_audio",
+      "shoots_catches": "R",
+      "sweater_number": 37,
+      "team_tri": "MIN",
+      "weight_kg": 78
     },
     "8483455": {
       "audio_cached": true,
@@ -30814,7 +30881,7 @@
       "weight_kg": 92
     }
   },
-  "roster_players": 786,
+  "roster_players": 788,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
@@ -32770,6 +32837,27 @@
       "sweater_number": 48,
       "team_tri": "MIN",
       "weight_kg": 88
+    },
+    {
+      "audio_cached": false,
+      "birth_country": "CAN",
+      "birth_date": "2004-04-04",
+      "eliteprospects_id": "603614",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Hunter%20Haight",
+      "eliteprospects_slug": "hunter-haight",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/603614/hunter-haight",
+      "first_name": "Hunter",
+      "full_name_en": "Hunter Haight",
+      "height_cm": 178,
+      "last_name": "Haight",
+      "player_id": 8483452,
+      "position_code": "C",
+      "pronunciation_available": false,
+      "reason": "no_verified_audio",
+      "shoots_catches": "R",
+      "sweater_number": 37,
+      "team_tri": "MIN",
+      "weight_kg": 78
     },
     {
       "audio_cached": false,
