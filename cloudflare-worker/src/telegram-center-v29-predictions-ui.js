@@ -157,6 +157,8 @@ html:not(.v15Light) .v29ScBad{color:#ff9a5c}
 .v29Offer{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"logo main odds" "win win win";gap:6px 10px;align-items:center;padding:10px 12px;border-radius:14px;background:rgba(255,90,0,.08);border:1px solid rgba(255,90,0,.32);color:var(--v29-text);text-decoration:none}
 html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(255,120,40,.38)}
 .v29OfLogo{grid-area:logo;display:block;height:18px;width:auto}
+.v29Offer.fit{grid-template-areas:"for for for" "logo main odds" "win win win"}
+.v29OfFor{grid-area:for;font-size:11px;font-weight:900;letter-spacing:.4px;text-transform:uppercase;color:var(--v29-odd)}
 .v29OfMain{grid-area:main;display:grid;min-width:0;line-height:1.15}
 .v29OfMain b{font-size:15px;font-weight:900}
 .v29OfMain span{font-size:12px;font-weight:700;color:var(--v29-muted)}
@@ -226,13 +228,57 @@ html:not(.v15Light) .v29OfWin{color:#ff9a5c}
   }
   const fmtRub = (n) => String(Math.max(0, Math.round(Number(n) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
-  // ONE bet once the pick is made (the owner: «оставим одно… победа в основное время»): the win of the chosen team in regulation
-  // time, and what a 1000 ₽ bet brings on top, as the broadcast cards say it («+1 170 РУБ (ПРИ СТАВКЕ 1000 РУБ.)»)
+  // ONE bet once the pick is made (the owner: «оставим одно… победа в основное время»), and what a 1000 ₽ bet brings on top, as the
+  // broadcast cards say it («+1 170 РУБ (ПРИ СТАВКЕ 1000 РУБ.)»). With an exact score the bet follows it (2026-10-19: «5-2 … фора минус
+  // полтора… 2-1 … тотал меньше… чтобы они были разные»): every bet of the list wins if the game ends with that score, and which one
+  // is shown turns with the game and the score. Without a score: the win in regulation time.
+  const BET_MIN = 1.35;
+  const BET_MAX = 8;
+  const ruLine = (v) => String(v).replace(".", ",");
+  const goalsWord = (n) => (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "гола" : "голов");
+  function totalBet(totals, sum) {
+    if (!totals) return null;
+    // a low score: «меньше» with a goal to spare; a high one: «больше» a goal below it
+    const under = sum <= 5;
+    const want = under ? sum + 1.5 : sum - 1.5;
+    let best = null;
+    for (const [k, v] of Object.entries(totals)) {
+      const line = Number(k);
+      const odds = Number(v && (under ? v.under : v.over));
+      if (!(under ? line > sum : line < sum) || !(odds >= BET_MIN && odds <= BET_MAX)) continue;
+      if (!best || Math.abs(line - want) < Math.abs(best.line - want)) best = { line, odds };
+    }
+    if (!best) return null;
+    if (under) return { key: "under", odds: best.odds, title: `Тотал меньше ${ruLine(best.line)}`, sub: `не больше ${Math.floor(best.line)} голов за матч` };
+    const n = Math.ceil(best.line);
+    return { key: "over", odds: best.odds, title: `Тотал больше ${ruLine(best.line)}`, sub: `${n} ${goalsWord(n)} и больше за матч` };
+  }
+  function betFor(g) {
+    const o = g && g.offer;
+    const my = g && g.my;
+    if (!o || !my) return null;
+    const tri = (g[my.pick] || {}).tri || "";
+    const ok = (v) => Number(v) >= BET_MIN && Number(v) <= BET_MAX;
+    const reg = Number(o.regulation) > 1 ? { key: "reg", odds: Number(o.regulation), title: `Победа ${tri}`, sub: "в основное время" } : null;
+    const sc = my.score;
+    if (!sc || !scoreFits(my.pick, sc)) return reg;
+    const won = Math.max(sc.home, sc.away);
+    const lost = Math.min(sc.home, sc.away);
+    const list = reg ? [reg] : [];
+    if (won - lost >= 3 && ok(o.minus25)) list.push({ key: "h25", odds: Number(o.minus25), title: `${tri} фора −2,5`, sub: "победа в 3 шайбы и больше" });
+    else if (won - lost >= 2 && ok(o.minus15)) list.push({ key: "h15", odds: Number(o.minus15), title: `${tri} фора −1,5`, sub: "победа в 2 шайбы и больше" });
+    const total = totalBet(o.totals, won + lost);
+    if (total) list.push(total);
+    if (lost === 0 && o.btts && ok(o.btts.no)) list.push({ key: "btts", odds: Number(o.btts.no), title: "Обе забьют — нет", sub: "одна из команд не забьёт" });
+    if (!list.length) return null;
+    const bet = list[(Number(g.game_pk) + sc.home * 7 + sc.away * 3) % list.length];
+    return { ...bet, score: `${sc.away}:${sc.home}` };
+  }
   function offerHtml(g, card) {
-    const odds = stageOf(g) === "done" && g.offer ? Number(g.offer.regulation) : 0;
-    if (!(odds > 1)) return "";
-    const t = g[g.my.pick] || {};
-    return `<a class="v29Offer${card ? " compact" : ""}" href="/go/winline?game_pk=${encodeURIComponent(g.game_pk)}" target="_blank" rel="noopener"><img class="v29OfLogo" src="/broadcast/winline-logo.png?asset=canonical-3" alt="WINLINE"><span class="v29OfMain"><b>Победа ${esc(t.tri || "")}</b> <span>в основное время</span></span><span class="v29OfOdds">${odds.toFixed(2)}</span><span class="v29OfWin">+${fmtRub((odds - 1) * 1000)} ₽ на счёт при ставке 1000 ₽</span></a>`;
+    const bet = betFor(g); // voteHtml asks for it on the «done» step only
+    if (!bet) return "";
+    const odds = bet.odds;
+    return `<a class="v29Offer${card ? " compact" : ""}${bet.score ? " fit" : ""}" data-v29-bet="${esc(bet.key)}" href="/go/winline?game_pk=${encodeURIComponent(g.game_pk)}" target="_blank" rel="noopener">${bet.score ? `<span class="v29OfFor">Под ваш счёт ${esc(bet.score)}</span>` : ""}<img class="v29OfLogo" src="/broadcast/winline-logo.png?asset=canonical-3" alt="WINLINE"><span class="v29OfMain"><b>${esc(bet.title)}</b> <span>${esc(bet.sub)}</span></span><span class="v29OfOdds">${odds.toFixed(2)}</span><span class="v29OfWin">+${fmtRub((odds - 1) * 1000)} ₽ на счёт при ставке 1000 ₽</span></a>`;
   }
 
   // the pick made: who, the score if set, «Изменить»; the fans' split; an invitation to the score if there is none
@@ -777,6 +823,7 @@ html:not(.v15Light) .v29OfWin{color:#ff9a5c}
   S.state = st;
   S.voteHtml = voteHtml;
   S.factsOf = factsOf;
+  S.betFor = betFor;
   S.mountAll = mountAll;
   S.refresh = () => {
     st.slate = null;

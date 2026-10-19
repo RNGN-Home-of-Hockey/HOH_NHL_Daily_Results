@@ -325,13 +325,26 @@ import { handleTelegramCenterV19ProductData } from "../cloudflare-worker/src/tel
   assert.equal(card(1).querySelector(".v19Thumb img").getAttribute("src"), "https://clips.test/covers/1.jpg?v=5", "our mini cover first");
   assert.equal(card(2).querySelector(".v19Thumb img").getAttribute("src"), "/api/telegram-center-media/vk-cover?source_key=vk2", "no mini cover: the VK picture");
   assert.ok(card(3).querySelector(".v19ThumbTeams"), "no picture at all: the logos");
-  assert.deepEqual([1, 2, 3].map((pk) => text(card(pk).querySelector(".v19CardScore"))), ["1 : 2", "4 : 3 ОТ", "—"], "a game that is on shows its score; a game that has not started shows a dash");
-  assert.match(text(card(1).querySelector("small")), /1 : 2 · /);
+  assert.deepEqual([1, 2].map((pk) => text(card(pk).querySelector(".v19CardScore"))), ["1 : 2", "4 : 3 ОТ"], "a game that is on shows its score");
+  // 2026-10-19, the owner: the names once, the start time between them, no «регулярный сезон»
+  const time = new window.Date(games[2].scheduled_start_utc).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  assert.equal(card(3).querySelector(".v19CardScore"), null, "a game ahead has no score");
+  assert.equal(text(card(3).querySelector(".v19ThumbTeams .v19CardMid")), time, "the start time between the logos");
+  assert.deepEqual([...card(3).querySelectorAll(".v19ThumbTeams [data-v19-side]")].map((x) => text(x)), ["Филадельфия", "Бостон"]);
+  assert.equal(card(3).querySelector(".v19Board"), null, "under the logos the names are not written again");
+  assert.equal(text(card(1).querySelector(".v19Board")), "Филадельфия 1 : 2 Бостон", "under a cover: the names once and the score between them");
+  for (const pk of [1, 2, 3]) {
+    assert.ok(!/регулярный сезон/i.test(text(card(pk))), "no «регулярный сезон»");
+    assert.equal(card(pk).querySelector(".v19BroadcastText small"), null, "no small line");
+    assert.equal((text(card(pk)).match(/Филадельфия/g) || []).length, 1, "each name once");
+  }
   // our cover fails: the VK picture takes its place; then the logos; and nothing is retried in a loop
   card(1).querySelector(".v19Thumb img").dispatchEvent(new window.Event("error"));
   assert.equal(card(1).querySelector(".v19Thumb img").getAttribute("src"), "/api/telegram-center-media/vk-cover?source_key=vk1");
   card(1).querySelector(".v19Thumb img").dispatchEvent(new window.Event("error"));
   assert.ok(card(1).querySelector(".v19ThumbTeams") && !card(1).querySelector(".v19Thumb img[src*=covers]"));
+  assert.equal(card(1).querySelector(".v19Board"), null, "the logos carry the names now: the line under them goes");
+  assert.equal((text(card(1)).match(/Филадельфия/g) || []).length, 1);
   window.close();
 }
 

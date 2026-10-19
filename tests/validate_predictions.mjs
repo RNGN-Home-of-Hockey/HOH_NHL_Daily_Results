@@ -462,7 +462,7 @@ const script = await (await handleTelegramCenterV29(new Request(`https://x.test$
   assert.match(script, /^\(function\(\)\{const __name=/, "wrapped like the other layers");
   assert.equal((await handleTelegramCenterV29(new Request(`https://x.test${SCRIPT_PATH}`, { method: "POST" }), env, SCRIPT_PATH)).status, 405);
   const shell = await (await handleTeamCurrentRequest(new Request("https://x.test/telegram-app-v24"), {}, "/telegram-app-v24")).text();
-  assert.ok(shell.includes("/telegram-app/v29-predict.js?build=29.1"), "the script is in the app (29.1: the pick, the score, one bet)");
+  assert.ok(shell.includes("/telegram-app/v29-predict.js?build=29.2"), "the script is in the app (29.2: the pick, the score, one bet that follows the score)");
   assert.ok(shell.indexOf("/telegram-app/v29-predict.js") > shell.indexOf("/telegram-app/v28-backdrop.js"), "after the backdrop");
   assert.equal((await handleTeamCurrentRequest(new Request(`https://x.test${SCRIPT_PATH}`), {}, SCRIPT_PATH)).status, 200, "reachable through the main router");
   assert.equal((await handleTeamCurrentRequest(new Request(`https://x.test${API}/slate`), {}, `${API}/slate`)).status, 503, "the API too (no database here)");
@@ -932,7 +932,14 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
     ["3w1", "3wayodds", "EDM", "1", 2.24, 0], ["3w2", "3wayodds", "UTA", "2", 2.65, 0],
     ["ahm1", "asianhandicap:-1.5", "EDM", "1", 2.7, 0], ["ahm2", "asianhandicap:-1.5", "UTA", "2", 1.42, 0],
     ["ahp1", "asianhandicap:1.5", "EDM", "1", 1.3, 0], ["ahp2", "asianhandicap:1.5", "UTA", "2", 3.2, 0],
+    ["ahm25a", "asianhandicap:-2.5", "EDM", "1", 4.1, 0], ["ahm25b", "asianhandicap:-2.5", "UTA", "2", 1.2, 0],
+    ["ahp25a", "asianhandicap:2.5", "EDM", "1", 1.1, 0], ["ahp25b", "asianhandicap:2.5", "UTA", "2", 5.6, 0],
+    ["t35o", "totals:3.5", null, "Over", 1.12, 0], ["t45u", "totals:4.5", null, "Under", 3.25, 0],
+    ["t55o", "totals:5.5", null, "Over", 1.66, 0], ["t55u", "totals:5.5", null, "Under", 2.22, 0],
+    ["t6o", "totals:6", null, "Over", 1.96, 0], // a whole line is not among the bets
+    ["byes", "bothteamstoscore", null, "Yes", 1.07, 0], ["bno", "bothteamstoscore", null, "No", 7.0, 0],
     ["3wlive", "3wayodds", "UTA", "2", 9.9, 1], // a live line never counts, even the newest one
+    ["t55live", "totals:5.5", null, "Under", 9.9, 1],
   ]) mk.run(`U1:${id}`, "U1", type, "team", tri, out, odds, live, 1, live ? "2026-10-13 12:30:00" : "2026-10-13 12:00:00");
   const call3 = async (path, { method = "GET", user = null, body } = {}) => {
     const headers = {};
@@ -944,9 +951,10 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
 
   // the bet on the chosen side, right after the pick
   const away = await call3(`${API}/predictions`, { method: "POST", user: A, body: { game_pk: 9101, pick: "away" } });
-  assert.deepEqual(away.body.game.offer, { win: 2.03, regulation: 2.65, minus15: 3.2 }, "UTA: the winner including OT, in regulation time, and −1.5 (the home line +1.5)");
+  const lines = { totals: { "3.5": { over: 1.12, under: null }, "4.5": { over: null, under: 3.25 }, "5.5": { over: 1.66, under: 2.22 } }, btts: { yes: 1.07, no: 7 } };
+  assert.deepEqual(away.body.game.offer, { win: 2.03, regulation: 2.65, minus15: 3.2, minus25: 5.6, ...lines }, "UTA: the winner including OT, in regulation time, −1.5 and −2.5 (the home lines +1.5/+2.5), the totals and «обе забьют» of the match");
   const home = await call3(`${API}/predictions`, { method: "POST", user: A, body: { game_pk: 9101, pick: "home" } });
-  assert.deepEqual(home.body.game.offer, { win: 1.77, regulation: 2.24, minus15: 2.7 }, "EDM: its own side of the same markets");
+  assert.deepEqual(home.body.game.offer, { win: 1.77, regulation: 2.24, minus15: 2.7, minus25: 4.1, ...lines }, "EDM: its own side of the same markets");
   assert.equal((await call3(`${API}/games?ids=9101`)).body.games[0].offer, null, "a guest has no pick: no offer");
   assert.equal((await call3(`${API}/games?ids=9101`, { user: B })).body.games[0].offer, null, "nor a fan who has not picked");
   assert.equal((await call3(`${API}/games?ids=9101`, { user: A })).body.games[0].offer.win, 1.77, "the offer stays with the pick");
@@ -1085,7 +1093,7 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
     ctx.S.state.games.set(9002, { ...ctx.S.state.games.get(9002), offer: { win: 1.62, regulation: null, minus15: 3.1 } });
     ctx.S.mountAll();
     await tick(40);
-    assert.equal(hero.querySelector(".v29Offer"), null, "no regulation line: no other bet in its place");
+    assert.equal(hero.querySelector(".v29Offer"), null, "no regulation line and no line that fits the score 3:2: no bet");
     ctx.window.close();
   }
   // a guest outside Telegram: the old view, the general Winline block stays
@@ -1167,6 +1175,88 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
     const prof = ctx.document.querySelector(".v29Prof");
     assert.ok(!prof.querySelector(".v29Better"), "0%: the line is not shown");
     assert.equal(text(prof.querySelector(".v29Streak")), "Серия угаданных лучшая серия: 2", "no «🔥 0 подряд»");
+    ctx.window.close();
+  }
+}
+
+// ---- 10) the bet follows the exact score (the owner, 2026-10-19: «5-2 … фора минус полтора… 2-1 … победу и тотал меньше… чтобы они были разные») ----
+{
+  const totals = { "3.5": { over: 1.12, under: 6.0 }, "4.5": { over: 1.33, under: 3.25 }, "5.5": { over: 1.66, under: 2.22 }, "6.5": { over: 2.33, under: 1.57 }, "7.5": { over: 3.45, under: 1.31 } };
+  const offer = { win: 1.71, regulation: 2.17, minus15: 2.6, minus25: 3.6, totals, btts: { yes: 1.07, no: 7.0 } };
+  const my = (score, pick = "home") => ({ pick, result: null, xp: null, score, exact: null, streak: null });
+  const g = (score, extra = {}) => block(9002, "ANA", "NYR", { my: my(score), offer, ...extra });
+  {
+    const ctx = makeApp();
+    await tick(250);
+    const betFor = (x) => JSON.parse(JSON.stringify(ctx.S.betFor(x))); // out of the window of the page
+    const keysOf = (score, extra) => [...new Set(Array.from({ length: 30 }, (_, i) => (betFor({ ...g(score, extra), game_pk: 9000 + i }) || {}).key))].sort();
+    assert.deepEqual(betFor(g(null)), { key: "reg", odds: 2.17, title: "Победа NYR", sub: "в основное время" }, "no score: the win in regulation time, as before");
+    assert.deepEqual(keysOf({ home: 5, away: 2 }), ["h25", "over", "reg"], "5:2: the win, −2.5 and «больше»");
+    assert.deepEqual(keysOf({ home: 5, away: 3 }), ["h15", "over", "reg"], "5:3: two goals ahead is −1.5");
+    assert.deepEqual(keysOf({ home: 2, away: 1 }), ["reg", "under"], "2:1: the win or «меньше» (the owner: «победу Анахайма и тотал меньше»)");
+    assert.deepEqual(keysOf({ home: 3, away: 0 }), ["btts", "h25", "reg", "under"], "3:0: a clean sheet adds «обе забьют — нет»");
+    assert.deepEqual(keysOf({ home: 4, away: 3 }), ["over", "reg"]);
+    // what each one says
+    const find = (score, key, extra) => Array.from({ length: 30 }, (_, i) => betFor({ ...g(score, extra), game_pk: 9000 + i })).find((b) => b && b.key === key);
+    assert.deepEqual(find({ home: 2, away: 1 }, "under"), { key: "under", odds: 3.25, title: "Тотал меньше 4,5", sub: "не больше 4 голов за матч", score: "1:2" }, "a goal to spare over the three of 2:1; the score as the app writes it (guests first)");
+    assert.deepEqual(find({ home: 5, away: 2 }, "over"), { key: "over", odds: 1.66, title: "Тотал больше 5,5", sub: "6 голов и больше за матч", score: "2:5" });
+    assert.deepEqual(find({ home: 5, away: 3 }, "over"), { key: "over", odds: 2.33, title: "Тотал больше 6,5", sub: "7 голов и больше за матч", score: "3:5" });
+    assert.deepEqual(find({ home: 5, away: 2 }, "h25"), { key: "h25", odds: 3.6, title: "NYR фора −2,5", sub: "победа в 3 шайбы и больше", score: "2:5" });
+    assert.deepEqual(find({ home: 5, away: 3 }, "h15"), { key: "h15", odds: 2.6, title: "NYR фора −1,5", sub: "победа в 2 шайбы и больше", score: "3:5" });
+    assert.deepEqual(find({ home: 3, away: 0 }, "btts"), { key: "btts", odds: 7, title: "Обе забьют — нет", sub: "одна из команд не забьёт", score: "0:3" });
+    assert.equal(find({ home: 4, away: 2 }, "over", { offer: { ...offer, totals: { "3.5": { over: 1.5, under: 2.5 } } } }).sub, "4 гола и больше за матч", "«гола» after 4");
+    // the guests' side: the same rules from their score
+    assert.deepEqual(keysOf({ home: 1, away: 4 }, { my: my({ home: 1, away: 4 }, "away") }), ["h25", "reg", "under"], "1:4 for the guests");
+    assert.equal(find({ home: 1, away: 4 }, "h25", { my: my({ home: 1, away: 4 }, "away") }).title, "ANA фора −2,5");
+    // a price out of range (a sure thing or a lottery) is not offered; neither is a line that does not exist
+    assert.deepEqual(keysOf({ home: 4, away: 2 }, { offer: { ...offer, minus15: 9.5 } }), ["over", "reg"], "−1.5 at 9.5: not offered");
+    assert.deepEqual(keysOf({ home: 5, away: 2 }, { offer: { ...offer, minus25: 9.5 } }), ["h15", "over", "reg"], "−2.5 at 9.5: the −1.5 instead");
+    assert.deepEqual(keysOf({ home: 4, away: 1 }, { offer: { ...offer, totals: { "4.5": { over: 1.33, under: 3.25 } } } }), ["h25", "reg"], "5 goals: «меньше 4,5» would lose, so no total");
+    assert.deepEqual(keysOf({ home: 4, away: 3 }, { offer: { ...offer, totals: { "7.5": { over: 3.45, under: 1.31 } } } }), ["reg"], "7 goals: «больше 7,5» would lose");
+    assert.deepEqual(keysOf({ home: 2, away: 0 }, { offer: { ...offer, btts: { yes: 1.07, no: 1.2 }, totals: {} } }), ["h15", "reg"], "no totals, «нет» at 1.2: the handicap and the win");
+    // without the win in regulation time the other bets stay; a score against the pick, or no lines at all: as before
+    assert.deepEqual(keysOf({ home: 2, away: 1 }, { offer: { ...offer, regulation: null } }), ["under"]);
+    assert.deepEqual(betFor(g({ home: 1, away: 3 })), { key: "reg", odds: 2.17, title: "Победа NYR", sub: "в основное время" }, "a score for the other side: the plain bet");
+    assert.equal(ctx.S.betFor(g({ home: 2, away: 1 }, { offer: null })), null);
+    assert.equal(ctx.S.betFor({ ...g({ home: 2, away: 1 }), my: null }), null);
+    // the same game and score always show the same bet; it changes with the game or the score
+    assert.deepEqual(betFor(g({ home: 5, away: 2 })), betFor(g({ home: 5, away: 2 })));
+    // every bet that is offered wins if the game ends with the predicted score
+    for (let h = 0; h <= 7; h += 1) for (let a = 0; a <= 7; a += 1) {
+      if (h === a) continue;
+      const pick = h > a ? "home" : "away";
+      for (let pk = 9000; pk < 9006; pk += 1) {
+        const b = betFor({ ...g({ home: h, away: a }), my: my({ home: h, away: a }, pick), game_pk: pk });
+        const won = Math.max(h, a), lost = Math.min(h, a), line = Number(String(b.title).replace(/^.* /, "").replace(",", "."));
+        const ok = { reg: true, h15: won - lost >= 2, h25: won - lost >= 3, under: h + a < line, over: h + a > line, btts: lost === 0 }[b.key];
+        assert.ok(ok, `${a}:${h} → ${b.title} would lose`);
+        assert.ok(b.odds >= 1.35 && b.odds <= 8 || b.key === "reg", `${b.title}: ${b.odds}`);
+      }
+    }
+    ctx.window.close();
+  }
+  // on the screen: «под ваш счёт», the bet and what 1000 ₽ brings
+  {
+    const ctx = makeApp({ games: [g({ home: 2, away: 1 }, { game_pk: 9002 })] });
+    await tick(250);
+    const o = ctx.document.querySelector(".v27Hero .v29Offer");
+    assert.ok(o && o.classList.contains("fit"), "the bet under the score");
+    const b = JSON.parse(JSON.stringify(ctx.S.betFor(ctx.S.state.games.get(9002))));
+    assert.equal(text(o.querySelector(".v29OfFor")), "Под ваш счёт 1:2");
+    assert.equal(o.dataset.v29Bet, b.key);
+    assert.equal(text(o.querySelector(".v29OfMain")), `${b.title} ${b.sub}`);
+    assert.equal(text(o.querySelector(".v29OfOdds")), b.odds.toFixed(2));
+    assert.equal(text(o.querySelector(".v29OfWin")), `+${String(Math.round((b.odds - 1) * 1000)).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₽ на счёт при ставке 1000 ₽`);
+    assert.equal(o.getAttribute("href"), "/go/winline?game_pk=9002");
+    ctx.window.close();
+  }
+  {
+    // no score: no «под ваш счёт»
+    const ctx = makeApp({ games: [g(null, { game_pk: 9002 })] });
+    await tick(250);
+    const o = ctx.document.querySelector(".v27Hero .v29Offer");
+    assert.ok(o && !o.classList.contains("fit") && !o.querySelector(".v29OfFor"));
+    assert.equal(text(o.querySelector(".v29OfMain")), "Победа NYR в основное время");
     ctx.window.close();
   }
 }

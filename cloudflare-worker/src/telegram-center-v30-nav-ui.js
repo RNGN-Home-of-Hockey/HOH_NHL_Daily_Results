@@ -3,7 +3,7 @@
 //   - back from a match or a player returns to the same card of the list, not to the top
 //   - the calendar of «Матчи» is one week in a row; the whole month opens on a tap
 //   - (the folding explanation of «Кто победит?» is gone: since 2026-10-19 the head is one fact about the fan, nothing to fold)
-//   - the score of a finished game is big and the winner is bold (not in the no-spoilers mode)
+//   - the winner of a finished game is bold (not in the no-spoilers mode)
 //   - the names in the players list are not cut ("Кирилл Капри…")
 // This function is serialized (navApp.toString()) and served as /telegram-app/v30-nav.js, so it must be self-contained.
 export function navApp() {
@@ -25,7 +25,6 @@ html body .app,html body #view{overflow-x:clip!important;overflow-y:visible!impo
 .v22NavRow,.v22BackRow,:not(.v22BackRow)>.v15BackRow{position:sticky!important;top:0;z-index:40;margin-left:-12px!important;margin-right:-12px!important;padding:6px 12px!important;background:rgba(244,241,250,.96);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 6px 14px -12px rgba(40,20,90,.45)}
 html:not(.v15Light) :is(.v22NavRow,.v22BackRow,:not(.v22BackRow)>.v15BackRow){background:rgba(10,11,17,.95);box-shadow:0 6px 14px -12px rgba(0,0,0,.9)}
 .playerRow .rowText b{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.15;overflow-wrap:anywhere}
-.v19BroadcastText small .v19CardScore.v30Has{display:inline-block;font-size:16px;font-weight:900;letter-spacing:.2px;color:inherit;vertical-align:-1px}
 .v30Win{font-weight:900}
 .v30Lose{font-weight:600;opacity:.75}
 .hohNoSpoilers .v30Win,.hohNoSpoilers .v30Lose{font-weight:inherit;opacity:1}
@@ -98,27 +97,18 @@ html:not(.v15Light) .v30CalMore{border-color:#464a59;color:#cdb9ff}
     if (more.textContent !== label) more.textContent = label;
   }
 
-  // ---- the score of a finished game: big, the winner bold -----------------------------------------------------------------------------
+  // ---- the winner of a finished game is bold -------------------------------------------------------------------------------------------
+  // since 2026-10-19 the card has the names once (under the logos, or under the cover) with the score between them: v19 marks them [data-v19-side]
   function decorateScores() {
     document.querySelectorAll("#view .v19Broadcast[data-v19-game]").forEach((card) => {
-      const title = card.querySelector(".v19BroadcastText > b");
       const scoreEl = card.querySelector(".v19CardScore");
-      if (!title || !scoreEl) return;
       // only a finished game has a winner: a game that is on keeps both names plain
-      const m = card.querySelector(".v19LiveBadge") ? null : /^(\d+)\s*:\s*(\d+)/.exec(String(scoreEl.textContent || "").trim());
-      scoreEl.classList.toggle("v30Has", Boolean(m) || /^\d+\s*:\s*\d+/.test(String(scoreEl.textContent || "").trim()));
-      const key = m ? `${m[1]}:${m[2]}` : "-";
-      if (title.dataset.v30 === key) return;
-      if (!title.dataset.v30Names) title.dataset.v30Names = title.textContent;
-      const names = title.dataset.v30Names.split(" — ");
-      title.dataset.v30 = key;
-      if (!m || names.length !== 2 || m[1] === m[2]) {
-        title.textContent = title.dataset.v30Names;
-        return;
-      }
-      const left = Number(m[1]) > Number(m[2]);
-      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-      title.innerHTML = `<span class="${left ? "v30Win" : "v30Lose"}">${esc(names[0])}</span> — <span class="${left ? "v30Lose" : "v30Win"}">${esc(names[1])}</span>`;
+      const m = !scoreEl || card.querySelector(".v19LiveBadge") ? null : /^(\d+)\s*:\s*(\d+)/.exec(String(scoreEl.textContent || "").trim());
+      const won = !m || m[1] === m[2] ? "" : Number(m[1]) > Number(m[2]) ? "away" : "home";
+      card.querySelectorAll("[data-v19-side]").forEach((el) => {
+        el.classList.toggle("v30Win", Boolean(won) && el.dataset.v19Side === won);
+        el.classList.toggle("v30Lose", Boolean(won) && el.dataset.v19Side !== won);
+      });
     });
   }
 

@@ -91,24 +91,40 @@ async function loadMine(db, userId, ids) {
 // "Сначала голос, потом Winline" (the owner, package 1): after the pick the app offers the bet on the chosen side — the winner
 // including overtime (what the fan voted for), the bolder "in regulation time" and "−1.5". The handicap lines of Winline are
 // written from the home side: "asianhandicap:-1.5" is home −1.5 / away +1.5, so the away −1.5 is "asianhandicap:1.5".
+// Since 2026-10-19 the bet follows the exact score of the fan (the owner: «5-2 … фора минус полтора… 2-1 … тотал меньше»): the app
+// picks it from −1.5/−2.5, the totals of the match and «обе забьют», so these lines come along.
+const OFFER_TOTALS = ["3.5", "4.5", "5.5", "6.5", "7.5"];
 async function loadOffers(db, rows) {
   const open = rows.filter((x) => OPEN_FOR_OFFER.has(String(x.game_state || "").toUpperCase()));
   const map = new Map();
   if (!open.length) return map;
   const q = open.map(() => "?").join(",");
+  const totalTypes = OFFER_TOTALS.map((t) => `'totals:${t}'`).join(",");
   const r = await db.prepare(`
-    SELECT we.game_pk,m.market_type,m.subject_key,m.odds FROM winline_events we JOIN winline_markets m ON m.winline_event_id=we.winline_event_id
+    SELECT we.game_pk,m.market_type,m.subject_key,m.outcome_name,m.odds FROM winline_events we JOIN winline_markets m ON m.winline_event_id=we.winline_event_id
     WHERE we.game_pk IN (${q}) AND m.active=1 AND m.is_live=0 AND m.odds>1
-      AND m.market_type IN ('3wayodds','main_1x2_regular','asianhandicap:-1.5','asianhandicap:1.5')
+      AND m.market_type IN ('3wayodds','main_1x2_regular','asianhandicap:-1.5','asianhandicap:1.5','asianhandicap:-2.5','asianhandicap:2.5','bothteamstoscore',${totalTypes})
     ORDER BY m.updated_at DESC;
   `).bind(...open.map((x) => Number(x.game_pk))).all().catch(() => ({ results: [] }));
   for (const x of open) {
     const mine = (r.results || []).filter((m) => Number(m.game_pk) === Number(x.game_pk));
     const odd = (types, tri) => num((mine.find((m) => types.includes(m.market_type) && m.subject_key === tri) || {}).odds);
+    const out = (type, name) => num((mine.find((m) => m.market_type === type && String(m.outcome_name) === name) || {}).odds);
+    // the lines of the whole match are the same for both sides
+    const totals = {};
+    for (const t of OFFER_TOTALS) {
+      const over = out(`totals:${t}`, "Over");
+      const under = out(`totals:${t}`, "Under");
+      if (over || under) totals[t] = { over, under };
+    }
+    const btts = { yes: out("bothteamstoscore", "Yes"), no: out("bothteamstoscore", "No") };
     const side = (k) => ({
       win: num(x[`${k}_odds`]),
       regulation: odd(["3wayodds", "main_1x2_regular"], x[`${k}_tri`]),
       minus15: odd([k === "home" ? "asianhandicap:-1.5" : "asianhandicap:1.5"], x[`${k}_tri`]),
+      minus25: odd([k === "home" ? "asianhandicap:-2.5" : "asianhandicap:2.5"], x[`${k}_tri`]),
+      totals,
+      btts,
     });
     const offer = { home: side("home"), away: side("away") };
     if (offer.home.win || offer.away.win || offer.home.regulation || offer.away.regulation) map.set(Number(x.game_pk), offer);

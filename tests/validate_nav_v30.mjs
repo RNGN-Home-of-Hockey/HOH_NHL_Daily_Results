@@ -13,7 +13,7 @@ assert.equal((await handleTelegramCenterV30(new Request(`https://x.test${SCRIPT_
 assert.match(script, /^\(function\(\)\{const __name=/, "wrapped like the other layers");
 {
   const shell = await (await handleTeamCurrentRequest(new Request("https://x.test/telegram-app-v24"), {}, "/telegram-app-v24")).text();
-  assert.ok(shell.includes("/telegram-app/v30-nav.js?build=30.0"), "the script is in the app");
+  assert.ok(shell.includes("/telegram-app/v30-nav.js?build=30.1"), "the script is in the app");
   assert.ok(shell.indexOf("/telegram-app/v30-nav.js") > shell.indexOf("/telegram-app/v29-predict.js"), "after the vote layer");
   assert.equal((await handleTeamCurrentRequest(new Request(`https://x.test${SCRIPT_PATH}`), {}, SCRIPT_PATH)).status, 200, "reachable through the main router");
 }
@@ -22,7 +22,15 @@ const days = (sel) => Array.from({ length: 31 }, (_, i) => {
   const d = `2026-10-${String(i + 1).padStart(2, "0")}`;
   return `<button class="v19Day has${d === sel ? " sel" : ""}${d === "2026-10-14" ? " today" : ""}" data-v19-date="${d}">${i + 1}</button>`;
 }).join("");
-const card = (pk, title, score, live = false) => `<article class="v19Broadcast" data-v19-game="${pk}"><div class="v19Thumb"></div><div class="v19BroadcastText"><div class="top">${live ? '<span class="v19LiveBadge">LIVE</span>' : ""}</div><b>${title}</b><small><span class="v19CardScore">${score}</span> · 02:30</small></div></article>`;
+// since 2026-10-19 the names are once, with the score (or the time of a game ahead) between them: under the cover, or under the logos
+const card = (pk, title, score, live = false) => {
+  const [away, home] = title.split(" — ");
+  const mid = score === "—" ? '<b class="v19CardMid"><i class="v19CardTime">02:30</i></b>' : `<b class="v19CardMid"><i class="v19CardScore">${score}</i></b>`;
+  const top = live ? '<div class="top"><span class="v19LiveBadge">LIVE</span></div>' : "";
+  if (pk % 2) return `<article class="v19Broadcast" data-v19-game="${pk}"><div class="v19Thumb"><img src="/c.jpg" alt=""></div><div class="v19BroadcastText">${top}<div class="v19Board"><span data-v19-side="away">${away}</span>${mid}<span data-v19-side="home">${home}</span></div></div></article>`;
+  const logo = (k, name) => `<div data-v19-side="${k}"><img src="/l.svg" alt=""><span>${name}</span></div>`;
+  return `<article class="v19Broadcast" data-v19-game="${pk}"><div class="v19Thumb"><div class="v19ThumbTeams">${logo("away", away)}${mid}${logo("home", home)}</div></div><div class="v19BroadcastText">${top}</div></article>`;
+};
 function makeApp({ storage = {}, sel = "2026-10-13" } = {}) {
   const html = `<!doctype html><html class="v15Light"><head></head><body><div class="app"><div class="v22NavRow"><nav id="tabs"></nav></div>
 <main id="view"><div class="v19Archive"><section class="v19Cal"><div class="v19CalTop"><b>Октябрь 2026</b></div><div class="v19Days">${days(sel)}</div></section>
@@ -94,26 +102,30 @@ function makeApp({ storage = {}, sel = "2026-10-13" } = {}) {
   app.window.close();
 }
 
-// ---- 4) the score of a finished game: big, the winner bold ---------------------------------------------------------------------------------------
+// ---- 4) the winner of a finished game is bold -------------------------------------------------------------------------------------------
 {
   const { window, document } = makeApp();
   await tick(120);
-  const title = (pk) => document.querySelector(`.v19Broadcast[data-v19-game="${pk}"] .v19BroadcastText > b`);
+  const side = (pk, k) => document.querySelector(`.v19Broadcast[data-v19-game="${pk}"] [data-v19-side="${k}"]`);
   const score = (pk) => document.querySelector(`.v19Broadcast[data-v19-game="${pk}"] .v19CardScore`);
-  assert.equal(title(1).querySelector(".v30Win").textContent, "Нью-Джерси Девилз", "5:4: the guests won");
-  assert.equal(title(1).querySelector(".v30Lose").textContent, "Детройт Ред Уингз");
-  assert.equal(title(2).querySelector(".v30Win").textContent, "Коламбус Блю Джекетс", "3:7: the hosts won");
-  assert.equal(title(1).textContent, "Нью-Джерси Девилз — Детройт Ред Уингз", "the text is the same");
-  assert.ok(!title(3).querySelector(".v30Win"), "a game that is on has no winner yet");
-  assert.ok(!title(4).querySelector(".v30Win"), "a game ahead neither");
-  assert.ok(score(1).classList.contains("v30Has") && !score(4).classList.contains("v30Has"), "only a real score is big, not the dash of a game ahead");
+  assert.ok(side(1, "away").classList.contains("v30Win") && side(1, "home").classList.contains("v30Lose"), "5:4 under the cover: the guests won");
+  assert.equal(side(1, "away").textContent, "Нью-Джерси Девилз", "the text is the same");
+  assert.ok(side(2, "home").classList.contains("v30Win") && side(2, "away").classList.contains("v30Lose"), "3:7 under the logos: the hosts won");
+  assert.equal(side(2, "home").querySelector("span").textContent, "Коламбус Блю Джекетс");
+  assert.ok(!side(3, "away").classList.contains("v30Win") && !side(3, "home").classList.contains("v30Win") && !side(3, "home").classList.contains("v30Lose"), "a game that is on has no winner yet");
+  assert.ok(!document.querySelector('.v19Broadcast[data-v19-game="4"] .v30Win') && !document.querySelector('.v19Broadcast[data-v19-game="4"] .v30Lose'), "a game ahead neither");
+  assert.ok(!score(4), "a game ahead has its time, not a score");
   const css = document.getElementById("v30css").textContent;
-  assert.match(css, /\.v19BroadcastText small \.v19CardScore\.v30Has\{display:inline-block;font-size:16px;font-weight:900/);
+  assert.ok(!/v30Has/.test(css), "the old small score line is gone");
   assert.match(css, /\.hohNoSpoilers \.v30Win,\.hohNoSpoilers \.v30Lose\{font-weight:inherit;opacity:1\}/, "the no-spoilers mode shows no winner");
   // the list is drawn again with a new score: the names follow
   score(1).textContent = "5 : 6 Б";
   window.HOHV30.update();
-  assert.equal(title(1).querySelector(".v30Win").textContent, "Детройт Ред Уингз");
+  assert.ok(side(1, "home").classList.contains("v30Win") && side(1, "away").classList.contains("v30Lose"));
+  // a draw on the board (a shootout still to come) marks nobody
+  score(1).textContent = "2 : 2";
+  window.HOHV30.update();
+  assert.ok(!document.querySelector('.v19Broadcast[data-v19-game="1"] .v30Win') && !document.querySelector('.v19Broadcast[data-v19-game="1"] .v30Lose'));
   window.close();
 }
 
