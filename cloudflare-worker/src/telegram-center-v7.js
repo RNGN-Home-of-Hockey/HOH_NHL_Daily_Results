@@ -5,6 +5,8 @@ const PATH="/telegram-app";
 const API="/api/telegram-center-v7";
 const NHL="https://api-web.nhle.com/v1";
 const NHL_STATS="https://api.nhle.com/stats/rest/en";
+// the short names of the table (2026-10-19, variant A of the canvas: the full names do not fit next to the form)
+const SHORT_RU={ANA:"Анахайм",BOS:"Бостон",BUF:"Баффало",CAR:"Каролина",CBJ:"Коламбус",CGY:"Калгари",CHI:"Чикаго",COL:"Колорадо",DAL:"Даллас",DET:"Детройт",EDM:"Эдмонтон",FLA:"Флорида",LAK:"Лос-Анджелес",MIN:"Миннесота",MTL:"Монреаль",NJD:"Нью-Джерси",NSH:"Нэшвилл",NYI:"Айлендерс",NYR:"Рейнджерс",OTT:"Оттава",PHI:"Филадельфия",PIT:"Питтсбург",SEA:"Сиэтл",SJS:"Сан-Хосе",STL:"Сент-Луис",TBL:"Тампа-Бэй",TOR:"Торонто",UTA:"Юта",VAN:"Ванкувер",VGK:"Вегас",WPG:"Виннипег",WSH:"Вашингтон"};
 const DIVISIONS={
   EAST:{title:"Восточная конференция",divisions:{ATL:{title:"Атлантический дивизион",teams:["BOS","BUF","DET","FLA","MTL","OTT","TBL","TOR"]},MET:{title:"Столичный дивизион",teams:["CAR","CBJ","NJD","NYI","NYR","PHI","PIT","WSH"]}}},
   WEST:{title:"Западная конференция",divisions:{CEN:{title:"Центральный дивизион",teams:["CHI","COL","DAL","MIN","NSH","STL","UTA","WPG"]},PAC:{title:"Тихоокеанский дивизион",teams:["ANA","CGY","EDM","LAK","SJS","SEA","VAN","VGK"]}}},
@@ -54,6 +56,28 @@ export function officialOrder(a,b){
   return b.pts-a.pts||a.gp-b.gp||b.w-a.w||(a.name||"").localeCompare(b.name||"","ru");
 }
 
+// the form: the last five finished games of the regular season, oldest first — W a win, O a loss in overtime or the shootout, L a loss
+export function formOf(games,limit=5){
+  const out=new Map();
+  for(const g of games){
+    const home=upper(g?.home_tri),away=upper(g?.away_tri),hs=n(g?.home_score),as=n(g?.away_score);
+    if(!home||!away||hs===null||as===null||hs===as)continue;
+    const extra=["OT","SO"].includes(upper(g?.period_type));
+    for(const [tri,mine,theirs] of [[home,hs,as],[away,as,hs]]){
+      const list=out.get(tri)||[];
+      if(list.length>=limit)continue;
+      list.push(mine>theirs?"W":extra?"O":"L");
+      out.set(tri,list);
+    }
+  }
+  for(const [tri,list] of out)out.set(tri,list.reverse());
+  return out;
+}
+async function formsOf(db,season){
+  const r=await db.prepare(`SELECT home_tri,away_tri,home_score,away_score,period_type FROM games WHERE season_id=? AND game_type=2 AND game_state IN ('OFF','FINAL') ORDER BY scheduled_start_utc DESC LIMIT 320;`).bind(season).all();
+  return formOf(r.results||[]);
+}
+
 async function standings(env){
   const season=currentSeasonId();
   const teamRows=await env.DB.prepare(`SELECT tri_code,name_en,name_ru,logo_url FROM teams WHERE COALESCE(active,1)=1;`).all();
@@ -65,6 +89,7 @@ async function standings(env){
     if(rows.some(r=>String(r?.seasonId||"")===season))live=rows.filter(r=>String(r?.seasonId||"")===season);
   }catch{}
   const liveMap=new Map(live.map(r=>[upper(r?.teamAbbrev?.default||r?.teamAbbrev),r]));
+  const forms=await formsOf(env.DB,season).catch(()=>new Map());
   const conferences=[];
   for(const [confKey,conf] of Object.entries(DIVISIONS)){
     const divisions=[];
@@ -73,7 +98,7 @@ async function standings(env){
         const t=teams[tri]||{tri_code:tri,name_en:tri,name_ru:null,logo_url:null},r=liveMap.get(tri)||null,gp=n(r?.gamesPlayed)||0;
         const divisionRank=gp>0?(n(r?.divisionSequence)||null):null,conferenceRank=gp>0?(n(r?.conferenceSequence)||null):null,wildcardRank=gp>0?(n(r?.wildcardSequence)||null):null,clinch=String(r?.clinchIndicator||"").trim();
         const inPlayoff=gp>0&&Boolean(clinch||(divisionRank&&divisionRank<=3)||(divisionRank&&divisionRank>3&&wildcardRank&&wildcardRank<=2)||(!wildcardRank&&conferenceRank&&conferenceRank<=8));
-        return {tri,name:t.name_ru||t.name_en||tri,logo:t.logo_url||teamLogo(tri),gp,w:n(r?.wins)||0,l:n(r?.losses)||0,otl:n(r?.otLosses)||0,pts:n(r?.points)||0,division_rank:divisionRank,conference_rank:conferenceRank,wildcard_rank:wildcardRank,clinch_indicator:clinch||null,playoff_status:inPlayoff?"playoff":null};
+        return {tri,name:t.name_ru||t.name_en||tri,short:SHORT_RU[tri]||t.name_ru||t.name_en||tri,logo:t.logo_url||teamLogo(tri),gp,gd:gp>0?n(r?.goalDifferential):null,form:forms.get(tri)||[],w:n(r?.wins)||0,l:n(r?.losses)||0,otl:n(r?.otLosses)||0,pts:n(r?.points)||0,division_rank:divisionRank,conference_rank:conferenceRank,wildcard_rank:wildcardRank,clinch_indicator:clinch||null,playoff_status:inPlayoff?"playoff":null};
       }).sort(officialOrder);
       divisions.push({key:divKey,title:div.title,rows});
     }

@@ -1,7 +1,7 @@
 // Live Center v30: the navigation fixes of the owner's review (14 October 2026).
 //   - the tabs (and on inner pages the back row) stay on top while the page scrolls: no scrolling back up to change a section
 //   - back from a match or a player returns to the same card of the list, not to the top
-//   - the calendar of «Матчи» is one week in a row; the whole month opens on a tap
+//   - (the calendar of «Матчи» was one week in a row until 2026-10-19: the owner chose the month as a grid, drawn by v19)
 //   - (the folding explanation of «Кто победит?» is gone: since 2026-10-19 the head is one fact about the fan, nothing to fold)
 //   - the winner of a finished game is bold (not in the no-spoilers mode)
 //   - the names in the players list are not cut ("Кирилл Капри…")
@@ -10,10 +10,6 @@ export function navApp() {
   const H = window.HOHV15;
   if (!H || window.HOHV30) return;
   const V30 = (window.HOHV30 = {});
-  const store = {
-    get(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
-    set(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* private mode */ } },
-  };
 
   function css() {
     if (document.getElementById("v30css")) return;
@@ -28,9 +24,6 @@ html:not(.v15Light) :is(.v22NavRow,.v22BackRow,:not(.v22BackRow)>.v15BackRow){ba
 .v30Win{font-weight:900}
 .v30Lose{font-weight:600;opacity:.75}
 .hohNoSpoilers .v30Win,.hohNoSpoilers .v30Lose{font-weight:inherit;opacity:1}
-.v19Cal.v30Week .v19Days .v19Day.v30Out{display:none}
-.v30CalMore{display:block;width:100%;margin-top:7px;height:30px;border:1px dashed #b7a6e6;border-radius:10px;background:transparent;color:#5b21b6;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
-html:not(.v15Light) .v30CalMore{border-color:#464a59;color:#cdb9ff}
 `;
     document.head.appendChild(style);
   }
@@ -69,34 +62,6 @@ html:not(.v15Light) .v30CalMore{border-color:#464a59;color:#cdb9ff}
   V30.restoreAnchor = restoreAnchor;
   V30.anchor = () => anchor;
 
-  // ---- the calendar: one week, the month on a tap -----------------------------------------------------------------------------------
-  function decorateCalendar() {
-    const cal = document.querySelector("#view .v19Cal");
-    if (!cal) return;
-    const open = store.get("hoh-cal-month") === "1";
-    const days = [...cal.querySelectorAll(".v19Days .v19Day[data-v19-date]")];
-    if (!days.length) return;
-    const sel = days.findIndex((d) => d.classList.contains("sel"));
-    const center = sel >= 0 ? sel : Math.max(0, days.findIndex((d) => d.classList.contains("today")));
-    // seven days around the chosen one, inside the month
-    const start = Math.max(0, Math.min(center - 3, days.length - 7));
-    days.forEach((d, i) => d.classList.toggle("v30Out", i < start || i >= start + 7));
-    cal.classList.toggle("v30Week", !open);
-    let more = cal.querySelector(".v30CalMore");
-    if (!more) {
-      more = document.createElement("button");
-      more.type = "button";
-      more.className = "v30CalMore";
-      more.addEventListener("click", () => {
-        store.set("hoh-cal-month", cal.classList.contains("v30Week") ? "1" : "0");
-        decorateCalendar();
-      });
-      cal.appendChild(more);
-    }
-    const label = open ? "Свернуть до недели ▴" : "Весь месяц ▾";
-    if (more.textContent !== label) more.textContent = label;
-  }
-
   // ---- the winner of a finished game is bold -------------------------------------------------------------------------------------------
   // since 2026-10-19 the card has the names once (under the logos, or under the cover) with the score between them: v19 marks them [data-v19-side]
   function decorateScores() {
@@ -113,7 +78,6 @@ html:not(.v15Light) .v30CalMore{border-color:#464a59;color:#cdb9ff}
   }
 
   function update() {
-    decorateCalendar();
     decorateScores();
     restoreAnchor();
   }

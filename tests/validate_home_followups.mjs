@@ -36,8 +36,10 @@ const lineOf = (source, start) => {
   const v8 = await script(handleTelegramCenterV8Ui, "/telegram-app");
   assert.ok(!/гонка за wild card/.test(v8), "no 'wild card race' in the legend");
   assert.ok(!/standingMark">WC</.test(v8), "no WC mark in the rows");
-  assert.match(v8, /<span class=\\?"po\\?"><i><\/i>в зоне плей-офф<\/span>/, "the legend keeps the playoff zone");
-  assert.match(v8, /<span class="standingMark">ПО<\/span>/, "and the mark of a team in the zone");
+  // since 2026-10-19 (variant A) the zone is a bar at the left of the row: green for the top three of the division, light for the wild card
+  assert.match(v8, /Топ-3 дивизиона — в плей-офф/, "the legend keeps the playoff zone");
+  assert.match(v8, /Уайлд-кард — тоже в плей-офф/);
+  assert.ok(v8.includes("r.division_rank<=3?' top':r.playoff_status==='playoff'?' wc':''"), "and the mark of a team in the zone");
 }
 
 // ---- 2) team page: win / loss / overtime loss and home / away in every row ----------------------------------------------------

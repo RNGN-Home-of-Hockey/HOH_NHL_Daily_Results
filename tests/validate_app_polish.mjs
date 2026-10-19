@@ -9,7 +9,7 @@ import { handleTelegramCenterV16Hotfix } from "../cloudflare-worker/src/telegram
 import { handleTelegramCenterV22Ui } from "../cloudflare-worker/src/telegram-center-v22-ui.js";
 import { handleTelegramCenterV23PlayerUi } from "../cloudflare-worker/src/telegram-center-v23-player-ui.js";
 import { handleTelegramCenterV8Ui } from "../cloudflare-worker/src/telegram-center-v8-ui.js";
-import { handleTelegramCenterV7, officialOrder } from "../cloudflare-worker/src/telegram-center-v7.js";
+import { handleTelegramCenterV7, officialOrder, formOf } from "../cloudflare-worker/src/telegram-center-v7.js";
 
 const script = async (handler, path) => (await handler(new Request(`https://x.test${path}`), path)).text();
 const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -217,11 +217,82 @@ const livePayload = (away, home, label, code = "LIVE", phase = "live") => ({ ok:
   globalThis.fetch = realFetch;
 
   const v8 = await script(handleTelegramCenterV8Ui, "/telegram-app");
-  assert.match(v8, /Команды стоят так же, как в официальной таблице НХЛ\. И — сыграно матчей, О — набрано очков\./, "a note on top");
-  assert.match(v8, /class=\\?"standingHead\\?"/, "column headers");
-  assert.match(v8, /<div class=\\?"gp\\?">'\+esc\(r\.gp\|\|0\)\+'<\/div><div class=\\?"pts\\?">'\+esc\(r\.pts\|\|0\)\+'<\/div>/, "games played and points in two columns");
-  assert.ok(!/\+' оч\.<\/div>/.test(v8), "no more 'оч.' in the row");
-  assert.match(v8, /grid-template-columns:22px 28px 1fr 34px 40px/);
+  // 2026-10-19, the owner chose variant A: Дивизионы / Конференции / Лига, И · О · ± · Форма, the bars of the playoff zone, the explanations below
+  assert.deepEqual([...formOf([
+    { home_tri: "BOS", away_tri: "PHI", home_score: 3, away_score: 2, period_type: "OT" }, // the newest first, as the route reads them
+    { home_tri: "PHI", away_tri: "BOS", home_score: 4, away_score: 1, period_type: "REG" },
+    { home_tri: "BOS", away_tri: "TOR", home_score: 2, away_score: 2, period_type: null }, // no result yet
+    { home_tri: "TOR", away_tri: "BOS", home_score: 1, away_score: 2, period_type: "SO" },
+  ])], [["BOS", ["W", "L", "W"]], ["PHI", ["W", "O"]], ["TOR", ["O"]]], "W / L / O (a loss in overtime or the shootout), oldest first");
+  assert.deepEqual(formOf(Array.from({ length: 8 }, (_, i) => ({ home_tri: "BOS", away_tri: "PHI", home_score: i < 5 ? 1 : 5, away_score: i < 5 ? 0 : 1, period_type: "REG" }))).get("BOS"), ["W", "W", "W", "W", "W"], "five games, the newest ones");
+  {
+    globalThis.fetch = async () => new Response(JSON.stringify({ standings: [{ ...nhlRow("BOS", 5, 6, 3, 1, 1), goalDifferential: 7 }] }), { status: 200 });
+    const games = [{ home_tri: "BOS", away_tri: "PHI", home_score: 3, away_score: 2, period_type: "OT" }, { home_tri: "TOR", away_tri: "BOS", home_score: 4, away_score: 1, period_type: "REG" }];
+    const teams = [{ tri_code: "BOS", name_en: "Boston Bruins", name_ru: "Бостон Брюинз", logo_url: null }];
+    const db = { prepare: (sql) => ({ bind: () => ({ all: async () => ({ results: /FROM games/.test(sql) ? games : teams }) }), all: async () => ({ results: /FROM games/.test(sql) ? games : teams }) }) };
+    const b = await (await handleTelegramCenterV7(new Request("https://x.test/api/telegram-center-v7/standings"), { DB: db }, "/api/telegram-center-v7/standings")).json();
+    const bos = b.conferences[0].divisions[0].rows.find((r) => r.tri === "BOS");
+    assert.deepEqual([bos.name, bos.short, bos.gd, bos.form], ["Бостон Брюинз", "Бостон", 7, ["L", "W"]], "the short name, the goal difference and the form");
+    const det = b.conferences[0].divisions[0].rows.find((r) => r.tri === "DET");
+    assert.deepEqual([det.gd, det.form], [null, []], "a team that has not played: no difference, no form");
+    globalThis.fetch = realFetch;
+  }
+  {
+    const dom = new JSDOM('<!doctype html><html class="v15Light"><body><main id="view"></main></body></html>', { url: "https://x.test/telegram-app", runScripts: "outside-only" });
+    const { window } = dom;
+    const lines = v8.split("\n").filter((l) => /^(const STAND_VIEWS|const CONF_SHORT|let standCache|function standView|function standForm|function standRow|function standBlock|function zoneCut|const byPoints|async function renderTeams)/.test(l));
+    assert.equal(lines.length, 10, "the table code is found in the app");
+    const row = (tri, short, dr, cr, pts, gp, status, gd, form) => ({ tri, short, name: short, logo: `https://l.test/${tri}.svg`, gp, w: 3, l: 1, otl: 1, pts, gd, form, division_rank: dr, conference_rank: cr, playoff_status: status });
+    const standings = { ok: true, conferences: [
+      { key: "EAST", title: "Восточная конференция", divisions: [
+        { key: "ATL", title: "Атлантический дивизион", rows: [row("BOS", "Бостон", 1, 1, 14, 9, "playoff", 15, ["W", "W", "O", "L", "W"]), row("TBL", "Тампа-Бэй", 2, 3, 12, 8, "playoff", -2, []), row("OTT", "Оттава", 3, 4, 12, 9, "playoff", 0, []), row("FLA", "Флорида", 4, 5, 11, 9, "playoff", 5, []), row("MTL", "Монреаль", 5, 6, 9, 8, null, null, [])] },
+        { key: "MET", title: "Столичный дивизион", rows: [row("CAR", "Каролина", 1, 2, 15, 10, "playoff", 12, []), row("NYR", "Рейнджерс", 2, 7, 8, 10, "playoff", -1, []), row("WSH", "Вашингтон", 3, 8, 7, 8, "playoff", 4, [])] },
+      ] },
+    ] };
+    const calls = [];
+    window.eval(`var view=document.getElementById('view');var V7='/v7';function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c])}var opened=[];function openTeam(t){opened.push(t)}`);
+    window.api = async (url) => { calls.push(url); return standings; };
+    window.eval(`var api=window.api;${lines.join("\n")};window.renderTeams=renderTeams;`);
+    await window.renderTeams();
+    const doc = window.document;
+    const seg = [...doc.querySelectorAll(".standSeg button")];
+    assert.deepEqual(seg.map((b) => b.textContent), ["Дивизионы", "Конференции", "Лига"]);
+    assert.equal(seg[0].getAttribute("aria-pressed"), "true", "the divisions first");
+    const sections = [...doc.querySelectorAll(".standA")];
+    assert.deepEqual(sections.map((x) => text(x.querySelector(".divisionHead"))), ["Атлантический дивизион Восток", "Столичный дивизион Восток"]);
+    assert.deepEqual([...sections[0].querySelectorAll(".standHeadA span")].map((x) => x.textContent), ["#", "Команда", "И", "О", "±", "Форма"]);
+    const r1 = sections[0].querySelector('.standingRow[data-team="BOS"]');
+    assert.equal(text(r1.querySelector(".sTeam")), "Бостон 3-1-1");
+    assert.deepEqual([r1.querySelector(".sGp").textContent, r1.querySelector(".sPts").textContent, r1.querySelector(".sGd").textContent], ["9", "14", "+15"]);
+    assert.ok(r1.querySelector(".sGd").classList.contains("plus"));
+    assert.deepEqual([...r1.querySelectorAll(".sForm i")].map((i) => `${i.className}:${i.textContent}`), ["sfW:В", "sfW:В", "sfO:О", "sfL:П", "sfW:В"]);
+    assert.equal(sections[0].querySelector('[data-team="TBL"] .sGd').textContent, "-2");
+    assert.ok(sections[0].querySelector('[data-team="TBL"] .sGd').classList.contains("minus"));
+    assert.equal(sections[0].querySelector('[data-team="MTL"] .sGd').textContent, "—", "no difference yet: a dash");
+    const zones = (sec) => [...sec.querySelectorAll(".standingRow")].map((r) => (r.classList.contains("top") ? "top" : r.classList.contains("wc") ? "wc" : "-") + (r.classList.contains("cut") ? "|" : ""));
+    assert.deepEqual(zones(sections[0]), ["top", "top", "top", "wc|", "-"], "green for the top three, light for the wild card, the line under the zone");
+    assert.deepEqual(zones(sections[1]), ["top", "top", "top"], "the whole division in the zone: no line under the last row");
+    assert.deepEqual([...doc.querySelectorAll(".standLegend > span")].map((x) => text(x)), ["Топ-3 дивизиона — в плей-офф", "Уайлд-кард — тоже в плей-офф (2 места на конференцию)", "И — сыграно матчей, О — очки, ± — разница шайб", "Форма: В — победа, П — поражение, О — поражение в овертайме или по буллитам"], "the explanations below the table");
+    r1.click();
+    assert.deepEqual(JSON.parse(JSON.stringify(window.opened)), ["BOS"], "a row opens the team");
+    // the conference: in the official order, the line only where the zone stands together at the top
+    seg[1].click();
+    await tick(10);
+    assert.equal(window.localStorage.getItem("hoh-stand-view"), "conf", "the choice is remembered");
+    const conf = [...doc.querySelectorAll(".standA")];
+    assert.deepEqual(conf.map((x) => text(x.querySelector(".divisionHead"))), ["Восточная конференция"]);
+    assert.deepEqual([...conf[0].querySelectorAll(".standingRow")].map((r) => r.dataset.team), ["BOS", "CAR", "TBL", "OTT", "FLA", "MTL", "NYR", "WSH"]);
+    assert.equal(conf[0].querySelectorAll(".standingRow.cut").length, 0, "WSH is in from 8th: no misleading line");
+    // the league: everybody by points
+    doc.querySelector('[data-stand-view="league"]').click();
+    await tick(10);
+    const league = [...doc.querySelectorAll(".standA")];
+    assert.equal(text(league[0].querySelector(".divisionHead")), "Вся лига");
+    assert.deepEqual([...league[0].querySelectorAll(".standingRow")].map((r) => r.dataset.team), ["CAR", "BOS", "TBL", "OTT", "FLA", "MTL", "NYR", "WSH"], "points, then fewer games");
+    assert.equal(calls.length, 1, "the table is read once a minute, not on every tab");
+    window.close();
+  }
+  assert.match(v8, /@media \(max-width:374px\)\{\.standHeadA,\.standingRow\.v8A\{grid-template-columns:16px/, "narrow phones: the names still fit");
   // the players tab opens on Russia, by points
   assert.match(v8, /playerSort:'points',playerLimit:10,country:'RUS'/);
 }
@@ -345,6 +416,67 @@ import { handleTelegramCenterV19ProductData } from "../cloudflare-worker/src/tel
   assert.ok(card(1).querySelector(".v19ThumbTeams") && !card(1).querySelector(".v19Thumb img[src*=covers]"));
   assert.equal(card(1).querySelector(".v19Board"), null, "the logos carry the names now: the line under them goes");
   assert.equal((text(card(1)).match(/Филадельфия/g) || []).length, 1);
+  window.close();
+}
+
+{
+  // 2026-10-19, the owner chose variant C: the month as a grid from Monday, a day darker the more games it has, НХЛ/КХЛ and the HoH logo;
+  // the games under it stay the cards of before
+  const dom = new JSDOM('<!doctype html><html class="v15Light"><body><nav id="tabs"><button class="tab active" data-tab="games"></button><button class="tab" data-tab="teams"></button></nav><main id="view"></main></body></html>',
+    { url: "https://example.test/telegram-app-v24", pretendToBeVisual: true, runScripts: "outside-only" });
+  const { window } = dom;
+  const d = new Date();
+  const today = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const month = today.slice(0, 8);
+  const day = (n) => `${month}${String(n).padStart(2, "0")}`;
+  const counts = { 1: 2, 2: 4, 3: 8, 4: 12, 5: 16 };
+  const days = Object.entries(counts).map(([n, c]) => ({ date: day(Number(n)), count: c, playoffs: 0 }));
+  const games = [1, 2].map((pk) => ({ calendar_date: day(3), game_pk: pk, game_type: 2, is_playoff: false, scheduled_start_utc: `${day(3)}T23:00:00Z`, game_state: "FUT", home_score: 0, away_score: 0, period_type: null,
+    home: { tri: "BOS", name_ru: "Бостон", logo: "https://l.test/BOS.svg" }, away: { tri: "PHI", name_ru: "Филадельфия", logo: "https://l.test/PHI.svg" }, vk: null, winline: null, historical_odds: null, cover_url: null }));
+  window.HOHV15 = {
+    esc, state: { profile: false }, currentTab: () => "games", tabsVisible: () => true, view: () => window.document.getElementById("view"), V2: "/v2",
+    api: async (url) => (url.includes("/api/telegram-center-v19/broadcasts") ? { ok: true, days, games } : { ok: true }),
+    teamLogo: () => "",
+  };
+  window.Telegram = { WebApp: { openLink() {} } };
+  window.eval(v19);
+  window.document.querySelector('.tab[data-tab="broadcasts"]').click();
+  await tick(60);
+  const doc = window.document;
+  const cal = doc.querySelector(".v19Cal.v19CalC");
+  assert.ok(cal, "the calendar of variant C");
+  const league = [...cal.querySelectorAll(".v19League button")];
+  assert.deepEqual(league.map((b) => text(b)), ["НХЛ", "КХЛ · скоро"]);
+  assert.ok(league[0].classList.contains("on") && league[0].querySelector("img[src*='NHL_light.svg']"), "the NHL with its official logo");
+  assert.ok(league[1].disabled, "the KHL waits");
+  assert.equal(cal.querySelector(".v19CalMid img.v19HohLogo").getAttribute("src"), "/telegram-app/hoh-logo.png", "our logo by the month");
+  assert.deepEqual([...cal.querySelectorAll(".v19Week span")].map((x) => x.textContent), ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]);
+  const lead = (new Date(`${month}01T00:00:00Z`).getUTCDay() + 6) % 7;
+  const cells = [...cal.querySelectorAll(".v19Days > *")];
+  assert.equal(cells.slice(0, lead).every((x) => x.classList.contains("v19Blank") && !x.dataset.v19Date), true, "the 1st stands under its weekday");
+  assert.equal(cells[lead].dataset.v19Date, day(1));
+  const cell = (n) => cal.querySelector(`[data-v19-date="${day(n)}"]`);
+  assert.deepEqual([1, 2, 3, 4, 5].map((n) => [...cell(n).classList].find((c) => /^h\d$/.test(c))), ["h0", "h1", "h2", "h3", "h3"], "fewer than 4 / 4+ / 8+ / 12+ games");
+  assert.ok(!cell(6) || !cell(6).classList.contains("has"), "a day without games is not coloured");
+  assert.equal(text(cell(3).querySelector(".v19Count")), "8");
+  assert.match(cell(3).getAttribute("aria-label"), /: 8 матчей$/);
+  assert.equal(cal.querySelectorAll(".v19Heat i").length, 4, "the legend: fewer → more games");
+  assert.ok(cal.querySelector(".v19Heat #v19Today"), "«Сегодня» stays");
+  const all = [...cal.querySelectorAll("[data-v19-date]")];
+  assert.deepEqual(all.filter((x) => x.classList.contains("past")).map((x) => x.dataset.v19Date), all.map((x) => x.dataset.v19Date).filter((x) => x < today), "the days gone by are pale");
+  assert.ok(!cal.querySelector(`[data-v19-date="${today}"]`).classList.contains("past"));
+  const { handleTeamCurrentRequest } = await import("../cloudflare-worker/src/team-current-routes.js");
+  const logo = await handleTeamCurrentRequest(new Request("https://x.test/telegram-app/hoh-logo.png"), { ASSETS: { fetch: async (r) => new Response("png:" + new URL(r.url).pathname) } }, "/telegram-app/hoh-logo.png");
+  assert.equal(await logo.text(), "png:/telegram-app/hoh-logo.png", "the logo comes from the prepared file of the owner");
+  // a tap on a day: its games, the cards of before, and the page brings them up
+  let scrolled = 0;
+  window.HTMLElement.prototype.scrollIntoView = function () { if (this.classList.contains("v19DateTitle")) scrolled += 1; };
+  cell(3).click();
+  await tick(20);
+  assert.ok(doc.querySelector(`[data-v19-date="${day(3)}"]`).classList.contains("sel"));
+  assert.equal(doc.querySelectorAll(".v19BroadcastList .v19Broadcast").length, 2, "the cards of the day");
+  assert.ok(doc.querySelector(".v19Broadcast .v19ThumbTeams"), "the cards are the same as before");
+  assert.equal(scrolled, 1, "the games come up under the calendar");
   window.close();
 }
 

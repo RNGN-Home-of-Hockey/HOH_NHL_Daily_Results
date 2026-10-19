@@ -90,7 +90,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
   const centerV35Response = await handleTelegramCenterV35(request, env, path);
   if (centerV35Response) return centerV35Response;
 
-  if (path === "/telegram-app/goalie-bg.webp" && request.method === "GET" && env.ASSETS?.fetch) {
+  // the Home of Hockey logo by the month of the calendar (the owner's prepared file, 2026-10-19)
+  if ((path === "/telegram-app/goalie-bg.webp" || path === "/telegram-app/hoh-logo.png") && request.method === "GET" && env.ASSETS?.fetch) {
     return env.ASSETS.fetch(request);
   }
 
@@ -202,7 +203,7 @@ export async function handleTeamCurrentRequest(request, env, path) {
       "/telegram-app/v27-home.js?build=27.0",
       "/telegram-app/v28-backdrop.js?build=28.0",
       "/telegram-app/v29-predict.js?build=29.2",
-      "/telegram-app/v30-nav.js?build=30.1",
+      "/telegram-app/v30-nav.js?build=30.2",
       "/telegram-app/v31-player.js?build=31.2",
       "/telegram-app/v32-live.js?build=32.0",
       "/telegram-app/v33-fan.js?build=33.0",

@@ -13,7 +13,7 @@ assert.equal((await handleTelegramCenterV30(new Request(`https://x.test${SCRIPT_
 assert.match(script, /^\(function\(\)\{const __name=/, "wrapped like the other layers");
 {
   const shell = await (await handleTeamCurrentRequest(new Request("https://x.test/telegram-app-v24"), {}, "/telegram-app-v24")).text();
-  assert.ok(shell.includes("/telegram-app/v30-nav.js?build=30.1"), "the script is in the app");
+  assert.ok(shell.includes("/telegram-app/v30-nav.js?build=30.2"), "the script is in the app");
   assert.ok(shell.indexOf("/telegram-app/v30-nav.js") > shell.indexOf("/telegram-app/v29-predict.js"), "after the vote layer");
   assert.equal((await handleTeamCurrentRequest(new Request(`https://x.test${SCRIPT_PATH}`), {}, SCRIPT_PATH)).status, 200, "reachable through the main router");
 }
@@ -60,36 +60,15 @@ function makeApp({ storage = {}, sel = "2026-10-13" } = {}) {
   window.close();
 }
 
-// ---- 2) the calendar: a week around the chosen day, the month on a tap ------------------------------------------------------------------------
+// ---- 2) the calendar is the whole month again (2026-10-19, variant C drawn by v19): v30 folds nothing --------------------------------------------
 {
-  const { window, document } = makeApp({ sel: "2026-10-13" });
+  const { window, document } = makeApp({ sel: "2026-10-13", storage: { "hoh-cal-month": "0" } });
   await tick(120);
   const cal = document.querySelector(".v19Cal");
-  const visible = () => [...document.querySelectorAll(".v19Day")].filter((d) => !(cal.classList.contains("v30Week") && d.classList.contains("v30Out"))).map((d) => Number(d.textContent));
-  assert.ok(cal.classList.contains("v30Week"), "a week by default");
-  assert.deepEqual(visible(), [10, 11, 12, 13, 14, 15, 16], "three days on each side of the chosen one");
-  const more = cal.querySelector(".v30CalMore");
-  assert.equal(more.textContent, "Весь месяц ▾");
-  more.click();
-  await tick(10);
-  assert.ok(!cal.classList.contains("v30Week"), "the whole month on a tap");
-  assert.equal(visible().length, 31);
-  assert.equal(more.textContent, "Свернуть до недели ▴");
-  assert.equal(window.localStorage.getItem("hoh-cal-month"), "1", "the choice is remembered");
-  more.click();
-  await tick(10);
-  assert.ok(cal.classList.contains("v30Week"));
+  assert.ok(!cal.classList.contains("v30Week") && !cal.querySelector(".v30CalMore"), "no week strip, no «Весь месяц»");
+  assert.equal(document.querySelectorAll(".v19Day.v30Out").length, 0);
+  assert.equal(document.querySelectorAll(".v19Day").length, 31, "every day of the month");
   window.close();
-  const edge = makeApp({ sel: "2026-10-02" });
-  await tick(120);
-  const cal2 = edge.document.querySelector(".v19Cal");
-  assert.deepEqual([...edge.document.querySelectorAll(".v19Day")].filter((d) => !d.classList.contains("v30Out")).map((d) => Number(d.textContent)), [1, 2, 3, 4, 5, 6, 7], "at the start of the month the week starts with the 1st");
-  assert.ok(cal2.classList.contains("v30Week"));
-  edge.window.close();
-  const opened = makeApp({ storage: { "hoh-cal-month": "1" } });
-  await tick(120);
-  assert.ok(!opened.document.querySelector(".v19Cal").classList.contains("v30Week"), "a person who opened the month keeps it open");
-  opened.window.close();
 }
 
 // ---- 3) the head of «Кто победит?» is one fact about the fan now (2026-10-19): nothing to fold, no «Как это работает?» ---------------------
