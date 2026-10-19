@@ -1,8 +1,8 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
-  "eliteprospects_audio_matched": 564,
-  "eliteprospects_profiles_resolved": 760,
-  "matched": 571,
+  "eliteprospects_audio_matched": 565,
+  "eliteprospects_profiles_resolved": 761,
+  "matched": 572,
   "nhl_audio_fallback_matched": 7,
   "players": {
     "8470613": {
@@ -7084,7 +7084,7 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/lettierivinni.mp3",
       "shoots_catches": "R",
-      "sweater_number": null,
+      "sweater_number": 71,
       "team_tri": "TOR",
       "upstream_verified": true,
       "weight_kg": 83
@@ -12562,6 +12562,29 @@
       "team_tri": "SJS",
       "upstream_verified": true,
       "weight_kg": 82
+    },
+    "8484230": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8484230.mp3",
+      "birth_country": "SWE",
+      "birth_date": "2005-05-29",
+      "eliteprospects_id": "534828",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Otto%20Stenberg",
+      "eliteprospects_slug": "otto-stenberg",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/534828/otto-stenberg",
+      "first_name": "Otto",
+      "full_name_en": "Otto Stenberg",
+      "height_cm": 180,
+      "last_name": "Stenberg",
+      "player_id": 8484230,
+      "position_code": "C",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/otto_stenberg.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 28,
+      "team_tri": "STL",
+      "upstream_verified": true,
+      "weight_kg": 85
     },
     "8484234": {
       "audio_cached": true,
@@ -21479,7 +21502,7 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/lettierivinni.mp3",
       "shoots_catches": "R",
-      "sweater_number": null,
+      "sweater_number": 71,
       "team_tri": "TOR",
       "upstream_verified": true,
       "weight_kg": 83
@@ -29604,6 +29627,29 @@
       "upstream_verified": true,
       "weight_kg": 82
     },
+    "8484230": {
+      "audio_cached": true,
+      "audio_local_path": "/player-audio/8484230.mp3",
+      "birth_country": "SWE",
+      "birth_date": "2005-05-29",
+      "eliteprospects_id": "534828",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Otto%20Stenberg",
+      "eliteprospects_slug": "otto-stenberg",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/534828/otto-stenberg",
+      "first_name": "Otto",
+      "full_name_en": "Otto Stenberg",
+      "height_cm": 180,
+      "last_name": "Stenberg",
+      "player_id": 8484230,
+      "position_code": "C",
+      "pronunciation_source": "eliteprospects_player_audio",
+      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/otto_stenberg.mp3",
+      "shoots_catches": "L",
+      "sweater_number": 28,
+      "team_tri": "STL",
+      "upstream_verified": true,
+      "weight_kg": 85
+    },
     "8484234": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8484234.mp3",
@@ -30789,7 +30835,7 @@
       "weight_kg": 92
     }
   },
-  "roster_players": 786,
+  "roster_players": 787,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
