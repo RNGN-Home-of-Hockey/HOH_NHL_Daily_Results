@@ -5,6 +5,7 @@ const LIVE_FEEDS=[
   {key:"live",url:"https://back.winline.ru/banners/live"},
 ];
 const META_KEY="winline_live_feed_sync_state";
+const LOG_KEEP_DAYS=14;
 const LIVE_STATES=new Set(["LIVE","CRIT","INTERMISSION"]);
 const TEAM_ALIASES={
   ANA:["Anaheim Ducks"],BOS:["Boston Bruins"],BUF:["Buffalo Sabres"],CGY:["Calgary Flames"],CAR:["Carolina Hurricanes"],CHI:["Chicago Blackhawks"],
@@ -44,7 +45,34 @@ export async function runWinlineLiveFeedMaintenance(env,{force=false,nowMs=Date.
     provider_empty:feed.mapped.length===0,
   };
   await saveState(env.DB,payload);
+  try{await logSync(env.DB,payload,describeLiveGames(candidates,feed,nowMs),nowMs)}
+  catch(error){console.error("winline live sync log failed",error)}
   return {ok:true,skipped:false,...payload};
+}
+
+// Per live game, what this sync saw: "ok" = priced live lines, "no_odds" = the match is in Winline's feed but
+// without odds (Winline suspends betting for a while), "absent" = no fetched feed lists the match at all.
+// Only the latest state is kept in data_core_meta, so without this log a freeze could not be explained afterwards.
+export function describeLiveGames(candidates,feed,nowMs=Date.now()){
+  const mapped=new Map((feed?.mapped||[]).map(x=>[Number(x.game_pk),x]));
+  return (candidates||[]).map(g=>{
+    const h=String(g.home_tri||"").toUpperCase(),a=String(g.away_tri||"").toUpperCase();
+    const seen=(feed?.present||[]).filter(p=>(p.team1_tri===h&&p.team2_tri===a)||(p.team1_tri===a&&p.team2_tri===h));
+    const hit=mapped.get(Number(g.game_pk));
+    const start=Date.parse(String(g.scheduled_start_utc||""));
+    return {
+      pk:Number(g.game_pk),m:a+"@"+h,state:String(g.game_state||""),
+      min:Number.isFinite(start)?Math.round((nowMs-start)/60000):null,
+      s:hit?"ok":seen.length?"no_odds":"absent",
+      feeds:[...new Set(seen.map(p=>p.feed))].join(","),
+      lines:hit?Number(hit.lines?.length||0):0,
+    };
+  });
+}
+async function logSync(db,payload,games,nowMs){
+  await db.prepare("INSERT INTO winline_live_sync_log(fetched_at,live_games,mapped_games,games_json,attempts_json) VALUES(?,?,?,?,?)")
+    .bind(payload.fetched_at,payload.live_games,payload.mapped_games,JSON.stringify(games),JSON.stringify(payload.feed_attempts||[])).run();
+  await db.prepare("DELETE FROM winline_live_sync_log WHERE fetched_at<?").bind(new Date(nowMs-LOG_KEEP_DAYS*864e5).toISOString()).run();
 }
 
 export async function fetchNhlLiveFeedWithFallback(fetchImpl=fetch,candidates=[],{timeoutMs=12000}={}){
@@ -66,7 +94,8 @@ export async function fetchNhlLiveFeedWithFallback(fetchImpl=fetch,candidates=[]
   }
 
   const sources=[...new Set(mapped.map(x=>x.feed_source).filter(Boolean))];
-  return {events,mapped,attempts,sources,fallback_used:fallbackUsed};
+  const present=results.flatMap(x=>(x.present||[]).map(p=>({...p,feed:x.key})));
+  return {events,mapped,attempts,sources,present,fallback_used:fallbackUsed};
 }
 
 async function fetchLiveSource(source,fetchImpl,timeoutMs){
@@ -77,7 +106,7 @@ async function fetchLiveSource(source,fetchImpl,timeoutMs){
     const bytes=new TextEncoder().encode(text).length;
     if(!response.ok)return {key:source.key,url:source.url,ok:false,status:Number(response.status)||null,bytes,events:[],error:"HTTP "+response.status};
     const events=parseNhlLiveFeed(text).map(event=>({...event,feed_source:source.key}));
-    return {key:source.key,url:source.url,ok:true,status:Number(response.status)||200,bytes,events};
+    return {key:source.key,url:source.url,ok:true,status:Number(response.status)||200,bytes,events,present:listNhlLiveMatches(text)};
   }catch(error){
     return {key:source.key,url:source.url,ok:false,status:null,bytes:0,events:[],error:String(error?.name==="AbortError"?"timeout":error?.message||error)};
   }finally{clearTimeout(timer)}
@@ -148,6 +177,19 @@ export function parseNhlLiveFeed(xml){
         out.push({event_id:String(ma.Id),team1:String(ma.Team1),team2:String(ma.Team2),team1_tri:team1,team2_tri:team2,starts_at:String(ma.MatchDate||""),deeplink:String(ma.MatchUrl||""),lines});
       }
     }
+  }
+  return out;
+}
+
+// every NHL match the feed lists, also the ones Winline shows without odds at the moment (parseNhlLiveFeed skips those)
+export function listNhlLiveMatches(xml){
+  const sport=[...String(xml||"").matchAll(/<Sport\b([^>]*)>([\s\S]*?)<\/Sport>/gi)].find(m=>String(attrs(m[1]).Id)==="4");
+  if(!sport)return[];
+  const out=[];
+  for(const mm of sport[2].matchAll(/<Match\b([^>]*)>([\s\S]*?)<\/Match>/gi)){
+    const ma=attrs(mm[1]),team1=triForName(ma.Team1),team2=triForName(ma.Team2);
+    if(!ma.Id||!team1||!team2)continue;
+    out.push({event_id:String(ma.Id),team1_tri:team1,team2_tri:team2,priced:[...mm[2].matchAll(/<line\b([^>]*)>/gi)].map(x=>attrs(x[1])).filter(hasPricedOutcome).length});
   }
   return out;
 }
