@@ -40,6 +40,10 @@ def extract_flat(url: str, playlistend: int = 50) -> dict:
         "socket_timeout": 20,
         "retries": 3,
         "extractor_retries": 3,
+        # the official Russian titles of the channel: without it YouTube answers a runner abroad with the English
+        # translations ("HAT-TRICK PARADE IN FLORIDA…" instead of «ВО ФЛОРИДЕ ПАРАД ХЕТ-ТРИКОВ…»)
+        "extractor_args": {"youtube": {"lang": ["ru"]}},
+        "http_headers": {"Accept-Language": "ru-RU,ru;q=0.9"},
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)

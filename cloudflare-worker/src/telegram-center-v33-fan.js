@@ -10,7 +10,9 @@
 //   POST /api/telegram-center-v33/activity            {kind:"open"|"stream"|"news", news_id?}
 import { fanApp } from "./telegram-center-v33-fan-ui.js";
 import { telegramAuth, upsertTelegramUser } from "./telegram-center-v29-predictions.js";
-import { streakAfter, UNDERDOG_MIN_ODDS } from "./telegram-center-v29-predictions-data.js";
+import { streakAfter, UNDERDOG_MIN_ODDS, daysInRow, moscowDate } from "./telegram-center-v29-predictions-data.js";
+
+export { daysInRow, moscowDate }; // they live with the game of the fans now (its head counts the days too)
 
 export const SCRIPT_PATH = "/telegram-app/v33-fan.js";
 const API = "/api/telegram-center-v33";
@@ -47,22 +49,6 @@ export function achievementsOf(values) {
   });
 }
 
-// the days in a row with the app opened, up to today or yesterday (a streak is not lost before the day is over)
-export function daysInRow(days, today) {
-  const set = new Set(days || []);
-  const shift = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
-  let day = set.has(today) ? today : shift(today, -1);
-  let n = 0;
-  while (set.has(day)) {
-    n++;
-    day = shift(day, -1);
-  }
-  return n;
-}
-
-export function moscowDate(nowMs) {
-  return new Date(nowMs + 3 * 3600000).toISOString().slice(0, 10);
-}
 
 export function cleanInterests(list) {
   if (!Array.isArray(list)) return null;

@@ -723,6 +723,12 @@ function makeProfile({ payload, fail = false } = {}) {
   render();
   await settle();
   assert.equal(doc.querySelectorAll(".v26PgBtn").length, 1, "re-rendering the profile does not stack buttons");
+  // the player page of 2026-10-19 has «Все голы игрока» among its three buttons: no second one
+  doc.getElementById("view").innerHTML = '<div class="v15Profile v23PlayerProfile"><nav class="v23Nav"><button class="v23NavBtn" data-v23-open="goals">Все голы игрока</button><button class="v23NavBtn" id="v23AllStats" data-v23-open="stats">Вся статистика игрока</button></nav></div>';
+  await settle();
+  assert.equal(doc.querySelectorAll(".v26PgBtn").length, 0, "the three buttons of the player page: nothing added");
+  render();
+  await settle();
 
   doc.querySelector(".v26PgBtn").click();
   await settle();

@@ -108,6 +108,23 @@ export function isExactScore(prediction, homeScore, awayScore) {
 }
 
 // The game day of the NHL: the same as date(datetime(scheduled_start_utc,'-8 hours')) in the SQL of the other layers.
+// the days in a row with the app opened, up to today or yesterday (a streak is not lost before the day is over)
+export function daysInRow(days, today) {
+  const set = new Set(days || []);
+  const shift = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+  let day = set.has(today) ? today : shift(today, -1);
+  let n = 0;
+  while (set.has(day)) {
+    n++;
+    day = shift(day, -1);
+  }
+  return n;
+}
+
+export function moscowDate(nowMs) {
+  return new Date(nowMs + 3 * 3600000).toISOString().slice(0, 10);
+}
+
 export function nhlDateOf(iso) {
   const t = Date.parse(String(iso || ""));
   return Number.isFinite(t) ? new Date(t - 8 * 3600000).toISOString().slice(0, 10) : null;

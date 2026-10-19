@@ -2,7 +2,7 @@
 //   - the tabs (and on inner pages the back row) stay on top while the page scrolls: no scrolling back up to change a section
 //   - back from a match or a player returns to the same card of the list, not to the top
 //   - the calendar of «Матчи» is one week in a row; the whole month opens on a tap
-//   - the long explanation «Кто победит?» is shown in full once, then folds into one line
+//   - (the folding explanation of «Кто победит?» is gone: since 2026-10-19 the head is one fact about the fan, nothing to fold)
 //   - the score of a finished game is big and the winner is bold (not in the no-spoilers mode)
 //   - the names in the players list are not cut ("Кирилл Капри…")
 // This function is serialized (navApp.toString()) and served as /telegram-app/v30-nav.js, so it must be self-contained.
@@ -32,10 +32,6 @@ html:not(.v15Light) :is(.v22NavRow,.v22BackRow,:not(.v22BackRow)>.v15BackRow){ba
 .v19Cal.v30Week .v19Days .v19Day.v30Out{display:none}
 .v30CalMore{display:block;width:100%;margin-top:7px;height:30px;border:1px dashed #b7a6e6;border-radius:10px;background:transparent;color:#5b21b6;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
 html:not(.v15Light) .v30CalMore{border-color:#464a59;color:#cdb9ff}
-#v29MatchesHead.v30Short .v29Note,#v29MatchesHead.v30Short .v29Last{display:none}
-.v30Why{justify-self:start;padding:0;border:0;background:none;color:#7a3df0;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
-html:not(.v15Light) .v30Why{color:#b58aff}
-#v29MatchesHead:not(.v30Short) .v30Why{display:none}
 `;
     document.head.appendChild(style);
   }
@@ -102,22 +98,6 @@ html:not(.v15Light) .v30Why{color:#b58aff}
     if (more.textContent !== label) more.textContent = label;
   }
 
-  // ---- «Кто победит?»: the long explanation once, then one line -----------------------------------------------------------------------
-  function decorateExplainer() {
-    const head = document.getElementById("v29MatchesHead");
-    if (!head || head.dataset.v30) return;
-    head.dataset.v30 = "1";
-    const seen = store.get("hoh-v29-explained") === "1";
-    if (seen) head.classList.add("v30Short");
-    else store.set("hoh-v29-explained", "1");
-    const why = document.createElement("button");
-    why.type = "button";
-    why.className = "v30Why";
-    why.textContent = "Как это работает?";
-    why.addEventListener("click", () => head.classList.remove("v30Short"));
-    head.appendChild(why);
-  }
-
   // ---- the score of a finished game: big, the winner bold -----------------------------------------------------------------------------
   function decorateScores() {
     document.querySelectorAll("#view .v19Broadcast[data-v19-game]").forEach((card) => {
@@ -144,7 +124,6 @@ html:not(.v15Light) .v30Why{color:#b58aff}
 
   function update() {
     decorateCalendar();
-    decorateExplainer();
     decorateScores();
     restoreAnchor();
   }

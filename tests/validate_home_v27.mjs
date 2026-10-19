@@ -478,7 +478,7 @@ const NEWS = [
 const MEDIA = [
   { kind: "short", title: "Овечкин забил #shorts", url: "https://youtu.be/a", thumb: "https://i.test/a.jpg" },
   { kind: "news", title: "NHL News: Daily update", url: "https://youtu.be/n", thumb: "https://i.test/n.jpg" },
-  { kind: "short", title: "Гол недели Home of Hockey", url: "https://youtu.be/b", thumb: "https://i.test/b.jpg" },
+  { kind: "short", title: "ВО ФЛОРИДЕ ПАРАД ХЕТ-ТРИКОВ | ОВЕЧКИН БЛИЗОК К РЕКОРДУ – HOME OF HOCKEY NEWS", url: "https://youtu.be/b", thumb: "https://i.test/b.jpg" },
   { kind: "short", title: "Третье короткое", url: "https://youtu.be/c", thumb: "https://i.test/c.jpg" },
   { kind: "short", title: "Четвёртое короткое", url: "https://youtu.be/d", thumb: "https://i.test/d.jpg" },
 ];
@@ -647,6 +647,7 @@ const sec = (ctx, name) => ctx.document.querySelector(`.v27Home [data-sec="${nam
   assert.match(text(videos[0]), /ВЫПУСК/, "the newest release first");
   assert.equal(text(videos[0].querySelector(".t")), "Свежий выпуск новостей НХЛ", "an English title becomes a Russian caption");
   assert.equal(text(videos[1].querySelector(".t")), "Овечкин забил", "hashtags are cut");
+  assert.equal(text(videos[2].querySelector(".t")), "ВО ФЛОРИДЕ ПАРАД ХЕТ-ТРИКОВ | ОВЕЧКИН БЛИЗОК К РЕКОРДУ", "the official Russian title, without the English tail of the brand");
   assert.equal(videos[0].getAttribute("href"), "https://youtu.be/n");
 
   // the old blocks are gone from the page

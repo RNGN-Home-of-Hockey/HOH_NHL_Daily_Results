@@ -2,6 +2,11 @@
 //   - "Кто победит?" (the winner including overtime and the shootout): in the match of the day (.v29Slot in the hero of the home
 //     page) and in the match screen with the question between the two buttons; in every card of the "Матчи" tab, where the games
 //     that are over show how the fans voted. No odds on the buttons: the Winline block under them is the only one (the owner);
+//   - the order of a pick (the owner, 2026-10-19: «нажал "Кто победит" — точный счёт… можно сохранить, можно нажать "Назад"… и
+//     потом только появляется винлайновский коэффициент»): the team → in its place «голос принят, угадаете счёт?» with «← Назад»
+//     and «Сохранить» → «Ваш прогноз: NYR · 2:3» and ONE bet under it: the win of that team in regulation time and what a
+//     1000 ₽ bet brings, as the broadcast cards say it;
+//   - the head of the "Матчи" tab: one bright fact about the fan (the first day, the days in a row, «точнее, чем у 63%»…);
 //   - "Твой профиль" (level, points, progress to the next level) and the table of the best fans on the "Мои" screen.
 //
 // This function is serialized (predictionsApp.toString()) and served as /telegram-app/v29-predict.js, so it must be
@@ -20,6 +25,7 @@ export function predictionsApp() {
     boards: new Map(), period: "week", boardBusy: new Set(), boardOpen: false,
     rulesOpen: false, pending: new Set(), want: new Set(), wantTimer: null,
     draft: new Map(), scoreBusy: new Set(), // the exact score being set: game -> {home, away}
+    stage: new Map(), anim: new Set(), // the step of an open pick: game -> "pick" | "score" (none: done); the steps to animate
   };
   const painted = new WeakMap(); // element -> the html it shows, so a redraw happens only when something changed
 
@@ -69,18 +75,33 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 .v29Btn.busy{opacity:.6}
 .v29Line{font-size:12px;font-weight:600;color:var(--v29-muted)}
 .v29Line.ok{color:var(--v29-win)}
-.v29Score{display:grid;gap:6px;padding:8px 10px;border:1px dashed var(--v29-line);border-radius:12px}
-.v29ScQ{font-size:12.5px;font-weight:800;color:var(--v29-text)}
+.v29Score{display:grid;gap:9px;padding:10px 12px;border:1px solid var(--v29-line);border-radius:14px;background:var(--v29-btn)}
+.v29Ok{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;color:var(--v29-win)}
+.v29Ok img{width:22px;height:22px;object-fit:contain}
+.v29Ok b{color:var(--v29-text);font-weight:900}
+.v29Ok b,.v29DoneT b,.v29Line b{display:inline!important;font-size:inherit!important;line-height:inherit!important} /* the cards of «Матчи» make every <b> a block */
+.v29Ok i{margin-left:auto;font-style:normal;font-size:15px;font-weight:900}
+.v29ScQ{font-size:14px;font-weight:800;color:var(--v29-text)}
 .v29ScQ em{font-style:normal;color:var(--v29-pick)}
-.v29ScRow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.v29ScTri{font-size:12px;font-weight:800;color:var(--v29-muted)}
+.v29ScRow{display:flex;align-items:center;justify-content:center;gap:8px}
+.v29ScTri{font-size:12.5px;font-weight:800;color:var(--v29-muted)}
 .v29Step{display:inline-flex;align-items:center;border:1px solid var(--v29-line);border-radius:10px;overflow:hidden;background:var(--v29-btn)}
-.v29Step button{width:30px;height:32px;border:0;background:none;color:var(--v29-pick);font:inherit;font-size:18px;font-weight:800;cursor:pointer}
-.v29Step b{min-width:22px;text-align:center;font-size:17px;font-weight:900;color:var(--v29-text)}
-.v29ScColon{font-size:17px;font-weight:900}
-.v29ScSave{margin-left:auto;padding:7px 12px;border:0;border-radius:10px;background:var(--v29-pick);color:#fff;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
-.v29ScOk{margin-left:auto;font-size:16px;font-weight:900;color:var(--v29-win)}
-.v29ScBad{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--v29-muted)}
+.v29Step button{width:34px;height:36px;border:0;background:none;color:var(--v29-pick);font:inherit;font-size:19px;font-weight:800;cursor:pointer}
+.v29Step b{min-width:24px;text-align:center;font-size:18px;font-weight:900;color:var(--v29-text)}
+.v29ScColon{font-size:18px;font-weight:900}
+.v29ScBad{font-size:12px;font-weight:700;color:#c2410c;text-align:center}
+html:not(.v15Light) .v29ScBad{color:#ff9a5c}
+.v29ScAct{display:grid;grid-template-columns:auto 1fr;gap:8px}
+.v29Back{padding:10px 14px;border:1px solid var(--v29-line);border-radius:11px;background:none;color:var(--v29-text);font:inherit;font-size:13.5px;font-weight:800;cursor:pointer}
+.v29ScSave{padding:10px 14px;border:0;border-radius:11px;background:var(--v29-pick);color:#fff;font:inherit;font-size:14px;font-weight:900;cursor:pointer}
+.v29ScSave[disabled]{opacity:.45;cursor:default}
+.v29Skip{justify-self:center;padding:0;border:0;background:none;color:var(--v29-muted);font:inherit;font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer}
+.v29Done{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border-radius:12px;border:1.5px solid var(--v29-pick);background:var(--v29-bar)}
+.v29Done img{width:24px;height:24px;object-fit:contain}
+.v29DoneT{font-size:13.5px;font-weight:700;color:var(--v29-text)}
+.v29DoneT b{font-weight:900}
+.v29Edit{padding:6px 10px;border:1px solid var(--v29-line);border-radius:10px;background:var(--v29-btn);color:var(--v29-pick);font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
+.v29ScOpen{justify-self:start;padding:7px 12px;border:1px dashed var(--v29-pick);border-radius:10px;background:none;color:var(--v29-pick);font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
 .v29Score.compact .v29Step button{width:26px;height:28px}
 .v29Vote.compact{gap:5px}
 .v27Hero .v29Slot{margin-top:2px}
@@ -90,7 +111,6 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 .v29MhTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .v29MhTop b{font-size:15px;font-weight:800}
 .v29Note{font-size:12px;color:var(--v29-muted);font-weight:600;line-height:1.35}
-.v29Last{font-size:13px;font-weight:700;padding:9px 12px;border-radius:12px;background:var(--v29-odd-bg);color:var(--v29-odd)}
 .v29More,.v29Link{justify-self:start;padding:0;border:0;background:none;color:var(--v29-pick);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 .v29Me{display:grid;gap:12px;margin:0 0 12px;color:var(--v29-text)}
 .v29Card{padding:16px;border:1px solid var(--v29-line);border-radius:20px;background:var(--v29-card);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
@@ -134,18 +154,25 @@ html.hohSil:not(.v15Light) .v29Me{--v29-card:rgba(16,18,26,.5)}
 .v29Board .nm small{font-size:11px;color:var(--v29-muted);font-weight:600}
 .v29Board li b{font-size:14px;font-weight:800;white-space:nowrap}
 .v29Empty{font-size:13px;color:var(--v29-muted)}
-.v29Offer{display:grid;gap:6px;padding:9px 10px;border-radius:12px;background:rgba(255,90,0,.08);border:1px solid rgba(255,90,0,.28)}
-html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(255,120,40,.35)}
-.v29OfTop{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--v29-text)}
-.v29OfTop img{height:16px;width:auto}
-.v29OfRow{display:flex;flex-wrap:wrap;gap:6px}
-.v29OfBet{display:inline-flex;align-items:baseline;gap:6px;padding:7px 10px;border-radius:10px;background:#ff5a00;color:#fff;text-decoration:none;font-size:12.5px;font-weight:700}
-.v29OfBet b{font-size:15px;font-weight:900}
-.v29OfBet.alt{background:transparent;color:var(--v29-text);border:1px solid rgba(255,90,0,.45)}
-.v29OfBet.alt b{color:#ff5a00}
-.v29Offer.compact{padding:6px 8px}
-.v29Offer.compact .v29OfBet{padding:5px 8px;font-size:11.5px}
-.v29Offer.compact .v29OfBet b{font-size:13px}
+.v29Offer{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"logo main odds" "win win win";gap:6px 10px;align-items:center;padding:10px 12px;border-radius:14px;background:rgba(255,90,0,.08);border:1px solid rgba(255,90,0,.32);color:var(--v29-text);text-decoration:none}
+html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(255,120,40,.38)}
+.v29OfLogo{grid-area:logo;display:block;height:18px;width:auto}
+.v29OfMain{grid-area:main;display:grid;min-width:0;line-height:1.15}
+.v29OfMain b{font-size:15px;font-weight:900}
+.v29OfMain span{font-size:12px;font-weight:700;color:var(--v29-muted)}
+.v29OfOdds{grid-area:odds;padding:7px 12px;border-radius:10px;background:#ff5a00;color:#fff;font-size:18px;font-weight:900;line-height:1}
+.v29OfWin{grid-area:win;font-size:12.5px;font-weight:800;color:#c2410c}
+html:not(.v15Light) .v29OfWin{color:#ff9a5c}
+.v29Fx{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center}
+.v29FxE{display:grid;place-items:center;width:54px;height:54px;border-radius:17px;font-size:29px;line-height:1;background:linear-gradient(135deg,rgba(122,61,240,.2),rgba(255,90,0,.18))}
+.v29FxT{display:grid;gap:3px;min-width:0}
+.v29FxT b{font-size:17px;font-weight:900;line-height:1.2}
+.v29FxT span{font-size:12.5px;font-weight:600;color:var(--v29-muted);line-height:1.3}
+.v29Chips{display:flex;flex-wrap:wrap;gap:6px}
+.v29Chips span{padding:5px 10px;border-radius:999px;background:var(--v29-odd-bg);color:var(--v29-odd);font-size:12px;font-weight:800}
+@media (prefers-reduced-motion:no-preference){.v29In{animation:v29In .3s ease-out}.v29FxE{animation:v29Pop .55s cubic-bezier(.2,1.6,.4,1)}}
+@keyframes v29In{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes v29Pop{from{transform:scale(.55)}to{transform:scale(1)}}
 .v29Asked :is(.v27Wl,.v19CardOdds,.v26Wl){display:none!important}
 .v29Fact{font-size:12px;font-weight:700;color:var(--v29-odd)}
 .v29Better{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:9px 12px;border-radius:12px;background:linear-gradient(120deg,rgba(122,61,240,.14),rgba(255,90,0,.12));font-size:14px;font-weight:800}
@@ -167,7 +194,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
       if (st.pending.has(g.game_pk)) return { text: "Сохраняем…" };
       if (my) return { text: `Ваш выбор: ${tri}${my.score ? `, счёт ${my.score.away}:${my.score.home}` : ""} · можно поменять до ${clock(g.start)}` };
       // the match of the day and the match screen add what the pick opens (the cards of "Матчи" are too narrow for it)
-      const hint = signedIn() ? "Выберите — и покажем коэффициент Winline на ваш выбор" : "";
+      const hint = signedIn() ? "Выберите победителя, угадайте счёт — и покажем коэффициент Winline" : "";
       return { text: g.votes && g.votes.total ? `Проголосовали: ${g.votes.total} · с учётом ОТ и буллитов` : "Победа с учётом ОТ и буллитов", hint };
     }
     if (noSpoilers()) return { text: "Итог скрыт: режим без спойлеров" };
@@ -190,17 +217,33 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
     return "";
   }
 
-  // "Сначала голос, потом Winline": the bet on the chosen side right after the pick — the winner including overtime (what was voted
-  // for) and, bolder, in regulation time and with −1.5
+  // the step of an open game with a pick: "pick" (the teams again), "score" (right after the pick), "done" (the pick and the bet)
+  const stageOf = (g) => (g && g.open && g.my && !st.pending.has(g.game_pk) ? st.stage.get(g.game_pk) || "done" : null);
+  function setStage(pk, stage) {
+    if (stage) st.stage.set(pk, stage);
+    else st.stage.delete(pk);
+    st.anim.add(pk);
+  }
+  const fmtRub = (n) => String(Math.max(0, Math.round(Number(n) || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+
+  // ONE bet once the pick is made (the owner: «оставим одно… победа в основное время»): the win of the chosen team in regulation
+  // time, and what a 1000 ₽ bet brings on top, as the broadcast cards say it («+1 170 РУБ (ПРИ СТАВКЕ 1000 РУБ.)»)
   function offerHtml(g, card) {
-    const o = g.open && g.my && !st.pending.has(g.game_pk) ? g.offer : null;
-    if (!o) return "";
-    const tri = esc((g[g.my.pick] || {}).tri || "");
-    const href = `/go/winline?game_pk=${encodeURIComponent(g.game_pk)}`;
-    const bet = (label, odds, alt) => (Number(odds) > 1 ? `<a class="v29OfBet${alt ? " alt" : ""}" href="${href}" target="_blank" rel="noopener">${label} <b>${Number(odds).toFixed(2)}</b></a>` : "");
-    const bets = [bet(`Победа ${tri}`, o.win, false), bet(card ? "в осн. время" : "в основное время", o.regulation, true), bet("фора −1.5", o.minus15, true)].filter(Boolean);
-    if (!bets.length) return "";
-    return `<div class="v29Offer${card ? " compact" : ""}"><span class="v29OfTop"><img src="/broadcast/winline-logo.png?asset=canonical-3" alt="WINLINE">Ставка на ваш выбор</span><span class="v29OfRow">${bets.join("")}</span></div>`;
+    const odds = stageOf(g) === "done" && g.offer ? Number(g.offer.regulation) : 0;
+    if (!(odds > 1)) return "";
+    const t = g[g.my.pick] || {};
+    return `<a class="v29Offer${card ? " compact" : ""}" href="/go/winline?game_pk=${encodeURIComponent(g.game_pk)}" target="_blank" rel="noopener"><img class="v29OfLogo" src="/broadcast/winline-logo.png?asset=canonical-3" alt="WINLINE"><span class="v29OfMain"><b>Победа ${esc(t.tri || "")}</b> <span>в основное время</span></span><span class="v29OfOdds">${odds.toFixed(2)}</span><span class="v29OfWin">+${fmtRub((odds - 1) * 1000)} ₽ на счёт при ставке 1000 ₽</span></a>`;
+  }
+
+  // the pick made: who, the score if set, «Изменить»; the fans' split; an invitation to the score if there is none
+  function doneHtml(g) {
+    const t = g[g.my.pick] || {};
+    const sc = g.my.score ? ` · <b>${esc(g.my.score.away)}:${esc(g.my.score.home)}</b>` : "";
+    const total = g.votes ? Number(g.votes.total) || 0 : 0;
+    const share = (k) => Math.round((100 * (Number(g.votes[k]) || 0)) / total);
+    const split = g.votes && g.votes.home != null && total >= MIN_SPLIT_VOTES ? `Болельщики: ${esc(g.away.tri)} ${share("away")}% — ${share("home")}% ${esc(g.home.tri)} · ` : "";
+    const invite = g.my.score ? "" : `<button type="button" class="v29ScOpen" data-v29-sc-open="${esc(g.game_pk)}">🎯 Угадать точный счёт · +${EXACT_XP} XP</button>`;
+    return `<div class="v29Done"><img src="${esc(t.logo)}" alt=""><span class="v29DoneT">Ваш прогноз: <b>${esc(t.tri)}</b>${sc}</span><button type="button" class="v29Edit" data-v29-edit="${esc(g.game_pk)}">Изменить</button></div><div class="v29Line">${split}можно поменять до ${esc(clock(g.start))}</div>${invite}`;
   }
 
   // full: the match of the day and the match screen, the question between the buttons; card: the cards of the "Матчи" tab,
@@ -208,6 +251,10 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
   function voteHtml(g, mode) {
     if (!g) return "";
     const card = mode === "card";
+    const stage = stageOf(g);
+    const cls = `v29Vote${card ? " compact" : ""}`;
+    if (stage === "score") return `<div class="${cls}" data-v29-stage="score">${scoreHtml(g)}</div>`;
+    if (stage === "done") return `<div class="${cls}" data-v29-stage="done">${doneHtml(g)}${offerHtml(g, card)}</div>`;
     const hide = !g.open && noSpoilers();
     const total = g.votes ? Number(g.votes.total) || 0 : 0;
     if (card && !g.open && !g.my && total === 0) return "";
@@ -222,29 +269,23 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
       // the share of the fans goes under the name
       return `<button type="button" class="${cls}" data-v29-pick="${k}" data-v29-game="${esc(g.game_pk)}"${g.open ? "" : " disabled"} aria-pressed="${mine}" aria-label="${esc(t.name_ru || t.tri)}">${share != null ? `<span class="v29Share" style="width:${share}%"></span>` : ""}<img src="${esc(t.logo)}" alt=""><span class="v29Nm"><span class="v29T"><b>${esc(t.tri)}</b>${mine ? '<i class="v29Tick">✓</i>' : ""}</span>${share != null ? `<small class="v29Pc">${share}%</small>` : ""}</span></button>`;
     };
-    const line = lineOf(g);
+    // «← Назад» from the score: the teams again, the pick still marked; the same team goes on to the score, another one is a new pick
+    const line = stage === "pick" ? { text: "Выберите команду" } : lineOf(g);
     const row = card ? `<div class="v29Btns">${side("away")}${side("home")}</div>` : `<div class="v29Row3">${side("away")}<span class="v29Mid">Кто<br>победит?</span>${side("home")}</div>`;
-    return `<div class="v29Vote${card ? " compact" : ""}">${row}<div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div>${line.fact ? `<div class="v29Fact">${esc(line.fact)}</div>` : ""}${line.hint && !card ? `<div class="v29Fact">${esc(line.hint)}</div>` : ""}${offerHtml(g, card)}${scoreHtml(g, card)}</div>`;
+    return `<div class="${cls}"${stage ? ' data-v29-stage="pick"' : ""}>${row}<div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div>${line.fact ? `<div class="v29Fact">${esc(line.fact)}</div>` : ""}${line.hint && !card ? `<div class="v29Fact">${esc(line.hint)}</div>` : ""}</div>`;
   }
 
-  // ---- the exact score: asked right after the pick, +25 XP when it is right --------------------------------------------------
+  // ---- the exact score: in the place of the teams right after the pick, +25 XP when it is right ----------------------------------
   const defaultScore = (pick) => (pick === "home" ? { home: 3, away: 2 } : { home: 2, away: 3 });
   const scoreFits = (pick, d) => d.home !== d.away && (pick === "home") === (d.home > d.away);
-  function scoreHtml(g, card) {
-    if (!g.open || !g.my || st.pending.has(g.game_pk)) return "";
+  function scoreHtml(g) {
     const pk = g.game_pk;
-    const saved = g.my.score;
-    const d = st.draft.get(pk) || saved || defaultScore(g.my.pick);
-    const changed = !saved || saved.home !== d.home || saved.away !== d.away;
+    const d = st.draft.get(pk) || g.my.score || defaultScore(g.my.pick);
     const fits = scoreFits(g.my.pick, d);
+    const busy = st.scoreBusy.has(pk);
+    const t = g[g.my.pick] || {};
     const step = (side) => `<span class="v29Step"><button type="button" data-v29-sc="${esc(pk)}:${side}:-1" aria-label="Меньше">−</button><b>${d[side]}</b><button type="button" data-v29-sc="${esc(pk)}:${side}:1" aria-label="Больше">+</button></span>`;
-    const title = !saved ? "Хотите угадать точный счёт?" : changed ? "Новый счёт" : "Ваш точный счёт";
-    const action = !changed
-      ? '<span class="v29ScOk" aria-label="Сохранено">✓</span>'
-      : fits
-        ? `<button type="button" class="v29ScSave" data-v29-sc-save="${esc(pk)}">${st.scoreBusy.has(pk) ? "…" : "Сохранить"}</button>`
-        : `<span class="v29ScBad">счёт в пользу ${esc((g[g.my.pick] || {}).tri || "")}</span>`;
-    return `<div class="v29Score${card ? " compact" : ""}"><span class="v29ScQ">${title} <em>+${EXACT_XP} XP</em></span><span class="v29ScRow"><span class="v29ScTri">${esc(g.away.tri)}</span>${step("away")}<span class="v29ScColon">:</span>${step("home")}<span class="v29ScTri">${esc(g.home.tri)}</span>${action}</span></div>`;
+    return `<div class="v29Score"><div class="v29Ok"><img src="${esc(t.logo)}" alt=""><span>Голос за <b>${esc(t.tri)}</b> принят</span><i aria-hidden="true">✓</i></div><span class="v29ScQ">Угадаете точный счёт? <em>+${EXACT_XP} XP</em></span><span class="v29ScRow"><span class="v29ScTri">${esc(g.away.tri)}</span>${step("away")}<span class="v29ScColon">:</span>${step("home")}<span class="v29ScTri">${esc(g.home.tri)}</span></span>${fits ? "" : `<span class="v29ScBad">Счёт должен быть в пользу ${esc(t.tri)}</span>`}<div class="v29ScAct"><button type="button" class="v29Back" data-v29-back="${esc(pk)}">← Назад</button><button type="button" class="v29ScSave" data-v29-sc-save="${esc(pk)}"${fits && !busy ? "" : " disabled"}>${busy ? "Сохраняем…" : "Сохранить"}</button></div><button type="button" class="v29Skip" data-v29-skip="${esc(pk)}">Без счёта</button></div>`;
   }
   function stepScore(code) {
     const [pkRaw, side, delta] = String(code).split(":");
@@ -258,8 +299,16 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
   }
   async function saveScore(pk) {
     const g = st.games.get(pk);
-    const d = st.draft.get(pk) || (g && g.my && !g.my.score ? defaultScore(g.my.pick) : null);
+    const d = st.draft.get(pk) || (g && g.my ? g.my.score || defaultScore(g.my.pick) : null);
     if (!g || !g.open || !g.my || !d || st.scoreBusy.has(pk) || !scoreFits(g.my.pick, d)) return;
+    const saved = g.my.score;
+    if (saved && saved.home === d.home && saved.away === d.away) {
+      // nothing new to send: on to the bet
+      st.draft.delete(pk);
+      setStage(pk, null);
+      paintAll();
+      return;
+    }
     st.scoreBusy.add(pk);
     paintAll();
     try {
@@ -267,6 +316,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
       if (r && r.game) setGame(r.game);
       st.draft.delete(pk);
       st.meAt = 0;
+      setStage(pk, null);
     } catch (error) {
       alert(errorText(error));
     } finally {
@@ -295,11 +345,36 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
   }
 
   // ---- the tab "Матчи": the vote in every card of the chosen day, how the fans voted in the cards of the games that are over --------
+  // the facts about the fan (the owner: «в стиле дуалинга… первый день в приложении… сколько дней… точнее, чем у такого-то
+  // процента»): the strongest is the big one, two more go as chips; the results of a game day stay hidden without spoilers
+  const word = (n, one, few, many) => { const a = Math.abs(Math.trunc(Number(n) || 0)) % 100, b = a % 10; return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many; };
+  function factsOf(sl) {
+    const f = sl && sl.facts;
+    const out = [];
+    if (!f) return out;
+    const days = Number(f.days) || 0, better = Number(f.better_pct) || 0, streak = Number(f.streak) || 0;
+    if (f.first_day) out.push({ e: "🎉", t: "Первый день в приложении!", s: "Угадайте победителя — первые очки уже сегодня", c: "первый день" });
+    if (better >= 50) out.push({ e: "🎯", t: `Ваши прогнозы точнее, чем у ${better}% болельщиков`, s: "Держите планку — выберите сегодняшних победителей", c: `точнее ${better}% болельщиков` });
+    if (days >= 2) out.push({ e: "🔥", t: `${days} ${word(days, "день", "дня", "дней")} подряд с хоккеем`, s: `Загляните завтра — будет ${days + 1}`, c: `${days} ${word(days, "день", "дня", "дней")} подряд` });
+    if (streak >= 2) out.push({ e: "⚡", t: `${streak} ${word(streak, "угаданный", "угаданных", "угаданных")} подряд`, s: "Следующий матч — продолжение серии", c: `${streak} подряд` });
+    const last = sl.last;
+    if (last && last.total && !noSpoilers()) {
+      const all = last.correct === last.total;
+      out.push({ e: all ? "🏆" : "✅", t: all ? `Прошлый игровой день: всё угадано, ${last.correct} из ${last.total}` : `Прошлый игровой день: угадано ${last.correct} из ${last.total}`, s: `+${fmtXp(last.xp)} XP в копилку`, c: `прошлый день: ${last.correct} из ${last.total} · +${fmtXp(last.xp)} XP` });
+    }
+    return out;
+  }
   function matchesHeadHtml() {
     const sl = st.slate;
-    const last = sl && sl.last && !noSpoilers() ? `<div class="v29Last">Прошлый игровой день: угадано ${sl.last.correct} из ${sl.last.total} · +${fmtXp(sl.last.xp)} XP</div>` : "";
-    const guest = sl && !sl.signed_in ? (webGuest() ? `</div>${window.HOHAuth.needLogin("Войдите через Telegram, чтобы голосовать и копить очки — всё будет общим с приложением в Telegram.")}<div>` : " Голосовать можно в приложении, открытом из Telegram-бота.") : "";
-    return `<div class="v29MhTop"><b>Кто победит?</b><button type="button" class="v29Link" data-v29-me>Мой профиль и рейтинг →</button></div><div class="v29Note">Голосуйте прямо в карточках матчей: победа с учётом ОТ и буллитов, выбор можно менять до начала матча. У прошедших матчей — как голосовали болельщики.${guest}</div>${last}`;
+    const link = '<button type="button" class="v29Link" data-v29-me>Мой профиль и рейтинг →</button>';
+    if (sl && !sl.signed_in) {
+      const guest = webGuest() ? window.HOHAuth.needLogin("Войдите через Telegram, чтобы голосовать и копить очки — всё будет общим с приложением в Telegram.") : '<div class="v29Note">Голосовать можно в приложении, открытом из Telegram-бота.</div>';
+      return `<div class="v29Fx"><span class="v29FxE" aria-hidden="true">🏒</span><span class="v29FxT"><b>Кто победит?</b><span>Угадывайте победителей матчей и копите очки</span></span></div>${guest}`;
+    }
+    const facts = factsOf(sl);
+    const main = facts[0] || { e: "🏒", t: "Кто победит сегодня?", s: "Выберите победителя в карточке матча — до начала игры" };
+    const chips = facts.slice(1, 3).map((x) => `<span>${x.e} ${esc(x.c)}</span>`).join("");
+    return `<div class="v29Fx"><span class="v29FxE" aria-hidden="true">${main.e}</span><span class="v29FxT"><b>${esc(main.t)}</b><span>${esc(main.s)}</span></span></div>${chips ? `<div class="v29Chips">${chips}</div>` : ""}${link}`;
   }
 
   function mountCards() {
@@ -364,7 +439,9 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
       if (painted.get(slot) === html && (slot.innerHTML || !html)) return;
       slot.innerHTML = html;
       painted.set(slot, html);
+      if (st.anim.has(pk) && slot.firstElementChild) slot.firstElementChild.classList.add("v29In");
     });
+    st.anim.clear();
   }
 
   function want(pk) {
@@ -556,7 +633,13 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
   async function vote(pk, side) {
     const g = st.games.get(pk);
     if (!g || !g.open || st.pending.has(pk)) return;
-    if (g.my && g.my.pick === side) return;
+    if (g.my && g.my.pick === side) {
+      if (stageOf(g) === "pick") {
+        setStage(pk, "score");
+        paintAll();
+      }
+      return;
+    }
     if (!signedIn()) {
       if (webGuest()) {
         keepPendingVote(pk, side);
@@ -574,6 +657,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
       if (d && d.game) setGame(d.game);
       if (st.slate) st.slate.signed_in = true; // the server took the vote: the person is signed in
       st.meAt = 0;
+      setStage(pk, "score"); // the vote is in: the exact score takes the place of the teams
       window.dispatchEvent(new Event("hoh-predictions-change"));
     } catch (error) {
       setGame(before);
@@ -617,7 +701,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
 
   // ---- clicks: caught before the cards under them (the hero and the cards of "Матчи" open the match) ---------------------------
   document.addEventListener("click", (e) => {
-    const el = e.target && e.target.closest && e.target.closest("[data-v29-pick],[data-v29-sc],[data-v29-sc-save],[data-v29-me],[data-v29-period],[data-v29-digest],[data-v29-public],[data-v29-rules],[data-v29-board-more]");
+    const el = e.target && e.target.closest && e.target.closest("[data-v29-pick],[data-v29-sc],[data-v29-sc-save],[data-v29-back],[data-v29-skip],[data-v29-edit],[data-v29-sc-open],[data-v29-me],[data-v29-period],[data-v29-digest],[data-v29-public],[data-v29-rules],[data-v29-board-more]");
     if (!el) return;
     e.preventDefault();
     e.stopPropagation();
@@ -625,6 +709,17 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
     if (d.v29Pick) vote(Number(d.v29Game), d.v29Pick);
     else if (d.v29Sc) stepScore(d.v29Sc);
     else if (d.v29ScSave) saveScore(Number(d.v29ScSave));
+    else if (d.v29Back || d.v29Edit) {
+      const pk = Number(d.v29Back || d.v29Edit);
+      st.draft.delete(pk);
+      setStage(pk, "pick");
+      paintAll();
+    } else if (d.v29Skip || d.v29ScOpen) {
+      const pk = Number(d.v29Skip || d.v29ScOpen);
+      if (d.v29Skip) st.draft.delete(pk);
+      setStage(pk, d.v29Skip ? null : "score");
+      paintAll();
+    }
     else if (d.v29Me !== undefined) {
       const tab = document.querySelector('.tab[data-tab="follows"]');
       if (tab) tab.click();
@@ -681,6 +776,7 @@ html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(25
 
   S.state = st;
   S.voteHtml = voteHtml;
+  S.factsOf = factsOf;
   S.mountAll = mountAll;
   S.refresh = () => {
     st.slate = null;

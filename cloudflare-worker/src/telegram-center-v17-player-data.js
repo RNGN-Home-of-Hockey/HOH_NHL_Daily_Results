@@ -84,7 +84,11 @@ async function playerRecommendation(env,id){
         )
       ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC LIMIT 1;
     `).bind(now,team,team).first();
-    if(!game)return json({ok:true,recommendation:null,reason:"no_upcoming_winline_game"});
+    if(!game){
+      // Winline opens a game about a day before it: the page still shows the next game of the team, the line to come
+      const next=await env.DB.prepare(`SELECT game_pk,scheduled_start_utc,home_tri,away_tri FROM games WHERE scheduled_start_utc>? AND (home_tri=? OR away_tri=?) AND game_state IN ('FUT','PRE') ORDER BY scheduled_start_utc ASC,game_pk ASC LIMIT 1;`).bind(now,team,team).first().catch(()=>null);
+      return json({ok:true,recommendation:null,reason:"no_upcoming_winline_game",next_game:next?{game_pk:Number(next.game_pk),scheduled_start_utc:next.scheduled_start_utc,home_tri:up(next.home_tri),away_tri:up(next.away_tri)}:null});
+    }
     const gameForInsights={...game,game_pk:Number(game.game_pk),home_tri:up(game.home_tri),away_tri:up(game.away_tri)};
     const providerMarkets=await loadBroadcastWinlineMarkets(env.DB,gameForInsights).catch(()=>[]);
     const cards=await buildBettingInsights(env.DB,gameForInsights,{

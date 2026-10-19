@@ -411,7 +411,8 @@ const seasonAxes = (id) => JSON.parse(raw.prepare("SELECT axes_json FROM player_
   assert.ok(entry.indexOf("runPlayerProfileMaintenance(env)") > entry.indexOf("runFanPredictionDigest(env)"), "after the points of the fans: a slow NHL stats site does not delay them");
 
   // ---- the card
-  const html = `<!doctype html><html class="v15Light"><head></head><body><main id="view"><div class="v23PlayerProfile"><div class="v23Head">Кирилл Капризов</div><div id="v23Season">Статистика сезона</div><div class="v23Rest"></div></div></main></body></html>`;
+  // the portrait page of the player (v23 renderPortrait): the card goes into #v31Mount
+  const html = `<!doctype html><html class="v15Light"><head></head><body><main id="view"><div class="v15Profile v23PlayerProfile v23StatsPage v23PortraitPage"><div class="v23StatsHero">Кирилл Капризов</div><div id="v31Mount"><div class="v15Loading">Загрузка портрета…</div></div><div class="v23Rest"></div></div></main></body></html>`;
   const dom = new JSDOM(html, { url: "https://x.test/telegram-app-v24", runScripts: "outside-only", pretendToBeVisual: true });
   const { window } = dom;
   const doc = window.document;
@@ -430,7 +431,8 @@ const seasonAxes = (id) => JSON.parse(raw.prepare("SELECT axes_json FROM player_
   await tick(150);
   let card = doc.querySelector("[data-v31-portrait]");
   assert.ok(card, "the portrait is on the page");
-  assert.equal(card.previousElementSibling.id, "v23Season", "right after the season numbers");
+  assert.equal(card.parentElement.id, "v31Mount", "on the portrait page, in its place");
+  assert.ok(!doc.querySelector(".v15Loading"), "the loading line gives way");
   assert.deepEqual(calls, [`/api/telegram-center-v31/players/1/profile?season=${season}`]);
   assert.deepEqual(pressed(card), { ea: "true", season: "false", five: "false" }, "the game is the main layer; the season and the five seasons beside it");
   assert.deepEqual([...card.querySelectorAll("[data-v31-layer]")].map((b) => b.textContent), ["NHL 27", "Сезон", "5 сезонов"]);
@@ -461,7 +463,7 @@ const seasonAxes = (id) => JSON.parse(raw.prepare("SELECT axes_json FROM player_
   assert.equal(rowsNow[3][0], "Игровое время");
   assert.match(rowsNow[3][2], /^21:06 на льду за матч · \d+-е место из \d+ нападающих$/);
   assert.equal(svg.isConnected, false, "the card is drawn again in its place");
-  assert.equal(card.previousElementSibling.id, "v23Season");
+  assert.equal(card.parentElement.id, "v31Mount");
   assert.equal(doc.activeElement && doc.activeElement.dataset.v31Layer, "season", "the focus stays on the pressed layer");
   assert.doesNotMatch(card.textContent, NO_WORDS, "no explaining sentences");
   const same = card;
@@ -516,19 +518,20 @@ const seasonAxes = (id) => JSON.parse(raw.prepare("SELECT axes_json FROM player_
   assert.equal(corners(card), 5);
   assert.deepEqual(areas(card), ["season"]);
 
-  // a player without a portrait: no empty card
+  // a player without a portrait: no empty card, one short line
   card = await open(8400001);
   assert.equal(doc.querySelectorAll("[data-v31-portrait]").length, 0, "the card of the previous player is gone");
+  assert.equal(doc.querySelector("#v31Mount .v31Empty").textContent, "Портрет появится после 5 матчей");
   card = await open(4);
   assert.equal(card, null, "too few games and not in the game: no card");
 
-  // the full statistics page is not the profile: no portrait there
+  // the main page of the player and the page of the statistics have no portrait: only its own page
   await open(1);
-  doc.querySelector(".v23PlayerProfile").classList.add("v23StatsPage");
-  doc.querySelector("[data-v31-portrait]").remove();
+  assert.ok(doc.querySelector("[data-v31-portrait]"));
+  doc.getElementById("view").innerHTML = '<div class="v15Profile v23PlayerProfile"><div class="v23Head">Кирилл Капризов</div><select id="v23Season"></select><nav class="v23Nav"></nav><div class="v23Rest"></div></div>';
   window.HOHV31.update();
-  await tick(60);
-  assert.equal(doc.querySelectorAll("[data-v31-portrait]").length, 0);
+  await tick(120);
+  assert.equal(doc.querySelectorAll("[data-v31-portrait]").length, 0, "the main page: three buttons, no portrait");
   window.close();
 
   // the labels are escaped; an axis without data shows a dash
@@ -553,6 +556,7 @@ function recommendationFact(){return 'запасной текст'}
 ${lineOf(v23, "function word(n,one,few,many)")}
 ${lineOf(v23, "function trendParts(x)")}
 ${lineOf(v23, "function recFirstCap(v)")}
+${lineOf(v23, "function winlineWait(ctx)")}
 ${lineOf(v23, "function winlineRecommendation(ctx)")}
 window.trendParts=trendParts;window.winlineRecommendation=winlineRecommendation;`);
   const w = dom.window;
@@ -580,7 +584,26 @@ window.trendParts=trendParts;window.winlineRecommendation=winlineRecommendation;
   assert.equal(w.winlineRecommendation(rec({ live: false, odds: 1.9, label: "Х" }, {})), "", "a closed market is not offered");
   assert.equal(w.winlineRecommendation(rec({ live: true, odds: 1, label: "Х" }, {})), "");
   assert.equal(w.winlineRecommendation({}), "");
+  // no recommendation yet (the owner: «обязательно после тенденции добавить кэф онлайн»): the next game of the team, its line to come
+  const wait = new JSDOM(`<div>${w.winlineRecommendation({ recommendation: { ok: true, recommendation: null, reason: "no_upcoming_winline_game", next_game: { game_pk: 2026020148, scheduled_start_utc: "2026-10-21T01:00:00Z", home_tri: "EDM", away_tri: "MIN" } } })}</div>`).window.document;
+  assert.match(wait.querySelector(".v31RecText b").textContent, /^MIN — EDM · /);
+  assert.equal(wait.querySelector(".v31RecText span").textContent, "Коэффициенты появятся ближе к матчу");
+  assert.equal(wait.querySelector(".v23RecWait").dataset.v23RecGame, "2026020148", "the tap still goes to Winline");
+  const open = new JSDOM(`<div>${w.winlineRecommendation({ recommendation: { ok: true, recommendation: null, reason: "no_real_winline_market_for_model_signal", game: { game_pk: 2026020135, scheduled_start_utc: "2026-10-18T22:00:00Z", home_tri: "MIN", away_tri: "CBJ" } } })}</div>`).window.document;
+  assert.equal(open.querySelector(".v31RecText span").textContent, "Все ставки на матч — в Winline", "the line is open, nothing picked for the player");
   dom.window.close();
+
+  // the main page (the owner, 2026-10-19): the name, the season, three buttons, the tendencies, the bet, the last game
+  assert.match(lineOf(v23, "function renderMain(ctx)"), /'<\/select>'\+navBlock\(ctx\)\+trendBlock\(ctx\)\+winlineRecommendation\(ctx\)\+lastBlock\(ctx\)\+'<\/div>'/);
+  assert.ok(!/topMetrics\(ctx\)/.test(lineOf(v23, "function renderMain(ctx)")), "the four numbers of the season moved to the statistics page");
+  const nav = lineOf(v23, "function navBlock(ctx)");
+  assert.match(nav, /b\('goals','Все голы игрока'\)\+b\('stats','Вся статистика игрока','v23AllStats'\)\+b\('portrait','Портрет игрока'\)/, "three buttons: goals, statistics, portrait");
+  assert.match(lineOf(v23, "function renderFullStats(ctx,active)"), /<div class="v23Section">Статистика сезона<\/div><div class="v23TopMetrics">'\+topMetrics\(ctx\)/);
+  const portrait = lineOf(v23, "function renderPortrait(ctx)");
+  assert.match(portrait, /v23PlayerProfile v23StatsPage v23PortraitPage/);
+  assert.match(portrait, /<div id="v31Mount">/);
+  assert.match(portrait, /back\.onclick=\(\)=>renderMain\(ctx\)/, "back from the portrait: the player");
+  assert.match(v23, /if\(k==='stats'\)renderFullStats\(ctx\);else if\(k==='portrait'\)renderPortrait\(ctx\);else if\(k==='goals'&&typeof H\.openPlayerGoalsV26==='function'\)H\.openPlayerGoalsV26\(ctx\.p\.player_id\)/);
 
   const groups = lineOf(v23, "function groups(ctx)");
   assert.ok(!/Все показатели|withAll/.test(v23), "no «Все показатели» chessboard");

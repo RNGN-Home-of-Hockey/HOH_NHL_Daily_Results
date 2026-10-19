@@ -2,6 +2,8 @@
 // «Сезон» or «5 сезонов» (his real numbers on their own axes). A chip switches the layer; nothing is drawn over anything else. The
 // game needs no words; under the season layers every axis says its number, his place among the regulars and the share of them.
 // A goalie: the game's goalie hexagon, his own pentagon for the seasons. A player the game does not publish opens on his season.
+// Since 2026-10-19 the portrait has a page of its own (the player page opens it with «Портрет игрока»; v23 renderPortrait gives
+// #v31Mount): nothing of it on the main page of the player.
 // This function is serialized (playerProfileApp.toString()) and served as /telegram-app/v31-player.js: it must be self-contained.
 export function playerProfileApp() {
   const H = window.HOHV15;
@@ -46,6 +48,7 @@ html:not(.v15Light) .v31Radar .spoke{stroke:#2a2d3c}
 html:not(.v15Light) .v31Radar .lab{fill:#eeeaf8}
 .v31Radar .pct{font:900 12px Inter,Arial,sans-serif}
 .v31Rows{display:grid}
+.v31Empty{padding:18px 12px;text-align:center;color:#7d7a92;font-size:13px;font-weight:700}
 .v31Row{display:grid;grid-template-columns:1fr auto;gap:1px 10px;align-items:baseline;padding:8px 2px;border-top:1px solid #ece7f6}
 html:not(.v15Light) .v31Row{border-top-color:#2a2d3c}
 .v31Row b{font-size:14px;font-weight:900}
@@ -157,25 +160,20 @@ html:not(.v15Light) .v31Row{border-top-color:#2a2d3c}
   }
 
   function update() {
-    const page = document.querySelector("#view .v23PlayerProfile:not(.v23StatsPage)");
-    if (!page) return;
+    const mount = document.querySelector("#view .v23PortraitPage #v31Mount");
+    if (!mount) return;
     const cur = window.HOHV23 && window.HOHV23.current;
     const id = cur && cur.p && cur.p.player_id;
     const season = (cur && cur.pack && cur.pack.season) || "";
     if (!id || !season) return;
     const key = `${id}:${season}`;
-    const have = page.querySelector("[data-v31-portrait]");
-    if (have && have.dataset.key === key) return;
+    if (mount.dataset.key === key) return;
     if (!cache.has(key)) { load(id, season); return; }
-    const html = cardHtml(cache.get(key), key);
-    if (have) have.remove();
-    if (!html) return;
-    const box = document.createElement("div");
-    box.innerHTML = html;
-    const card = box.firstElementChild;
-    card.dataset.key = key;
-    const anchor = page.querySelector("#v23Season") || page.querySelector(".v23Head");
-    if (anchor) anchor.after(card);
+    // nothing to draw yet (a few games, not in the game): one short line, not an empty page
+    mount.innerHTML = cardHtml(cache.get(key), key) || '<div class="v31Empty">Портрет появится после 5 матчей</div>';
+    mount.dataset.key = key;
+    const card = mount.querySelector("[data-v31-portrait]");
+    if (card) card.dataset.key = key;
   }
 
   // a chip pressed: that layer alone, the same card drawn again in its place

@@ -84,24 +84,14 @@ function makeApp({ storage = {}, sel = "2026-10-13" } = {}) {
   opened.window.close();
 }
 
-// ---- 3) the explanation of «Кто победит?» -----------------------------------------------------------------------------------------------------
+// ---- 3) the head of «Кто победит?» is one fact about the fan now (2026-10-19): nothing to fold, no «Как это работает?» ---------------------
 {
-  const first = makeApp();
+  const app = makeApp({ storage: { "hoh-v29-explained": "1" } });
   await tick(120);
-  const head = first.document.getElementById("v29MatchesHead");
-  assert.ok(!head.classList.contains("v30Short"), "the first time: the whole explanation");
-  assert.equal(first.window.localStorage.getItem("hoh-v29-explained"), "1");
-  first.window.close();
-  const again = makeApp({ storage: { "hoh-v29-explained": "1" } });
-  await tick(120);
-  const h2 = again.document.getElementById("v29MatchesHead");
-  assert.ok(h2.classList.contains("v30Short"), "then one line");
-  assert.match(again.document.getElementById("v30css").textContent, /#v29MatchesHead\.v30Short \.v29Note,#v29MatchesHead\.v30Short \.v29Last\{display:none\}/);
-  const why = h2.querySelector(".v30Why");
-  assert.equal(why.textContent, "Как это работает?");
-  why.click();
-  assert.ok(!h2.classList.contains("v30Short"), "a tap opens it again");
-  again.window.close();
+  const head = app.document.getElementById("v29MatchesHead");
+  assert.ok(!head.classList.contains("v30Short") && !head.querySelector(".v30Why"), "the head is left as v29 draws it");
+  assert.ok(!/v30Short|v30Why/.test(app.document.getElementById("v30css").textContent));
+  app.window.close();
 }
 
 // ---- 4) the score of a finished game: big, the winner bold ---------------------------------------------------------------------------------------

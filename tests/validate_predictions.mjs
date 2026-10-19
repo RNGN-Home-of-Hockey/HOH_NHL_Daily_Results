@@ -260,6 +260,18 @@ const API = "/api/telegram-center-v29";
 
   const mine = await call(`${API}/slate`, { user: A });
   assert.equal(mine.body.signed_in, true);
+  // the facts of the head of "Матчи": a guest has none; no visits written yet (no table either) — the first day, no share yet
+  assert.equal(guest.body.facts, null);
+  assert.deepEqual(mine.body.facts, { days: 0, first_day: true, better_pct: null, streak: 0 });
+  await env.DB.prepare(createOf("0053_fan_onboarding_activity.sql", "fan_activity")).run();
+  const day = (n) => new Date(NOW + 3 * 3600000 - n * 86400000).toISOString().slice(0, 10); // the Moscow days back from now
+  for (const n of [0, 1, 3]) await env.DB.prepare("INSERT INTO fan_activity(telegram_user_id,day,opens) VALUES(?,?,1)").bind(A.id, day(n)).run();
+  assert.deepEqual((await call(`${API}/slate`, { user: A })).body.facts, { days: 2, first_day: false, better_pct: null, streak: 0 }, "today and yesterday in a row (the day before was missed)");
+  // a fan who voted before the visits were written (2026-10-15) is not «on the first day» (the in-memory test DB only)
+  await env.DB.prepare("DELETE FROM fan_activity").run();
+  await env.DB.prepare("UPDATE fan_predictions SET created_at='2026-10-10 10:00:00' WHERE telegram_user_id=?").bind(A.id).run();
+  assert.equal((await call(`${API}/slate`, { user: A })).body.facts.first_day, false, "an earlier pick: not the first day");
+  await env.DB.prepare("UPDATE fan_predictions SET created_at=CURRENT_TIMESTAMP WHERE telegram_user_id=?").bind(A.id).run();
   const g2 = mine.body.games.find((g) => g.game_pk === 9002);
   assert.deepEqual(g2.votes, { total: 2, home: 1, away: 1 });
   assert.equal(g2.my.pick, "home");
@@ -450,7 +462,7 @@ const script = await (await handleTelegramCenterV29(new Request(`https://x.test$
   assert.match(script, /^\(function\(\)\{const __name=/, "wrapped like the other layers");
   assert.equal((await handleTelegramCenterV29(new Request(`https://x.test${SCRIPT_PATH}`, { method: "POST" }), env, SCRIPT_PATH)).status, 405);
   const shell = await (await handleTeamCurrentRequest(new Request("https://x.test/telegram-app-v24"), {}, "/telegram-app-v24")).text();
-  assert.ok(shell.includes("/telegram-app/v29-predict.js?build=29.0"), "the script is in the app");
+  assert.ok(shell.includes("/telegram-app/v29-predict.js?build=29.1"), "the script is in the app (29.1: the pick, the score, one bet)");
   assert.ok(shell.indexOf("/telegram-app/v29-predict.js") > shell.indexOf("/telegram-app/v28-backdrop.js"), "after the backdrop");
   assert.equal((await handleTeamCurrentRequest(new Request(`https://x.test${SCRIPT_PATH}`), {}, SCRIPT_PATH)).status, 200, "reachable through the main router");
   assert.equal((await handleTeamCurrentRequest(new Request(`https://x.test${API}/slate`), {}, `${API}/slate`)).status, 503, "the API too (no database here)");
@@ -470,7 +482,7 @@ const HOME_HTML = `<section class="v27Home"><div class="v27Sec" data-sec="hero">
 const card = (pk, title) => `<article class="v19Broadcast" data-v19-game="${pk}"><div class="v19Thumb"></div><div class="v19BroadcastText"><b>${title}</b><div class="v19CardOdds"></div></div></article>`;
 const MATCHES_HTML = `<div class="v19Archive"><section class="v19Cal"></section><div class="v19DateTitle"><b>13 октября</b></div><div class="v19BroadcastList">${card(9004, "BOS — SJS")}${card(9001, "NJD — DET")}${card(9002, "TBL — NYR")}${card(9010, "TBL — NYR")}${card(9011, "MIN — VGK")}</div></div>`;
 
-function makeApp({ tab = "games", games = null, signedIn = true, postError = null, spoilers = false, html = null, me = null, board = null } = {}) {
+function makeApp({ tab = "games", games = null, signedIn = true, postError = null, spoilers = false, html = null, me = null, board = null, facts = null } = {}) {
   const dom = new JSDOM(`<!doctype html><html class="v15Light"><head></head><body><nav id="tabs"><button class="tab${tab === "games" ? " active" : ""}" data-tab="games"></button><button class="tab${tab === "broadcasts" ? " active" : ""}" data-tab="broadcasts"></button><button class="tab${tab === "follows" ? " active" : ""}" data-tab="follows"></button></nav><main id="view">${html ?? HOME_HTML}</main></body></html>`, { url: "https://x.test/telegram-app-v24", pretendToBeVisual: true, runScripts: "outside-only" });
   const { window } = dom;
   const box = {
@@ -499,7 +511,7 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
     openGameV19: (pk, opts) => box.opened.push([pk, opts]),
     api: async (url, opt = {}) => {
       box.calls.push({ url, method: opt.method || "GET", body: opt.body ? JSON.parse(opt.body) : null });
-      if (url.startsWith(`${API}/slate`)) return { ok: true, date: "2026-10-13", signed_in: signedIn, games: box.games.filter((g) => g.open || g.state === "LIVE").map((g) => ({ ...g })), last: signedIn ? { date: "2026-10-12", total: 2, correct: 1, xp: 27 } : null };
+      if (url.startsWith(`${API}/slate`)) return { ok: true, date: "2026-10-13", signed_in: signedIn, games: box.games.filter((g) => g.open || g.state === "LIVE").map((g) => ({ ...g })), last: signedIn ? { date: "2026-10-12", total: 2, correct: 1, xp: 27 } : null, facts: signedIn ? (facts || { days: 3, first_day: false, better_pct: 63, streak: 2 }) : null };
       if (url.startsWith(`${API}/games`)) {
         const ids = new URL(`https://x.test${url}`).searchParams.get("ids").split(",").map(Number);
         return { ok: true, games: box.games.filter((g) => ids.includes(g.game_pk)).map((g) => ({ ...g })) };
@@ -550,12 +562,44 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   await tick(30);
   const post = ctx.box.calls.find((c) => c.method === "POST");
   assert.deepEqual(post.body, { game_pk: 9002, pick: "away" });
+  // the owner: «ты нажал "Кто победит", точный счёт… можно сохранить, можно нажать "Назад"» — the score takes the place of the teams
+  const sc = hero.querySelector('[data-v29-stage="score"] .v29Score');
+  assert.ok(sc, "right after the vote: the exact score");
+  assert.ok(!hero.querySelector(".v29Btn"), "the teams give way to it");
+  assert.equal(text(sc.querySelector(".v29Ok span")), "Голос за TBL принят");
+  assert.equal(text(sc.querySelector(".v29Ok i")), "✓");
+  assert.equal(text(sc.querySelector(".v29ScQ")), "Угадаете точный счёт? +25 XP");
+  assert.deepEqual([...sc.querySelectorAll(".v29Step b")].map(text), ["3", "2"], "TBL 3 : 2 NYR — in favour of the pick");
+  assert.deepEqual([...sc.querySelectorAll(".v29ScAct button")].map(text), ["← Назад", "Сохранить"]);
+  assert.ok(hero.querySelector(".v29Vote").classList.contains("v29In"), "the step comes in with a short slide");
+  // «← Назад»: the teams again, the pick still marked, the split of the fans under the names
+  sc.querySelector("[data-v29-back]").click();
+  await tick(10);
   assert.deepEqual([...hero.querySelectorAll(".v29Btn .v29Pc")].map(text), ["88%", "13%"], "after the vote: the split of the fans");
   assert.ok([...hero.querySelectorAll(".v29Btn")].every((b) => b.querySelector(".v29Nm .v29Pc")), "the share sits under the name");
-  assert.match(text(hero.querySelector(".v29Line")), /^Ваш выбор: TBL · можно поменять до \d\d:\d\d$/);
+  assert.ok(hero.querySelector('[data-v29-pick="away"]').classList.contains("mine"));
+  assert.equal(text(hero.querySelector(".v29Line")), "Выберите команду");
+  // the same team again sends nothing and goes on to the score
   hero.querySelector('[data-v29-pick="away"]').click();
   await tick(10);
   assert.equal(ctx.box.calls.filter((c) => c.method === "POST").length, 1, "the same pick again sends nothing");
+  assert.ok(hero.querySelector('[data-v29-stage="score"]'), "and opens the score again");
+  // «Без счёта»: the pick, the fans' split, an invitation to the score
+  hero.querySelector("[data-v29-skip]").click();
+  await tick(10);
+  assert.equal(text(hero.querySelector(".v29DoneT")), "Ваш прогноз: TBL");
+  assert.match(text(hero.querySelector(".v29Line")), /^Болельщики: TBL 88% — 13% NYR · можно поменять до \d\d:\d\d$/);
+  assert.equal(text(hero.querySelector("[data-v29-sc-open]")), "🎯 Угадать точный счёт · +25 XP");
+  assert.equal(ctx.box.calls.filter((c) => c.method === "POST").length, 1, "skipping the score sends nothing");
+  hero.querySelector("[data-v29-sc-open]").click();
+  await tick(10);
+  assert.ok(hero.querySelector('[data-v29-stage="score"]'), "the invitation opens the score");
+  hero.querySelector("[data-v29-skip]").click();
+  await tick(10);
+  hero.querySelector("[data-v29-edit]").click();
+  await tick(10);
+  assert.equal(text(hero.querySelector(".v29Line")), "Выберите команду", "«Изменить»: the teams again");
+  assert.equal(heroClicks, 0, "none of the steps opens the match");
   ctx.window.close();
 }
 
@@ -569,10 +613,11 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   const head = document.getElementById("v29MatchesHead");
   assert.ok(head, "a short head above the list");
   assert.equal(head.nextElementSibling, document.querySelector(".v19BroadcastList"));
-  assert.match(text(head), /^Кто победит\?\s*Мой профиль и рейтинг →/);
-  assert.match(text(head), /Голосуйте прямо в карточках матчей: победа с учётом ОТ и буллитов/);
-  assert.match(text(head), /У прошедших матчей — как голосовали болельщики/);
-  assert.match(text(head), /Прошлый игровой день: угадано 1 из 2 · \+27 XP/);
+  assert.equal(text(head.querySelector(".v29FxE")), "🎯", "the strongest fact is the big one");
+  assert.equal(text(head.querySelector(".v29FxT b")), "Ваши прогнозы точнее, чем у 63% болельщиков");
+  assert.deepEqual([...head.querySelectorAll(".v29Chips span")].map(text), ["🔥 3 дня подряд", "⚡ 2 подряд"], "two more as chips");
+  assert.equal(text(head.querySelector("[data-v29-me]")), "Мой профиль и рейтинг →");
+  assert.ok(!/Голосуйте прямо|У прошедших матчей|как это работает/i.test(text(head)), "no explaining paragraph (the owner: «очень много цифр»)");
   const slotOf = (pk) => document.querySelector(`.v19Broadcast[data-v19-game="${pk}"] .v19BroadcastText > .v29Slot.v29CardSlot`);
   assert.ok(slotOf(9001) && !slotOf(9001).hidden, "a game ahead: the vote in its card");
   assert.deepEqual([...slotOf(9001).querySelectorAll(".v29Btn b")].map(text), ["NJD", "DET"]);
@@ -591,20 +636,20 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   await tick(30);
   assert.deepEqual(opened, [], "the vote is not 'open the match'");
   assert.deepEqual(ctx.box.calls.find((c) => c.method === "POST").body, { game_pk: 9002, pick: "home" });
-  assert.ok(slotOf(9002).querySelector('[data-v29-pick="home"]').classList.contains("mine"));
-  // right after the pick: «Хотите угадать точный счёт? +25 XP», two counters in favour of the pick
+  assert.equal(text(slotOf(9002).querySelector(".v29Ok span")), "Голос за NYR принят", "the card too: the score in the place of the teams");
+  // right after the pick, in the place of the teams: «Угадаете точный счёт? +25 XP», two counters in favour of the pick
   const sc = slotOf(9002).querySelector(".v29Score");
   assert.ok(sc, "the exact score is asked after the pick");
-  assert.match(text(sc.querySelector(".v29ScQ")), /^Хотите угадать точный счёт\? \+25 XP$/);
+  assert.equal(text(sc.querySelector(".v29ScQ")), "Угадаете точный счёт? +25 XP");
   assert.deepEqual([...sc.querySelectorAll(".v29Step b")].map(text), ["2", "3"], "TBL 2 : 3 NYR — in favour of NYR, the pick");
-  assert.ok(sc.querySelector("[data-v29-sc-save]"), "a button to save it");
+  assert.ok(!sc.querySelector("[data-v29-sc-save]").disabled, "a button to save it");
   const plusAway = () => slotOf(9002).querySelector('[data-v29-sc="9002:away:1"]');
   plusAway().click();
   plusAway().click();
   await tick(10);
   assert.deepEqual([...slotOf(9002).querySelectorAll(".v29Step b")].map(text), ["4", "3"]);
-  assert.ok(!slotOf(9002).querySelector("[data-v29-sc-save]"), "4:3 for TBL does not fit the pick: no saving");
-  assert.match(text(slotOf(9002).querySelector(".v29ScBad")), /счёт в пользу NYR/);
+  assert.ok(slotOf(9002).querySelector("[data-v29-sc-save]").disabled, "4:3 for TBL does not fit the pick: no saving");
+  assert.equal(text(slotOf(9002).querySelector(".v29ScBad")), "Счёт должен быть в пользу NYR");
   assert.deepEqual(opened, [], "the counters do not open the match");
   slotOf(9002).querySelector('[data-v29-sc="9002:home:1"]').click();
   slotOf(9002).querySelector('[data-v29-sc="9002:home:1"]').click();
@@ -612,9 +657,20 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   slotOf(9002).querySelector("[data-v29-sc-save]").click();
   await tick(30);
   assert.deepEqual(ctx.box.calls.filter((c) => c.method === "POST").at(-1).body, { game_pk: 9002, pick: "home", score: { home: 5, away: 4 } });
-  assert.match(text(slotOf(9002).querySelector(".v29ScQ")), /^Ваш точный счёт/);
-  assert.ok(slotOf(9002).querySelector(".v29ScOk"), "saved: a tick");
-  assert.match(text(slotOf(9002).querySelector(".v29Line")), /Ваш выбор: NYR, счёт 4:5 ·/);
+  assert.equal(text(slotOf(9002).querySelector(".v29DoneT")), "Ваш прогноз: NYR · 4:5", "saved: the pick with its score");
+  assert.ok(!slotOf(9002).querySelector("[data-v29-sc-open]"), "no invitation once the score is set");
+  assert.match(text(slotOf(9002).querySelector(".v29Line")), /^Болельщики: TBL 75% — 25% NYR · можно поменять до/);
+  // «Изменить» → the same team → the saved score again; unchanged it is not sent again
+  slotOf(9002).querySelector("[data-v29-edit]").click();
+  await tick(10);
+  slotOf(9002).querySelector('[data-v29-pick="home"]').click();
+  await tick(10);
+  assert.deepEqual([...slotOf(9002).querySelectorAll(".v29Step b")].map(text), ["4", "5"]);
+  const posts = ctx.box.calls.filter((c) => c.method === "POST").length;
+  slotOf(9002).querySelector("[data-v29-sc-save]").click();
+  await tick(30);
+  assert.equal(ctx.box.calls.filter((c) => c.method === "POST").length, posts, "the same score is not sent again");
+  assert.equal(text(slotOf(9002).querySelector(".v29DoneT")), "Ваш прогноз: NYR · 4:5");
   document.querySelector('.v19Broadcast[data-v19-game="9002"] b').click();
   assert.deepEqual(opened, ["9002"]);
   // another day: the list is drawn again, the cards get their votes again
@@ -964,6 +1020,31 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
   Date.now = nowBefore;
 }
 
+// ---- 8b) the facts of the head of "Матчи" (the owner: «в стиле дуалинга») -----------------------------------------------------------------
+{
+  const ctx = makeApp({ tab: "broadcasts", html: MATCHES_HTML });
+  await tick(300);
+  const f = (facts, last = null) => JSON.parse(JSON.stringify(ctx.S.factsOf({ facts, last }).map((x) => [x.e, x.t]))); // out of the page's realm
+  assert.deepEqual(f({ days: 0, first_day: true, better_pct: null, streak: 0 }), [["🎉", "Первый день в приложении!"]]);
+  assert.deepEqual(f({ days: 5, first_day: false, better_pct: 40, streak: 1 }), [["🔥", "5 дней подряд с хоккеем"]], "below half: not told");
+  assert.deepEqual(f({ days: 1, first_day: false, better_pct: null, streak: 4 }), [["⚡", "4 угаданных подряд"]]);
+  assert.deepEqual(f({ days: 1, first_day: false, better_pct: null, streak: 0 }, { total: 3, correct: 3, xp: 40 }), [["🏆", "Прошлый игровой день: всё угадано, 3 из 3"]]);
+  assert.deepEqual(f({ days: 2, first_day: false, better_pct: 71, streak: 0 }, { total: 2, correct: 1, xp: 11 }).map((x) => x[0]), ["🎯", "🔥", "✅"], "the share first, then the days, then the day");
+  assert.deepEqual(f({ days: 21, first_day: false, better_pct: null, streak: 21 }).map((x) => x[1]), ["21 день подряд с хоккеем", "21 угаданный подряд"]);
+  assert.equal(ctx.S.factsOf(null).length, 0);
+  ctx.window.close();
+  // a fan with nothing to tell yet: the plain question; without spoilers the day's results stay hidden
+  const plain = makeApp({ tab: "broadcasts", html: MATCHES_HTML, facts: { days: 1, first_day: false, better_pct: null, streak: 0 } });
+  await tick(300);
+  const head = plain.document.getElementById("v29MatchesHead");
+  assert.equal(text(head.querySelector(".v29FxT b")), "Прошлый игровой день: угадано 1 из 2", "last night is the only fact");
+  plain.window.close();
+  const hidden = makeApp({ tab: "broadcasts", html: MATCHES_HTML, spoilers: true, facts: { days: 1, first_day: false, better_pct: null, streak: 0 } });
+  await tick(300);
+  assert.equal(text(hidden.document.querySelector("#v29MatchesHead .v29FxT b")), "Кто победит сегодня?", "without spoilers: the plain question");
+  hidden.window.close();
+}
+
 // ---- 9) package 1 on the screen ----------------------------------------------------------------------------------------------------------
 {
   const offer = { win: 1.62, regulation: 2.05, minus15: 3.1 };
@@ -975,19 +1056,36 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
     await tick(250);
     const hero = document.querySelector(".v27Hero");
     assert.ok(hero.classList.contains("v29Asked"), "an open game in Telegram: the vote comes first");
-    assert.equal(text(hero.querySelector(".v29Fact")), "Выберите — и покажем коэффициент Winline на ваш выбор");
+    assert.equal(text(hero.querySelector(".v29Fact")), "Выберите победителя, угадайте счёт — и покажем коэффициент Winline");
     assert.ok(!hero.querySelector(".v29Offer"), "no offer before the pick");
     hero.querySelector('[data-v29-pick="away"]').click();
     await tick(40);
     ctx.S.state.games.set(9002, { ...ctx.S.state.games.get(9002), offer });
     ctx.S.mountAll();
     await tick(40);
+    assert.ok(!hero.querySelector(".v29Offer"), "the bet waits for the score (the owner: «и потом только появляется винлайновский коэффициент»)");
+    ctx.box.games = ctx.box.games.map((x) => (x.game_pk === 9002 ? { ...x, offer } : x)); // the server sends the offer with a pick
+    hero.querySelector("[data-v29-sc-save]").click();
+    await tick(40);
     const o = hero.querySelector(".v29Offer");
-    assert.ok(o, "after the pick: the bet on the chosen side");
-    assert.equal(text(o.querySelector(".v29OfTop")), "Ставка на ваш выбор");
-    assert.deepEqual([...o.querySelectorAll(".v29OfBet")].map(text), ["Победа TBL 1.62", "в основное время 2.05", "фора −1.5 3.10"]);
-    assert.ok([...o.querySelectorAll(".v29OfBet")].every((a) => a.getAttribute("href") === "/go/winline?game_pk=9002" && a.target === "_blank"));
+    assert.ok(o, "after the score: the bet on the chosen side");
+    assert.equal(hero.querySelectorAll(".v29Offer").length, 1, "one bet, not three (the owner: «давай оставим одно»)");
+    assert.equal(text(o.querySelector(".v29OfMain")), "Победа TBL в основное время");
+    assert.equal(text(o.querySelector(".v29OfOdds")), "2.05");
+    assert.equal(text(o.querySelector(".v29OfWin")), "+1 050 ₽ на счёт при ставке 1000 ₽", "what a 1000 ₽ bet brings on top, as the broadcast cards say it");
+    assert.ok(!/фора|1\.62/.test(text(o)), "no handicap, no winner incl. OT");
+    assert.equal(o.getAttribute("href"), "/go/winline?game_pk=9002");
+    assert.equal(o.target, "_blank");
     assert.ok(!/Выберите/.test(text(hero)), "the hint is gone after the pick");
+    // a bigger price: thousands with a space; no line in regulation time: no bet at all
+    ctx.S.state.games.set(9002, { ...ctx.S.state.games.get(9002), offer: { ...offer, regulation: 3.45 } });
+    ctx.S.mountAll();
+    await tick(40);
+    assert.equal(text(hero.querySelector(".v29OfWin")), "+2 450 ₽ на счёт при ставке 1000 ₽");
+    ctx.S.state.games.set(9002, { ...ctx.S.state.games.get(9002), offer: { win: 1.62, regulation: null, minus15: 3.1 } });
+    ctx.S.mountAll();
+    await tick(40);
+    assert.equal(hero.querySelector(".v29Offer"), null, "no regulation line: no other bet in its place");
     ctx.window.close();
   }
   // a guest outside Telegram: the old view, the general Winline block stays
@@ -1016,7 +1114,8 @@ function makeApp({ tab = "games", games = null, signedIn = true, postError = nul
     assert.ok(!/Выберите/.test(text(cardOf(9001))), "the cards are too narrow for the hint");
     const co = cardOf(9002).querySelector(".v29Offer.compact");
     assert.ok(co, "the compact offer in the card");
-    assert.deepEqual([...co.querySelectorAll(".v29OfBet")].map(text), ["Победа TBL 1.62", "в осн. время 2.05", "фора −1.5 3.10"]);
+    assert.equal(text(co.querySelector(".v29OfMain")), "Победа TBL в основное время", "a pick made before: the bet at once");
+    assert.equal(text(co.querySelector(".v29OfWin")), "+1 050 ₽ на счёт при ставке 1000 ₽");
     // the personal facts of the games that are over
     assert.equal(text(cardOf(9010).querySelector(".v29Fact")), "Вы среди 25% болельщиков, которые верили в TBL");
     assert.equal(text(cardOf(9011).querySelector(".v29Fact")), "⭐ 5 угаданных подряд!", "a streak of 5 says more than the share");

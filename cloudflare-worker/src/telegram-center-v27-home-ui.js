@@ -667,8 +667,11 @@ html.v15Light .v27Settings{--c-card:rgba(255,255,255,.8);--c-line:#e2e4ec;--c-te
     return `<div class="v27Head"><b>Свежее в НХЛ</b><button type="button" data-v27-news-all="1">Все новости ›</button></div><div class="v27NewsList">${list.map((f) => newsRowHtml(f.x, f.mine)).join("")}</div>`;
   }
 
+  // the official Russian title of the video (the owner: «надо брать официальное название видео и на русском языке только»), without
+  // the hashtags and the English tail of the brand («… – HOME OF HOCKEY NEWS»); an English one (YouTube answered in English) gets a
+  // plain Russian caption
   const ruTitle = (title, kind) => {
-    const t = String(title || "").replace(/#[A-Za-z0-9_А-Яа-яЁё]+/g, "").trim();
+    const t = String(title || "").replace(/#[A-Za-z0-9_А-Яа-яЁё]+/g, "").replace(/\s*[–—-]\s*HOME OF HOCKEY(?: NEWS)?\s*$/i, "").trim();
     return /[А-Яа-яЁё]/.test(t) ? t : kind === "news" ? "Свежий выпуск новостей НХЛ" : "Короткое видео Home of Hockey";
   };
 

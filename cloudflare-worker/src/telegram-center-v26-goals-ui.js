@@ -607,7 +607,8 @@ html.v15Light .v26Wl{border-color:#e4a176;background:#fff8f2}
   // page on every render, so a light observer on the page container adds the "Голы игрока" button after each render.
   function decoratePlayerPage() {
     const profile = document.querySelector(".v23PlayerProfile");
-    if (!profile || profile.querySelector(".v26PgBtn")) return;
+    // since 2026-10-19 the player page has its own «Все голы игрока» among three buttons: nothing to add there
+    if (!profile || profile.querySelector(".v26PgBtn") || profile.querySelector(".v23Nav")) return;
     const ctx = window.HOHV23 && window.HOHV23.current;
     const id = ctx && ctx.p && Number(ctx.p.player_id);
     const anchor = profile.querySelector("#v23AllStats");

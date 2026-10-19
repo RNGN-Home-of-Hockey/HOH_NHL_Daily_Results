@@ -1,5 +1,6 @@
 // Live Center v29: the API of the game of the fans, the settlement of the finished games and the morning message of the bot.
-//   GET  /api/telegram-center-v29/slate             the games of the next game day with an open vote (+ my picks, + last night)
+//   GET  /api/telegram-center-v29/slate             the games of the next game day with an open vote (+ my picks, + last night,
+//                                                   + the facts of the head of "Матчи": days in a row, first day, «точнее, чем у…»)
 //   GET  /api/telegram-center-v29/games?ids=1,2     the same blocks for chosen games (the match of the day, the match screen)
 //   POST /api/telegram-center-v29/predictions       {game_pk, pick:"home"|"away"} — a pick, changeable until the start
 //   GET  /api/telegram-center-v29/me                 my points, level, places in the table, last picks, settings
@@ -10,7 +11,7 @@ import { predictionsApp } from "./telegram-center-v29-predictions-ui.js";
 import {
   GAME_TYPES, PERIODS, DIGEST_FROM_HOUR, DIGEST_TO_HOUR, DEFAULT_TIMEZONE, PEER_MIN_PICKS,
   levelOf, nhlDateOf, addDays, dayStartUtc, isOpen, settleGame, periodRange, fanLabel, digestText, localParts, validScore, XP_RULES,
-  streakAfter, streakBonus, starsOf, betterThanPct, seasonOf,
+  streakAfter, streakBonus, starsOf, betterThanPct, seasonOf, daysInRow, moscowDate,
 } from "./telegram-center-v29-predictions-data.js";
 
 const API = "/api/telegram-center-v29";
@@ -172,8 +173,27 @@ async function slate(request, env, now) {
   const rows = await loadGameRows(db, ids);
   const mine = auth.ok ? await loadMine(db, auth.user.id, ids) : new Map();
   const offers = mine.size ? await loadOffers(db, rows) : new Map();
-  const last = auth.ok ? await lastNight(db, auth.user.id) : null;
-  return json({ ok: true, now: nowIso, date, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now, offers.get(Number(x.game_pk)))), last });
+  const [last, facts] = auth.ok ? await Promise.all([lastNight(db, auth.user.id), fanFacts(db, auth.user.id, now)]) : [null, null];
+  return json({ ok: true, now: nowIso, date, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now, offers.get(Number(x.game_pk)))), last, facts });
+}
+
+// the facts of the head of "Матчи" (the owner: «в стиле дуалинга… первый день в приложении… сколько дней… точнее, чем у такого-то
+// процента»): the days in a row with the app opened (fan_activity, written by v33), whether today is the first one, the share of
+// the fans one is more accurate than (null: too few to say), the right picks in a row now
+export async function fanFacts(db, id, now) {
+  const today = moscowDate(now);
+  // the start of the Moscow day in the form of created_at (UTC «YYYY-MM-DD HH:MM:SS»)
+  const dayStart = new Date(Date.parse(`${today}T00:00:00+03:00`)).toISOString().replace("T", " ").slice(0, 19);
+  const [act, better, streak, before] = await Promise.all([
+    db.prepare(`SELECT day FROM fan_activity WHERE telegram_user_id=? AND opens>0 ORDER BY day DESC LIMIT 400;`).bind(id).all().catch(() => ({ results: [] })),
+    accuracyBetter(db, id, seasonOf(nhlDateOf(new Date(now).toISOString()))),
+    streaksOf(db, id),
+    db.prepare(`SELECT 1 x FROM fan_predictions WHERE telegram_user_id=? AND created_at<? LIMIT 1;`).bind(id, dayStart).first(),
+  ]);
+  const days = (act.results || []).map((r) => String(r.day));
+  // the first day: no visit before today and no pick made before it (the visits are written only since 2026-10-15)
+  const firstDay = (days.length === 0 || (days.length === 1 && days[0] === today)) && !before;
+  return { days: daysInRow(days, today), first_day: firstDay, better_pct: better, streak: Number(streak?.current) || 0 };
 }
 
 // the last game day with settled picks of the person: "угадано 3 из 4 · +32 XP"
