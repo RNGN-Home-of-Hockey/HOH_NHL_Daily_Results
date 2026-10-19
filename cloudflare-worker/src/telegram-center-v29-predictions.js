@@ -11,7 +11,7 @@ import { predictionsApp } from "./telegram-center-v29-predictions-ui.js";
 import {
   GAME_TYPES, PERIODS, DIGEST_FROM_HOUR, DIGEST_TO_HOUR, DEFAULT_TIMEZONE, PEER_MIN_PICKS,
   levelOf, nhlDateOf, addDays, dayStartUtc, isOpen, settleGame, periodRange, fanLabel, digestText, localParts, validScore, XP_RULES,
-  streakAfter, streakBonus, starsOf, betterThanPct, seasonOf, daysInRow, moscowDate,
+  streakAfter, streakBonus, starsOf, betterThanPct, seasonOf, daysInRow, moscowDate, weekXpOf,
 } from "./telegram-center-v29-predictions-data.js";
 
 const API = "/api/telegram-center-v29";
@@ -79,6 +79,21 @@ async function loadGameRows(db, ids) {
   return r.results || [];
 }
 
+// the picks of the commentators of HOH (app_hosts) on these games (the owner, 2026-10-19: «комментаторы… подсвечивались бы отдельно»)
+async function loadHostPicks(db, ids) {
+  const map = new Map();
+  if (!ids.length) return map;
+  const q = ids.map(() => "?").join(",");
+  const r = await db.prepare(`SELECT p.game_pk,p.pick,h.telegram_user_id id,h.display_name name FROM fan_predictions p JOIN app_hosts h ON h.telegram_user_id=p.telegram_user_id
+    WHERE h.active=1 AND p.game_pk IN (${q}) ORDER BY h.display_name;`).bind(...ids).all().catch(() => ({ results: [] }));
+  for (const x of r.results || []) {
+    const list = map.get(Number(x.game_pk)) || [];
+    list.push({ id: Number(x.id), name: x.name, pick: x.pick });
+    map.set(Number(x.game_pk), list);
+  }
+  return map;
+}
+
 async function loadMine(db, userId, ids) {
   const map = new Map();
   if (!userId || !ids.length) return map;
@@ -136,7 +151,7 @@ const OPEN_FOR_OFFER = new Set(["FUT", "PRE"]);
 const num = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 const teamLogo = (tri) => `https://assets.nhle.com/logos/nhl/svg/${String(tri || "").toUpperCase()}_light.svg`;
 
-function gameBlock(x, mine, now, offer = null) {
+function gameBlock(x, mine, now, offer = null, hostPicks = []) {
   const open = isOpen(x, now);
   const homeVotes = Number(x.home_votes) || 0;
   const awayVotes = Number(x.away_votes) || 0;
@@ -164,6 +179,8 @@ function gameBlock(x, mine, now, offer = null) {
     } : null,
     // the bet on the chosen side, shown after the pick while the game has not started
     offer: open && mine && offer ? offer[mine.pick] || null : null,
+    // the commentators of HOH: how many voted; who and for whom after one's own pick (or once the vote is closed), like the split
+    hosts: { total: hostPicks.length, list: open && !mine ? null : hostPicks.map((h) => ({ id: h.id, name: h.name, pick: h.pick })) },
     settled: winner ? { winner, home_xp: num(x.home_xp), away_xp: num(x.away_xp), score: winner === "void" ? null : { home: num(x.home_score), away: num(x.away_score), period_type: x.period_type || null } } : null,
   };
 }
@@ -189,8 +206,9 @@ async function slate(request, env, now) {
   const rows = await loadGameRows(db, ids);
   const mine = auth.ok ? await loadMine(db, auth.user.id, ids) : new Map();
   const offers = mine.size ? await loadOffers(db, rows) : new Map();
+  const hostPicks = await loadHostPicks(db, ids);
   const [last, facts] = auth.ok ? await Promise.all([lastNight(db, auth.user.id), fanFacts(db, auth.user.id, now)]) : [null, null];
-  return json({ ok: true, now: nowIso, date, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now, offers.get(Number(x.game_pk)))), last, facts });
+  return json({ ok: true, now: nowIso, date, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now, offers.get(Number(x.game_pk)), hostPicks.get(Number(x.game_pk)))), last, facts });
 }
 
 // the facts of the head of "Матчи" (the owner: «в стиле дуалинга… первый день в приложении… сколько дней… точнее, чем у такого-то
@@ -230,7 +248,8 @@ async function games(request, env, now) {
   const rows = await loadGameRows(env.DB, ids);
   const mine = auth.ok ? await loadMine(env.DB, auth.user.id, ids) : new Map();
   const offers = mine.size ? await loadOffers(env.DB, rows) : new Map();
-  return json({ ok: true, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now, offers.get(Number(x.game_pk)))) });
+  const hostPicks = await loadHostPicks(env.DB, ids);
+  return json({ ok: true, signed_in: auth.ok, games: rows.map((x) => gameBlock(x, mine.get(Number(x.game_pk)), now, offers.get(Number(x.game_pk)), hostPicks.get(Number(x.game_pk)))) });
 }
 
 async function predict(request, env, now) {
@@ -276,7 +295,8 @@ async function predict(request, env, now) {
   const rows = await loadGameRows(db, [gamePk]);
   const mine = await loadMine(db, auth.user.id, [gamePk]);
   const offers = await loadOffers(db, rows);
-  return json({ ok: true, game: gameBlock(rows[0], mine.get(gamePk), now, offers.get(gamePk)) });
+  const hostPicks = await loadHostPicks(db, [gamePk]);
+  return json({ ok: true, game: gameBlock(rows[0], mine.get(gamePk), now, offers.get(gamePk), hostPicks.get(gamePk)) });
 }
 
 // ---- me and the table ------------------------------------------------------------------------------------------------------
@@ -329,12 +349,12 @@ async function getMe(request, env, now) {
   const settled = Number(totals?.settled) || 0;
   const correct = Number(totals?.correct) || 0;
   const season = seasonOf(nhlDateOf(new Date(now).toISOString()));
-  const [better, streak] = await Promise.all([accuracyBetter(db, id, season), streaksOf(db, id)]);
+  const [better, streak, weekXp] = await Promise.all([accuracyBetter(db, id, season), streaksOf(db, id), weekXpOf(db, id)]);
   return json({
     ok: true,
     label: fanLabel(id, profile?.display_username),
     has_nick: Boolean(profile?.display_username),
-    level: levelOf(totals?.xp),
+    level: levelOf((Number(totals?.xp) || 0) + weekXp),
     stats: { total: Number(totals?.total) || 0, settled, correct, pending: Number(totals?.pending) || 0, accuracy: settled ? Math.round((100 * correct) / settled) : null },
     ranks,
     recent: (recent.results || []).map((x) => ({ game_pk: Number(x.game_pk), start: x.start, away_tri: x.away_tri, home_tri: x.home_tri, pick_tri: x.pick_tri, result: x.result, xp: Number(x.xp) || 0, exact: Number(x.exact) === 1 })),
@@ -608,8 +628,9 @@ export async function runFanPredictionDigest(env, { now = Date.now(), dryRun = f
       ORDER BY g.scheduled_start_utc ASC,p.game_pk ASC;
     `).bind(id).all();
     const all = await db.prepare(`SELECT COALESCE(SUM(xp),0) xp FROM fan_predictions WHERE telegram_user_id=? AND settled_at IS NOT NULL;`).bind(id).first();
+    const weekXp = await weekXpOf(db, id);
     if (!accuracy) accuracy = await accuracyTable(db, seasonOf(local.date));
-    const text = digestText(rows.results || [], { levelXp: Number(all?.xp) || 0, noSpoilers: Number(u.no_spoilers) === 1, betterPct: betterOf(accuracy, id) });
+    const text = digestText(rows.results || [], { levelXp: (Number(all?.xp) || 0) + weekXp, noSpoilers: Number(u.no_spoilers) === 1, betterPct: betterOf(accuracy, id) });
     if (!text) { if (!dryRun) await markReported(id); continue; }
     summary.due++;
     if (dryRun) { summary.messages.push({ user_id: id, local_date: local.date, text }); continue; }

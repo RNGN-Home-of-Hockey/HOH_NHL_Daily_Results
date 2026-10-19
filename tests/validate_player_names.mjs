@@ -54,6 +54,7 @@ function makeDb() {
   raw.exec(createOf("0013_center_profiles_games_subscriptions.sql", "player_profile_meta"));
   raw.exec("ALTER TABLE player_profile_meta ADD COLUMN birth_date TEXT; ALTER TABLE player_profile_meta ADD COLUMN height_cm INTEGER; ALTER TABLE player_profile_meta ADD COLUMN weight_kg INTEGER;");
   raw.exec(migration("0049_player_names_admin.sql"));
+  raw.exec(createOf("0059_week_questions.sql", "app_admin_invites"));
   for (const t of TEAMS) raw.prepare("INSERT INTO teams(tri_code,name_en) VALUES(?,?)").run(t, t);
   const norm = (v) => (v === undefined ? null : v);
   const stmt = (sql, args = []) => ({
@@ -188,7 +189,7 @@ const addPlayer = (db, id, en, ru, tri = "BOS") => db.raw.prepare("INSERT INTO p
   assert.ok(!/Mason Lohrei/.test(sent.at(-1).text));
 
   await handleAdminMessage(env, msg(ADMIN, "/admin_add @nobody_here"), send);
-  assert.match(sent.at(-1).text, /ещё не запускал бота/);
+  assert.match(sent.at(-1).text, /@nobody_here ещё не открывал бота\. Как только он напишет этому боту \/admin, он станет админом/, "since 2026-10-19 a nick that has not opened the bot is invited");
   await handleAdminMessage(env, msg(ADMIN, "/admin_add @Editor_Two"), send);
   assert.match(sent.at(-1).text, /@editor_two теперь админ/);
   assert.equal((await handleAdminMessage(env, msg(OTHER, "/name Lohrei"), send)).handled, true, "the new admin can fix names");

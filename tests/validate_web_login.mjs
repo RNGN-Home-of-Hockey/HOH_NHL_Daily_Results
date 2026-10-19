@@ -305,7 +305,7 @@ const LOGIN = { ok: true, code: "C".repeat(24), check: "4821", bot: "HOH_NHL_Cen
   await tick(300);
   const ask = document.getElementById("v35Ask");
   assert.ok(ask && ask.querySelector("[data-hoh-login]"), "the login button instead of nothing");
-  assert.match(ask.textContent, /Войдите через Telegram, чтобы задать вопрос ведущим/);
+  assert.match(ask.textContent, /Войдите через Telegram, чтобы задать вопрос комментаторам/);
   window.close();
 }
 

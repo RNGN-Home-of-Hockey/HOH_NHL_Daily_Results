@@ -7,7 +7,7 @@
 //   GET  /api/telegram-center-v34/cards/<id>.png               (public, for Telegram)
 import { recapApp } from "./telegram-center-v34-recap-ui.js";
 import { telegramAuth, upsertTelegramUser, accuracyTable, betterOf } from "./telegram-center-v29-predictions.js";
-import { levelOf, nhlDateOf, seasonOf, streakAfter } from "./telegram-center-v29-predictions-data.js";
+import { levelOf, nhlDateOf, seasonOf, streakAfter, weekXpOf } from "./telegram-center-v29-predictions-data.js";
 
 export const SCRIPT_PATH = "/telegram-app/v34-recap.js";
 const API = "/api/telegram-center-v34";
@@ -72,7 +72,7 @@ async function recap(request, env, now) {
     accuracyTable(env.DB, p.season),
   ]);
   const names = Object.fromEntries((teams.results || []).map((t) => [t.tri_code, t.name_ru]));
-  const lv = levelOf(all?.xp);
+  const lv = levelOf((Number(all?.xp) || 0) + (await weekXpOf(env.DB, id)));
   return json({
     ok: true, period: p.period, label: p.label,
     recap: recapOf(rows.results || [], names),

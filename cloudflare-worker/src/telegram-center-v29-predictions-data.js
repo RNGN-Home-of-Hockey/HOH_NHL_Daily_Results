@@ -36,6 +36,12 @@ export const SPLIT_MIN_VOTES = 5; // a share of the fans says something from fiv
 
 const DAY_MS = 86400000;
 
+// «Вопрос недели» (v37): +30 XP for a right answer — it counts for the level of the fan, not for the tables of the picks
+export async function weekXpOf(db, id) {
+  const r = await db.prepare(`SELECT COALESCE(SUM(xp),0) xp FROM week_answers WHERE telegram_user_id=?;`).bind(id).first().catch(() => null);
+  return Number(r?.xp) || 0;
+}
+
 export function levelOf(value) {
   const xp = Math.max(0, Math.floor(Number(value) || 0));
   let index = 0;

@@ -158,6 +158,8 @@ html:not(.v15Light) .v29ScBad{color:#ff9a5c}
 html:not(.v15Light) .v29Offer{background:rgba(255,90,0,.12);border-color:rgba(255,120,40,.38)}
 .v29OfLogo{grid-area:logo;display:block;height:18px;width:auto}
 .v29Offer.fit{grid-template-areas:"for for for" "logo main odds" "win win win"}
+.v29Hosts{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:12px;background:rgba(255,90,0,.08);font-size:12.5px;font-weight:700;line-height:1.3}
+.v29Mic{display:inline-grid;place-items:center;flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:#ff5a00;color:#fff;font-size:11px}
 .v29OfFor{grid-area:for;font-size:11px;font-weight:900;letter-spacing:.4px;text-transform:uppercase;color:var(--v29-odd)}
 .v29OfMain{grid-area:main;display:grid;min-width:0;line-height:1.15}
 .v29OfMain b{font-size:15px;font-weight:900}
@@ -292,6 +294,18 @@ html:not(.v15Light) .v29OfWin{color:#ff9a5c}
     return `<div class="v29Done"><img src="${esc(t.logo)}" alt=""><span class="v29DoneT">Ваш прогноз: <b>${esc(t.tri)}</b>${sc}</span><button type="button" class="v29Edit" data-v29-edit="${esc(g.game_pk)}">Изменить</button></div><div class="v29Line">${split}можно поменять до ${esc(clock(g.start))}</div>${invite}`;
   }
 
+  // the commentators of HOH on this game (2026-10-19): before one's own pick only how many; then who is for whom, 🎙 marked
+  const surname = (name) => String(name || "").trim().split(/\s+/).pop();
+  function hostsHtml(g) {
+    const h = g && g.hosts;
+    if (!h || !h.total || noSpoilers() && !g.open) return "";
+    if (!h.list) return `<div class="v29Hosts" data-v29-hosts="teaser"><span class="v29Mic" aria-hidden="true">🎙</span>Проголосовали комментаторы HOH: ${esc(h.total)} — их выбор после вашего голоса</div>`;
+    const side = (k) => h.list.filter((x) => x.pick === k).map((x) => surname(x.name));
+    const part = (k) => { const names = side(k); return names.length ? `за ${esc((g[k] || {}).tri || "")}: ${esc(names.slice(0, 3).join(", "))}${names.length > 3 ? ` +${names.length - 3}` : ""}` : ""; };
+    const text = [part("away"), part("home")].filter(Boolean).join(" · ");
+    return text ? `<div class="v29Hosts" data-v29-hosts="list"><span class="v29Mic" aria-hidden="true">🎙</span>Комментаторы ${text}</div>` : "";
+  }
+
   // full: the match of the day and the match screen, the question between the buttons; card: the cards of the "Матчи" tab,
   // where a game that is over and had no votes shows nothing
   function voteHtml(g, mode) {
@@ -300,7 +314,7 @@ html:not(.v15Light) .v29OfWin{color:#ff9a5c}
     const stage = stageOf(g);
     const cls = `v29Vote${card ? " compact" : ""}`;
     if (stage === "score") return `<div class="${cls}" data-v29-stage="score">${scoreHtml(g)}</div>`;
-    if (stage === "done") return `<div class="${cls}" data-v29-stage="done">${doneHtml(g)}${offerHtml(g, card)}</div>`;
+    if (stage === "done") return `<div class="${cls}" data-v29-stage="done">${doneHtml(g)}${hostsHtml(g)}${offerHtml(g, card)}</div>`;
     const hide = !g.open && noSpoilers();
     const total = g.votes ? Number(g.votes.total) || 0 : 0;
     if (card && !g.open && !g.my && total === 0) return "";
@@ -318,7 +332,7 @@ html:not(.v15Light) .v29OfWin{color:#ff9a5c}
     // «← Назад» from the score: the teams again, the pick still marked; the same team goes on to the score, another one is a new pick
     const line = stage === "pick" ? { text: "Выберите команду" } : lineOf(g);
     const row = card ? `<div class="v29Btns">${side("away")}${side("home")}</div>` : `<div class="v29Row3">${side("away")}<span class="v29Mid">Кто<br>победит?</span>${side("home")}</div>`;
-    return `<div class="${cls}"${stage ? ' data-v29-stage="pick"' : ""}>${row}<div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div>${line.fact ? `<div class="v29Fact">${esc(line.fact)}</div>` : ""}${line.hint && !card ? `<div class="v29Fact">${esc(line.hint)}</div>` : ""}</div>`;
+    return `<div class="${cls}"${stage ? ' data-v29-stage="pick"' : ""}>${row}<div class="v29Line${line.ok ? " ok" : ""}">${esc(line.text)}</div>${line.fact ? `<div class="v29Fact">${esc(line.fact)}</div>` : ""}${line.hint && !card ? `<div class="v29Fact">${esc(line.hint)}</div>` : ""}${hostsHtml(g)}</div>`;
   }
 
   // ---- the exact score: in the place of the teams right after the pick, +25 XP when it is right ----------------------------------

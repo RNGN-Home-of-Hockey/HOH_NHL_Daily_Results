@@ -1,5 +1,6 @@
 // Live Center v35 on the screen («Мои»): the hosts of Home of Hockey with their picks, «Сравнить со мной», «Зрители против
-// ведущих» of the week, and «Задай вопрос ведущим» with the date of the answers on air.
+// ведущих» of the week, and «Задай вопрос комментаторам» with the date of the answers on air. Since 2026-10-19 the hosts are called the
+// commentators of HOH on the screen (the owner) and only those who made picks are listed (the whole chat of the commentators is in).
 // This function is serialized (hostsApp.toString()) and served as /telegram-app/v35-hosts.js: it must be self-contained.
 export function hostsApp() {
   const H = window.HOHV15;
@@ -57,8 +58,8 @@ html:not(.v15Light) .v35Host button{color:#c4a6ff;border-color:#8b5cf6}
   // ---- the hosts ---------------------------------------------------------------------------------------------------------------
   function contestHtml(c) {
     if (!c) return "";
-    const lead = c.leader === "fans" ? "Ведут зрители!" : c.leader === "hosts" ? "Ведут ведущие" : "Ничья";
-    return `<div class="v35Vs" data-v35-contest><div><strong>${esc(c.fans.accuracy)}%</strong> <span>зрители · ${esc(c.fans.players)}</span></div> <em>${esc(lead)}</em> <div><strong>${esc(c.hosts.accuracy)}%</strong> <span>ведущие · ${esc(c.hosts.players)}</span></div></div>`;
+    const lead = c.leader === "fans" ? "Ведут зрители!" : c.leader === "hosts" ? "Ведут комментаторы" : "Ничья";
+    return `<div class="v35Vs" data-v35-contest><div><strong>${esc(c.fans.accuracy)}%</strong> <span>зрители · ${esc(c.fans.players)}</span></div> <em>${esc(lead)}</em> <div><strong>${esc(c.hosts.accuracy)}%</strong> <span>комментаторы · ${esc(c.hosts.players)}</span></div></div>`;
   }
   function compareHtml(h) {
     const c = st.compare.get(h.id);
@@ -78,17 +79,17 @@ html:not(.v15Light) .v35Host button{color:#c4a6ff;border-color:#8b5cf6}
     const d = st.hosts;
     if (!d) return "";
     const list = d.hosts || [];
-    const body = list.length ? list.map(hostRow).join("") : '<div class="v35Note">Скоро здесь появятся ведущие Home of Hockey — вы сможете сравнить свои прогнозы с их прогнозами.</div>';
-    return `<section class="v35Card" id="v35Hosts"><b>Ведущие HOH</b>${list.length ? ' <span class="v35Note">Их прогнозы видны всем. Кто угадывает лучше — зрители или ведущие?</span>' : ""}${contestHtml(d.contest)}${body}</section>`;
+    const body = list.length ? list.map(hostRow).join("") : '<div class="v35Note">Как только комментаторы HOH сделают прогнозы, здесь можно будет сравнить свои прогнозы с их.</div>';
+    return `<section class="v35Card" id="v35Hosts"><b>🎙 Комментаторы HOH</b>${list.length ? ' <span class="v35Note">Их прогнозы видны всем. Кто угадывает лучше — зрители или комментаторы?</span>' : ""}${contestHtml(d.contest)}${body}</section>`;
   }
 
   // ---- the questions -----------------------------------------------------------------------------------------------------------
   function askHtml() {
-    if (!signedIn()) return webGuest() ? `<section class="v35Card v35Ask" id="v35Ask"><b>Задай вопрос ведущим</b>${window.HOHAuth.needLogin("Войдите через Telegram, чтобы задать вопрос ведущим и сравнить свои прогнозы с их прогнозами.")}</section>` : "";
+    if (!signedIn()) return webGuest() ? `<section class="v35Card v35Ask" id="v35Ask"><b>Задай вопрос комментаторам</b>${window.HOHAuth.needLogin("Войдите через Telegram, чтобы задать вопрос комментаторам и сравнить свои прогнозы с их прогнозами.")}</section>` : "";
     const m = st.mine || { questions: [], ama: null };
     const left = MAX - st.draft.length;
     const mine = (m.questions || []).length ? `<ul class="v35Mine">${m.questions.map((q) => `<li>${esc(q.text)} <small>${esc(STATUS[q.status] || q.status)}</small></li>`).join("")}</ul>` : "";
-    return `<section class="v35Card v35Ask" id="v35Ask"><b>Задай вопрос ведущим</b>${m.ama ? ` <div class="v35Ama">🎙 Ответы в эфире: ${esc(m.ama)}</div>` : ""} <span class="v35Note">Лучшие вопросы ведущие разберут в эфире. Вопросы болельщиков с высоким уровнем — выше в списке.</span><textarea data-v35-text maxlength="${MAX}" placeholder="Ваш вопрос…">${esc(st.draft)}</textarea><div class="v35Row"><small>${st.note ? esc(st.note) : `осталось ${left} знаков`}</small><button type="button" class="v35Send" data-v35-send${st.sending || st.draft.trim().length < 5 ? " disabled" : ""}>${st.sending ? "Отправляем…" : "Отправить"}</button></div>${mine}</section>`;
+    return `<section class="v35Card v35Ask" id="v35Ask"><b>Задай вопрос комментаторам</b>${m.ama ? ` <div class="v35Ama">🎙 Ответы в эфире: ${esc(m.ama)}</div>` : ""} <span class="v35Note">Лучшие вопросы комментаторы разберут в эфире. Вопросы болельщиков с высоким уровнем — выше в списке.</span><textarea data-v35-text maxlength="${MAX}" placeholder="Ваш вопрос…">${esc(st.draft)}</textarea><div class="v35Row"><small>${st.note ? esc(st.note) : `осталось ${left} знаков`}</small><button type="button" class="v35Send" data-v35-send${st.sending || st.draft.trim().length < 5 ? " disabled" : ""}>${st.sending ? "Отправляем…" : "Отправить"}</button></div>${mine}</section>`;
   }
 
   // ---- loading and painting ------------------------------------------------------------------------------------------------------

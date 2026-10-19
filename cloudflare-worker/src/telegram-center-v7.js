@@ -6,7 +6,7 @@ const API="/api/telegram-center-v7";
 const NHL="https://api-web.nhle.com/v1";
 const NHL_STATS="https://api.nhle.com/stats/rest/en";
 // the short names of the table (2026-10-19, variant A of the canvas: the full names do not fit next to the form)
-const SHORT_RU={ANA:"Анахайм",BOS:"Бостон",BUF:"Баффало",CAR:"Каролина",CBJ:"Коламбус",CGY:"Калгари",CHI:"Чикаго",COL:"Колорадо",DAL:"Даллас",DET:"Детройт",EDM:"Эдмонтон",FLA:"Флорида",LAK:"Лос-Анджелес",MIN:"Миннесота",MTL:"Монреаль",NJD:"Нью-Джерси",NSH:"Нэшвилл",NYI:"Айлендерс",NYR:"Рейнджерс",OTT:"Оттава",PHI:"Филадельфия",PIT:"Питтсбург",SEA:"Сиэтл",SJS:"Сан-Хосе",STL:"Сент-Луис",TBL:"Тампа-Бэй",TOR:"Торонто",UTA:"Юта",VAN:"Ванкувер",VGK:"Вегас",WPG:"Виннипег",WSH:"Вашингтон"};
+export const SHORT_RU={ANA:"Анахайм",BOS:"Бостон",BUF:"Баффало",CAR:"Каролина",CBJ:"Коламбус",CGY:"Калгари",CHI:"Чикаго",COL:"Колорадо",DAL:"Даллас",DET:"Детройт",EDM:"Эдмонтон",FLA:"Флорида",LAK:"Лос-Анджелес",MIN:"Миннесота",MTL:"Монреаль",NJD:"Нью-Джерси",NSH:"Нэшвилл",NYI:"Айлендерс",NYR:"Рейнджерс",OTT:"Оттава",PHI:"Филадельфия",PIT:"Питтсбург",SEA:"Сиэтл",SJS:"Сан-Хосе",STL:"Сент-Луис",TBL:"Тампа-Бэй",TOR:"Торонто",UTA:"Юта",VAN:"Ванкувер",VGK:"Вегас",WPG:"Виннипег",WSH:"Вашингтон"};
 const DIVISIONS={
   EAST:{title:"Восточная конференция",divisions:{ATL:{title:"Атлантический дивизион",teams:["BOS","BUF","DET","FLA","MTL","OTT","TBL","TOR"]},MET:{title:"Столичный дивизион",teams:["CAR","CBJ","NJD","NYI","NYR","PHI","PIT","WSH"]}}},
   WEST:{title:"Западная конференция",divisions:{CEN:{title:"Центральный дивизион",teams:["CHI","COL","DAL","MIN","NSH","STL","UTA","WPG"]},PAC:{title:"Тихоокеанский дивизион",teams:["ANA","CGY","EDM","LAK","SJS","SEA","VAN","VGK"]}}},

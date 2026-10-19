@@ -1,4 +1,4 @@
-// v35: the hosts of Home of Hockey (public picks, «Сравнить со мной», «Зрители против ведущих») and «Задай вопрос ведущим», with
+// v35: the hosts of Home of Hockey (public picks, «Сравнить со мной», «Зрители против ведущих») and «Задай вопрос комментаторам», with
 // the commands of the admins in the bot. The API and the bot run on SQLite with the tables of the real migrations; the screen in jsdom.
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -88,16 +88,16 @@ const ADMIN = 9500;
   const bot = (from, msg) => handleAdminMessage(env, { from: { id: from }, chat: { id: from, type: "private" }, text: msg }, async (m) => { sent.push(m.text); });
   assert.deepEqual(await bot(9101, "/host_add @fan_one Хитрый Фан"), { handled: false }, "not an admin: the command is not taken");
   await bot(ADMIN, "/host_add @host_one Иван Ведущий");
-  assert.match(sent.pop(), /Иван Ведущий \(@host_one\) теперь ведущий ✅/);
+  assert.match(sent.pop(), /Иван Ведущий \(@host_one\) теперь комментатор HOH 🎙/);
   await bot(ADMIN, "/host_add @nobody Кто-то");
   assert.match(sent.pop(), /@nobody ещё не запускал бота/);
   await bot(ADMIN, "/host_add host_two");
   assert.match(sent.pop(), /Напишите так: \/host_add @ник Имя Фамилия/);
   await bot(ADMIN, "/host_add @host_two Пётр Второй");
   await bot(ADMIN, "/host_remove @host_two");
-  assert.match(sent.pop(), /@host_two больше не показывается как ведущий/);
+  assert.match(sent.pop(), /@host_two больше не показывается как комментатор/);
   await bot(ADMIN, "/hosts");
-  assert.equal(sent.pop(), "Ведущие:\n• Иван Ведущий (@host_one)\n• Пётр Второй (@host_two) — скрыт");
+  assert.equal(sent.pop(), "Комментаторы HOH:\n• Иван Ведущий (@host_one)\n• Пётр Второй (@host_two) — скрыт");
   await bot(ADMIN, "/admin");
   assert.match(sent.pop(), /\/host_add @ник Имя Фамилия[\s\S]*\/questions[\s\S]*\/ama/, "the help lists the new commands");
 
@@ -115,7 +115,7 @@ const ADMIN = 9500;
   const cmp = (await call("/api/telegram-center-v35/hosts/9001/compare", { user: FAN })).body;
   assert.deepEqual(plain(cmp), { ok: true, host: { id: 9001, name: "Иван Ведущий", settled: 4, correct: 3, accuracy: 75, xp: 34 }, me: { settled: 4, correct: 4, accuracy: 100, xp: 44 }, common: 4, agree: 3 });
 
-  // «Задай вопрос ведущим»
+  // «Задай вопрос комментаторам»
   assert.equal((await call("/api/telegram-center-v35/questions", { method: "POST", body: { text: "Вопрос без входа" } })).status, 401);
   assert.equal((await call("/api/telegram-center-v35/questions", { method: "POST", user: FAN, body: { text: "Ок" } })).status, 400);
   // the fan of level 1 asks first: the level, not the time, puts the other question higher
@@ -160,7 +160,7 @@ const script = await (await handleTelegramCenterV35(new Request(`https://x.test$
   assert.match(script, /^\(function\(\)\{const __name=/);
   assert.equal(await handleTelegramCenterV35(new Request("https://x.test/api/other"), env, "/api/other"), null);
   const shell = await (await handleTeamCurrentRequest(new Request("https://x.test/telegram-app-v24"), {}, "/telegram-app-v24")).text();
-  assert.ok(shell.includes("/telegram-app/v35-hosts.js?build=35.0"));
+  assert.ok(shell.includes("/telegram-app/v35-hosts.js?build=35.1"));
   assert.ok(shell.indexOf("/telegram-app/v35-hosts.js") > shell.indexOf("/telegram-app/v34-recap.js"));
   assert.equal((await handleTeamCurrentRequest(new Request(`https://x.test${SCRIPT_PATH}`), env, SCRIPT_PATH)).status, 200);
 }
@@ -193,7 +193,7 @@ function makeApp({ hosts = HOSTS, signedIn = true } = {}) {
   const card = document.getElementById("v35Hosts");
   assert.ok(card, "the card of the hosts on «Мои»");
   assert.equal(card.previousElementSibling.id, "v33Ach", "under the achievements");
-  assert.equal(text(card.querySelector("[data-v35-contest]")), "63% зрители · 2 Ведут ведущие 75% ведущие · 1");
+  assert.equal(text(card.querySelector("[data-v35-contest]")), "63% зрители · 2 Ведут комментаторы 75% комментаторы · 1");
   assert.equal(text(card.querySelector(".v35Host small")), "Ур. 2 · угадано 3 из 4 · 75%");
   assert.match(text(card.querySelector(".v35Host")), /Сейчас за: UTA \(UTA — EDM\)/);
   card.querySelector("[data-v35-compare]").click();
@@ -222,7 +222,7 @@ function makeApp({ hosts = HOSTS, signedIn = true } = {}) {
   // no hosts yet: a promise instead of an empty list; a guest: the hosts without «Сравнить», no questions
   const none = makeApp({ hosts: { ok: true, hosts: [], contest: null } });
   await tick(250);
-  assert.equal(text(none.document.querySelector("#v35Hosts .v35Note")), "Скоро здесь появятся ведущие Home of Hockey — вы сможете сравнить свои прогнозы с их прогнозами.");
+  assert.equal(text(none.document.querySelector("#v35Hosts .v35Note")), "Как только комментаторы HOH сделают прогнозы, здесь можно будет сравнить свои прогнозы с их.");
   assert.equal(none.document.querySelector("[data-v35-contest]"), null);
   none.window.close();
   const guest = makeApp({ signedIn: false });

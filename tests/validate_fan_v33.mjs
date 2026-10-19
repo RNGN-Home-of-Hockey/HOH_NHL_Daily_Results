@@ -17,7 +17,8 @@ const text = (el) => String(el?.textContent || "").replace(/\s+/g, " ").trim();
 assert.deepEqual(tierOf(0, [3, 7, 14, 30]), { tier: 0, next: 3 });
 assert.deepEqual(tierOf(3, [3, 7, 14, 30]), { tier: 1, next: 7 }, "the first step is reached at its value");
 assert.deepEqual(tierOf(40, [3, 7, 14, 30]), { tier: 4, next: null }, "all done");
-assert.deepEqual(ACHIEVEMENTS.map((a) => a.steps[0]), [3, 1, 3, 1, 1, 3, 1, 1], "the first step of every achievement is easy");
+assert.deepEqual(ACHIEVEMENTS.map((a) => a.steps[0]), [3, 1, 3, 1, 1, 3, 1, 1, 1], "the first step of every achievement is easy");
+assert.deepEqual(achievementsOf({ insider: 3 }).find((a) => a.key === "insider"), { key: "insider", icon: "🕵️", title: "Инсайдер", hint: "угаданных «Вопросов недели»", value: 3, tier: 2, tiers: 3, next: 10, steps: [1, 3, 10] }, "the right answers to «Вопрос недели» (v37)");
 const ach = achievementsOf({ days: 4, streams: 0, picks: 12, exact: 1 });
 assert.deepEqual(ach.find((a) => a.key === "days"), { key: "days", icon: "📅", title: "Каждый день с хоккеем", hint: "дней подряд в приложении", value: 4, tier: 1, tiers: 4, next: 7, steps: [3, 7, 14, 30] });
 assert.equal(ach.find((a) => a.key === "picks").tier, 2);
@@ -129,7 +130,7 @@ const call = async (path, { method = "GET", user = null, body } = {}) => {
   raw.prepare("INSERT INTO subscriptions(telegram_user_id,subject_type,subject_key) VALUES(501,'team','UTA'),(501,'player','1'),(501,'game','10')").run();
   const me = await call("/api/telegram-center-v33/me", { user: U });
   const v = Object.fromEntries(me.body.achievements.map((a) => [a.key, a.value]));
-  assert.deepEqual(v, { days: 3, streams: 2, news: 1, picks: 4, exact: 1, streak: 2, brave: 1, follows: 2 }, "a game subscription is not a follow; the streak in the order of the games");
+  assert.deepEqual(v, { days: 3, streams: 2, news: 1, picks: 4, exact: 1, streak: 2, brave: 1, follows: 2, insider: 0 }, "a game subscription is not a follow; the streak in the order of the games; no «Вопрос недели» yet");
   assert.equal(me.body.follows, 2);
 
   // the answers of the first visit
@@ -275,7 +276,7 @@ function makeApp({ tab = "games", me = { ok: true, onboarded: false, follows: 0,
   assert.ok(box, "the card is there");
   assert.equal(box.previousElementSibling.id, "v29Me", "under the profile and the table");
   const badges = [...box.querySelectorAll(".v33Badge")];
-  assert.equal(badges.length, 8);
+  assert.equal(badges.length, 9, "eight + «Инсайдер» (v37)");
   assert.equal(badges[0].dataset.v33Badge, "picks", "the most advanced first (2 of 4 steps)");
   const days = box.querySelector('[data-v33-badge="days"]');
   assert.equal(text(days), "📅 Каждый день с хоккеем ★☆☆☆ 4 из 7 · дней подряд в приложении");

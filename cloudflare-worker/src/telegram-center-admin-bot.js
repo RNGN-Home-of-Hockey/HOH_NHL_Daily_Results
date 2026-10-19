@@ -1,14 +1,28 @@
 // Admin commands of the Center bot (private chat, only for the Telegram accounts in app_admins):
 //   /name <part of the name>   — find a player by his English or Russian name, then ✏️ fix the Russian name or ↩️ return the Sports.ru one
 //   /names                     — players on the current rosters whose Russian name is a transliteration (Sports.ru does not know them)
-//   /admins, /admin_add @nick  — who may do this; a new admin must have pressed /start in the bot once
+//   /admins, /admin_add @nick  — who may do this; a person who has not opened the bot yet is invited by @nick and becomes an admin
+//                               with the first admin command (app_admin_invites, 2026-10-19)
 //   /cancel                    — stop the current edit
 // A correction is kept in player_name_overrides and wins over Sports.ru everywhere in the app (see telegram-center-player-names.js).
 import { sportsRuName, transliterateName } from "./telegram-center-player-names.js";
 import { HOST_COMMANDS, HOST_HELP, handleHostCommand } from "./telegram-center-v35-hosts.js";
+import { WEEK_COMMANDS, WEEK_HELP, handleWeekCommand } from "./telegram-center-v37-week.js";
 
 const NAME_RE = /^[А-ЯЁа-яё][А-ЯЁа-яё'’ .\-]{0,58}[А-ЯЁа-яё.]$/;
 const MAX_RESULTS = 8;
+
+// an admin invited by @nick before opening the bot: the first admin command of that account makes it an admin
+export async function claimAdminInvite(db, from) {
+  const id = Number(from?.id);
+  const nick = String(from?.username || "").trim().toLowerCase();
+  if (!db || !nick || !Number.isSafeInteger(id) || id <= 0) return false;
+  const invite = await db.prepare(`SELECT username,invited_by FROM app_admin_invites WHERE username=? LIMIT 1;`).bind(nick).first().catch(() => null);
+  if (!invite) return false;
+  await db.prepare(`INSERT INTO app_admins(telegram_user_id,added_by) VALUES(?,?) ON CONFLICT(telegram_user_id) DO NOTHING;`).bind(id, invite.invited_by || null).run();
+  await db.prepare(`DELETE FROM app_admin_invites WHERE username=?;`).bind(nick).run();
+  return true;
+}
 
 export async function isAdmin(db, userId) {
   const id = Number(userId);
@@ -122,10 +136,12 @@ const HELP = [
   "",
   "/name Финни — найти игрока по английскому или русскому имени и исправить его русское имя",
   "/names — игроки текущих составов с автоматическим переводом имени (их нет на Sports.ru)",
-  "/admins — кто админ; /admin_add @ник — добавить админа (он должен один раз нажать /start в боте)",
+  "/admins — кто админ; /admin_add @ник — добавить админа (если он ещё не открывал бота, станет админом, когда напишет боту /admin)",
   "/cancel — отменить правку",
   "",
   HOST_HELP,
+  "",
+  WEEK_HELP,
 ].join("\n");
 
 // Returns { handled } — false for everyone who is not an admin and for messages that are not admin commands.
@@ -136,10 +152,10 @@ export async function handleAdminMessage(env, message, send) {
   if (!db || !chatId || message?.chat?.type !== "private") return { handled: false };
   const text = String(message?.text || "").trim();
   const cmd = command(text);
-  const adminCommands = ["name", "имя", "names", "admins", "admin_add", "cancel", "admin", ...HOST_COMMANDS];
+  const adminCommands = ["name", "имя", "names", "admins", "admin_add", "cancel", "admin", ...HOST_COMMANDS, ...WEEK_COMMANDS];
   const state = cmd ? null : await getState(db, userId);
   if (!(cmd && adminCommands.includes(cmd.name)) && !(state && state.action === "rename")) return { handled: false };
-  if (!(await isAdmin(db, userId))) return { handled: false };
+  if (!(await isAdmin(db, userId)) && !(await claimAdminInvite(db, message?.from))) return { handled: false };
   const reply = (textOut, extra = {}) => send({ chat_id: chatId, text: textOut, disable_web_page_preview: true, ...extra });
 
   if (state && state.action === "rename" && !cmd) {
@@ -178,6 +194,11 @@ export async function handleAdminMessage(env, message, send) {
     await reply(`Имя переведено автоматически (нет на Sports.ru):\n\n${auto.map(playerLine).join("\n")}`, { reply_markup: { inline_keyboard: playerButtons(auto) } });
     return { handled: true };
   }
+  // «Вопрос недели» (v37)
+  if (WEEK_COMMANDS.includes(cmd.name)) {
+    await handleWeekCommand(env, cmd, userId, reply);
+    return { handled: true };
+  }
   // the hosts and the questions of the fans (v35)
   if (HOST_COMMANDS.includes(cmd.name)) {
     await handleHostCommand(env, cmd, userId, reply);
@@ -185,14 +206,20 @@ export async function handleAdminMessage(env, message, send) {
   }
   if (cmd.name === "admins") {
     const rows = await db.prepare(`SELECT a.telegram_user_id,u.username,u.first_name FROM app_admins a LEFT JOIN telegram_users u ON u.telegram_user_id=a.telegram_user_id ORDER BY a.created_at;`).all();
-    await reply(`Админы:\n${(rows.results || []).map((r) => `• ${r.username ? `@${r.username}` : r.first_name || r.telegram_user_id}`).join("\n")}`);
+    const invites = (await db.prepare(`SELECT username FROM app_admin_invites ORDER BY created_at;`).all().catch(() => ({ results: [] }))).results || [];
+    await reply(`Админы:\n${(rows.results || []).map((r) => `• ${r.username ? `@${r.username}` : r.first_name || r.telegram_user_id}`).join("\n")}${invites.length ? `\nЖдём, когда откроют бота: ${invites.map((r) => `@${r.username}`).join(", ")}` : ""}`);
     return { handled: true };
   }
   if (cmd.name === "admin_add") {
     const nick = cmd.arg.replace(/^@/, "").trim();
     if (!nick) { await reply("Напишите так: /admin_add @ник"); return { handled: true }; }
     const user = await db.prepare(`SELECT telegram_user_id,username FROM telegram_users WHERE lower(username)=lower(?) LIMIT 1;`).bind(nick).first().catch(() => null);
-    if (!user) { await reply(`@${nick} ещё не запускал бота. Попросите его нажать /start в этом боте и повторите.`); return { handled: true }; }
+    if (!user) {
+      if (!/^[A-Za-z0-9_]{3,32}$/.test(nick)) { await reply("Напишите так: /admin_add @ник"); return { handled: true }; }
+      await db.prepare(`INSERT INTO app_admin_invites(username,invited_by) VALUES(?,?) ON CONFLICT(username) DO UPDATE SET invited_by=excluded.invited_by;`).bind(nick.toLowerCase(), userId).run();
+      await reply(`@${nick} ещё не открывал бота. Как только он напишет этому боту /admin, он станет админом ✅`);
+      return { handled: true };
+    }
     await db.prepare(`INSERT INTO app_admins(telegram_user_id,added_by) VALUES(?,?) ON CONFLICT(telegram_user_id) DO NOTHING;`).bind(user.telegram_user_id, userId).run();
     await reply(`@${user.username} теперь админ ✅`);
     return { handled: true };

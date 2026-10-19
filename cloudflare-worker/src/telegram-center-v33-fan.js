@@ -31,6 +31,7 @@ export const ACHIEVEMENTS = [
   { key: "streak", icon: "🔥", title: "Серия", steps: [3, 5, 10, 15], hint: "лучшая серия угаданных подряд" },
   { key: "brave", icon: "💪", title: "Смелый прогноз", steps: [1, 3, 10], hint: "угаданных побед андердога (кэф от 2.10)" },
   { key: "follows", icon: "❤️", title: "Свой в команде", steps: [1, 5, 10], hint: "команд и игроков в подписках" },
+  { key: "insider", icon: "🕵️", title: "Инсайдер", steps: [1, 3, 10], hint: "угаданных «Вопросов недели»" },
 ];
 
 // the step reached and the next target: {tier: how many steps are done, next: the next target or null}
@@ -57,13 +58,14 @@ export function cleanInterests(list) {
 
 // ---- the values of the achievements ------------------------------------------------------------------------------------------
 async function valuesOf(db, id, now) {
-  const [act, picks, follows] = await Promise.all([
+  const [act, picks, follows, insider] = await Promise.all([
     db.prepare(`SELECT day,opens,streams,news FROM fan_activity WHERE telegram_user_id=? ORDER BY day DESC LIMIT 400;`).bind(id).all(),
     db.prepare(`
       SELECT p.result,p.exact,p.odds_at_pick FROM fan_predictions p JOIN games g ON g.game_pk=p.game_pk
       WHERE p.telegram_user_id=? ORDER BY g.scheduled_start_utc ASC,g.game_pk ASC;
     `).bind(id).all(),
     db.prepare(`SELECT COUNT(*) n FROM subscriptions WHERE telegram_user_id=? AND subject_type IN ('team','player');`).bind(id).first(),
+    db.prepare(`SELECT COUNT(*) n FROM week_answers a JOIN week_questions q ON q.question_id=a.question_id WHERE a.telegram_user_id=? AND q.status='settled' AND a.answer=q.answer;`).bind(id).first().catch(() => null),
   ]);
   const rows = act.results || [];
   let current = 0, best = 0, exact = 0, brave = 0;
@@ -84,6 +86,7 @@ async function valuesOf(db, id, now) {
     streak: best,
     brave,
     follows: Number(follows?.n) || 0,
+    insider: Number(insider?.n) || 0,
   };
 }
 

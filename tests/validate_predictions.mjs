@@ -462,7 +462,7 @@ const script = await (await handleTelegramCenterV29(new Request(`https://x.test$
   assert.match(script, /^\(function\(\)\{const __name=/, "wrapped like the other layers");
   assert.equal((await handleTelegramCenterV29(new Request(`https://x.test${SCRIPT_PATH}`, { method: "POST" }), env, SCRIPT_PATH)).status, 405);
   const shell = await (await handleTeamCurrentRequest(new Request("https://x.test/telegram-app-v24"), {}, "/telegram-app-v24")).text();
-  assert.ok(shell.includes("/telegram-app/v29-predict.js?build=29.2"), "the script is in the app (29.2: the pick, the score, one bet that follows the score)");
+  assert.ok(shell.includes("/telegram-app/v29-predict.js?build=29.3"), "the script is in the app (29.3: the commentators of HOH by the pick)");
   assert.ok(shell.indexOf("/telegram-app/v29-predict.js") > shell.indexOf("/telegram-app/v28-backdrop.js"), "after the backdrop");
   assert.equal((await handleTeamCurrentRequest(new Request(`https://x.test${SCRIPT_PATH}`), {}, SCRIPT_PATH)).status, 200, "reachable through the main router");
   assert.equal((await handleTeamCurrentRequest(new Request(`https://x.test${API}/slate`), {}, `${API}/slate`)).status, 503, "the API too (no database here)");

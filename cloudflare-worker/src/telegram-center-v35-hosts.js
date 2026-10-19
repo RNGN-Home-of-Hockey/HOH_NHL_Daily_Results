@@ -11,7 +11,7 @@
 // The bot (admins only): /host_add @ник Имя Фамилия · /hosts · /host_remove @ник · /questions · /q_pick N · /q_done N · /q_hide N · /ama текст
 import { hostsApp } from "./telegram-center-v35-hosts-ui.js";
 import { telegramAuth, upsertTelegramUser } from "./telegram-center-v29-predictions.js";
-import { levelOf, nhlDateOf, seasonOf, periodRange } from "./telegram-center-v29-predictions-data.js";
+import { levelOf, nhlDateOf, seasonOf, periodRange, weekXpOf } from "./telegram-center-v29-predictions-data.js";
 
 export const SCRIPT_PATH = "/telegram-app/v35-hosts.js";
 const API = "/api/telegram-center-v35";
@@ -75,6 +75,7 @@ async function hosts(request, env, now) {
   `).bind(week.from, week.to).all()).results || [];
   return json({
     ok: true,
+    // the whole chat of the commentators is in app_hosts: the list shows those who made picks, the most accurate first
     hosts: list.map((h) => {
       const s = stats.get(Number(h.id)) || { settled: 0, correct: 0, xp: 0 };
       const lv = levelOf(s.xp);
@@ -82,7 +83,7 @@ async function hosts(request, env, now) {
         id: Number(h.id), name: h.name, settled: s.settled, correct: s.correct, accuracy: pct(s.correct, s.settled), xp: s.xp, level: lv.n, level_note: lv.note,
         picks: open.filter((x) => Number(x.id) === Number(h.id)).slice(0, 4).map((x) => ({ tri: x.pick_tri, game: `${x.away_tri} — ${x.home_tri}`, start: x.start })),
       };
-    }),
+    }).filter((h) => h.settled > 0 || h.picks.length > 0).sort((a, b) => (b.settled > 0) - (a.settled > 0) || (b.accuracy ?? -1) - (a.accuracy ?? -1) || b.settled - a.settled),
     contest: contestOf(weekRows, ids),
     week: { from: week.from, to: week.to },
   }, 200, "public, max-age=60");
@@ -134,7 +135,7 @@ async function questionsPost(request, env) {
   if (Number(today?.n) >= QUESTIONS_PER_DAY) return json({ ok: false, error: "too_many_questions" }, 429);
   await upsertTelegramUser(db, auth.user);
   const xp = await db.prepare(`SELECT COALESCE(SUM(xp),0) xp FROM fan_predictions WHERE telegram_user_id=? AND settled_at IS NOT NULL;`).bind(auth.user.id).first();
-  const level = levelOf(xp?.xp).n;
+  const level = levelOf((Number(xp?.xp) || 0) + (await weekXpOf(db, auth.user.id))).n;
   await db.prepare(`INSERT INTO host_questions(telegram_user_id,text,level) VALUES(?,?,?);`).bind(auth.user.id, text, level).run();
   return json({ ok: true, level });
 }
@@ -142,7 +143,7 @@ async function questionsPost(request, env) {
 // ---- the bot (admins only) ----------------------------------------------------------------------------------------------------
 export const HOST_COMMANDS = ["host_add", "hosts", "host_remove", "questions", "q_pick", "q_done", "q_hide", "ama"];
 export const HOST_HELP = [
-  "/host_add @ник Имя Фамилия — сделать ведущего (публичный профиль его прогнозов); /hosts — список; /host_remove @ник — убрать",
+  "/host_add @ник Имя Фамилия — сделать комментатором HOH (его прогнозы и ответы видны всем со значком 🎙); /hosts — список; /host_remove @ник — убрать",
   "/questions — вопросы болельщиков (сначала от высоких уровней); /q_pick N — выбран для эфира; /q_done N — отвечен; /q_hide N — скрыть",
   "/ama текст — когда ответы в эфире (например: /ama 20 октября, 19:00); /ama - — убрать",
 ].join("\n");
@@ -157,19 +158,19 @@ export async function handleHostCommand(env, cmd, adminId, reply) {
     if (!user) { await reply(`@${m[1]} ещё не запускал бота. Попросите его нажать /start в этом боте и повторите.`); return true; }
     await db.prepare(`INSERT INTO app_hosts(telegram_user_id,display_name,active,added_by) VALUES(?,?,1,?)
       ON CONFLICT(telegram_user_id) DO UPDATE SET display_name=excluded.display_name,active=1;`).bind(user.telegram_user_id, m[2].trim(), adminId).run();
-    await reply(`${m[2].trim()} (@${user.username}) теперь ведущий ✅ Его прогнозы видны всем в приложении.`);
+    await reply(`${m[2].trim()} (@${user.username}) теперь комментатор HOH 🎙 Его прогнозы видны всем в приложении.`);
     return true;
   }
   if (cmd.name === "hosts") {
     const rows = (await db.prepare(`SELECT h.display_name,u.username,h.active FROM app_hosts h LEFT JOIN telegram_users u ON u.telegram_user_id=h.telegram_user_id ORDER BY h.created_at;`).all()).results || [];
-    await reply(rows.length ? `Ведущие:\n${rows.map((r) => `• ${r.display_name}${r.username ? ` (@${r.username})` : ""}${Number(r.active) ? "" : " — скрыт"}`).join("\n")}` : "Ведущих пока нет. /host_add @ник Имя Фамилия");
+    await reply(rows.length ? `Комментаторы HOH:\n${rows.map((r) => `• ${r.display_name}${r.username ? ` (@${r.username})` : ""}${Number(r.active) ? "" : " — скрыт"}`).join("\n")}` : "Комментаторов пока нет. /host_add @ник Имя Фамилия");
     return true;
   }
   if (cmd.name === "host_remove") {
     const user = await userByNick(cmd.arg.replace(/^@/, "").trim());
     if (!user) { await reply("Напишите так: /host_remove @ник"); return true; }
     await db.prepare(`UPDATE app_hosts SET active=0 WHERE telegram_user_id=?;`).bind(user.telegram_user_id).run();
-    await reply(`@${user.username} больше не показывается как ведущий.`);
+    await reply(`@${user.username} больше не показывается как комментатор.`);
     return true;
   }
   if (cmd.name === "questions") {

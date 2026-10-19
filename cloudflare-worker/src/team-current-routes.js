@@ -64,6 +64,7 @@ import { handleTelegramCenterV32 } from "./telegram-center-v32-live.js";
 import { handleTelegramCenterV33 } from "./telegram-center-v33-fan.js";
 import { handleTelegramCenterV34 } from "./telegram-center-v34-recap.js";
 import { handleTelegramCenterV35 } from "./telegram-center-v35-hosts.js";
+import { handleTelegramCenterV37 } from "./telegram-center-v37-week.js";
 import { handleWebLogin } from "./telegram-center-web-login.js";
 
 export async function handleTeamCurrentRequest(request, env, path) {
@@ -89,6 +90,8 @@ export async function handleTeamCurrentRequest(request, env, path) {
   if (centerV34Response) return centerV34Response;
   const centerV35Response = await handleTelegramCenterV35(request, env, path);
   if (centerV35Response) return centerV35Response;
+  const centerV37Response = await handleTelegramCenterV37(request, env, path);
+  if (centerV37Response) return centerV37Response;
 
   // the Home of Hockey logo by the month of the calendar (the owner's prepared file, 2026-10-19)
   if ((path === "/telegram-app/goalie-bg.webp" || path === "/telegram-app/hoh-logo.png") && request.method === "GET" && env.ASSETS?.fetch) {
@@ -202,13 +205,14 @@ export async function handleTeamCurrentRequest(request, env, path) {
       "/telegram-app/v26-goals.js?build=26.0",
       "/telegram-app/v27-home.js?build=27.0",
       "/telegram-app/v28-backdrop.js?build=28.0",
-      "/telegram-app/v29-predict.js?build=29.2",
+      "/telegram-app/v29-predict.js?build=29.3",
       "/telegram-app/v30-nav.js?build=30.2",
       "/telegram-app/v31-player.js?build=31.2",
       "/telegram-app/v32-live.js?build=32.0",
       "/telegram-app/v33-fan.js?build=33.0",
       "/telegram-app/v34-recap.js?build=34.0",
-      "/telegram-app/v35-hosts.js?build=35.0",
+      "/telegram-app/v35-hosts.js?build=35.1",
+      "/telegram-app/v37-week.js?build=37.0",
       "/telegram-app/game-follow.js?build=25.0.1",
       "/telegram-app/preferences.js?build=25.0.1"
     ]) body = body.replace('</body>', '<script src="'+src+'"></script></body>');
