@@ -1,6 +1,15 @@
 {
-  "matched": 26,
+  "matched": 25,
   "players": {
+    "8475413": {
+      "context": "Justin Dowling JUHS-tihn • DOW-lihng LISTEN ð",
+      "full_name_en": "Justin Dowling",
+      "player_id": 8475413,
+      "pronunciation_source": "nhl.com_team_pronunciation_guide",
+      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/fhvsivonkl4og9yklw3u.mp3",
+      "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide",
+      "team_tri": "NYR"
+    },
     "8476459": {
       "context": "Mika Zibanejad MEE-kah • zih-BAN-ih-jad LISTEN ð",
       "full_name_en": "Mika Zibanejad",
@@ -70,6 +79,15 @@
       "player_id": 8479323,
       "pronunciation_source": "nhl.com_team_pronunciation_guide",
       "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/guedkzrxsr4dbqerx497.mp3",
+      "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide",
+      "team_tri": "NYR"
+    },
+    "8479390": {
+      "context": "Taylor Raddysh TAY-luhr • RA-dihsh LISTEN ð",
+      "full_name_en": "Taylor Raddysh",
+      "player_id": 8479390,
+      "pronunciation_source": "nhl.com_team_pronunciation_guide",
+      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/gocqlrreovtmmj42yh7w.mp3",
       "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide",
       "team_tri": "NYR"
     },
@@ -172,24 +190,6 @@
       "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide",
       "team_tri": "NYR"
     },
-    "8482861": {
-      "context": "Vincent Iorio VIHN-sehnt • igh-OH-ree-oh LISTEN ð",
-      "full_name_en": "Vincent Iorio",
-      "player_id": 8482861,
-      "pronunciation_source": "nhl.com_team_pronunciation_guide",
-      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/ptixbbrra9g2qfqevh4z.mp3",
-      "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide",
-      "team_tri": "NYR"
-    },
-    "8482877": {
-      "context": "Jaroslav Chmelar YAH-roh-slahv • hih-MEHL-ehsh LISTEN ð",
-      "full_name_en": "Jaroslav Chmelar",
-      "player_id": 8482877,
-      "pronunciation_source": "nhl.com_team_pronunciation_guide",
-      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/zqvgknbzvxwexl3eo9lo.mp3",
-      "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide",
-      "team_tri": "NYR"
-    },
     "8483669": {
       "context": "Adam Sykora A-duhm • sih-KOHR-uh LISTEN ð",
       "full_name_en": "Adam Sykora",
@@ -217,15 +217,6 @@
       "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide",
       "team_tri": "NYR"
     },
-    "8484786": {
-      "context": "Cole Beaudoin KOHL • BOH-dwan LISTEN ð",
-      "full_name_en": "Cole Beaudoin",
-      "player_id": 8484786,
-      "pronunciation_source": "nhl.com_team_pronunciation_guide",
-      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/vdpeoyjoyczt4s0xvk4w.mp3",
-      "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide",
-      "team_tri": "NYR"
-    },
     "8485957": {
       "context": "Alberts Smits AL-buhrt • SHMIHTS LISTEN ð",
       "full_name_en": "Alberts Smits",
@@ -250,12 +241,12 @@
     },
     "BUF": {
       "matched": 0,
-      "roster": 25,
+      "roster": 26,
       "source_url": "https://www.nhl.com/sabres/team/pronunciation-guide"
     },
     "CAR": {
       "matched": 0,
-      "roster": 22,
+      "roster": 24,
       "source_url": "https://www.nhl.com/hurricanes/team/pronunciation-guide"
     },
     "CBJ": {
@@ -275,22 +266,22 @@
     },
     "COL": {
       "matched": 0,
-      "roster": 22,
+      "roster": 23,
       "source_url": "https://www.nhl.com/avalanche/team/pronunciation-guide"
     },
     "DAL": {
       "matched": 0,
-      "roster": 24,
+      "roster": 25,
       "source_url": "https://www.nhl.com/stars/team/pronunciation-guide"
     },
     "DET": {
       "matched": 0,
-      "roster": 26,
+      "roster": 25,
       "source_url": "https://www.nhl.com/redwings/team/pronunciation-guide"
     },
     "EDM": {
       "matched": 0,
-      "roster": 29,
+      "roster": 28,
       "source_url": "https://www.nhl.com/oilers/team/pronunciation-guide"
     },
     "FLA": {
@@ -305,12 +296,12 @@
     },
     "MIN": {
       "matched": 0,
-      "roster": 26,
+      "roster": 29,
       "source_url": "https://www.nhl.com/wild/team/pronunciation-guide"
     },
     "MTL": {
       "matched": 0,
-      "roster": 24,
+      "roster": 26,
       "source_url": "https://www.nhl.com/canadiens/team/pronunciation-guide"
     },
     "NJD": {
@@ -320,7 +311,7 @@
     },
     "NSH": {
       "matched": 0,
-      "roster": 25,
+      "roster": 24,
       "source_url": "https://www.nhl.com/predators/team/pronunciation-guide"
     },
     "NYI": {
@@ -329,18 +320,18 @@
       "source_url": "https://www.nhl.com/islanders/team/pronunciation-guide"
     },
     "NYR": {
-      "matched": 26,
+      "matched": 25,
       "roster": 26,
       "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide"
     },
     "OTT": {
       "matched": 0,
-      "roster": 23,
+      "roster": 24,
       "source_url": "https://www.nhl.com/senators/team/pronunciation-guide"
     },
     "PHI": {
       "matched": 0,
-      "roster": 26,
+      "roster": 25,
       "source_url": "https://www.nhl.com/flyers/team/pronunciation-guide"
     },
     "PIT": {
@@ -350,17 +341,17 @@
     },
     "SEA": {
       "matched": 0,
-      "roster": 25,
+      "roster": 26,
       "source_url": "https://www.nhl.com/kraken/team/pronunciation-guide"
     },
     "SJS": {
       "matched": 0,
-      "roster": 24,
+      "roster": 23,
       "source_url": "https://www.nhl.com/sharks/team/pronunciation-guide"
     },
     "STL": {
       "matched": 0,
-      "roster": 26,
+      "roster": 28,
       "source_url": "https://www.nhl.com/blues/team/pronunciation-guide"
     },
     "TBL": {
@@ -370,7 +361,7 @@
     },
     "TOR": {
       "matched": 0,
-      "roster": 24,
+      "roster": 25,
       "source_url": "https://www.nhl.com/mapleleafs/team/pronunciation-guide"
     },
     "UTA": {
@@ -380,12 +371,12 @@
     },
     "VAN": {
       "matched": 0,
-      "roster": 25,
+      "roster": 24,
       "source_url": "https://www.nhl.com/canucks/team/pronunciation-guide"
     },
     "VGK": {
       "matched": 0,
-      "roster": 23,
+      "roster": 22,
       "source_url": "https://www.nhl.com/goldenknights/team/pronunciation-guide"
     },
     "WPG": {
@@ -395,7 +386,7 @@
     },
     "WSH": {
       "matched": 0,
-      "roster": 23,
+      "roster": 24,
       "source_url": "https://www.nhl.com/capitals/team/pronunciation-guide"
     }
   }
