@@ -80,6 +80,38 @@ async function broadcastPregameArchiveRoute(env,gamePk){
   catch(error){console.error("broadcast pregame archive failed",error);return jsonResponse({ok:false,error:"broadcast_pregame_archive_failed"},500)}
 }
 
+// The season schedule holds ~1200 future games: with no horizon they filled the whole list and the games
+// of the last 7 days never came through (2026-10-19). Upcoming = the next 7 days, or at least the next
+// 20 games (a break without games), so finished games always fit.
+const BROADCAST_UPCOMING_DAYS = 7;
+const BROADCAST_UPCOMING_MIN = 20;
+const BROADCAST_GAMES_LIMIT = 300;
+const BROADCAST_GAMES_WHERE = `
+          g.game_type IN (2,3)
+          AND (
+            UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
+            OR (
+              datetime(g.scheduled_start_utc) <= datetime('now')
+              AND datetime(g.scheduled_start_utc) >= datetime('now','-8 hours')
+              AND UPPER(COALESCE(g.game_state,'')) NOT IN ('FINAL','OFF')
+            )
+            OR (
+              datetime(g.scheduled_start_utc) >= datetime('now')
+              AND datetime(g.scheduled_start_utc) < datetime('now','+${BROADCAST_UPCOMING_DAYS} days')
+            )
+            OR g.game_pk IN (
+              SELECT nx.game_pk FROM games nx
+              WHERE nx.game_type IN (2,3) AND datetime(nx.scheduled_start_utc) >= datetime('now')
+              ORDER BY datetime(nx.scheduled_start_utc) ASC, nx.game_pk ASC
+              LIMIT ${BROADCAST_UPCOMING_MIN}
+            )
+            OR (
+              UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF')
+              AND datetime(g.scheduled_start_utc) >= datetime('now','-7 days')
+              AND EXISTS (SELECT 1 FROM broadcast_insight_history bih WHERE bih.game_pk=g.game_pk)
+            )
+          )`;
+
 async function broadcastGamesRoute(env) {
   if (!env.DB) return jsonResponse({ ok: false, error: "missing_d1_binding" }, 503);
   try {
@@ -99,21 +131,7 @@ async function broadcastGamesRoute(env) {
         LEFT JOIN broadcast_operator_leases bol ON bol.game_pk=g.game_pk AND datetime(bol.expires_at)>datetime('now')
         LEFT JOIN broadcast_cards onair ON onair.game_pk=g.game_pk AND onair.status='shown' AND datetime(onair.shown_at)>datetime('now','-${ON_AIR_MAX_SECONDS} seconds')
         LEFT JOIN broadcast_queue_summaries bqs ON bqs.game_pk=g.game_pk
-        WHERE g.game_type IN (2,3)
-          AND (
-            UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
-            OR (
-              datetime(g.scheduled_start_utc) <= datetime('now')
-              AND datetime(g.scheduled_start_utc) >= datetime('now','-8 hours')
-              AND UPPER(COALESCE(g.game_state,'')) NOT IN ('FINAL','OFF')
-            )
-            OR datetime(g.scheduled_start_utc) >= datetime('now')
-            OR (
-              UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF')
-              AND datetime(g.scheduled_start_utc) >= datetime('now','-7 days')
-              AND EXISTS (SELECT 1 FROM broadcast_insight_history bih WHERE bih.game_pk=g.game_pk)
-            )
-          )
+        WHERE ${BROADCAST_GAMES_WHERE}
         ORDER BY
           CASE
             WHEN UPPER(COALESCE(g.game_state,'')) IN ('LIVE','CRIT','INTERMISSION') THEN 0
@@ -126,27 +144,11 @@ async function broadcastGamesRoute(env) {
           CASE WHEN UPPER(COALESCE(g.game_state,'')) IN ('FINAL','OFF') THEN datetime(g.scheduled_start_utc) END DESC,
           datetime(g.scheduled_start_utc) ASC,
           g.game_pk ASC
-        LIMIT 100;
+        LIMIT ${BROADCAST_GAMES_LIMIT};
       `).all(),
       env.DB.prepare(`
         SELECT
-          (SELECT COUNT(*) FROM games
-            WHERE game_type IN (2,3)
-              AND (
-                UPPER(COALESCE(game_state,'')) IN ('LIVE','CRIT','INTERMISSION')
-                OR (
-                  datetime(scheduled_start_utc) <= datetime('now')
-                  AND datetime(scheduled_start_utc) >= datetime('now','-8 hours')
-                  AND UPPER(COALESCE(game_state,'')) NOT IN ('FINAL','OFF')
-                )
-                OR datetime(scheduled_start_utc) >= datetime('now')
-                OR (
-                  UPPER(COALESCE(game_state,'')) IN ('FINAL','OFF')
-                  AND datetime(scheduled_start_utc) >= datetime('now','-7 days')
-                  AND EXISTS (SELECT 1 FROM broadcast_insight_history bih WHERE bih.game_pk=games.game_pk)
-                )
-              )
-          ) AS games,
+          (SELECT COUNT(*) FROM games g WHERE ${BROADCAST_GAMES_WHERE}) AS games,
           (SELECT COUNT(*) FROM players) AS players,
           (SELECT COUNT(*) FROM teams) AS teams;
       `).first(),
@@ -786,12 +788,29 @@ function jsResponse(js){return new Response(js,{status:200,headers:{"Content-Typ
 function pngResponse(base64){const raw=atob(base64);const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i+=1)bytes[i]=raw.charCodeAt(i);return new Response(bytes,{status:200,headers:{"Content-Type":"image/png","Cache-Control":"public, max-age=31536000, immutable","X-Content-Type-Options":"nosniff"}})}
 
 function browserApp(){
-const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],featuredCards=[],liveCards=[],pregameArchive=null,liveMonitoring=null,liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null,gameListTimer=null,queueWarmRunning=false;
-const operatorId=(()=>{let v=localStorage.getItem('hohBroadcastOperatorId')||'';if(!v){v='op-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));localStorage.setItem('hohBroadcastOperatorId',v)}return v})();
-let operatorName=localStorage.getItem('hohBroadcastOperatorName')||'';
+const $=s=>document.querySelector(s);let games=[],selected=null,currentCards=[],historicalCards=[],featuredCards=[],liveCards=[],pregameArchive=null,liveMonitoring=null,liveTimer=null,currentData=null;let groupOpen={1:true,2:false,3:false,final:false};let leaseTimer=null,leaseOwned=false,currentLease=null,actionTimer=null,gameListTimer=null,queueWarmRunning=false,listRetry=null,listLoading=false;
+// in-app browsers (Telegram, OBS docks, embedded panes) may block storage and dialogs: the page must work without them
+const store={get(k){try{return localStorage.getItem(k)||''}catch{return''}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
+const operatorId=(()=>{let v=store.get('hohBroadcastOperatorId');if(!v){v='op-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));store.set('hohBroadcastOperatorId',v)}return v})();
+let operatorName=store.get('hohBroadcastOperatorName');
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function operatorApi(url,opts={}){const headers={...(opts.headers||{})};if(opts.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opts,headers,cache:'no-store'});const d=await r.json().catch(()=>({}));if(r.status===401)throw new Error('Operator access закрыт — нужен ключ');if(!r.ok){const e=new Error(d.message||d.error||('HTTP '+r.status));e.code=d.error||'';e.lease=d.lease||null;throw e}return d}
-function identity(){if(!operatorName){operatorName=(prompt('Имя оператора (покажем коллегам)','')||'').trim().slice(0,48);if(!operatorName)operatorName='Оператор '+operatorId.slice(-4).toUpperCase();localStorage.setItem('hohBroadcastOperatorName',operatorName)}return{operator_id:operatorId,operator_name:operatorName}}
+// no browser dialog for the name: it throws in in-app browsers and took the whole page down («Не удалось загрузить Data Core»)
+function identity(){return{operator_id:operatorId,operator_name:operatorName||'Оператор '+operatorId.slice(-4).toUpperCase()}}
+function renderOperatorName(edit=false){
+  const el=$('#opname');if(!el)return;
+  if(edit){
+    el.innerHTML=`<input id="opname-input" maxlength="48" placeholder="Имя для коллег" value="${esc(operatorName)}"><button id="opname-save" type="button">OK</button>`;
+    const input=$('#opname-input');input.focus();input.select();
+    const save=()=>{const v=input.value.trim().slice(0,48);if(v&&v!==operatorName){operatorName=v;store.set('hohBroadcastOperatorName',v);if(selected)void heartbeatLease(selected)}renderOperatorName()};
+    $('#opname-save').onclick=save;input.onkeydown=e=>{if(e.key==='Enter')save();else if(e.key==='Escape')renderOperatorName()};
+    return;
+  }
+  el.innerHTML=`<span>Вы:</span> <b>${esc(identity().operator_name)}</b> <button id="opname-edit" type="button">${operatorName?'изменить':'указать имя'}</button>`;
+  $('#opname-edit').onclick=()=>renderOperatorName(true);
+}
+let toastTimer=null;
+function notify(text){const el=$('#toast');if(!el)return;el.textContent=String(text||'Ошибка');el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.hidden=true},6000)}
 async function acquireLease(gamePk){const who=identity();try{const d=await operatorApi('/api/broadcast/operator/leases/'+gamePk,{method:'POST',body:JSON.stringify(who)});leaseOwned=true;currentLease=d.lease||null;syncLeaseToGame(gamePk,currentLease);if(leaseTimer)clearInterval(leaseTimer);leaseTimer=setInterval(()=>heartbeatLease(gamePk),30000);return true}catch(e){leaseOwned=false;currentLease=e.lease||null;syncLeaseToGame(gamePk,currentLease);return false}}
 async function heartbeatLease(gamePk){if(!leaseOwned||Number(gamePk)!==Number(selected))return;try{const d=await operatorApi('/api/broadcast/operator/leases/'+gamePk,{method:'POST',body:JSON.stringify(identity())});currentLease=d.lease||currentLease;syncLeaseToGame(gamePk,currentLease)}catch(e){leaseOwned=false;currentLease=e.lease||null;syncLeaseToGame(gamePk,currentLease);renderCards(currentCards)}}
 async function releaseLease(gamePk){if(!gamePk)return;if(leaseTimer){clearInterval(leaseTimer);leaseTimer=null}try{await operatorApi('/api/broadcast/operator/leases/'+gamePk,{method:'DELETE',body:JSON.stringify({operator_id:operatorId})})}catch{}const g=games.find(x=>Number(x.game_pk)===Number(gamePk));if(g&&g.operator_id===operatorId){g.operator_id=null;g.operator_name=null;g.operator_expires_at=null}leaseOwned=false;currentLease=null}
@@ -804,15 +823,55 @@ function syncOverlayLinks(gamePk){
   const side=$('#overlay-link'),open=$('#overlay-open');
   if(side)side.href=href;
   if(open)open.href=href;
+  const shown=$('#overlay-url');
+  if(shown&&!shown.hidden)shown.value=absoluteOverlayUrl(gamePk);
 }
 function absoluteOverlayUrl(gamePk){
   return new URL(overlayUrl(gamePk),location.origin).href;
 }
+// clipboard can be blocked in in-app browsers: show the address in a field to copy by hand
+function showOverlayUrl(url){
+  let field=$('#overlay-url');
+  if(!field){field=document.createElement('input');field.id='overlay-url';field.className='overlayurl';field.readOnly=true;$('.overlaytools')?.appendChild(field)}
+  field.hidden=false;field.value=url;field.focus();field.select();
+}
 function fmtDate(v){if(!v)return'';const d=new Date(v);return d.toLocaleString('ru-RU',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).replace(',',' ·')}
 function typeLabel(t){const n=Number(t);return n===1?'Предсезонка':n===3?'Плей-офф':'Регулярка'}
 async function api(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
-async function load(){try{const g=await api('/api/broadcast/games');games=g.games||[];$('#counts').textContent=`${g.counts.games} матчей · ближайшие + live + предматчевый архив за 7 дней`;const requested=Number(new URLSearchParams(location.search).get('game'));const first=games.find(x=>Number(x.game_pk)===requested)||games[0];selected=first?.game_pk||null;renderGames();if(first)await selectGame(first.game_pk);else renderAir(null);await refreshActions();void warmQueueSummaries();if(!actionTimer)actionTimer=setInterval(refreshActions,15000);if(!gameListTimer)gameListTimer=setInterval(refreshGameList,15000)}catch(e){$('#hero').innerHTML='<div class="empty">Не удалось загрузить Data Core</div>'}}
-async function refreshGameList(){try{const d=await api('/api/broadcast/games');const fresh=d.games||[],byPk=new Map(games.map(g=>[Number(g.game_pk),g])),live=currentData?.game;games=fresh.map(g=>{const merged={...byPk.get(Number(g.game_pk)),...g};if(live&&Number(g.game_pk)===Number(selected)&&gameLooksLive(live))Object.assign(merged,{game_state:live.game_state,away_score:live.away_score,home_score:live.home_score,current_period:live.period_number??live.current_period,period_type:live.period_type});return merged});$('#counts').textContent=`${d.counts.games} матчей · ближайшие + live + предматчевый архив за 7 дней`;renderGames();void warmQueueSummaries()}catch{}}
+function gameIsFinal(g){return['FINAL','OFF'].includes(String(g?.game_state||'').toUpperCase())}
+function renderCounts(){
+  const finals=games.filter(gameIsFinal).length,live=games.filter(g=>!gameIsFinal(g)&&gameLooksLive(g)).length,upcoming=games.length-finals-live;
+  $('#counts').textContent=[live?`live: ${live}`:'',`ближайшие: ${upcoming}`,`сыгранные за 7 дней: ${finals}`].filter(Boolean).join(' · ');
+}
+// a failure shows WHAT failed and a retry button; the rest of the page keeps working
+function showLoadError(what,error,retry){
+  const why=String(error?.message||'').slice(0,80);
+  $('#hero').innerHTML=`<div class="empty loaderr"><div>Не удалось загрузить ${esc(what)}${why?` · ${esc(why)}`:''}</div><button type="button" class="retry" id="retry">ПОВТОРИТЬ</button></div>`;
+  $('#retry').onclick=retry;
+}
+async function load(){
+  if(listLoading)return;listLoading=true;
+  if(listRetry){clearTimeout(listRetry);listRetry=null}
+  let g;
+  try{g=await api('/api/broadcast/games')}
+  catch(e){
+    listLoading=false;
+    $('#counts').textContent='список матчей недоступен';
+    showLoadError('список матчей',e,load);
+    listRetry=setTimeout(load,15000);
+    return;
+  }
+  listLoading=false;
+  games=g.games||[];renderCounts();
+  const requested=Number(new URLSearchParams(location.search).get('game'));
+  const first=games.find(x=>Number(x.game_pk)===requested)||games[0];
+  selected=first?.game_pk||null;renderGames();
+  if(!actionTimer)actionTimer=setInterval(refreshActions,15000);
+  if(!gameListTimer)gameListTimer=setInterval(refreshGameList,15000);
+  if(first)await selectGame(first.game_pk);else{renderAir(null);$('#hero').innerHTML='<div class="empty">Нет матчей на ближайшие дни</div>'}
+  await refreshActions();void warmQueueSummaries();
+}
+async function refreshGameList(){try{const d=await api('/api/broadcast/games');const fresh=d.games||[],byPk=new Map(games.map(g=>[Number(g.game_pk),g])),live=currentData?.game;games=fresh.map(g=>{const merged={...byPk.get(Number(g.game_pk)),...g};if(live&&Number(g.game_pk)===Number(selected)&&gameLooksLive(live))Object.assign(merged,{game_state:live.game_state,away_score:live.away_score,home_score:live.home_score,current_period:live.period_number??live.current_period,period_type:live.period_type});return merged});renderCounts();renderGames();void warmQueueSummaries()}catch{}}
 let airCard=null,airSince=0,airClock=null,airPoll=null;
 function airTime(sec){const v=Math.max(0,Math.round(sec));return Math.floor(v/60)+':'+String(v%60).padStart(2,'0')}
 function airTick(){const text=$('#airtext');if(!text||!airCard)return;const on=(Date.now()-airSince)/1000,left=ON_AIR_MAX_SECONDS-on;text.textContent=`${displayText(airCard.headline_ru||'')}: ${displayText(airCard.stat_text_ru||'')} · в эфире ${airTime(on)}`+(left>0?` · сама уйдёт через ${airTime(left)}`:'')}
@@ -894,20 +953,23 @@ async function warmQueueSummaries(){
     await Promise.all([worker(),worker()]);
   }finally{queueWarmRunning=false}
 }
+function finalBadge(g){const p=String(g?.period_type||'').toUpperCase();return `<span class="noline">ФИНАЛ${p==='OT'?' · ОТ':p==='SO'?' · БУЛЛИТЫ':''}</span>`}
+function gameGroupKey(g){return gameIsFinal(g)?'final':String(Number(g.game_type))}
 function renderGames(){
   const selectedGame=games.find(g=>Number(g.game_pk)===Number(selected));
-  if(selectedGame)groupOpen[Number(selectedGame.game_type)]=true;
-  const groups=[{type:2,label:'Регулярка'},{type:3,label:'Плей-офф'}];
-  const row=g=>{const room=[gameLooksLive(g)?'<b class="pill">LIVE</b>':'',g.on_air_card_id?'<b class="pill">ON AIR</b>':'',g.operator_name?`<span class="roomop">${esc(g.operator_name)}</span>`:''].filter(Boolean).join(' ');const q=queueBadge(g);return `<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span class="roomstate">${room}</span></div><div class="gqueue">${q}</div></button>`};
+  if(selectedGame)groupOpen[gameGroupKey(selectedGame)]=true;
+  // played games of the last 7 days get their own group, newest first (the server sends them in that order)
+  const groups=[{type:'2',label:'Регулярка'},{type:'3',label:'Плей-офф'},{type:'final',label:'Сыгранные · 7 дней'}];
+  const row=g=>{const room=[gameLooksLive(g)?'<b class="pill">LIVE</b>':'',g.on_air_card_id?'<b class="pill">ON AIR</b>':'',g.operator_name?`<span class="roomop">${esc(g.operator_name)}</span>`:''].filter(Boolean).join(' ');const q=gameIsFinal(g)?finalBadge(g):queueBadge(g);return `<button class="game ${Number(g.game_pk)===Number(selected)?'active':''}" data-id="${g.game_pk}"><div class="gline"><span class="gteams">${esc(g.away_tri)} · ${esc(g.home_tri)}</span><span class="gscore">${g.away_score}:${g.home_score}</span></div><div class="gmeta"><span>${esc(fmtDate(g.scheduled_start_utc))}</span><span class="roomstate">${room}</span></div><div class="gqueue">${q}</div></button>`};
   $('#games').innerHTML=groups.map(group=>{
-    const rows=games.filter(g=>Number(g.game_type)===group.type);
+    const rows=games.filter(g=>gameGroupKey(g)===group.type);
     if(!rows.length)return'';
     return `<details class="gamegroup" data-type="${group.type}" ${groupOpen[group.type]?'open':''}><summary class="grouphead"><span>${group.label}</span><span class="groupcount">${rows.length}</span><span class="groupchev">⌄</span></summary><div class="grouprows">${rows.map(row).join('')}</div></details>`;
   }).join('');
-  document.querySelectorAll('.gamegroup').forEach(d=>d.addEventListener('toggle',()=>{groupOpen[Number(d.dataset.type)]=d.open}));
+  document.querySelectorAll('.gamegroup').forEach(d=>d.addEventListener('toggle',()=>{groupOpen[d.dataset.type]=d.open}));
   document.querySelectorAll('.game').forEach(b=>b.onclick=()=>selectGame(Number(b.dataset.id)));
 }
-async function selectGame(id){const previous=selected;if(previous&&Number(previous)!==Number(id))await releaseLease(previous);selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));syncOverlayLinks(id);renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];featuredCards=[];pregameArchive=null;liveMonitoring=null;$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';const [d,s,owned,pre]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id)),acquireLease(id),api('/api/broadcast/pregame/'+id).catch(()=>({cards:[],summary:{}}))]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];featuredCards=(d.featured_cards||[]).slice(0,4);pregameArchive=pre||{cards:[],summary:{}};syncQueueSummary(id,d.queue_summary);renderAir(s.on_air);renderGame(d);if(!owned&&currentLease){const sub=document.querySelector('.psub');if(sub)sub.textContent='Совместный режим · также в матче: '+(currentLease?.operator_name||'другой оператор')}await refreshLive(id,true)}
+async function selectGame(id){const previous=selected;if(previous&&Number(previous)!==Number(id))await releaseLease(previous);selected=id;history.replaceState(null,'','/broadcast?game='+encodeURIComponent(id));syncOverlayLinks(id);renderGames();if(liveTimer){clearInterval(liveTimer);liveTimer=null}liveCards=[];historicalCards=[];featuredCards=[];pregameArchive=null;liveMonitoring=null;$('#hero').innerHTML='<div class="empty">Загружаю матч...</div>';try{const [d,s,owned,pre]=await Promise.all([api('/api/broadcast/games/'+id),api('/api/broadcast/state?game='+encodeURIComponent(id)).catch(()=>({on_air:null})),acquireLease(id),api('/api/broadcast/pregame/'+id).catch(()=>({cards:[],summary:{}}))]);if(Number(id)!==Number(selected))return;currentData=d;historicalCards=d.cards||[];featuredCards=(d.featured_cards||[]).slice(0,4);pregameArchive=pre||{cards:[],summary:{}};syncQueueSummary(id,d.queue_summary);renderAir(s.on_air);renderGame(d);if(!owned&&currentLease){const sub=document.querySelector('.psub');if(sub)sub.textContent='Совместный режим · также в матче: '+(currentLease?.operator_name||'другой оператор')}await refreshLive(id,true)}catch(e){if(Number(id)===Number(selected))showLoadError('матч',e,()=>selectGame(id))}}
 function teamHtml(g,side){const tri=g[side+'_tri'],name=g[side+'_name_ru']||g[side+'_name']||tri,logo=g[side+'_logo'];return `<div class="team ${side==='home'?'home':''}">${side==='home'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}<div class="logo">${logo?`<img src="${esc(logo)}" alt="">`:`<span class="fallback">${esc(tri)}</span>`}</div>${side==='away'?`<div><div class="code">${esc(tri)}</div><div class="name">${esc(name)}</div></div>`:''}</div>`}
 function renderGame(d){const g=d.game,periods=d.periods||[];$('#hero').innerHTML=`<div class="herohead"><span>${typeLabel(g.game_type)} · ${esc(g.season_id)}</span><span>${esc(fmtDate(g.scheduled_start_utc))}${g.venue_name?' · '+esc(g.venue_name):''}</span></div><div class="match">${teamHtml(g,'away')}<div class="score">${g.away_score}<span>:</span>${g.home_score}</div>${teamHtml(g,'home')}</div><div class="periods" id="liveclock">${esc(g.game_state)} · ${periods.map(p=>p.period_number+'-Й ПЕРИОД '+p.away_goals+':'+p.home_goals).join(' · ')}</div>`;renderMetrics(d);renderCombinedCards();renderPlayers(d.top_players||[]);renderEvents(d.events||[])}
 function renderMetrics(d,live=null){const a=(d.team_stats||[]).find(x=>Number(x.is_home)===0)||{},h=(d.team_stats||[]).find(x=>Number(x.is_home)===1)||{},g=d.game||{};const la=live?.away||{},lh=live?.home||{};const pick=(v,f)=>v===null||v===undefined||v===''?f:v;const fp=v=>v==null||!Number.isFinite(Number(v))?null:Math.round(Number(v)*100)+'%';const rows=[['Броски в створ',pick(la.shots,a.shots),pick(lh.shots,h.shots)],['Хиты',pick(la.hits,a.hits),pick(lh.hits,h.hits)],['Штрафные минуты',pick(la.pim,a.pim),pick(lh.pim,h.pim)],['Вбрасывания',fp(pick(la.faceoff_pct,a.faceoff_pct)),fp(pick(lh.faceoff_pct,h.faceoff_pct))]];$('#metrics').innerHTML=rows.map(r=>`<div class="metric"><div class="mval">${esc(r[1]??'—')} — ${esc(r[2]??'—')}</div><div class="mlabel">${esc(r[0])} · ${esc(g.away_tri)} / ${esc(g.home_tri)}</div></div>`).join('')}
@@ -1251,7 +1313,7 @@ async function hideSelectedMatch(){
     setTimeout(()=>{if(b)b.textContent=old},1400);
     return d;
   }catch(e){
-    alert(e.message);
+    notify(e.message);
     if(b)b.textContent=old;
   }finally{
     if(b)b.disabled=false;
@@ -1272,7 +1334,7 @@ async function toggleShow(i,b){
     }
     renderCards(currentCards);
   }catch(e){
-    alert(e.message);
+    notify(e.message);
     b.textContent=old;
   }finally{
     b.disabled=false;
@@ -1299,7 +1361,7 @@ function renderActions(rows){
 function renderPlayers(rows){$('#players').innerHTML=`<div class="prow head"><div>Игрок</div><div class="num">Г</div><div class="num">П</div><div class="num">О</div><div class="num">Бр</div></div>`+(rows.length?rows.slice(0,10).map(p=>`<div class="prow"><div><div class="pname">${esc(p.full_name_ru||p.full_name_en)}</div><div class="pmeta">${esc(p.team_tri)} · ${esc(p.position_code||'—')} · #${esc(p.sweater_number??'—')}</div></div><div class="num">${p.goals??0}</div><div class="num">${p.assists??0}</div><div class="num">${p.points??0}</div><div class="num">${p.shots??'—'}</div></div>`).join(''):'<div class="empty">Нет статистики</div>')}
 function renderEvents(rows){$('#events').innerHTML=rows.length?rows.slice(0,18).map(e=>`<div class="event"><div class="etime">P${esc(e.period_number??'—')} ${esc(e.time_in_period||'')}</div><div><div class="etype">${e.event_type==='goal'||e.event_type==='shootout-goal'?'ГОЛ':e.event_type==='penalty'?'УДАЛЕНИЕ':'КОНЕЦ ПЕРИОДА'}${e.team_tri?' · '+esc(e.team_tri):''}</div><div class="edesc">${esc(e.description||peopleText(e.people)||'')}</div></div><div class="escore">${e.away_score??''}${e.away_score!==null&&e.away_score!==undefined?':':''}${e.home_score??''}</div></div>`).join(''):'<div class="empty">Нет ключевых событий</div>'}
 function peopleText(v){return String(v||'').split(';;').map(x=>x.split('|')[0]).filter(Boolean).join(', ')}
-$('#close').onclick=()=>$('#drawer').classList.remove('open');$('#drawer').onclick=e=>{if(e.target===$('#drawer'))$('#drawer').classList.remove('open')};$('#overlay-off').onclick=hideSelectedMatch;$('#air-off').onclick=async()=>{const b=$('#air-off');if(b){b.disabled=true;b.textContent='УБИРАЮ…'}try{await hideSelectedMatch()}finally{if(b){b.disabled=false;b.textContent='УБРАТЬ С ЭКРАНА'}}};if(!airPoll)airPoll=setInterval(refreshAir,5000);$('#overlay-copy').onclick=async()=>{if(!selected)return;const b=$('#overlay-copy'),old=b.textContent;try{await navigator.clipboard.writeText(absoluteOverlayUrl(selected));b.textContent='URL СКОПИРОВАН';setTimeout(()=>{b.textContent=old},1400)}catch{prompt('Скопируй URL overlay для OBS',absoluteOverlayUrl(selected))}};window.addEventListener('pagehide',()=>{if(selected)fetch('/api/broadcast/operator/leases/'+selected,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator_id:operatorId}),keepalive:true}).catch(()=>{})});load();
+$('#close').onclick=()=>$('#drawer').classList.remove('open');$('#drawer').onclick=e=>{if(e.target===$('#drawer'))$('#drawer').classList.remove('open')};$('#overlay-off').onclick=hideSelectedMatch;$('#air-off').onclick=async()=>{const b=$('#air-off');if(b){b.disabled=true;b.textContent='УБИРАЮ…'}try{await hideSelectedMatch()}finally{if(b){b.disabled=false;b.textContent='УБРАТЬ С ЭКРАНА'}}};if(!airPoll)airPoll=setInterval(refreshAir,5000);$('#overlay-copy').onclick=async()=>{if(!selected)return;const b=$('#overlay-copy'),old=b.textContent;try{await navigator.clipboard.writeText(absoluteOverlayUrl(selected));b.textContent='URL СКОПИРОВАН';setTimeout(()=>{b.textContent=old},1400)}catch{showOverlayUrl(absoluteOverlayUrl(selected))}};renderOperatorName();window.addEventListener('pagehide',()=>{if(selected)fetch('/api/broadcast/operator/leases/'+selected,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator_id:operatorId}),keepalive:true}).catch(()=>{})});load();
 
 }
 
@@ -1350,14 +1412,19 @@ ${BROADCAST_CARD_CSS}
 .signal-price{flex:0 0 auto;min-width:104px;text-align:center;padding:10px 16px;border-radius:10px;background:#1557f5;color:#fff;font-size:28px;font-weight:950;font-style:italic}
 .signal-profit{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:0 16px 12px;font-size:11px;color:#9b9ba2}.signal-profit b{color:var(--orange);font-size:14px}
 
+.opname{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-14px 6px 0;min-height:24px;font-size:10px;color:#77777f}.opname b{color:#e6e6ea;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.opname button{border:1px solid #303036;background:#141416;color:#a9a9b1;border-radius:7px;padding:4px 7px;font-size:9px;cursor:pointer}.opname button:hover{color:#fff;border-color:#55555e}.opname input{flex:1 1 120px;min-width:0;border:1px solid #44444c;background:#0d0d0f;color:#fff;border-radius:7px;padding:6px 8px;font-size:11px}
+.overlayurl{flex:1 1 280px;min-width:0;border:1px solid #35353b;background:#0d0d0f;color:#dcdce0;border-radius:8px;padding:7px 9px;font-size:10px}
+.loaderr{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;color:#c9c9cf}.retry{border:0;border-radius:9px;background:var(--orange);color:#111;font-size:10px;font-weight:950;letter-spacing:.06em;padding:9px 13px;cursor:pointer}
+.toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:80;max-width:min(560px,92vw);background:#44171a;border:1px solid #7a252a;color:#ffd6d8;border-radius:10px;padding:10px 14px;font-size:12px;font-weight:800;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 .preview .hohcard{width:820px;max-width:100%}\n.renderedcard{width:820px;max-width:100%;aspect-ratio:820/211;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden}.renderedcard img{display:block;width:100%;height:auto;object-fit:contain}.preview .renderedcard{width:820px;max-width:100%}
 </style></head><body>
 <div class="app">
 <aside class="side">
   <div class="brand"><div class="brandname"><span class="mark"></span>HOME OF HOCKEY</div><span class="alpha">ALPHA</span></div>
+  <div class="opname" id="opname"></div>
   <div class="label">Broadcast control</div>
   <div class="nav"><a class="navitem active" href="#hero"><span class="dot"></span>Матчи</a><a class="navitem" href="#cards-panel"><span class="dot"></span>Карточки</a><a class="navitem" id="overlay-link" href="/broadcast/overlay" target="_blank" rel="noopener"><span class="dot"></span>Overlay матча</a></div>
-  <div class="label">Ближайшие матчи NHL</div><div class="sidecount" id="counts">загрузка...</div><div class="games" id="games"></div>
+  <div class="label">Матчи NHL</div><div class="sidecount" id="counts">загрузка...</div><div class="games" id="games"></div>
 </aside>
 <main class="main">
   <div class="top"><div class="heading"><h1>Broadcast Stats / Control Room</h1><p>Реальные данные NHL → HOH Data Core → эфир</p><div class="overlaytools"><a id="overlay-open" class="overlayopen" href="/broadcast/overlay" target="_blank" rel="noopener">ОТКРЫТЬ OVERLAY ЭТОГО МАТЧА ↗</a><button id="overlay-copy" class="overlaycopy" type="button">СКОПИРОВАТЬ URL ДЛЯ OBS</button><button id="overlay-off" class="overlayoff" type="button">ВЫКЛЮЧИТЬ ПОКАЗ МАТЧА</button></div></div><div class="air" id="air"><div class="airtag"><span class="airdot"></span><span>ON AIR</span></div><img class="airimg" id="airimg" alt="" hidden><div class="airtext" id="airtext">Сейчас ничего не показано</div><button class="airoff" id="air-off" type="button" hidden>УБРАТЬ С ЭКРАНА</button></div></div>
@@ -1372,5 +1439,6 @@ ${BROADCAST_CARD_CSS}
     </div>
   </section>
 </main></div>
+<div class="toast" id="toast" role="alert" hidden></div>
 <div class="drawerback" id="drawer"><div class="drawer"><div class="dtop"><div class="dtitle">ПРЕДПРОСМОТР КАРТОЧКИ</div><button class="close" id="close">Закрыть</button></div><div class="preview" id="previewcard"></div><div class="dfoot">PREVIEW подготавливает эту же плашку для эфира. ПОКАЗАТЬ отправляет её в прозрачный overlay.</div></div></div>
 <script src="/broadcast/app.js"></script></body></html>`;
