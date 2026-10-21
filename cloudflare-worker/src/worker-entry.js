@@ -15,7 +15,8 @@ import { runCenterNameMaintenance } from "./telegram-center-name-maintenance.js"
 import { runCenterRosterMaintenance } from "./telegram-center-roster-maintenance.js";
 import { runSportsRuNewsMaintenance } from "./telegram-center-v20-news.js";
 import { runWinlineFeedMaintenance } from "./winline-feed-maintenance.js";
-import { getWinlineLiveFeedMaintenanceStatus, runWinlineLiveFeedMaintenance } from "./winline-live-feed-maintenance.js";
+import { getWinlineLiveFeedMaintenanceStatus, runWinlineLiveBackup, runWinlineLiveFeedMaintenance } from "./winline-live-feed-maintenance.js";
+import { markCronStart, pruneCronTaskRuns, trackCronTask } from "./cron-task-log.js";
 import { persistNhlLiveGame, runNhlLiveScoreMaintenance } from "./nhl-live-score-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { runVkCoverScrape } from "./telegram-center-vk-cover-scrape.js";
@@ -121,36 +122,18 @@ export default {
     const cron = String(controller?.cron || "");
 
     if (cron === "* * * * *") {
+      // every task leaves a row in cron_task_runs (cron-task-log.js): a task cut off by the platform leaves none
+      ctx.waitUntil(markCronStart(env, cron));
       if (env.DB) {
-        ctx.waitUntil(
-          runNhlLiveScoreMaintenance(env).catch((error) => {
-            console.error("scheduled NHL live score maintenance failed", error);
-          }),
-        );
+        ctx.waitUntil(trackCronTask(env, cron, "live_score", () => runNhlLiveScoreMaintenance(env)));
       }
-      ctx.waitUntil(
-        pollTelegramCenterUpdates(env).catch((error) => {
-          console.error("scheduled Telegram Center polling failed", error);
-        }),
-      );
+      ctx.waitUntil(trackCronTask(env, cron, "telegram_poll", () => pollTelegramCenterUpdates(env)));
       if (env.DB && envFlag(env.TELEGRAM_LIVE_NOTIFICATIONS_ENABLED, false)) {
-        ctx.waitUntil(
-          runCenterNotificationTick(env, { dryRun:false }).catch((error) => {
-            console.error("scheduled Telegram Center notification tick failed", error);
-          }),
-        );
+        ctx.waitUntil(trackCronTask(env, cron, "notifications", () => runCenterNotificationTick(env, { dryRun:false })));
       }
       if (env.DB && envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
-        ctx.waitUntil(
-          runWinlineLiveFeedMaintenance(env).catch((error) => {
-            console.error("scheduled Winline live feed maintenance failed", error);
-          }),
-        );
-        ctx.waitUntil(
-          archiveUpcomingBroadcastAnalytics(env,{limit:4,horizon_minutes:10}).catch((error) => {
-            console.error("scheduled closing pregame archive failed", error);
-          }),
-        );
+        ctx.waitUntil(trackCronTask(env, cron, "winline_live", () => runWinlineLiveFeedMaintenance(env)));
+        ctx.waitUntil(trackCronTask(env, cron, "closing_archive", () => archiveUpcomingBroadcastAnalytics(env,{limit:4,horizon_minutes:10})));
       }
       return;
     }
@@ -161,9 +144,14 @@ export default {
           console.error("scheduled legacy Telegram webhook repair failed", error);
         }),
       );
+      ctx.waitUntil(pruneCronTaskRuns(env).catch((error) => console.error("cron task log prune failed", error)));
     }
 
     if (cron === "*/2 * * * *") {
+      // the live odds keep coming when the every-minute run stops finishing its Winline sync (nights of 19–21 Oct 2026)
+      if (env.DB && envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
+        ctx.waitUntil(trackCronTask(env, cron, "winline_live_backup", () => runWinlineLiveBackup(env)));
+      }
       if (env.DB) {
         ctx.waitUntil((async () => {
           try {

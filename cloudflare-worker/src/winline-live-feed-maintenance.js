@@ -17,19 +17,31 @@ const TEAM_ALIASES={
 };
 const NAME_TO_TRI=buildNameMap();
 
-export async function runWinlineLiveFeedMaintenance(env,{force=false,nowMs=Date.now(),fetchImpl=fetch}={}){
+// minAgeMs: run only when the last finished sync is at least that old (45 s for the every-minute cron, 100 s for the
+// backup of the */2 cron — it steps in only when the every-minute sync stopped finishing)
+export async function runWinlineLiveFeedMaintenance(env,{force=false,nowMs=Date.now(),fetchImpl=fetch,minAgeMs=45*1000,source="minute"}={}){
   if(!env?.DB)return {ok:false,error:"missing_d1_binding"};
   const candidates=await liveGameCandidates(env.DB,new Date(nowMs).toISOString());
   if(!candidates.length)return {ok:true,skipped:true,reason:"no_live_games",live_games:0};
   const state=await loadState(env.DB);
   const last=Date.parse(String(state?.fetched_at||""));
-  if(!force&&Number.isFinite(last)&&nowMs-last<45*1000){
+  if(!force&&Number.isFinite(last)&&nowMs-last<minAgeMs){
     return {ok:true,skipped:true,reason:"cadence",live_games:candidates.length,last_fetch_at:state?.fetched_at||null};
   }
 
-  const feed=await fetchNhlLiveFeedWithFallback(fetchImpl,candidates);
-  const persisted=await persistLive(env.DB,feed.mapped,new Date(nowMs).toISOString());
+  let stage="fetch",feed,persisted;
+  try{
+    feed=await fetchNhlLiveFeedWithFallback(fetchImpl,candidates);
+    stage="persist";
+    persisted=await persistLive(env.DB,feed.mapped,new Date(nowMs).toISOString());
+  }catch(error){
+    // a sync that breaks leaves a row too: which stage, what error (before 2026-10-21 it left nothing)
+    const games=candidates.map(g=>({pk:Number(g.game_pk),m:String(g.away_tri||"")+"@"+String(g.home_tri||""),state:String(g.game_state||""),s:"sync_error"}));
+    try{await logSync(env.DB,{fetched_at:new Date(nowMs).toISOString(),live_games:candidates.length,mapped_games:0,feed_attempts:[...(feed?.attempts||[]),{key:"sync_error",ok:false,source,stage,error:String(error?.message||error).slice(0,300)}]},games,nowMs)}catch{}
+    throw error;
+  }
   const payload={
+    source,
     fetched_at:new Date(nowMs).toISOString(),
     live_games:candidates.length,
     feed_events:feed.events.length,
@@ -48,6 +60,20 @@ export async function runWinlineLiveFeedMaintenance(env,{force=false,nowMs=Date.
   try{await logSync(env.DB,payload,describeLiveGames(candidates,feed,nowMs),nowMs)}
   catch(error){console.error("winline live sync log failed",error)}
   return {ok:true,skipped:false,...payload};
+}
+
+// The backup for the */2 cron. The live sync runs inside the every-minute run together with other tasks; on the
+// nights of 19–21 Oct 2026 that run stopped finishing it for hours (Winline answered fine, the odds went stale, the
+// live cards of every commentator disappeared). The */2 run takes over only when the last finished sync is older than
+// 100 s, and checks once more a minute later, so even then the odds stay about a minute old.
+export const BACKUP_STALE_MS=100*1000;
+export async function runWinlineLiveBackup(env,{wait=(ms)=>new Promise(r=>setTimeout(r,ms)),now=()=>Date.now(),fetchImpl=fetch,gapMs=60*1000}={}){
+  const first=await runWinlineLiveFeedMaintenance(env,{nowMs:now(),minAgeMs:BACKUP_STALE_MS,fetchImpl,source:"backup"});
+  if(first?.reason==="no_live_games")return {ok:true,skipped:true,reason:"no_live_games",runs:[first]};
+  await wait(gapMs);
+  const second=await runWinlineLiveFeedMaintenance(env,{nowMs:now(),minAgeMs:BACKUP_STALE_MS,fetchImpl,source:"backup"});
+  const ran=[first,second].filter(x=>x&&!x.skipped);
+  return {ok:true,skipped:!ran.length,reason:ran.length?"took_over":"main_sync_fresh",mapped_games:ran.at(-1)?.mapped_games,runs:[first,second]};
 }
 
 // Per live game, what this sync saw: "ok" = priced live lines, "no_odds" = the match is in Winline's feed but
