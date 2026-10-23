@@ -46,7 +46,8 @@ export async function runWinlineLiveFeedMaintenance(env,{force=false,nowMs=Date.
     live_games:candidates.length,
     feed_events:feed.events.length,
     mapped_events:feed.mapped.length,
-    mapped_games:new Set(feed.mapped.map(x=>Number(x.game_pk))).size,
+    mapped_games:new Set(feed.mapped.map(x=>Number(x.game_pk)).filter(pk=>!(persisted.failed_games||[]).some(f=>f.game_pk===pk))).size,
+    failed_games:persisted.failed_games||[],
     markets_written:persisted.markets_written,
     snapshot_rows_written:persisted.snapshot_rows_written,
     changed_markets:persisted.changed_markets,
@@ -57,7 +58,7 @@ export async function runWinlineLiveFeedMaintenance(env,{force=false,nowMs=Date.
     provider_empty:feed.mapped.length===0,
   };
   await saveState(env.DB,payload);
-  try{await logSync(env.DB,payload,describeLiveGames(candidates,feed,nowMs),nowMs)}
+  try{await logSync(env.DB,{...payload,feed_attempts:[...(payload.feed_attempts||[]),...payload.failed_games.map(f=>({key:"game_error",ok:false,...f}))]},describeLiveGames(candidates,feed,nowMs,payload.failed_games),nowMs)}
   catch(error){console.error("winline live sync log failed",error)}
   return {ok:true,skipped:false,...payload};
 }
@@ -79,8 +80,9 @@ export async function runWinlineLiveBackup(env,{wait=(ms)=>new Promise(r=>setTim
 // Per live game, what this sync saw: "ok" = priced live lines, "no_odds" = the match is in Winline's feed but
 // without odds (Winline suspends betting for a while), "absent" = no fetched feed lists the match at all.
 // Only the latest state is kept in data_core_meta, so without this log a freeze could not be explained afterwards.
-export function describeLiveGames(candidates,feed,nowMs=Date.now()){
-  const mapped=new Map((feed?.mapped||[]).map(x=>[Number(x.game_pk),x]));
+export function describeLiveGames(candidates,feed,nowMs=Date.now(),failedGames=[]){
+  const failed=new Set((failedGames||[]).map(f=>Number(f.game_pk)));
+  const mapped=new Map((feed?.mapped||[]).filter(x=>!failed.has(Number(x.game_pk))).map(x=>[Number(x.game_pk),x]));
   return (candidates||[]).map(g=>{
     const h=String(g.home_tri||"").toUpperCase(),a=String(g.away_tri||"").toUpperCase();
     const seen=(feed?.present||[]).filter(p=>(p.team1_tri===h&&p.team2_tri===a)||(p.team1_tri===a&&p.team2_tri===h));
@@ -89,7 +91,7 @@ export function describeLiveGames(candidates,feed,nowMs=Date.now()){
     return {
       pk:Number(g.game_pk),m:a+"@"+h,state:String(g.game_state||""),
       min:Number.isFinite(start)?Math.round((nowMs-start)/60000):null,
-      s:hit?"ok":seen.length?"no_odds":"absent",
+      s:failed.has(Number(g.game_pk))?"write_error":hit?"ok":seen.length?"no_odds":"absent",
       feeds:[...new Set(seen.map(p=>p.feed))].join(","),
       lines:hit?Number(hit.lines?.length||0):0,
     };
@@ -248,11 +250,39 @@ async function liveGameCandidates(db,nowIso){
   `).bind(nowIso,nowIso).all()).results||[];
 }
 
+// One game = one winline_events row (UNIQUE game_pk). Winline sometimes gives a game a NEW event id in the middle of the
+// match (night of 22→23 Oct 2026: 4 of 8 games). Written as a new event it broke the UNIQUE rule, the batch of ALL games
+// rolled back every minute and no game got live odds for hours (also the nights of 19–21 Oct). Now the live lines of
+// such a game are kept under the event id we already have, and every game is written on its own: one broken game no
+// longer stops the others.
 async function persistLive(db,items,capturedAt){
-  if(!items.length)return {markets_written:0,snapshot_rows_written:0,changed_markets:0};
+  if(!items.length)return {markets_written:0,snapshot_rows_written:0,changed_markets:0,failed_games:[]};
+  const stored=await storedEventIds(db,items.map(x=>x.game_pk));
+  let markets=0,snapshots=0,changed=0;const failed=[];
+  for(const fromFeed of items){
+    const known=stored.get(Number(fromFeed.game_pk));
+    const item=known&&known!==String(fromFeed.event_id)?{...fromFeed,event_id:known,feed_event_id:String(fromFeed.event_id)}:fromFeed;
+    try{
+      const r=await persistGame(db,item,capturedAt);
+      markets+=r.markets_written;snapshots+=r.snapshot_rows_written;changed+=r.changed_markets;
+    }catch(error){
+      console.error("winline live write failed",item.game_pk,error);
+      failed.push({game_pk:Number(item.game_pk),event_id:String(item.event_id),error:String(error?.message||error).slice(0,200)});
+    }
+  }
+  return {markets_written:markets,snapshot_rows_written:snapshots,changed_markets:changed,failed_games:failed};
+}
+async function storedEventIds(db,gamePks){
+  const ids=[...new Set((gamePks||[]).map(Number).filter(Number.isSafeInteger))],out=new Map();
+  if(!ids.length)return out;
+  const r=await db.prepare(`SELECT winline_event_id,game_pk FROM winline_events WHERE game_pk IN (${ids.map(()=>"?").join(",")});`).bind(...ids).all();
+  for(const x of r.results||[])out.set(Number(x.game_pk),String(x.winline_event_id));
+  return out;
+}
+async function persistGame(db,item,capturedAt){
   const marketStmts=[],eventStmts=[],snapshotStmts=[];let changedMarkets=0;
-  for(const item of items){
-    const eventRaw=JSON.stringify({source:item.feed_source||"live_mainsports_eng",team1:item.team1,team2:item.team2});
+  {
+    const eventRaw=JSON.stringify({source:item.feed_source||"live_mainsports_eng",team1:item.team1,team2:item.team2,...(item.feed_event_id?{feed_event_id:item.feed_event_id}:{})});
     eventStmts.push(db.prepare(`
       INSERT INTO winline_events(winline_event_id,game_pk,status,starts_at,deeplink,raw_json,updated_at)
       VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
