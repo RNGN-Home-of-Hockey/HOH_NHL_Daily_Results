@@ -8,7 +8,8 @@ import { cropPlate, loadPlateAssets, oddsText, renderPlate, toBlob } from './pla
 const DATA_URL = 'data/site.json';
 const PLATES_KEY = 'hoh-epl-plates-v1';  // the operator's own edits of plate texts, per card, on this device
 const UI_KEY = 'hoh-epl-ui-v2';
-const KEY_STORE = 'hoh-epl-operator-key';  // the operator key of the on-air buttons, kept on this device
+const OLD_KEY_STORE = 'hoh-epl-operator-key';  // the shared operator key of before 2026-10-23: removed from devices
+const ACCOUNT_PAGES = ['account', 'people', 'history'];  // personal page; admins: commentators and the history
 const AUTO_RELOAD_MS = 5 * 60 * 1000;
 const LIVE_RELOAD_MS = 2 * 60 * 1000;
 const FEED_PAGE = 60;
@@ -62,7 +63,8 @@ const defaults = () => ({
 const state = {
   data: null, cards: [], playerRows: [], selected: null, tab: 'tips', tipCategory: 'all', query: '', family: 'all', side: 'all',
   feedLimit: FEED_PAGE, filtersOpen: false, openCard: null, editing: false, plates: loadJson(PLATES_KEY, {}), liveKey: '',
-  operatorKey: loadJson(KEY_STORE, ''), onair: {}, onairOk: true, ...mergeUi(loadJson(UI_KEY, {})),
+  me: null, mailReady: false, people: null, history: null, historyFilter: { room: '', email: '' }, shownPassword: null,
+  onair: {}, onairOk: true, ...mergeUi(loadJson(UI_KEY, {})),
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -139,7 +141,7 @@ const freshHtml = (f) => `<i></i><span class="wide-only">Линии Winline:&nbs
 function renderHeader() {
   const f = freshness();
   const nav = [['matches', 'Матчи', state.data?.matches.length], ['feed', 'Лента', state.cards.length], ['players', 'Игроки', state.playerRows.length],
-    ['teams', 'Команды', state.data?.teams.length]];
+    ['teams', 'Команды', state.data?.teams.length], ...(state.me?.role === 'admin' ? [['people', 'Комментаторы'], ['history', 'История']] : [])];
   $('#top').innerHTML = `
     <div class="brand"><span class="brand-mark">HOH</span><div>Футбол · АПЛ<small>пульт оператора</small></div></div>
     <nav class="nav" aria-label="Разделы">${nav.map(([id, label, count]) =>
@@ -147,6 +149,7 @@ function renderHeader() {
     <div class="status">
       <span class="pill ${f.cls}" id="fresh" title="${esc(f.text)}">${freshHtml(f)}</span>
       <button class="btn" data-action="reload">Обновить</button>
+      <button class="btn user-btn" data-action="page" data-page="account" aria-current="${state.page === 'account'}" title="Личный кабинет">${esc(state.me?.name || 'Кабинет')}</button>
     </div>`;
 }
 
@@ -164,7 +167,7 @@ const pastMatches = () => (state.data?.matches || []).filter((m) => m.finished).
 
 function renderStrip() {
   const strip = $('#strip');
-  if (!state.data || state.page === 'teams') { strip.innerHTML = ''; return; }
+  if (!state.data || state.page === 'teams' || ACCOUNT_PAGES.includes(state.page)) { strip.innerHTML = ''; return; }
   const current = state.page === 'feed' ? state.feed.match : state.page === 'players' ? state.players.match : String(state.selected);
   const count = (m) => (state.page === 'players' ? m.players.length : m.insights.length);
   const hot = (m) => m.insights.filter((c) => c.tier === 'fire' || c.tier === 'strong').length;
@@ -221,7 +224,6 @@ function platePanel(m, c, id) {
   return `<div class="pc-panel">
     <canvas class="plate-preview" data-preview="${esc(id)}" width="920" height="240" data-action="plate-zoom" data-card="${esc(id)}" title="Открыть крупно, в кадре 1920×1080"></canvas>
     ${crestChoice(m, id)}
-    ${keyForm()}
     <div class="pc-actions">${action}<button class="btn big" data-action="edit" aria-pressed="${state.editing}">✎ Редактировать</button></div>
     ${live && live !== id ? '<p class="plate-note">Сейчас в эфире этого матча другая плашка — она сменится на эту.</p>' : ''}
     ${c.market.live === 'closed' ? `<p class="live-note warn">В лайве Winline эту ставку сейчас не принимает — кэф ${odds(c.market.odds)} остался с линии до матча.</p>` : ''}
@@ -805,26 +807,33 @@ const overlayUrl = (eventId) => `${OVERLAY_ORIGIN}/overlay.html?match=${encodeUR
 /** The card id on air in this match, or null. */
 const liveId = (eventId) => { const room = state.onair[String(eventId)]; return room?.on && room.plate ? room.id : null; };
 
-async function onairCall(path, body) {
-  if (!state.operatorKey) throw new Error('Нужен ключ оператора — откройте свою ссылку оператора');
-  const response = await fetch(`/api/onair/${path}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Operator-Key': state.operatorKey }, body: JSON.stringify(body || {}),
-  });
+// every button works under the person's own login (owner 2026-10-23): the session is a cookie of this site, so a lost
+// or closed session (password changed, access taken) sends the page to the login form
+const API_ERRORS = {
+  exists: 'Такая почта уже есть в списке', bad_email: 'Проверьте почту', bad_name: 'Напишите имя и фамилию',
+  not_allowed: 'Это можно сделать только с комментатором', no_user: 'Нет такого человека', admins_only: 'Только для администраторов',
+  weak_password: 'Новый пароль — не короче 8 символов', wrong_password: 'Старый пароль неверный',
+};
+
+function toLogin() {
+  location.href = `login.html?next=${encodeURIComponent(location.pathname)}${location.hash}`;
+}
+
+async function api(path, body) {
+  const response = await fetch(`/api/onair/${path}`, body === undefined ? { cache: 'no-store' }
+    : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await response.json().catch(() => ({}));
-  if (response.status === 401) {
-    state.operatorKey = '';
-    saveJson(KEY_STORE, '');
-    render();
-    throw new Error('Неверный ключ оператора');
-  }
-  if (response.status === 429) throw new Error('Слишком много неверных ключей — подождите 10 минут');
-  if (!response.ok || !data.ok) throw new Error(data.error || `ошибка сервера ${response.status}`);
+  if (response.status === 401) { toLogin(); throw new Error('Нужно войти заново'); }
+  if (!response.ok || !data.ok) throw new Error(API_ERRORS[data.error] || data.error || `ошибка сервера ${response.status}`);
   return data;
 }
+
+const onairCall = (path, body) => api(path, body || {});
 
 async function pollOnair() {
   try {
     const response = await fetch('/api/onair/rooms', { cache: 'no-store' });
+    if (response.status === 401) { toLogin(); return; }
     if (!response.ok) throw new Error(String(response.status));
     const data = await response.json();
     state.onair = Object.fromEntries((data.rooms || []).map((room) => [room.room, room]));
@@ -834,9 +843,6 @@ async function pollOnair() {
   }
   renderOnair();
 }
-
-const keyForm = () => (state.operatorKey ? '' : `<div class="key-form"><input type="password" id="operator-key" autocomplete="off" placeholder="Ключ оператора">
-    <button class="btn" data-action="onair-key">Сохранить</button></div><p class="plate-note">Без ключа кнопки эфира не работают: откройте свою ссылку оператора или введите ключ один раз.</p>`);
 
 /** The match's link for OBS / vMix, big and first, with what is on air now. No «switch everything off»: several
  *  broadcasts share the site, and one operator must not be able to clear the others' plates. */
@@ -848,7 +854,6 @@ function obsBox(m) {
       <button class="btn primary" data-action="onair-copy-link" data-room="${m.event_id}">Копировать</button></div>
     <div class="obs-live" data-onair-line="${m.event_id}"></div>
     <p class="obs-hint">OBS: Источник → Браузер · vMix: Web Browser · 1920×1080</p>
-    ${keyForm()}
   </div>`;
 }
 
@@ -860,7 +865,7 @@ function renderOnair() {
     if (room?.on && room.plate) {
       const p = room.plate;
       el.className = 'obs-live live';
-      el.innerHTML = `<span class="txt">● В ЭФИРЕ: ${esc([p.team, p.bet].filter(Boolean).join(' · '))}${p.odds ? ` · ${esc(oddsText(p.odds))}` : ''}</span>
+      el.innerHTML = `<span class="txt">● В ЭФИРЕ: ${esc([p.team, p.bet].filter(Boolean).join(' · '))}${p.odds ? ` · ${esc(oddsText(p.odds))}` : ''}${room.by ? `<small class="by"> · дал ${esc(room.by)}</small>` : ''}</span>
         <button class="btn small" data-action="onair-hide" data-room="${esc(id)}">Снять с эфира</button>`;
     } else {
       el.className = 'obs-live idle';
@@ -889,6 +894,136 @@ function renderOnair() {
   }
 }
 
+// ---------- personal page, commentators (admins), history (admins) — owner 2026-10-23 ----------
+const ROLE_NAME = { admin: 'администратор', commentator: 'комментатор' };
+const whenFmt = new Intl.DateTimeFormat('ru-RU', { ...MSK, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso) => (iso ? `${whenFmt.format(new Date(iso))} МСК` : '');
+
+function renderAccount() {
+  const me = state.me || {};
+  $('#main').innerHTML = `<section class="card panel account">
+    <h2>Личный кабинет</h2>
+    <dl class="kv"><dt>Имя</dt><dd>${esc(me.name)}</dd><dt>Логин (почта)</dt><dd>${esc(me.email)}</dd><dt>Права</dt><dd>${esc(ROLE_NAME[me.role] || '')}</dd></dl>
+    <h3>Сменить пароль</h3>
+    <form class="form" data-form="password" autocomplete="on">
+      <input type="email" name="username" value="${esc(me.email)}" autocomplete="username" hidden>
+      <label>Старый пароль<input type="password" name="old" autocomplete="current-password" required></label>
+      <label>Новый пароль<input type="password" name="new" autocomplete="new-password" minlength="8" required></label>
+      <label>Новый пароль ещё раз<input type="password" name="again" autocomplete="new-password" minlength="8" required></label>
+      <button class="btn primary" type="submit">Сменить пароль</button>
+    </form>
+    <p class="plate-note">Не короче 8 символов. После смены пароля на других ваших устройствах нужно будет войти заново.</p>
+    <p><button class="btn" data-action="logout">Выйти из сайта</button></p>
+  </section>`;
+}
+
+async function loadPeople() {
+  try { const data = await api('users'); state.people = data.users; state.mailReady = data.mail; } catch (error) { state.people = []; toast(error.message); }
+  if (state.page === 'people') renderPeople();
+}
+
+function renderPeople() {
+  if (!state.people) { $('#main').innerHTML = '<section class="card panel"><div class="empty">Загружаю список…</div></section>'; loadPeople(); return; }
+  const people = state.people;
+  const active = people.filter((u) => u.role === 'commentator' && u.active).length;
+  const off = people.filter((u) => u.role === 'commentator' && !u.active).length;
+  const shown = state.shownPassword;
+  const rows = people.map((u) => `<tr data-off="${!u.active}">
+      <td data-label="Человек" class="lead"><b>${esc(u.name)}</b><small>${esc(u.email)}</small></td>
+      <td data-label="Права">${esc(ROLE_NAME[u.role] || u.role)}</td>
+      <td data-label="Доступ">${u.active ? '<span class="access on">есть</span>' : '<span class="access off">забран</span>'}</td>
+      <td data-label="Последний вход">${u.last_login ? esc(when(u.last_login)) : '<span class="faint">ещё не входил</span>'}</td>
+      <td class="r actions">${u.role !== 'commentator' ? '' : u.active
+        ? `<button class="btn small" data-action="user-reset" data-email="${esc(u.email)}" data-name="${esc(u.name)}">Новый пароль</button>
+           <button class="btn small danger" data-action="user-access" data-active="0" data-email="${esc(u.email)}" data-name="${esc(u.name)}">Забрать доступ</button>`
+        : `<button class="btn small" data-action="user-access" data-active="1" data-email="${esc(u.email)}" data-name="${esc(u.name)}">Вернуть доступ</button>`}</td>
+    </tr>`).join('');
+  $('#main').innerHTML = `<section class="card panel people">
+    <h2>Комментаторы</h2>
+    <p class="faint">С доступом: <b>${active}</b>${off ? ` · доступ забран: <b>${off}</b>` : ''} · администраторов: <b>${people.filter((u) => u.role === 'admin').length}</b></p>
+    <h3>Дать доступ новому комментатору</h3>
+    <form class="form inline" data-form="add-user">
+      <input name="name" placeholder="Имя и фамилия" autocomplete="off" required>
+      <input name="email" type="email" placeholder="Почта" autocomplete="off" required>
+      <button class="btn primary" type="submit">Дать доступ</button>
+    </form>
+    <p class="plate-note">${state.mailReady ? 'Логин и пароль придут человеку на эту почту, пароль он сможет поменять в личном кабинете.'
+      : 'Почта для писем пока не настроена: пароль появится здесь один раз — передайте его человеку сами.'}</p>
+    ${shown ? `<div class="pw-box"><b>${esc(shown.name)}</b>: логин ${esc(shown.email)}, пароль <code>${esc(shown.password)}</code>
+      <button class="btn small" data-action="copy-password">Скопировать</button> <button class="btn small ghost" data-action="hide-password">Скрыть</button></div>` : ''}
+    <div class="scroll"><table class="table people-table"><thead><tr><th>Человек</th><th>Права</th><th>Доступ</th><th>Последний вход</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <p class="plate-note">Забрать доступ можно у комментатора: он сразу выйдет из сайта, а его история нажатий сохранится. Права администратора меняет владелец.</p>
+  </section>`;
+}
+
+const HISTORY_ACTION = {
+  show: 'дал в эфир', hide: 'снял с эфира', login: 'вошёл на сайт', password: 'сменил свой пароль', user_add: 'дал доступ',
+  access_off: 'забрал доступ', access_on: 'вернул доступ', password_reset: 'выслал новый пароль', mail: 'письмо с паролем ушло',
+};
+
+async function loadHistory() {
+  const f = state.historyFilter;
+  const query = new URLSearchParams({ limit: '500', ...(f.room ? { room: f.room } : {}), ...(f.email ? { email: f.email } : {}) });
+  try { state.history = (await api(`history?${query}`)).rows; } catch (error) { state.history = []; toast(error.message); }
+  if (!state.people) { try { state.people = (await api('users')).users; } catch { state.people = []; } }
+  if (state.page === 'history') renderHistory();
+}
+
+function renderHistory() {
+  if (!state.history) { $('#main').innerHTML = '<section class="card panel"><div class="empty">Загружаю историю…</div></section>'; loadHistory(); return; }
+  const f = state.historyFilter;
+  const matches = [...(state.data?.matches || [])].sort((a, b) => b.starts_at.localeCompare(a.starts_at));
+  const matchOptions = matches.map((m) => `<option value="${m.event_id}" ${f.room === String(m.event_id) ? 'selected' : ''}>${esc(kickoff(m))} · ${esc(pairName(m))}</option>`).join('');
+  const peopleOptions = (state.people || []).map((u) => `<option value="${esc(u.email)}" ${f.email === u.email ? 'selected' : ''}>${esc(u.name)}</option>`).join('');
+  const rows = state.history.map((r) => {
+    const p = r.plate;
+    const what = `${esc(HISTORY_ACTION[r.action] || r.action)}${r.target_name ? ` · ${esc(r.target_name)}` : r.target ? ` · ${esc(r.target)}` : ''}`;
+    return `<tr data-action-kind="${esc(r.action)}">
+      <td data-label="Когда" class="nowrap">${esc(when(r.at))}</td>
+      <td data-label="Кто">${esc(r.name || 'сервер')}</td>
+      <td data-label="Что">${what}</td>
+      <td data-label="Матч">${esc(r.match || '')}</td>
+      <td data-label="Плашка">${p ? esc([p.team, p.bet, p.odds ? oddsText(p.odds) : ''].filter(Boolean).join(' · ')) : ''}</td></tr>`;
+  }).join('');
+  $('#main').innerHTML = `<section class="card panel history">
+    <h2>История</h2>
+    <div class="toolbar"><select data-input="history-room" aria-label="Матч"><option value="">Все матчи</option>${matchOptions}</select>
+      <select data-input="history-email" aria-label="Человек"><option value="">Все люди</option>${peopleOptions}</select>
+      <button class="btn" data-action="history-refresh">Обновить</button></div>
+    <p class="plate-note">Кто, когда и какую плашку дал в эфир или снял, входы на сайт и изменения доступа. Новые сверху, до 500 строк.</p>
+    ${rows ? `<div class="scroll"><table class="table history-table"><thead><tr><th>Когда</th><th>Кто</th><th>Что</th><th>Матч</th><th>Плашка</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : '<div class="empty">Пока ничего нет</div>'}
+  </section>`;
+}
+
+async function onSubmit(event) {
+  const form = event.target.closest('form[data-form]');
+  if (!form) return;
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(form).entries());
+  const button = form.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+  try {
+    if (form.dataset.form === 'password') {
+      if (values.new !== values.again) { toast('Новые пароли не совпадают'); return; }
+      await api('password', { old: values.old, new: values.new });
+      form.reset();
+      toast('Пароль изменён');
+    } else if (form.dataset.form === 'add-user') {
+      const data = await api('users/add', { name: values.name, email: values.email });
+      state.shownPassword = data.mailed ? null : { name: data.user.name, email: data.user.email, password: data.password };
+      toast(data.mailed ? `Доступ дан, письмо ушло на ${data.user.email}` : 'Доступ дан — передайте пароль');
+      state.people = null;
+      renderPeople();
+    }
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 // ---------- render & routing ----------
 function render() {
   $('#layout').dataset.page = state.page;
@@ -898,6 +1033,9 @@ function render() {
   if (state.page === 'feed') renderFeed();
   else if (state.page === 'matches') renderMatches();
   else if (state.page === 'players') renderPlayersPage();
+  else if (state.page === 'account') renderAccount();
+  else if (state.page === 'people') renderPeople();
+  else if (state.page === 'history') renderHistory();
   else renderTeams();
 }
 
@@ -908,7 +1046,7 @@ function setHash() {
 
 function readHash() {
   const [page, id] = location.hash.replace(/^#/, '').split('/');
-  if (['feed', 'matches', 'players', 'teams'].includes(page)) state.page = page;
+  if (['feed', 'matches', 'players', 'teams', ...ACCOUNT_PAGES].includes(page)) state.page = page;
   if (page === 'matches' && id) state.selected = Number(id);
 }
 
@@ -954,7 +1092,37 @@ function onClick(event) {
   const { action, value } = target.dataset;
   const f = state.feed;
   const feedChanged = () => { state.feedLimit = FEED_PAGE; saveUi(); renderFeedSide(); renderFeedList(); };
-  if (action === 'page') { state.filtersOpen = false; go(target.dataset.page); }
+  if (action === 'page') {
+    state.filtersOpen = false;
+    if (target.dataset.page === 'people') state.people = null;  // fresh each time it is opened
+    if (target.dataset.page === 'history') state.history = null;
+    go(target.dataset.page);
+  }
+  else if (action === 'logout') api('logout', {}).catch(() => {}).finally(() => { location.href = 'login.html'; });
+  else if (action === 'user-access') {
+    const { email, name } = target.dataset;
+    const give = target.dataset.active === '1';
+    if (!give && !window.confirm(`Забрать доступ у ${name}? Он сразу выйдет из сайта.`)) return;
+    target.disabled = true;
+    api('users/access', { email, active: give })
+      .then(() => { toast(give ? `Доступ возвращён: ${name}` : `Доступ забран: ${name}`); state.people = null; renderPeople(); })
+      .catch((error) => { toast(error.message); target.disabled = false; });
+  }
+  else if (action === 'user-reset') {
+    const { email, name } = target.dataset;
+    if (!window.confirm(`Выслать ${name} новый пароль? Старый перестанет работать.`)) return;
+    target.disabled = true;
+    api('users/reset', { email })
+      .then((data) => {
+        state.shownPassword = data.mailed ? null : { name: data.user.name, email: data.user.email, password: data.password };
+        toast(data.mailed ? `Новый пароль ушёл на ${email}` : 'Новый пароль — передайте его человеку');
+        renderPeople();
+      })
+      .catch((error) => { toast(error.message); target.disabled = false; });
+  }
+  else if (action === 'copy-password' && state.shownPassword) copyText(`Сайт: ${location.origin}\nЛогин: ${state.shownPassword.email}\nПароль: ${state.shownPassword.password}`);
+  else if (action === 'hide-password') { state.shownPassword = null; renderPeople(); }
+  else if (action === 'history-refresh') { state.history = null; renderHistory(); }
   else if (action === 'strip') {
     if (state.page === 'matches') { go('matches', Number(value)); return; }
     const filter = state.page === 'players' ? state.players : f;
@@ -1022,15 +1190,6 @@ function onClick(event) {
       .then((data) => { state.onair[data.room] = data; renderOnair(); toast('Снято с эфира'); })
       .catch((error) => toast(error.message));
   }
-  else if (action === 'onair-key') {
-    const input = $('#operator-key');
-    const key = (input?.value || '').trim();
-    if (!key) return;
-    fetch('/api/onair/check', { headers: { 'X-Operator-Key': key }, cache: 'no-store' }).then((response) => {
-      if (response.ok) { state.operatorKey = key; saveJson(KEY_STORE, key); render(); toast('Ключ сохранён'); }
-      else toast(response.status === 429 ? 'Слишком много попыток — подождите 10 минут' : 'Неверный ключ');
-    }).catch(() => toast('Нет связи с сервером эфира'));
-  }
   else if (action === 'onair-copy-link') copyText(overlayUrl(target.dataset.room));
   else if (action === 'plate-png') {
     const id = target.dataset.card;
@@ -1056,6 +1215,12 @@ function onInput(event) {
   const target = event.target;
   const kind = target.dataset?.input;
   if (!kind) return;
+  if (kind === 'history-room' || kind === 'history-email') {
+    state.historyFilter[kind === 'history-room' ? 'room' : 'email'] = target.value;
+    state.history = null;
+    renderHistory();
+    return;
+  }
   if (kind.startsWith('plate-')) {
     const id = target.dataset.card;
     const field = { 'plate-headline': 'headline', 'plate-team': 'team', 'plate-bet': 'bet', 'plate-odds': 'odds', 'plate-crest': 'crest' }[kind];
@@ -1115,6 +1280,7 @@ async function load(manual = false) {
   let data = null;
   try {
     const response = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: 'no-store' });
+    if (response.status === 401) { toLogin(); return; }
     if (response.ok) data = await response.json();
   } catch { /* shown as an empty state below */ }
   if (!data && state.data) { if (manual) toast('Не удалось обновить данные'); return; }
@@ -1136,13 +1302,18 @@ async function load(manual = false) {
 
 shell();
 readHash();
-const linkKey = new URLSearchParams(location.search).get('key');
-if (linkKey) {  // the operator link carries the key once; it is kept on this device and dropped from the address bar
-  state.operatorKey = linkKey.trim();
-  saveJson(KEY_STORE, state.operatorKey);
-  history.replaceState(null, '', location.pathname + location.hash);
-}
+// the shared key of the old operator link is not used any more: drop it from the address bar and from this device
+if (location.search) history.replaceState(null, '', location.pathname + location.hash);
+try { localStorage.removeItem(OLD_KEY_STORE); } catch { /* storage may be blocked */ }
+api('me').then((data) => {
+  state.me = data.user;
+  state.mailReady = data.mail;
+  if (ACCOUNT_PAGES.slice(1).includes(state.page) && state.me.role !== 'admin') { go('matches'); return; }
+  renderHeader();
+  if (ACCOUNT_PAGES.includes(state.page)) render();
+}).catch(() => {});
 pollOnair();
+document.addEventListener('submit', onSubmit);
 setInterval(() => { if (document.visibilityState === 'visible') pollOnair(); }, 5000);
 document.addEventListener('click', onClick);
 document.addEventListener('input', onInput);

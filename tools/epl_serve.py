@@ -20,29 +20,58 @@ ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "epl-site"
 DATA = ROOT / "local-data" / "epl" / "site"
 ONAIR = {"url": ""}
+# open without a login, as on the server (deploy/epl/epl.caddy, epl-worker): the login page and the OBS overlay
+PUBLIC = ("/login.html", "/login.js", "/overlay.html", "/overlay.js", "/plate.js", "/robots.txt", "/favicon.ico", "/assets/")
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+OPENER = urllib.request.build_opener(NoRedirect)
 
 
 class Handler(SimpleHTTPRequestHandler):
+    def ask(self, path: str, method: str, body: bytes | None, extra: dict | None = None):
+        headers = {k: v for k, v in self.headers.items() if k.lower() in ("content-type", "cookie")}
+        request = urllib.request.Request(ONAIR["url"] + path, data=body, headers={**headers, **(extra or {})}, method=method)
+        try:
+            with OPENER.open(request, timeout=10) as answer:
+                return answer.status, answer.read(), answer.headers
+        except urllib.error.HTTPError as error:
+            return error.code, error.read(), error.headers
+
+    def relay(self, status: int, body: bytes, headers) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        for name in ("Set-Cookie", "Location"):
+            if headers.get(name):
+                self.send_header(name, headers[name])
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def forward(self) -> bool:
         if not (ONAIR["url"] and self.path.startswith("/api/onair/")):
             return False
         length = int(self.headers.get("Content-Length") or 0)
-        headers = {k: v for k, v in self.headers.items() if k.lower() in ("content-type", "x-operator-key", "authorization")}
-        request = urllib.request.Request(ONAIR["url"] + self.path, data=self.rfile.read(length) if length else None, headers=headers, method=self.command)
-        try:
-            with urllib.request.urlopen(request, timeout=10) as answer:
-                status, body = answer.status, answer.read()
-        except urllib.error.HTTPError as error:
-            status, body = error.code, error.read()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self.relay(*self.ask(self.path, self.command, self.rfile.read(length) if length else None))
         return True
 
+    def allowed(self) -> bool:
+        """With --onair the site is closed without a login, like Caddy's forward_auth on the server."""
+        path = self.path.split("?", 1)[0]
+        if not ONAIR["url"] or path in PUBLIC or path.startswith("/assets/"):
+            return True
+        status, body, headers = self.ask("/api/onair/auth", "GET", None, {"X-Forwarded-Uri": self.path})
+        if status == 200:
+            return True
+        self.relay(status, body, headers)
+        return False
+
     def do_GET(self) -> None:
-        if not self.forward():
+        if not self.forward() and self.allowed():
             super().do_GET()
 
     def do_POST(self) -> None:

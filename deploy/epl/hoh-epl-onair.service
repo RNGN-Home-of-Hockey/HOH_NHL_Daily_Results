@@ -1,20 +1,23 @@
 [Unit]
-Description=HOH EPL: on-air state of the Winline plates (OBS/vMix overlay + the operator's buttons)
+Description=HOH EPL: on-air state of the Winline plates + the commentators' accounts (logins, admins, history)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
+# state in /var/lib/hoh-epl-onair: onair.json, users.json, sessions.json, history.jsonl (who put which plate on air)
 ExecStart=/usr/bin/python3.14 -I /opt/hoh-epl/repo/tools/epl_onair.py --port 8096
 DynamicUser=yes
 StateDirectory=hoh-epl-onair
-LoadCredential=operator.key:/opt/hoh-epl/secrets/operator.key
+# the mailbox the passwords are sent from (KEY=VALUE: SMTP_HOST, SMTP_PORT, SMTP_LOGIN, SMTP_PASSWORD, MAIL_FROM_NAME);
+# an empty file = no mail: an admin then sees a new password once on the site
+LoadCredential=smtp.env:/opt/hoh-epl/secrets/smtp.env
 Restart=always
 RestartSec=2
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-MemoryMax=200M
+MemoryMax=300M
 
 [Install]
 WantedBy=multi-user.target

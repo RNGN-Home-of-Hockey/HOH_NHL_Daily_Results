@@ -18,12 +18,24 @@ epl.109-172-113-187.sslip.io {
 		X-Robots-Tag "noindex, nofollow"
 	}
 
-	# on-air state for the OBS/vMix overlay and the operator's buttons (tools/epl_onair.py, hoh-epl-onair.service)
+	# on-air state, logins and accounts (tools/epl_onair.py, hoh-epl-onair.service); it checks the session itself
 	handle /api/onair/* {
 		reverse_proxy 127.0.0.1:8096
 	}
 
+	# open without a login (owner 2026-10-23: the site only with one's own login): the login page and the OBS / vMix
+	# overlay with what it draws (fonts, template, crests); the overlay reads only /api/onair/state
+	@open path /login.html /login.js /overlay.html /overlay.js /plate.js /favicon.ico /assets/*
+	handle @open {
+		root * /opt/hoh-epl/repo/epl-site
+		header Cache-Control "no-cache"
+		file_server
+	}
+
 	handle /data/site.json {
+		forward_auth 127.0.0.1:8096 {
+			uri /api/onair/auth
+		}
 		root * /opt/hoh-epl/repo/local-data/epl/site
 		rewrite * /site.json
 		header Cache-Control "no-store"
@@ -36,7 +48,11 @@ Disallow: /
 ` 200
 	}
 
+	# everything else (the operator console) only after a login: no session -> 302 to /login.html
 	handle {
+		forward_auth 127.0.0.1:8096 {
+			uri /api/onair/auth
+		}
 		root * /opt/hoh-epl/repo/epl-site
 		header Cache-Control "no-cache"
 		file_server

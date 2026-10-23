@@ -392,3 +392,40 @@ b.good { color: var(--good); } b.bad { color: var(--bad); }
 .live-note.warn { background: var(--warn-soft); color: var(--warn); }
 .pc-inplay { color: #fff; background: var(--good); font-weight: 800; padding: 1px 8px; border-radius: 999px; }
 .pc-closed { color: var(--warn); background: var(--warn-soft); font-weight: 800; padding: 1px 8px; border-radius: 999px; }
+
+/* ---------- accounts (2026-10-23): personal page, commentators and history for admins ---------- */
+.layout[data-page="account"], .layout[data-page="people"], .layout[data-page="history"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; grid-template-rows: auto; }
+.layout[data-page="account"] .strip, .layout[data-page="people"] .strip, .layout[data-page="history"] .strip,
+.layout[data-page="account"] .side, .layout[data-page="people"] .side, .layout[data-page="history"] .side { display: none !important; }
+.user-btn { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-btn[aria-current="true"] { background: var(--text); border-color: var(--text); color: #fff; }
+.account { max-width: 560px; }
+.panel h2 { margin: 0; font-size: 20px; }
+.panel h3 { margin: 8px 0 0; font-size: 14px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-weight: 650; word-break: break-all; }
+.form { display: grid; gap: 10px; max-width: 420px; }
+.form label { display: grid; gap: 4px; font-size: 12px; font-weight: 650; color: var(--muted); }
+.form input { padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: 15px; color: var(--text); }
+.form.inline { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; max-width: 760px; align-items: center; }
+.people-table td small { display: block; color: var(--muted); font-size: 12px; }
+.people-table tr[data-off="true"] td { color: var(--faint); }
+.people-table .actions { white-space: nowrap; }
+.access { font-weight: 750; padding: 1px 8px; border-radius: 999px; font-size: 12px; }
+.access.on { color: var(--good); background: var(--good-soft); }
+.access.off { color: var(--bad); background: var(--bad-soft); }
+.pw-box { padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--text); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pw-box code { font-size: 15px; font-weight: 800; background: #fff; padding: 2px 8px; border-radius: 6px; }
+.history-table tr[data-action-kind="show"] td:nth-child(3) { color: var(--good); font-weight: 700; }
+.history-table tr[data-action-kind="hide"] td:nth-child(3) { color: var(--bad); font-weight: 700; }
+.obs-live .by { font-weight: 500; opacity: 0.8; }
+@media (max-width: 880px) {
+  .form.inline { grid-template-columns: minmax(0, 1fr); }
+  .user-btn { max-width: 120px; }
+  .people-table thead, .history-table thead { display: none; }
+  .people-table tr, .history-table tr { display: grid; gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .people-table td, .history-table td { border: 0; padding: 2px 4px; }
+  .people-table .actions { text-align: left; white-space: normal; }
+  .history-table td[data-label]:not(:empty)::before { content: attr(data-label) ": "; color: var(--muted); font-size: 12px; }
+}
