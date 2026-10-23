@@ -66,6 +66,7 @@ export async function runWinlineFeedMaintenance(env,{force=false,nowMs=Date.now(
     snapshot_rows_written:result.snapshot_rows_written,
     changed_games:result.changed_games,
     unchanged_games:result.unchanged_games,
+    failed_games:result.failed_games||[],
     next_game:next||null
   };
   await saveState(env.DB,payload);
@@ -224,9 +225,14 @@ function normalizeNhlGame(g){
   return {game_pk:id,season_id:String(g?.season||""),game_type:num(g?.gameType),scheduled_start_utc:start,game_state:String(g?.gameState||"FUT").toUpperCase(),home_tri:home,away_tri:away,home_score:num(g?.homeTeam?.score)??0,away_score:num(g?.awayTeam?.score)??0,current_period:num(g?.periodDescriptor?.number),period_type:g?.periodDescriptor?.periodType||g?.gameOutcome?.lastPeriodType||null,venue_name:localized(g?.venue)};
 }
 
-async function persistMapped(db,items,capturedAt){
-  if(!items.length)return {events_written:0,markets_written:0,snapshot_rows_written:0,changed_games:0,unchanged_games:0};
-  const eventIds=items.map(x=>x.event_id);
+// One game = one winline_events row (UNIQUE game_pk). When Winline gives a game a NEW event id, its lines are written
+// under the event id we already have — in the live sync a new id broke the UNIQUE rule and rolled back the batch of ALL
+// games for hours (nights of 19–23 Oct 2026). Every game is written on its own: a failing game does not stop the others.
+async function persistMapped(db,feedItems,capturedAt){
+  if(!feedItems.length)return {events_written:0,markets_written:0,snapshot_rows_written:0,changed_games:0,unchanged_games:0,failed_games:[]};
+  const stored=await storedEventIds(db,feedItems.map(x=>x.game_pk));
+  const items=feedItems.map(x=>{const known=stored.get(Number(x.game_pk));return known&&known!==String(x.event_id)?{...x,event_id:known,feed_event_id:String(x.event_id)}:x});
+  const eventIds=[...new Set(items.map(x=>x.event_id))];
   const placeholders=eventIds.map(()=>"?").join(",");
   const [eventRows,marketRows]=await Promise.all([
     db.prepare(`SELECT winline_event_id,game_pk,status,starts_at,deeplink FROM winline_events WHERE winline_event_id IN (${placeholders});`).bind(...eventIds).all(),
@@ -234,13 +240,14 @@ async function persistMapped(db,items,capturedAt){
   ]);
   const existingEvents=new Map((eventRows.results||[]).map(x=>[String(x.winline_event_id),x]));
   const existingMarkets=new Map((marketRows.results||[]).map(x=>[String(x.winline_market_id),x]));
-  const eventStmts=[],marketStmts=[],snapshotStmts=[];
-  let changedGames=0,unchangedGames=0;
+  let changedGames=0,unchangedGames=0,eventsWritten=0,marketsWritten=0,snapshotsWritten=0;
+  const failed=[];
 
   for(const item of items){
+    const eventStmts=[],marketStmts=[],snapshotStmts=[];
     let gameChanged=false;
     const oldEvent=existingEvents.get(item.event_id);
-    const eventRaw=JSON.stringify({source:"prematch_mainsports_eng",bid:item.bid,team1_id:item.team1_id,team2_id:item.team2_id,team1:item.team1,team2:item.team2});
+    const eventRaw=JSON.stringify({source:"prematch_mainsports_eng",bid:item.bid,team1_id:item.team1_id,team2_id:item.team2_id,team1:item.team1,team2:item.team2,...(item.feed_event_id?{feed_event_id:item.feed_event_id}:{})});
     eventStmts.push(db.prepare(`
       INSERT INTO winline_events(winline_event_id,game_pk,status,starts_at,deeplink,raw_json,updated_at)
       VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
@@ -249,10 +256,11 @@ async function persistMapped(db,items,capturedAt){
 
     // A successful feed fetch is also a freshness confirmation. First deactivate the
     // previous event market set; every line still present below is reactivated and
-    // receives a fresh updated_at even when its price did not move.
+    // receives a fresh updated_at even when its price did not move. Only the pre-match lines:
+    // the live lines of the game may sit under the same event and belong to the live sync.
     marketStmts.push(db.prepare(`
       UPDATE winline_markets SET active=0
-      WHERE winline_event_id=? AND active=1;
+      WHERE winline_event_id=? AND active=1 AND is_live=0;
     `).bind(item.event_id));
 
     // Preserve every Winline line in current-state storage.
@@ -306,13 +314,25 @@ async function persistMapped(db,items,capturedAt){
       }
     }
 
-    if(gameChanged)changedGames++;else unchangedGames++;
+    try{
+      await runStatementBatches(db,eventStmts);
+      await runStatementBatches(db,marketStmts);
+      await runStatementBatches(db,snapshotStmts);
+      eventsWritten+=eventStmts.length;marketsWritten+=marketStmts.length;snapshotsWritten+=snapshotStmts.length;
+      if(gameChanged)changedGames++;else unchangedGames++;
+    }catch(error){
+      console.error("winline pre-match write failed",item.game_pk,error);
+      failed.push({game_pk:Number(item.game_pk),event_id:String(item.event_id),error:String(error?.message||error).slice(0,200)});
+    }
   }
-
-  await runStatementBatches(db,eventStmts);
-  await runStatementBatches(db,marketStmts);
-  await runStatementBatches(db,snapshotStmts);
-  return {events_written:eventStmts.length,markets_written:marketStmts.length,snapshot_rows_written:snapshotStmts.length,changed_games:changedGames,unchanged_games:unchangedGames};
+  return {events_written:eventsWritten,markets_written:marketsWritten,snapshot_rows_written:snapshotsWritten,changed_games:changedGames,unchanged_games:unchangedGames,failed_games:failed};
+}
+async function storedEventIds(db,gamePks){
+  const ids=[...new Set((gamePks||[]).map(Number).filter(Number.isSafeInteger))],out=new Map();
+  if(!ids.length)return out;
+  const r=await db.prepare(`SELECT winline_event_id,game_pk FROM winline_events WHERE game_pk IN (${ids.map(()=>"?").join(",")});`).bind(...ids).all();
+  for(const x of r.results||[])out.set(Number(x.game_pk),String(x.winline_event_id));
+  return out;
 }
 
 function fullMarketBase(line){

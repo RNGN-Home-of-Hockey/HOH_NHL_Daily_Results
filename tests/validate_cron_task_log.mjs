@@ -141,6 +141,50 @@ function liveDb({ lastSyncAgoMs = null, live = true } = {}) {
   }
 }
 
+// ---- the pre-match sync has the same rule: one event per game, every game on its own, live lines left alone
+{
+  const { runWinlineFeedMaintenance } = await import("../cloudflare-worker/src/winline-feed-maintenance.js");
+  const pre = `<Winline><Sport Name="Ice Hockey" Id="4"><Country Id="1"><Tournament Name="NHL" Id="7">`
+    + `<Match Id="7101" BID="1" Team1="Chicago Blackhawks" Team2="Montreal Canadiens" Id1="1" Id2="2" MatchDate="2026-10-24T03:00:00.000+03:00" MatchUrl="https://winline.ru/plus/7101"><line freetext="3-way odds" name1="1" odd1="2.10" name2="X" odd2="4.10" name3="2" odd3="3.00"></line></Match>`
+    + `<Match Id="7202" BID="2" Team1="Colorado Avalanche" Team2="Tampa Bay Lightning" Id1="3" Id2="4" MatchDate="2026-10-24T04:00:00.000+03:00" MatchUrl="https://winline.ru/plus/7202"><line freetext="3-way odds" name1="1" odd1="1.80" name2="X" odd2="4.30" name3="2" odd3="3.90"></line></Match>`
+    + `</Tournament></Country></Sport></Winline>`;
+  const preDb = () => {
+    const db = makeDb();
+    const add = db.raw.prepare("INSERT INTO games(game_pk,season_id,game_type,scheduled_start_utc,game_state,home_tri,away_tri) VALUES(?,?,?,?,?,?,?)");
+    add.run(2026020166, "20262027", 2, "2026-10-24T00:00:00Z", "FUT", "CHI", "MTL");
+    add.run(2026020167, "20262027", 2, "2026-10-24T01:00:00Z", "FUT", "COL", "TBL");
+    // CHI–MTL is stored under 6101 (the feed now says 7101) and already has a live line under it
+    db.raw.prepare("INSERT INTO winline_events(winline_event_id,game_pk,status) VALUES(?,?,?)").run("6101", 2026020166, "live");
+    db.raw.prepare("INSERT INTO winline_markets(winline_market_id,winline_event_id,market_type,outcome_name,odds,is_live,active) VALUES(?,?,?,?,?,1,1)").run("6101:live:nextgoal:1", "6101", "nextgoal", "1", 1.9);
+    return db;
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => pre });
+  try {
+    const at = Date.parse("2026-10-23T20:00:00Z");
+    {
+      const db = preDb();
+      const r = await runWinlineFeedMaintenance({ DB: db }, { force: true, nowMs: at });
+      assert.equal(r.mapped_events, 2); assert.deepEqual(r.failed_games, []);
+      const ev = db.raw.prepare("SELECT winline_event_id,game_pk,raw_json FROM winline_events ORDER BY game_pk").all();
+      assert.deepEqual(ev.map((e) => [e.winline_event_id, e.game_pk]), [["6101", 2026020166], ["7202", 2026020167]], "the known event kept");
+      assert.equal(JSON.parse(ev[0].raw_json).feed_event_id, "7101");
+      assert.ok(db.raw.prepare("SELECT COUNT(*) n FROM winline_markets WHERE winline_event_id='6101' AND is_live=0 AND active=1").get().n > 0, "pre-match lines under the known event");
+      assert.equal(db.raw.prepare("SELECT COUNT(*) n FROM winline_markets WHERE winline_event_id='7101'").get().n, 0);
+      assert.equal(db.raw.prepare("SELECT active FROM winline_markets WHERE winline_market_id='6101:live:nextgoal:1'").get().active, 1, "the live line is not switched off by the pre-match sync");
+    }
+    {
+      const db = preDb();
+      const poisoned = { prepare: db.prepare, batch: async (list) => { if (list.some((s) => (s.args || []).includes(2026020167))) throw new Error("D1_ERROR: poison"); return db.batch(list); } };
+      const r = await quiet(runWinlineFeedMaintenance)({ DB: poisoned }, { force: true, nowMs: at });
+      assert.deepEqual(r.failed_games.map((f) => f.game_pk), [2026020167], "the broken game is reported");
+      assert.ok(db.raw.prepare("SELECT COUNT(*) n FROM winline_markets WHERE winline_event_id='6101' AND is_live=0").get().n > 0, "the other game is written");
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 // ---- the real scheduled handler: every task of the every-minute run leaves a row, the */2 run has the backup
 {
   const realFetch = globalThis.fetch;

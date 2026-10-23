@@ -214,11 +214,8 @@ export default {
           console.error("scheduled player profile maintenance failed", error);
         }
         if (envFlag(env.WINLINE_FEED_SYNC_ENABLED, false)) {
-          try {
-            await runWinlineFeedMaintenance(env);
-          } catch (error) {
-            console.error("scheduled Winline NHL feed maintenance failed", error);
-          }
+          // the pre-match lines; its result or error goes to cron_task_runs (it never throws)
+          await trackCronTask(env, "*/5 * * * *", "winline_prematch", () => runWinlineFeedMaintenance(env));
           const scheduledAt=new Date(Number(controller?.scheduledTime)||Date.now());
           if(scheduledAt.getUTCMinutes()%15===0){
             try {
