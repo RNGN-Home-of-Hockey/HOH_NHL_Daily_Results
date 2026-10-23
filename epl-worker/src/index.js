@@ -94,7 +94,8 @@ async function onair(request, env, url) {
 }
 
 // open without a login: the login page and the OBS / vMix overlay with what it draws (as in deploy/epl/epl.caddy)
-const OPEN = new Set(['/login.html', '/login.js', '/overlay.html', '/overlay.js', '/plate.js', '/robots.txt', '/favicon.ico']);
+// (Cloudflare's assets answer /login.html with a redirect to /login: both forms are open)
+const OPEN = new Set(['/login.html', '/login', '/login.js', '/overlay.html', '/overlay', '/overlay.js', '/plate.js', '/robots.txt', '/favicon.ico']);
 
 /** null when the visitor may go on; else the answer (302 to the login page, 401 for the data). */
 async function gate(request, env, url) {

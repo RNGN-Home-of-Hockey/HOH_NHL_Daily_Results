@@ -11,7 +11,7 @@ const MESSAGES = {
 function nextPage() {
   const raw = new URLSearchParams(location.search).get('next') || '/';
   const path = raw.startsWith('/') && !raw.startsWith('//') && !raw.includes(String.fromCharCode(92)) ? raw.split('?')[0] : '/';
-  return (path.endsWith('login.html') ? '/' : path) + location.hash;
+  return (/\/login(\.html)?$/.test(path) ? '/' : path) + location.hash;
 }
 
 function show(text) {

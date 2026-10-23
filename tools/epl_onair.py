@@ -149,25 +149,24 @@ def public_user(user: dict) -> dict:
 
 
 # ---------- mail: the password goes to the person's e-mail ----------
-INVITE_SUBJECT = "Доступ к плашкам Winline на АПЛ"
-RESET_SUBJECT = "Новый пароль к плашкам Winline на АПЛ"
+INVITE_SUBJECT = "Доступ к плашкам Winline для матчей АПЛ"
+RESET_SUBJECT = "Новый пароль к плашкам Winline для матчей АПЛ"
 INVITE_TEXT = """{first}, привет!
 
-Это доступ к сайту плашек Winline для трансляций АПЛ
+Это доступ к плашкам Winline для матчей АПЛ
 
 Сайт: {site}
 Логин: {email}
 Пароль: {password}
 
 Пароль можно поменять в личном кабинете, это кнопка с вашим именем вверху сайта
-Общая ссылка с ключом больше не работает, теперь каждый заходит под своим логином
 {admin}
 --
 Игорь Знаменский"""
 ADMIN_LINE = "\nУ вас права администратора: в разделе Комментаторы можно дать доступ новому комментатору или забрать его\n"
 RESET_TEXT = """{first}, привет!
 
-Новый пароль к сайту плашек Winline на АПЛ
+Новый пароль к плашкам Winline для матчей АПЛ
 
 Сайт: {site}
 Логин: {email}
@@ -221,11 +220,20 @@ def letter(user: dict, password: str, kind: str) -> tuple[str, str]:
 
 
 # ---------- the state: rooms, accounts, sessions, history ----------
+def hand_over(path: Path) -> None:
+    """Run as root from the server's shell next to the DynamicUser service: the file must stay the service's own."""
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        info = path.parent.stat()
+        if info.st_uid != 0:
+            os.chown(path, info.st_uid, info.st_gid)
+
+
 def write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_name(path.name + ".part")
     partial.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     os.chmod(partial, 0o600)
+    hand_over(partial)
     os.replace(partial, path)
 
 
@@ -257,7 +265,10 @@ class Service:
         except OSError:
             mtime = None
         if mtime != self.users_mtime:
-            self.users = read_json(path, {}).get("users", {})
+            try:
+                self.users = json.loads(path.read_text(encoding="utf-8")).get("users", {}) if mtime else {}
+            except (OSError, ValueError):
+                return  # unreadable for a moment: keep the accounts we have and try again on the next request
             self.users_mtime = mtime
 
     def save_users(self) -> None:
@@ -275,6 +286,7 @@ class Service:
         self.dir.mkdir(parents=True, exist_ok=True)
         with open(self.dir / "history.jsonl", "a", encoding="utf-8") as out:
             out.write(json.dumps(row, ensure_ascii=False) + "\n")
+        hand_over(self.dir / "history.jsonl")
 
     def history(self, room: str | None = None, email: str | None = None, limit: int = HISTORY_ROWS) -> list[dict]:
         try:
@@ -517,7 +529,7 @@ def make_handler(service: Service, secure_cookie: bool = True):
                 if user:
                     return self.reply(200, {"ok": True})
                 wanted = self.headers.get("X-Forwarded-Uri") or "/"
-                if wanted.startswith(("/data/", "/api/")):
+                if wanted.startswith(("/data/", "/api/")) or urlparse(wanted).path.endswith(".json"):  # Caddy rewrites the data to /site.json first
                     return self.reply(401, {"ok": False, "error": "login_required"})
                 target = urlparse(wanted).path or "/"
                 return self.reply(302, {"ok": False, "error": "login_required"}, {"Location": f"/login.html?next={quote(target)}"})
