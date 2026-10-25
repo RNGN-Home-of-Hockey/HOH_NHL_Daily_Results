@@ -1,8 +1,8 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
-  "eliteprospects_audio_matched": 567,
-  "eliteprospects_profiles_resolved": 779,
-  "matched": 577,
+  "eliteprospects_audio_matched": 566,
+  "eliteprospects_profiles_resolved": 778,
+  "matched": 576,
   "nhl_audio_fallback_matched": 10,
   "players": {
     "8470613": {
@@ -9706,7 +9706,7 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/nico_daws.mp3",
       "shoots_catches": "L",
-      "sweater_number": null,
+      "sweater_number": 35,
       "team_tri": "WPG",
       "upstream_verified": true,
       "weight_kg": 93
@@ -9982,7 +9982,7 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dawson_mercer.mp3",
       "shoots_catches": "R",
-      "sweater_number": null,
+      "sweater_number": 19,
       "team_tri": "WPG",
       "upstream_verified": true,
       "weight_kg": 82
@@ -12861,29 +12861,6 @@
       "team_tri": "CHI",
       "upstream_verified": true,
       "weight_kg": 80
-    },
-    "8484392": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8484392.mp3",
-      "birth_country": "NOR",
-      "birth_date": "2005-09-14",
-      "eliteprospects_id": "618598",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Felix%20Unger%20S%C3%B6rum",
-      "eliteprospects_slug": "felix-unger-sorum",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/618598/felix-unger-sorum",
-      "first_name": "Felix",
-      "full_name_en": "Felix Unger Sörum",
-      "height_cm": 183,
-      "last_name": "Unger Sörum",
-      "player_id": 8484392,
-      "position_code": "R",
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/felix_unger_sorum.mp3",
-      "shoots_catches": "R",
-      "sweater_number": 36,
-      "team_tri": "CAR",
-      "upstream_verified": true,
-      "weight_kg": 86
     },
     "8484790": {
       "audio_cached": true,
@@ -21685,7 +21662,7 @@
       "pronunciation_available": false,
       "reason": "no_verified_audio",
       "shoots_catches": "L",
-      "sweater_number": 15,
+      "sweater_number": 18,
       "team_tri": "MIN",
       "weight_kg": 83
     },
@@ -25667,7 +25644,7 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/nico_daws.mp3",
       "shoots_catches": "L",
-      "sweater_number": null,
+      "sweater_number": 35,
       "team_tri": "WPG",
       "upstream_verified": true,
       "weight_kg": 93
@@ -25985,7 +25962,7 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/dawson_mercer.mp3",
       "shoots_catches": "R",
-      "sweater_number": null,
+      "sweater_number": 19,
       "team_tri": "WPG",
       "upstream_verified": true,
       "weight_kg": 82
@@ -30356,29 +30333,6 @@
       "upstream_verified": true,
       "weight_kg": 80
     },
-    "8484392": {
-      "audio_cached": true,
-      "audio_local_path": "/player-audio/8484392.mp3",
-      "birth_country": "NOR",
-      "birth_date": "2005-09-14",
-      "eliteprospects_id": "618598",
-      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Felix%20Unger%20S%C3%B6rum",
-      "eliteprospects_slug": "felix-unger-sorum",
-      "eliteprospects_url": "https://www.eliteprospects.com/player/618598/felix-unger-sorum",
-      "first_name": "Felix",
-      "full_name_en": "Felix Unger Sörum",
-      "height_cm": 183,
-      "last_name": "Unger Sörum",
-      "player_id": 8484392,
-      "position_code": "R",
-      "pronunciation_source": "eliteprospects_player_audio",
-      "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/felix_unger_sorum.mp3",
-      "shoots_catches": "R",
-      "sweater_number": 36,
-      "team_tri": "CAR",
-      "upstream_verified": true,
-      "weight_kg": 86
-    },
     "8484403": {
       "audio_cached": false,
       "birth_country": "CAN",
@@ -31338,7 +31292,7 @@
       "weight_kg": 92
     }
   },
-  "roster_players": 805,
+  "roster_players": 804,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
@@ -33438,7 +33392,7 @@
       "pronunciation_available": false,
       "reason": "no_verified_audio",
       "shoots_catches": "L",
-      "sweater_number": 15,
+      "sweater_number": 18,
       "team_tri": "MIN",
       "weight_kg": 83
     },
