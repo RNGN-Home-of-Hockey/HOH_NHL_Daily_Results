@@ -1,7 +1,7 @@
 {
   "audio_storage": "/player-audio/<nhl_player_id>.mp3",
   "eliteprospects_audio_matched": 567,
-  "eliteprospects_profiles_resolved": 778,
+  "eliteprospects_profiles_resolved": 780,
   "matched": 577,
   "nhl_audio_fallback_matched": 10,
   "players": {
@@ -28875,6 +28875,27 @@
       "team_tri": "NSH",
       "weight_kg": 103
     },
+    "8483514": {
+      "audio_cached": false,
+      "birth_country": "USA",
+      "birth_date": "2003-12-27",
+      "eliteprospects_id": "538928",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Matthew%20Seminoff",
+      "eliteprospects_slug": "matthew-seminoff",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/538928/matthew-seminoff",
+      "first_name": "Matthew",
+      "full_name_en": "Matthew Seminoff",
+      "height_cm": 183,
+      "last_name": "Seminoff",
+      "player_id": 8483514,
+      "position_code": "R",
+      "pronunciation_available": false,
+      "reason": "no_verified_audio",
+      "shoots_catches": "R",
+      "sweater_number": 43,
+      "team_tri": "DAL",
+      "weight_kg": 86
+    },
     "8483515": {
       "audio_cached": true,
       "audio_local_path": "/player-audio/8483515.mp3",
@@ -31251,6 +31272,27 @@
       "upstream_verified": true,
       "weight_kg": 84
     },
+    "8486130": {
+      "audio_cached": false,
+      "birth_country": "CAN",
+      "birth_date": "2004-05-19",
+      "eliteprospects_id": "570748",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Dylan%20Hryckowian",
+      "eliteprospects_slug": "dylan-hryckowian",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/570748/dylan-hryckowian",
+      "first_name": "Dylan",
+      "full_name_en": "Dylan Hryckowian",
+      "height_cm": 178,
+      "last_name": "Hryckowian",
+      "player_id": 8486130,
+      "position_code": "R",
+      "pronunciation_available": false,
+      "reason": "no_verified_audio",
+      "shoots_catches": "R",
+      "sweater_number": 46,
+      "team_tri": "DAL",
+      "weight_kg": 82
+    },
     "8486161": {
       "audio_cached": false,
       "birth_country": "USA",
@@ -31317,7 +31359,7 @@
       "weight_kg": 92
     }
   },
-  "roster_players": 804,
+  "roster_players": 806,
   "source": "eliteprospects_player_audio_with_nhl_fallback",
   "source_pattern": "https://files.eliteprospects.com/layout/player_audio/<normalized_player_name>.mp3",
   "unresolved": [
@@ -32709,6 +32751,27 @@
     },
     {
       "audio_cached": false,
+      "birth_country": "CAN",
+      "birth_date": "2004-05-19",
+      "eliteprospects_id": "570748",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Dylan%20Hryckowian",
+      "eliteprospects_slug": "dylan-hryckowian",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/570748/dylan-hryckowian",
+      "first_name": "Dylan",
+      "full_name_en": "Dylan Hryckowian",
+      "height_cm": 178,
+      "last_name": "Hryckowian",
+      "player_id": 8486130,
+      "position_code": "R",
+      "pronunciation_available": false,
+      "reason": "no_verified_audio",
+      "shoots_catches": "R",
+      "sweater_number": 46,
+      "team_tri": "DAL",
+      "weight_kg": 82
+    },
+    {
+      "audio_cached": false,
       "birth_country": "USA",
       "birth_date": "1999-07-22",
       "eliteprospects_id": "201455",
@@ -32790,6 +32853,27 @@
       "sweater_number": 6,
       "team_tri": "DAL",
       "weight_kg": 108
+    },
+    {
+      "audio_cached": false,
+      "birth_country": "USA",
+      "birth_date": "2003-12-27",
+      "eliteprospects_id": "538928",
+      "eliteprospects_search_url": "https://autocomplete.eliteprospects.com/players?q=Matthew%20Seminoff",
+      "eliteprospects_slug": "matthew-seminoff",
+      "eliteprospects_url": "https://www.eliteprospects.com/player/538928/matthew-seminoff",
+      "first_name": "Matthew",
+      "full_name_en": "Matthew Seminoff",
+      "height_cm": 183,
+      "last_name": "Seminoff",
+      "player_id": 8483514,
+      "position_code": "R",
+      "pronunciation_available": false,
+      "reason": "no_verified_audio",
+      "shoots_catches": "R",
+      "sweater_number": 43,
+      "team_tri": "DAL",
+      "weight_kg": 86
     },
     {
       "audio_cached": false,
