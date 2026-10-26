@@ -1,15 +1,6 @@
 {
-  "matched": 25,
+  "matched": 24,
   "players": {
-    "8475413": {
-      "context": "Justin Dowling JUHS-tihn • DOW-lihng LISTEN ð",
-      "full_name_en": "Justin Dowling",
-      "player_id": 8475413,
-      "pronunciation_source": "nhl.com_team_pronunciation_guide",
-      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/fhvsivonkl4og9yklw3u.mp3",
-      "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide",
-      "team_tri": "NYR"
-    },
     "8476459": {
       "context": "Mika Zibanejad MEE-kah • zih-BAN-ih-jad LISTEN ð",
       "full_name_en": "Mika Zibanejad",
@@ -231,7 +222,7 @@
   "teams": {
     "ANA": {
       "matched": 0,
-      "roster": 25,
+      "roster": 24,
       "source_url": "https://www.nhl.com/ducks/team/pronunciation-guide"
     },
     "BOS": {
@@ -241,7 +232,7 @@
     },
     "BUF": {
       "matched": 0,
-      "roster": 26,
+      "roster": 27,
       "source_url": "https://www.nhl.com/sabres/team/pronunciation-guide"
     },
     "CAR": {
@@ -251,12 +242,12 @@
     },
     "CBJ": {
       "matched": 0,
-      "roster": 23,
+      "roster": 24,
       "source_url": "https://www.nhl.com/bluejackets/team/pronunciation-guide"
     },
     "CGY": {
       "matched": 0,
-      "roster": 24,
+      "roster": 25,
       "source_url": "https://www.nhl.com/flames/team/pronunciation-guide"
     },
     "CHI": {
@@ -271,7 +262,7 @@
     },
     "DAL": {
       "matched": 0,
-      "roster": 25,
+      "roster": 27,
       "source_url": "https://www.nhl.com/stars/team/pronunciation-guide"
     },
     "DET": {
@@ -281,32 +272,32 @@
     },
     "EDM": {
       "matched": 0,
-      "roster": 28,
+      "roster": 29,
       "source_url": "https://www.nhl.com/oilers/team/pronunciation-guide"
     },
     "FLA": {
       "matched": 0,
-      "roster": 24,
+      "roster": 26,
       "source_url": "https://www.nhl.com/panthers/team/pronunciation-guide"
     },
     "LAK": {
       "matched": 0,
-      "roster": 24,
+      "roster": 25,
       "source_url": "https://www.nhl.com/kings/team/pronunciation-guide"
     },
     "MIN": {
       "matched": 0,
-      "roster": 29,
+      "roster": 27,
       "source_url": "https://www.nhl.com/wild/team/pronunciation-guide"
     },
     "MTL": {
       "matched": 0,
-      "roster": 26,
+      "roster": 25,
       "source_url": "https://www.nhl.com/canadiens/team/pronunciation-guide"
     },
     "NJD": {
       "matched": 0,
-      "roster": 24,
+      "roster": 23,
       "source_url": "https://www.nhl.com/devils/team/pronunciation-guide"
     },
     "NSH": {
@@ -316,27 +307,27 @@
     },
     "NYI": {
       "matched": 0,
-      "roster": 23,
+      "roster": 24,
       "source_url": "https://www.nhl.com/islanders/team/pronunciation-guide"
     },
     "NYR": {
-      "matched": 25,
-      "roster": 26,
+      "matched": 24,
+      "roster": 28,
       "source_url": "https://www.nhl.com/rangers/team/pronunciation-guide"
     },
     "OTT": {
       "matched": 0,
-      "roster": 24,
+      "roster": 25,
       "source_url": "https://www.nhl.com/senators/team/pronunciation-guide"
     },
     "PHI": {
       "matched": 0,
-      "roster": 25,
+      "roster": 27,
       "source_url": "https://www.nhl.com/flyers/team/pronunciation-guide"
     },
     "PIT": {
       "matched": 0,
-      "roster": 24,
+      "roster": 28,
       "source_url": "https://www.nhl.com/penguins/team/pronunciation-guide"
     },
     "SEA": {
@@ -351,7 +342,7 @@
     },
     "STL": {
       "matched": 0,
-      "roster": 28,
+      "roster": 26,
       "source_url": "https://www.nhl.com/blues/team/pronunciation-guide"
     },
     "TBL": {
@@ -361,7 +352,7 @@
     },
     "TOR": {
       "matched": 0,
-      "roster": 25,
+      "roster": 27,
       "source_url": "https://www.nhl.com/mapleleafs/team/pronunciation-guide"
     },
     "UTA": {
@@ -376,17 +367,17 @@
     },
     "VGK": {
       "matched": 0,
-      "roster": 22,
+      "roster": 24,
       "source_url": "https://www.nhl.com/goldenknights/team/pronunciation-guide"
     },
     "WPG": {
       "matched": 0,
-      "roster": 24,
+      "roster": 25,
       "source_url": "https://www.nhl.com/jets/team/pronunciation-guide"
     },
     "WSH": {
       "matched": 0,
-      "roster": 24,
+      "roster": 26,
       "source_url": "https://www.nhl.com/capitals/team/pronunciation-guide"
     }
   }
