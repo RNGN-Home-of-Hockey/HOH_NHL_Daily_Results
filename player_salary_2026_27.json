@@ -2,9 +2,9 @@
   "season": "2026-27",
   "source": "MarkerZone NHL salaries 2026-27",
   "source_url": "https://www.markerzone.com/hockey/stats/nhl/salaries.php?a=168",
-  "generated_at": "2026-10-21T10:32:32.249683+00:00",
-  "nhl_pool": 796,
-  "source_contracts": 1487,
+  "generated_at": "2026-10-28T11:35:22.861719+00:00",
+  "nhl_pool": 803,
+  "source_contracts": 1488,
   "players": {
     "8484153": {
       "team": "ANA",
@@ -823,7 +823,7 @@
       "match_score": null
     },
     "8476945": {
-      "team": "WPG",
+      "team": "",
       "position": "G",
       "full_name_en": "Connor Hellebuyck",
       "nhl_name": "Connor Hellebuyck",
@@ -1494,6 +1494,18 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
+    "8482093": {
+      "team": "CAR",
+      "position": "C",
+      "full_name_en": "Seth Jarvis",
+      "nhl_name": "Seth Jarvis",
+      "salary_cash": 4250000,
+      "cap_hit": 7420087,
+      "aav": 7420087,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Seth-Jarvis-55310",
+      "match_method": "exact_name",
+      "match_score": null
+    },
     "8482730": {
       "team": "",
       "position": "D",
@@ -2139,6 +2151,18 @@
       "cap_hit": 6250000,
       "aav": 6250000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Mackenzie-Weegar-34690",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8476923": {
+      "team": "",
+      "position": "D",
+      "full_name_en": "Damon Severson",
+      "nhl_name": "Damon Severson",
+      "salary_cash": 4100000,
+      "cap_hit": 6250000,
+      "aav": 6250000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Damon-Severson-25391",
       "match_method": "exact_name_position",
       "match_score": null
     },
@@ -3354,6 +3378,18 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
+    "8475722": {
+      "team": "BUF",
+      "position": "LW",
+      "full_name_en": "Jason Zucker",
+      "nhl_name": "Jason Zucker",
+      "salary_cash": 4750000,
+      "cap_hit": 4750000,
+      "aav": 4750000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Jason-Zucker-25061",
+      "match_method": "exact_name",
+      "match_score": null
+    },
     "8477511": {
       "team": "",
       "position": "RW",
@@ -3907,7 +3943,7 @@
       "match_score": null
     },
     "8482110": {
-      "team": "",
+      "team": "WPG",
       "position": "RW",
       "full_name_en": "Dawson Mercer",
       "nhl_name": "Dawson Mercer",
@@ -4923,6 +4959,18 @@
       "cap_hit": 3000000,
       "aav": 3000000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Vladislav-Namestnikov-28864",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8482100": {
+      "team": "CAR",
+      "position": "D",
+      "full_name_en": "Alexander Nikishin",
+      "nhl_name": "Alexander Nikishin",
+      "salary_cash": 3000000,
+      "cap_hit": 3000000,
+      "aav": 3000000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Alexander-Nikishin-63730",
       "match_method": "exact_name_position",
       "match_score": null
     },
@@ -6462,6 +6510,18 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
+    "8477992": {
+      "team": "OTT",
+      "position": "G",
+      "full_name_en": "Jonas Johansson",
+      "nhl_name": "Jonas Johansson",
+      "salary_cash": 1250000,
+      "cap_hit": 1250000,
+      "aav": 1250000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Jonas-Johansson-37853",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
     "8481789": {
       "team": "NYR",
       "position": "C",
@@ -6679,7 +6739,7 @@
       "match_score": null
     },
     "8482076": {
-      "team": "",
+      "team": "WPG",
       "position": "G",
       "full_name_en": "Nicolas Daws",
       "nhl_name": "Nico Daws",
@@ -6808,6 +6868,18 @@
       "aav": 1025000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Vitali-Pinchuk-63805",
       "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8486130": {
+      "team": "DAL",
+      "position": "RW",
+      "full_name_en": "Dylan Hryckowian",
+      "nhl_name": "Dylan Hryckowian",
+      "salary_cash": 850000,
+      "cap_hit": 1013750,
+      "aav": 1013750,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Dylan-Hryckowian-72067",
+      "match_method": "exact_name",
       "match_score": null
     },
     "8483478": {
@@ -7170,6 +7242,18 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
+    "8485545": {
+      "team": "DET",
+      "position": "G",
+      "full_name_en": "Michal Postava",
+      "nhl_name": "Michal Postava",
+      "salary_cash": 877500,
+      "cap_hit": 975000,
+      "aav": 975000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Michal-Postava-72422",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
     "8484803": {
       "team": "VGK",
       "position": "LW",
@@ -7299,6 +7383,18 @@
       "cap_hit": 965000,
       "aav": 965000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Jakub-Dobes-64326",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8485019": {
+      "team": "PIT",
+      "position": "D",
+      "full_name_en": "Chase Pietila",
+      "nhl_name": "Chase Pietila",
+      "salary_cash": 850000,
+      "cap_hit": 960000,
+      "aav": 960000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Chase-Pietila-64713",
       "match_method": "exact_name_position",
       "match_score": null
     },
@@ -7482,6 +7578,18 @@
       "match_method": "exact_name",
       "match_score": null
     },
+    "8483487": {
+      "team": "PIT",
+      "position": "C",
+      "full_name_en": "Rutger McGroarty",
+      "nhl_name": "Rutger McGroarty",
+      "salary_cash": 855000,
+      "cap_hit": 950000,
+      "aav": 950000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Rutger-McGroarty-64546",
+      "match_method": "exact_name",
+      "match_score": null
+    },
     "8484387": {
       "team": "PHI",
       "position": "C",
@@ -7590,6 +7698,18 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
+    "8483756": {
+      "team": "",
+      "position": "RW",
+      "full_name_en": "Jared Wright",
+      "nhl_name": "Jared Wright",
+      "salary_cash": 850000,
+      "cap_hit": 942500,
+      "aav": 942500,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Jared-Wright-67183",
+      "match_method": "exact_name",
+      "match_score": null
+    },
     "8484790": {
       "team": "STL",
       "position": "D",
@@ -7674,18 +7794,6 @@
       "match_method": "exact_name",
       "match_score": null
     },
-    "8484188": {
-      "team": "STL",
-      "position": "D",
-      "full_name_en": "Theo Lindstein",
-      "nhl_name": "Theo Lindstein",
-      "salary_cash": 855000,
-      "cap_hit": 940833,
-      "aav": 940833,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Theo-Lindstein-68150",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
     "8484221": {
       "team": "NYI",
       "position": "C",
@@ -7722,15 +7830,27 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
-    "8484242": {
-      "team": "WPG",
-      "position": "C",
-      "full_name_en": "Brayden Yager",
-      "nhl_name": "Brayden Yager",
-      "salary_cash": 855000,
-      "cap_hit": 940833,
-      "aav": 940833,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Brayden-Yager-64777",
+    "8484151": {
+      "team": "STL",
+      "position": "D",
+      "full_name_en": "Quinton Burns",
+      "nhl_name": "Quinton Burns",
+      "salary_cash": 850000,
+      "cap_hit": 938333,
+      "aav": 938333,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Quinton-Burns-65858",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8483523": {
+      "team": "VGK",
+      "position": "G",
+      "full_name_en": "Cameron Whitehead",
+      "nhl_name": "Cameron Whitehead",
+      "salary_cash": 850000,
+      "cap_hit": 937500,
+      "aav": 937500,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Cameron-Whitehead-66608",
       "match_method": "exact_name_position",
       "match_score": null
     },
@@ -7938,18 +8058,6 @@
       "match_method": "exact_name",
       "match_score": null
     },
-    "8483494": {
-      "team": "SEA",
-      "position": "D",
-      "full_name_en": "Ty Nelson",
-      "nhl_name": "Ty Nelson",
-      "salary_cash": 850000,
-      "cap_hit": 911666,
-      "aav": 911666,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Ty-Nelson-64468",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
     "8483752": {
       "team": "",
       "position": "C",
@@ -8010,18 +8118,6 @@
       "match_method": "exact_name",
       "match_score": null
     },
-    "8484220": {
-      "team": "MTL",
-      "position": "D",
-      "full_name_en": "David Reinbacher",
-      "nhl_name": "David Reinbacher",
-      "salary_cash": 855000,
-      "cap_hit": 909166,
-      "aav": 909166,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/David-Reinbacher-66155",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
     "8479981": {
       "team": "FLA",
       "position": "LW",
@@ -8034,15 +8130,15 @@
       "match_method": "exact_name",
       "match_score": null
     },
-    "8484392": {
-      "team": "CAR",
+    "8482993": {
+      "team": "PIT",
       "position": "RW",
-      "full_name_en": "Felix Unger Sorum",
-      "nhl_name": "Felix Unger Sörum",
+      "full_name_en": "Avery Hayes",
+      "nhl_name": "Avery Hayes",
       "salary_cash": 850000,
-      "cap_hit": 903334,
-      "aav": 903334,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Felix-Unger-Sorum-68500",
+      "cap_hit": 905000,
+      "aav": 905000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Avery-Hayes-60272",
       "match_method": "exact_name",
       "match_score": null
     },
@@ -8107,7 +8203,7 @@
       "match_score": null
     },
     "8482094": {
-      "team": "MIN",
+      "team": "NSH",
       "position": "D",
       "full_name_en": "Daemon Hunt",
       "nhl_name": "Daemon Hunt",
@@ -8154,18 +8250,6 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
-    "8482515": {
-      "team": "TOR",
-      "position": "G",
-      "full_name_en": "Artur Akhtyamov",
-      "nhl_name": "Artur Akhtyamov",
-      "salary_cash": 850000,
-      "cap_hit": 900000,
-      "aav": 900000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Artur-Akhtyamov-64417",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
     "8484158": {
       "team": "TOR",
       "position": "LW",
@@ -8188,6 +8272,18 @@
       "aav": 896666,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Adam-Engstrom-66635",
       "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8483497": {
+      "team": "SEA",
+      "position": "LW",
+      "full_name_en": "Jani Nyman",
+      "nhl_name": "Jani Nyman",
+      "salary_cash": 855000,
+      "cap_hit": 891666,
+      "aav": 891666,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Jani-Nyman-66625",
+      "match_method": "exact_name",
       "match_score": null
     },
     "8479985": {
@@ -8382,18 +8478,6 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
-    "8482072": {
-      "team": "NSH",
-      "position": "D",
-      "full_name_en": "Jack Ahcan",
-      "nhl_name": "Jack Ahcan",
-      "salary_cash": 850000,
-      "cap_hit": 875000,
-      "aav": 875000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Jack-Ahcan-53666",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
     "8482700": {
       "team": "",
       "position": "D",
@@ -8428,18 +8512,6 @@
       "aav": 875000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Cooper-Black-70000",
       "match_method": "exact_name_position",
-      "match_score": null
-    },
-    "8484149": {
-      "team": "COL",
-      "position": "RW",
-      "full_name_en": "Gavin Brindley",
-      "nhl_name": "Gavin Brindley",
-      "salary_cash": 850000,
-      "cap_hit": 875000,
-      "aav": 875000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Gavin-Brindley-64574",
-      "match_method": "exact_name",
       "match_score": null
     },
     "8483017": {
@@ -8512,18 +8584,6 @@
       "aav": 875000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Nicolas-Deslauriers-13232",
       "match_method": "exact_name",
-      "match_score": null
-    },
-    "8480326": {
-      "team": "DET",
-      "position": "C",
-      "full_name_en": "Sheldon Dries",
-      "nhl_name": "Sheldon Dries",
-      "salary_cash": 850000,
-      "cap_hit": 875000,
-      "aav": 875000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Sheldon-Dries-30873",
-      "match_method": "exact_name_position",
       "match_score": null
     },
     "8482193": {
@@ -8634,6 +8694,42 @@
       "match_method": "exact_name",
       "match_score": null
     },
+    "8484287": {
+      "team": "TOR",
+      "position": "D",
+      "full_name_en": "Cole McWard",
+      "nhl_name": "Cole McWard",
+      "salary_cash": 850000,
+      "cap_hit": 875000,
+      "aav": 875000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Cole-McWard-62046",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8481655": {
+      "team": "FLA",
+      "position": "RW",
+      "full_name_en": "Cole Schwindt",
+      "nhl_name": "Cole Schwindt",
+      "salary_cash": 850000,
+      "cap_hit": 875000,
+      "aav": 875000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Cole-Schwindt-55052",
+      "match_method": "exact_name",
+      "match_score": null
+    },
+    "8483514": {
+      "team": "DAL",
+      "position": "RW",
+      "full_name_en": "Matthew Seminoff",
+      "nhl_name": "Matthew Seminoff",
+      "salary_cash": 850000,
+      "cap_hit": 875000,
+      "aav": 875000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Matthew-Seminoff-62197",
+      "match_method": "exact_name",
+      "match_score": null
+    },
     "8480021": {
       "team": "PHI",
       "position": "C",
@@ -8691,6 +8787,18 @@
       "cap_hit": 865000,
       "aav": 865000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Noah-Warren-61604",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8483510": {
+      "team": "WPG",
+      "position": "D",
+      "full_name_en": "Elias Salomonsson",
+      "nhl_name": "Elias Salomonsson",
+      "salary_cash": 850000,
+      "cap_hit": 865000,
+      "aav": 865000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Elias-Salomonsson-66617",
       "match_method": "exact_name_position",
       "match_score": null
     },
@@ -8754,18 +8862,6 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
-    "8477380": {
-      "team": "",
-      "position": "C",
-      "full_name_en": "Jonny Brodzinski",
-      "nhl_name": "Jonny Brodzinski",
-      "salary_cash": 850000,
-      "cap_hit": 850000,
-      "aav": 850000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Jonny-Brodzinski-35731",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
     "8470613": {
       "team": "COL",
       "position": "D",
@@ -8775,18 +8871,6 @@
       "cap_hit": 850000,
       "aav": 850000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Brent-Burns-1042",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
-    "8477335": {
-      "team": "DAL",
-      "position": "D",
-      "full_name_en": "Kyle Burroughs",
-      "nhl_name": "Kyle Burroughs",
-      "salary_cash": 850000,
-      "cap_hit": 850000,
-      "aav": 850000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Kyle-Burroughs-29350",
       "match_method": "exact_name_position",
       "match_score": null
     },
@@ -8812,30 +8896,6 @@
       "aav": 850000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Sam-Colangelo-64286",
       "match_method": "exact_name",
-      "match_score": null
-    },
-    "8482784": {
-      "team": "STL",
-      "position": "C",
-      "full_name_en": "Zach Dean",
-      "nhl_name": "Zach Dean",
-      "salary_cash": 850000,
-      "cap_hit": 850000,
-      "aav": 850000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Zach-Dean-62580",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
-    "8475413": {
-      "team": "NYR",
-      "position": "C",
-      "full_name_en": "Justin Dowling",
-      "nhl_name": "Justin Dowling",
-      "salary_cash": 850000,
-      "cap_hit": 850000,
-      "aav": 850000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Justin-Dowling-17857",
-      "match_method": "exact_name_position",
       "match_score": null
     },
     "8479346": {
@@ -8910,6 +8970,18 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
+    "8476822": {
+      "team": "NYR",
+      "position": "C",
+      "full_name_en": "Luke Glendening",
+      "nhl_name": "Luke Glendening",
+      "salary_cash": 850000,
+      "cap_hit": 850000,
+      "aav": 850000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Luke-Glendening-32637",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
     "8480842": {
       "team": "EDM",
       "position": "C",
@@ -8919,6 +8991,18 @@
       "cap_hit": 850000,
       "aav": 850000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Filip-Hallander-58082",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8481572": {
+      "team": "VGK",
+      "position": "D",
+      "full_name_en": "Ville Heinola",
+      "nhl_name": "Ville Heinola",
+      "salary_cash": 850000,
+      "cap_hit": 850000,
+      "aav": 850000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Ville-Heinola-61524",
       "match_method": "exact_name_position",
       "match_score": null
     },
@@ -8994,30 +9078,6 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
-    "8478043": {
-      "team": "FLA",
-      "position": "C",
-      "full_name_en": "Sam Lafferty",
-      "nhl_name": "Sam Lafferty",
-      "salary_cash": 850000,
-      "cap_hit": 850000,
-      "aav": 850000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Sam-Lafferty-41930",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
-    "8482781": {
-      "team": "MIN",
-      "position": "D",
-      "full_name_en": "Carson Lambos",
-      "nhl_name": "Carson Lambos",
-      "salary_cash": 850000,
-      "cap_hit": 850000,
-      "aav": 850000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Carson-Lambos-60407",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
     "8481732": {
       "team": "",
       "position": "C",
@@ -9078,18 +9138,6 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
-    "8477484": {
-      "team": "NYR",
-      "position": "G",
-      "full_name_en": "Spencer Martin",
-      "nhl_name": "Spencer Martin",
-      "salary_cash": 850000,
-      "cap_hit": 850000,
-      "aav": 850000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Spencer-Martin-29788",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
     "8475795": {
       "team": "",
       "position": "D",
@@ -9111,18 +9159,6 @@
       "cap_hit": 850000,
       "aav": 850000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Zach-Metsa-62509",
-      "match_method": "exact_name_position",
-      "match_score": null
-    },
-    "8484262": {
-      "team": "ANA",
-      "position": "D",
-      "full_name_en": "Travis Mitchell",
-      "nhl_name": "Travis Mitchell",
-      "salary_cash": 850000,
-      "cap_hit": 850000,
-      "aav": 850000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Travis-Mitchell-68263",
       "match_method": "exact_name_position",
       "match_score": null
     },
@@ -9222,6 +9258,18 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
+    "8473503": {
+      "team": "NYR",
+      "position": "G",
+      "full_name_en": "James Reimer",
+      "nhl_name": "James Reimer",
+      "salary_cash": 850000,
+      "cap_hit": 850000,
+      "aav": 850000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/James-Reimer-23215",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
     "8483546": {
       "team": "TOR",
       "position": "D",
@@ -9244,6 +9292,18 @@
       "aav": 850000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Scott-Sabourin-21925",
       "match_method": "exact_name",
+      "match_score": null
+    },
+    "8479972": {
+      "team": "MIN",
+      "position": "C",
+      "full_name_en": "Mason Shaw",
+      "nhl_name": "Mason Shaw",
+      "salary_cash": 850000,
+      "cap_hit": 850000,
+      "aav": 850000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Mason-Shaw-35808",
+      "match_method": "exact_name_position",
       "match_score": null
     },
     "8482470": {
@@ -9271,7 +9331,7 @@
       "match_score": null
     },
     "8481030": {
-      "team": "WPG",
+      "team": "",
       "position": "D",
       "full_name_en": "Jack St. Ivany",
       "nhl_name": "Jack St. Ivany",
@@ -9291,6 +9351,18 @@
       "cap_hit": 850000,
       "aav": 850000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Clay-Stevenson-66365",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8477035": {
+      "team": "EDM",
+      "position": "G",
+      "full_name_en": "Matt Tomkins",
+      "nhl_name": "Matt Tomkins",
+      "salary_cash": 850000,
+      "cap_hit": 850000,
+      "aav": 850000,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Matt-Tomkins-32624",
       "match_method": "exact_name_position",
       "match_score": null
     },
@@ -9340,18 +9412,6 @@
       "aav": 850000,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Adam-Wilsby-64317",
       "match_method": "exact_name_position",
-      "match_score": null
-    },
-    "8475253": {
-      "team": "PHI",
-      "position": "LW",
-      "full_name_en": "Garrett Wilson",
-      "nhl_name": "Garrett Wilson",
-      "salary_cash": 850000,
-      "cap_hit": 850000,
-      "aav": 850000,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Garrett-Wilson-13267",
-      "match_method": "exact_name",
       "match_score": null
     },
     "8483710": {
@@ -9426,6 +9486,18 @@
       "match_method": "exact_name_position",
       "match_score": null
     },
+    "8481064": {
+      "team": "",
+      "position": "G",
+      "full_name_en": "Mitchell Gibson",
+      "nhl_name": "Mitchell Gibson",
+      "salary_cash": 850000,
+      "cap_hit": 812500,
+      "aav": 812500,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Mitchell-Gibson-43471",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
     "8480870": {
       "team": "TOR",
       "position": "C",
@@ -9460,6 +9532,30 @@
       "aav": 812500,
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Devon-Levi-54811",
       "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8477541": {
+      "team": "TOR",
+      "position": "D",
+      "full_name_en": "Dakota Mermis",
+      "nhl_name": "Dakota Mermis",
+      "salary_cash": 850000,
+      "cap_hit": 812500,
+      "aav": 812500,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Dakota-Mermis-30840",
+      "match_method": "exact_name_position",
+      "match_score": null
+    },
+    "8481133": {
+      "team": "FLA",
+      "position": "LW",
+      "full_name_en": "Cole Reinhardt",
+      "nhl_name": "Cole Reinhardt",
+      "salary_cash": 850000,
+      "cap_hit": 812500,
+      "aav": 812500,
+      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Cole-Reinhardt-43860",
+      "match_method": "exact_name",
       "match_score": null
     },
     "8485512": {
@@ -9497,18 +9593,6 @@
       "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Dmitry-Simashev-67905",
       "match_method": "fuzzy_name_position",
       "match_score": 0.9333
-    },
-    "8484203": {
-      "team": "CAR",
-      "position": "C",
-      "full_name_en": "Bradley Nadeau",
-      "nhl_name": "Bradly Nadeau",
-      "salary_cash": 855000,
-      "cap_hit": 918334,
-      "aav": 918334,
-      "source_url": "https://www.markerzone.com/hockey/stats/nhl/player/Bradley-Nadeau-65522",
-      "match_method": "fuzzy_name_position",
-      "match_score": 0.963
     },
     "8479372": {
       "team": "SEA",
@@ -9593,14 +9677,6 @@
       "best_score": 0.2581
     },
     {
-      "full_name_en": "Seth Jarvis",
-      "team": "CAR",
-      "position": "C",
-      "salary_cash": 4250000,
-      "aav": 7420087,
-      "best_score": 0.1667
-    },
-    {
       "full_name_en": "Troy Terry",
       "team": "ANA",
       "position": "C",
@@ -9622,15 +9698,7 @@
       "position": "D",
       "salary_cash": 4500000,
       "aav": 6250000,
-      "best_score": 0.3478
-    },
-    {
-      "full_name_en": "Damon Severson",
-      "team": "",
-      "position": "D",
-      "salary_cash": 4100000,
-      "aav": 6250000,
-      "best_score": 0.4138
+      "best_score": 0.2857
     },
     {
       "full_name_en": "Elvis Merzlikins",
@@ -9639,14 +9707,6 @@
       "salary_cash": 4225000,
       "aav": 5400000,
       "best_score": 0.3704
-    },
-    {
-      "full_name_en": "Jason Zucker",
-      "team": "BUF",
-      "position": "LW",
-      "salary_cash": 4750000,
-      "aav": 4750000,
-      "best_score": 0.4
     },
     {
       "full_name_en": "Ryan Graves",
@@ -9710,23 +9770,15 @@
       "position": "C",
       "salary_cash": 1075000,
       "aav": 2400000,
-      "best_score": 0.3333
+      "best_score": 0.2941
     },
     {
       "full_name_en": "Nick Bjugstad",
-      "team": "",
+      "team": "WPG",
       "position": "C",
       "salary_cash": 1750000,
       "aav": 1750000,
-      "best_score": 0.2857
-    },
-    {
-      "full_name_en": "Nils Lundqvist",
-      "team": "DAL",
-      "position": "D",
-      "salary_cash": 1750000,
-      "aav": 1750000,
-      "best_score": 0.3243
+      "best_score": 0.25
     },
     {
       "full_name_en": "Alex Steeves",
@@ -9750,7 +9802,7 @@
       "position": "D",
       "salary_cash": 1550000,
       "aav": 1550000,
-      "best_score": 0.3448
+      "best_score": 0.2222
     },
     {
       "full_name_en": "Michael Eyssimont",
@@ -9785,20 +9837,12 @@
       "best_score": 0.2667
     },
     {
-      "full_name_en": "Jonas Johansson",
-      "team": "OTT",
-      "position": "G",
-      "salary_cash": 1250000,
-      "aav": 1250000,
-      "best_score": 0.3846
-    },
-    {
       "full_name_en": "Joel Nystrom",
       "team": "CAR",
       "position": "D",
       "salary_cash": 850000,
       "aav": 1225000,
-      "best_score": 0.24
+      "best_score": 0.3478
     },
     {
       "full_name_en": "Brayden Pachal",
@@ -9806,7 +9850,7 @@
       "position": "D",
       "salary_cash": 1187500,
       "aav": 1187500,
-      "best_score": 0.5185
+      "best_score": 0.2162
     },
     {
       "full_name_en": "Eric Comrie",
@@ -9822,7 +9866,7 @@
       "position": "D",
       "salary_cash": 1150000,
       "aav": 1150000,
-      "best_score": 0.3846
+      "best_score": 0.3333
     },
     {
       "full_name_en": "Kurtis MacDermid",
@@ -9942,7 +9986,7 @@
       "position": "D",
       "salary_cash": 922500,
       "aav": 1075000,
-      "best_score": 0.4444
+      "best_score": 0.2703
     },
     {
       "full_name_en": "Blake Montgomery",
@@ -9966,7 +10010,7 @@
       "position": "C",
       "salary_cash": 922500,
       "aav": 1075000,
-      "best_score": 0.32
+      "best_score": 0.2857
     },
     {
       "full_name_en": "Juho Piiparinen",
@@ -10030,7 +10074,7 @@
       "position": "LW",
       "salary_cash": 922500,
       "aav": 1075000,
-      "best_score": 0.3333
+      "best_score": 0.2353
     },
     {
       "full_name_en": "Jack Anderson",
@@ -10038,7 +10082,7 @@
       "position": "D",
       "salary_cash": 922500,
       "aav": 1050000,
-      "best_score": 0.3846
+      "best_score": 0.2778
     },
     {
       "full_name_en": "Garrett Brown",
@@ -10062,7 +10106,7 @@
       "position": "G",
       "salary_cash": 922500,
       "aav": 1050000,
-      "best_score": 0.3478
+      "best_score": 0.303
     },
     {
       "full_name_en": "Andre Gasseau",
@@ -10070,7 +10114,7 @@
       "position": "C",
       "salary_cash": 922500,
       "aav": 1050000,
-      "best_score": 0.4615
+      "best_score": 0.4286
     },
     {
       "full_name_en": "Dylan James",
@@ -10185,22 +10229,6 @@
       "best_score": 0.4615
     },
     {
-      "full_name_en": "Dylan Hrychowian",
-      "team": "DAL",
-      "position": "RW",
-      "salary_cash": 850000,
-      "aav": 1013750,
-      "best_score": 0.2963
-    },
-    {
-      "full_name_en": "Dylan Hryckowian",
-      "team": "DAL",
-      "position": "RW",
-      "salary_cash": 850000,
-      "aav": 1013750,
-      "best_score": 0.2963
-    },
-    {
       "full_name_en": "Bogdan Konyushkov",
       "team": "MTL",
       "position": "D",
@@ -10246,7 +10274,7 @@
       "position": "LW",
       "salary_cash": 850000,
       "aav": 1013750,
-      "best_score": 0.4615
+      "best_score": 0.4167
     },
     {
       "full_name_en": "Hayes Hundley",
@@ -10270,7 +10298,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 1007500,
-      "best_score": 0.3333
+      "best_score": 0.3125
     },
     {
       "full_name_en": "Gabriel Eliasson",
@@ -10430,7 +10458,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 996000,
-      "best_score": 0.2
+      "best_score": 0.25
     },
     {
       "full_name_en": "Yegor Borikov",
@@ -10470,7 +10498,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 990000,
-      "best_score": 0.32
+      "best_score": 0.3478
     },
     {
       "full_name_en": "Viggo Gustafsson",
@@ -10526,7 +10554,7 @@
       "position": "RW",
       "salary_cash": 850000,
       "aav": 985000,
-      "best_score": 0.4167
+      "best_score": 0.3636
     },
     {
       "full_name_en": "Noah Powell",
@@ -10542,7 +10570,7 @@
       "position": "D",
       "salary_cash": 877500,
       "aav": 980000,
-      "best_score": 0.3077
+      "best_score": 0.25
     },
     {
       "full_name_en": "Attilio Biasca",
@@ -10574,7 +10602,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 980000,
-      "best_score": 0.5217
+      "best_score": 0.303
     },
     {
       "full_name_en": "Pavel Moysevich",
@@ -10630,7 +10658,7 @@
       "position": "C",
       "salary_cash": 877500,
       "aav": 975000,
-      "best_score": 0.48
+      "best_score": 0.4348
     },
     {
       "full_name_en": "Tyson Gross",
@@ -10662,7 +10690,7 @@
       "position": "D",
       "salary_cash": 877500,
       "aav": 975000,
-      "best_score": 0.3571
+      "best_score": 0.2632
     },
     {
       "full_name_en": "Ilya Nabokov",
@@ -10670,15 +10698,7 @@
       "position": "G",
       "salary_cash": 877500,
       "aav": 975000,
-      "best_score": 0.4
-    },
-    {
-      "full_name_en": "Michal Postava",
-      "team": "DET",
-      "position": "G",
-      "salary_cash": 877500,
-      "aav": 975000,
-      "best_score": 0.4324
+      "best_score": 0.2857
     },
     {
       "full_name_en": "Joshua Samanski",
@@ -10702,7 +10722,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 975000,
-      "best_score": 0.3571
+      "best_score": 0.3077
     },
     {
       "full_name_en": "Alexander Weiermair",
@@ -10710,7 +10730,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 975000,
-      "best_score": 0.375
+      "best_score": 0.3529
     },
     {
       "full_name_en": "Carter Bear",
@@ -10742,7 +10762,7 @@
       "position": "C",
       "salary_cash": 877500,
       "aav": 974167,
-      "best_score": 0.3704
+      "best_score": 0.3243
     },
     {
       "full_name_en": "Milton Gastrin",
@@ -10758,7 +10778,7 @@
       "position": "LW",
       "salary_cash": 877500,
       "aav": 974167,
-      "best_score": 0.4444
+      "best_score": 0.2703
     },
     {
       "full_name_en": "Brady Martin",
@@ -10766,7 +10786,7 @@
       "position": "C",
       "salary_cash": 877500,
       "aav": 974167,
-      "best_score": 0.56
+      "best_score": 0.3478
     },
     {
       "full_name_en": "Radim Mrtka",
@@ -10782,7 +10802,7 @@
       "position": "C",
       "salary_cash": 855000,
       "aav": 972500,
-      "best_score": 0.3333
+      "best_score": 0.25
     },
     {
       "full_name_en": "Aiden Fink",
@@ -10854,7 +10874,7 @@
       "position": "RW",
       "salary_cash": 850000,
       "aav": 972500,
-      "best_score": 0.4167
+      "best_score": 0.2727
     },
     {
       "full_name_en": "Bronson Ride",
@@ -10862,7 +10882,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 970500,
-      "best_score": 0.4
+      "best_score": 0.2286
     },
     {
       "full_name_en": "Sergei Ivanov",
@@ -11054,7 +11074,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 962500,
-      "best_score": 0.3333
+      "best_score": 0.2941
     },
     {
       "full_name_en": "Topias Leinonen",
@@ -11103,14 +11123,6 @@
       "salary_cash": 850000,
       "aav": 960000,
       "best_score": 0.4444
-    },
-    {
-      "full_name_en": "Chase Pietila",
-      "team": "PIT",
-      "position": "D",
-      "salary_cash": 850000,
-      "aav": 960000,
-      "best_score": 0.3889
     },
     {
       "full_name_en": "Joey Willis",
@@ -11326,7 +11338,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 952222,
-      "best_score": 0.24
+      "best_score": 0.4
     },
     {
       "full_name_en": "Jackson Dorrington",
@@ -11342,7 +11354,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 951667,
-      "best_score": 0.3077
+      "best_score": 0.25
     },
     {
       "full_name_en": "Lukas Reichel",
@@ -11390,15 +11402,7 @@
       "position": "D",
       "salary_cash": 855000,
       "aav": 950000,
-      "best_score": 0.4167
-    },
-    {
-      "full_name_en": "Rutger McGroarty",
-      "team": "PIT",
-      "position": "C",
-      "salary_cash": 855000,
-      "aav": 950000,
-      "best_score": 0.3448
+      "best_score": 0.3636
     },
     {
       "full_name_en": "Abram Wiebe",
@@ -11406,7 +11410,7 @@
       "position": "D",
       "salary_cash": 855000,
       "aav": 950000,
-      "best_score": 0.4167
+      "best_score": 0.2727
     },
     {
       "full_name_en": "Gabriel Chiarot",
@@ -11446,7 +11450,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 950000,
-      "best_score": 0.32
+      "best_score": 0.2857
     },
     {
       "full_name_en": "Trent Swick",
@@ -11462,7 +11466,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 947500,
-      "best_score": 0.3704
+      "best_score": 0.32
     },
     {
       "full_name_en": "Cooper Gay",
@@ -11710,7 +11714,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 942500,
-      "best_score": 0.3478
+      "best_score": 0.2857
     },
     {
       "full_name_en": "Guillaume Richard",
@@ -11734,15 +11738,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 942500,
-      "best_score": 0.3636
-    },
-    {
-      "full_name_en": "Jared Wright",
-      "team": "",
-      "position": "RW",
-      "salary_cash": 850000,
-      "aav": 942500,
-      "best_score": 0.3478
+      "best_score": 0.3
     },
     {
       "full_name_en": "Cole Beaudoin",
@@ -11838,7 +11834,23 @@
       "position": "C",
       "salary_cash": 855000,
       "aav": 940833,
-      "best_score": 0.4167
+      "best_score": 0.4118
+    },
+    {
+      "full_name_en": "Theo Lindstein",
+      "team": "STL",
+      "position": "D",
+      "salary_cash": 855000,
+      "aav": 940833,
+      "best_score": 0.3784
+    },
+    {
+      "full_name_en": "Brayden Yager",
+      "team": "WPG",
+      "position": "C",
+      "salary_cash": 855000,
+      "aav": 940833,
+      "best_score": 0.3333
     },
     {
       "full_name_en": "Ondrej Becher",
@@ -11854,7 +11866,7 @@
       "position": "RW",
       "salary_cash": 850000,
       "aav": 940000,
-      "best_score": 0.56
+      "best_score": 0.5217
     },
     {
       "full_name_en": "Riley Fiddler-Schultz",
@@ -11881,14 +11893,6 @@
       "best_score": 0.3243
     },
     {
-      "full_name_en": "Quinton Burns",
-      "team": "STL",
-      "position": "D",
-      "salary_cash": 850000,
-      "aav": 938333,
-      "best_score": 0.4167
-    },
-    {
       "full_name_en": "Jesse Nurmi",
       "team": "NYI",
       "position": "LW",
@@ -11902,7 +11906,7 @@
       "position": "LW",
       "salary_cash": 850000,
       "aav": 938333,
-      "best_score": 0.3704
+      "best_score": 0.32
     },
     {
       "full_name_en": "Cam Squires",
@@ -11926,7 +11930,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 937500,
-      "best_score": 0.2857
+      "best_score": 0.2632
     },
     {
       "full_name_en": "Luke Haymes",
@@ -11942,15 +11946,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 937500,
-      "best_score": 0.1538
-    },
-    {
-      "full_name_en": "Cameron Whitehead",
-      "team": "VGK",
-      "position": "G",
-      "salary_cash": 850000,
-      "aav": 937500,
-      "best_score": 0.2667
+      "best_score": 0.2778
     },
     {
       "full_name_en": "Terrell Goldsmith",
@@ -12070,7 +12066,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 934166,
-      "best_score": 0.3704
+      "best_score": 0.2963
     },
     {
       "full_name_en": "Max McCue",
@@ -12166,7 +12162,7 @@
       "position": "D",
       "salary_cash": 850000,
       "aav": 931350,
-      "best_score": 0.3571
+      "best_score": 0.3077
     },
     {
       "full_name_en": "Jesse Pulkkinen",
@@ -12190,7 +12186,7 @@
       "position": "C",
       "salary_cash": 850000,
       "aav": 930000,
-      "best_score": 0.4615
+      "best_score": 0.3889
     },
     {
       "full_name_en": "Hiroki Gojsic",
@@ -12406,7 +12402,7 @@
       "position": "G",
       "salary_cash": 850000,
       "aav": 920000,
-      "best_score": 0.1379
+      "best_score": 0.2222
     },
     {
       "full_name_en": "Riley Mercer",
@@ -12447,6 +12443,14 @@
       "salary_cash": 855000,
       "aav": 918334,
       "best_score": 0.3333
+    },
+    {
+      "full_name_en": "Bradley Nadeau",
+      "team": "CAR",
+      "position": "C",
+      "salary_cash": 855000,
+      "aav": 918334,
+      "best_score": 0.4324
     },
     {
       "full_name_en": "Miroslav Holinka",
@@ -12553,6 +12557,14 @@
       "best_score": 0.4
     },
     {
+      "full_name_en": "Ty Nelson",
+      "team": "SEA",
+      "position": "D",
+      "salary_cash": 850000,
+      "aav": 911666,
+      "best_score": 0.1
+    },
+    {
       "full_name_en": "Eskild Bakke Olsen",
       "team": "OTT",
       "position": "C",
@@ -12623,6 +12635,14 @@
       "salary_cash": 855000,
       "aav": 909166,
       "best_score": 0.25
+    },
+    {
+      "full_name_en": "David Reinbacher",
+      "team": "MTL",
+      "position": "D",
+      "salary_cash": 855000,
+      "aav": 909166,
+      "best_score": 0.4444
     },
     {
       "full_name_en": "Eduard Sale",
@@ -12713,20 +12733,20 @@
       "best_score": 0.3077
     },
     {
-      "full_name_en": "Avery Hayes",
-      "team": "PIT",
-      "position": "RW",
-      "salary_cash": 850000,
-      "aav": 905000,
-      "best_score": 0.2727
-    },
-    {
       "full_name_en": "Koehn Ziemmer",
       "team": "",
       "position": "RW",
       "salary_cash": 850000,
       "aav": 904166,
       "best_score": 0.3333
+    },
+    {
+      "full_name_en": "Felix Unger Sorum",
+      "team": "CAR",
+      "position": "RW",
+      "salary_cash": 850000,
+      "aav": 903334,
+      "best_score": 0.4286
     },
     {
       "full_name_en": "Angus Booth",
@@ -12815,6 +12835,14 @@
       "salary_cash": 855000,
       "aav": 900000,
       "best_score": 0.2703
+    },
+    {
+      "full_name_en": "Artur Akhtyamov",
+      "team": "TOR",
+      "position": "G",
+      "salary_cash": 850000,
+      "aav": 900000,
+      "best_score": 0.4211
     },
     {
       "full_name_en": "Kirill Kudryavtsev",
@@ -12945,14 +12973,6 @@
       "best_score": 0.2286
     },
     {
-      "full_name_en": "Jani Nyman",
-      "team": "SEA",
-      "position": "LW",
-      "salary_cash": 855000,
-      "aav": 891666,
-      "best_score": 0.1818
-    },
-    {
       "full_name_en": "Jake Furlong",
       "team": "CHI",
       "position": "D",
@@ -13065,6 +13085,14 @@
       "best_score": 0.4286
     },
     {
+      "full_name_en": "Jack Ahcan",
+      "team": "NSH",
+      "position": "D",
+      "salary_cash": 850000,
+      "aav": 875000,
+      "best_score": 0.2609
+    },
+    {
       "full_name_en": "Zach Aston-Reese",
       "team": "PHI",
       "position": "C",
@@ -13105,6 +13133,14 @@
       "best_score": 0.1538
     },
     {
+      "full_name_en": "Gavin Brindley",
+      "team": "COL",
+      "position": "RW",
+      "salary_cash": 850000,
+      "aav": 875000,
+      "best_score": 0.2963
+    },
+    {
       "full_name_en": "Nikita Chibrikov",
       "team": "WPG",
       "position": "C",
@@ -13143,6 +13179,14 @@
       "salary_cash": 850000,
       "aav": 875000,
       "best_score": 0.0741
+    },
+    {
+      "full_name_en": "Sheldon Dries",
+      "team": "DET",
+      "position": "C",
+      "salary_cash": 850000,
+      "aav": 875000,
+      "best_score": 0.1538
     },
     {
       "full_name_en": "Walker Duehr",
@@ -13305,14 +13349,6 @@
       "best_score": 0.3333
     },
     {
-      "full_name_en": "Cole McWard",
-      "team": "TOR",
-      "position": "D",
-      "salary_cash": 850000,
-      "aav": 875000,
-      "best_score": 0.0833
-    },
-    {
       "full_name_en": "Lane Pederson",
       "team": "",
       "position": "C",
@@ -13377,28 +13413,12 @@
       "best_score": 0.1379
     },
     {
-      "full_name_en": "Cole Schwindt",
-      "team": "FLA",
-      "position": "RW",
-      "salary_cash": 850000,
-      "aav": 875000,
-      "best_score": 0.0769
-    },
-    {
       "full_name_en": "Harrison Scott",
       "team": "DAL",
       "position": "C",
       "salary_cash": 850000,
       "aav": 875000,
       "best_score": 0.2222
-    },
-    {
-      "full_name_en": "Matthew Seminoff",
-      "team": "DAL",
-      "position": "RW",
-      "salary_cash": 850000,
-      "aav": 875000,
-      "best_score": 0.3448
     },
     {
       "full_name_en": "Dominik Shine",
@@ -13519,14 +13539,6 @@
       "salary_cash": 850000,
       "aav": 865000,
       "best_score": 0.0741
-    },
-    {
-      "full_name_en": "Elias Salomonsson",
-      "team": "WPG",
-      "position": "D",
-      "salary_cash": 850000,
-      "aav": 865000,
-      "best_score": 0.1333
     },
     {
       "full_name_en": "Alexander Suzdalev",
@@ -13753,12 +13765,28 @@
       "best_score": 0.1429
     },
     {
+      "full_name_en": "Jonny Brodzinski",
+      "team": "",
+      "position": "C",
+      "salary_cash": 850000,
+      "aav": 850000,
+      "best_score": 0.1379
+    },
+    {
       "full_name_en": "Jacob Bryson",
       "team": "DET",
       "position": "D",
       "salary_cash": 850000,
       "aav": 850000,
       "best_score": 0.24
+    },
+    {
+      "full_name_en": "Kyle Burroughs",
+      "team": "DAL",
+      "position": "D",
+      "salary_cash": 850000,
+      "aav": 850000,
+      "best_score": 0.0741
     },
     {
       "full_name_en": "Cameron Butler",
@@ -13873,12 +13901,28 @@
       "best_score": 0.2222
     },
     {
+      "full_name_en": "Zach Dean",
+      "team": "STL",
+      "position": "C",
+      "salary_cash": 850000,
+      "aav": 850000,
+      "best_score": 0.1818
+    },
+    {
       "full_name_en": "Jakub Demek",
       "team": "VGK",
       "position": "RW",
       "salary_cash": 850000,
       "aav": 850000,
       "best_score": 0.1667
+    },
+    {
+      "full_name_en": "Justin Dowling",
+      "team": "NYR",
+      "position": "C",
+      "salary_cash": 850000,
+      "aav": 850000,
+      "best_score": 0.2222
     },
     {
       "full_name_en": "Josh Dunne",
@@ -14065,14 +14109,6 @@
       "best_score": 0.0
     },
     {
-      "full_name_en": "Ville Heinola",
-      "team": "VGK",
-      "position": "D",
-      "salary_cash": 850000,
-      "aav": 850000,
-      "best_score": 0.0
-    },
-    {
       "full_name_en": "Joe Hicketts",
       "team": "",
       "position": "D",
@@ -14249,8 +14285,24 @@
       "best_score": 0.0
     },
     {
+      "full_name_en": "Sam Lafferty",
+      "team": "FLA",
+      "position": "C",
+      "salary_cash": 850000,
+      "aav": 850000,
+      "best_score": 0.0
+    },
+    {
       "full_name_en": "William Lagesson",
       "team": "DET",
+      "position": "D",
+      "salary_cash": 850000,
+      "aav": 850000,
+      "best_score": 0.0
+    },
+    {
+      "full_name_en": "Carson Lambos",
+      "team": "MIN",
       "position": "D",
       "salary_cash": 850000,
       "aav": 850000,
@@ -14345,6 +14397,14 @@
       "best_score": 0.0
     },
     {
+      "full_name_en": "Spencer Martin",
+      "team": "NYR",
+      "position": "G",
+      "salary_cash": 850000,
+      "aav": 850000,
+      "best_score": 0.0
+    },
+    {
       "full_name_en": "Ben McCartney",
       "team": "UTA",
       "position": "LW",
@@ -14412,6 +14472,14 @@
       "full_name_en": "Trent Miner",
       "team": "COL",
       "position": "G",
+      "salary_cash": 850000,
+      "aav": 850000,
+      "best_score": 0.0
+    },
+    {
+      "full_name_en": "Travis Mitchell",
+      "team": "ANA",
+      "position": "D",
       "salary_cash": 850000,
       "aav": 850000,
       "best_score": 0.0
@@ -14721,14 +14789,6 @@
       "best_score": 0.0
     },
     {
-      "full_name_en": "Mason Shaw",
-      "team": "MIN",
-      "position": "C",
-      "salary_cash": 850000,
-      "aav": 850000,
-      "best_score": 0.0
-    },
-    {
       "full_name_en": "Conor Sheary",
       "team": "BUF",
       "position": "LW",
@@ -14881,14 +14941,6 @@
       "best_score": 0.0
     },
     {
-      "full_name_en": "Matt Tomkins",
-      "team": "EDM",
-      "position": "G",
-      "salary_cash": 850000,
-      "aav": 850000,
-      "best_score": 0.0
-    },
-    {
       "full_name_en": "Djibril Toure",
       "team": "OTT",
       "position": "D",
@@ -14969,6 +15021,14 @@
       "best_score": 0.0
     },
     {
+      "full_name_en": "Garrett Wilson",
+      "team": "PHI",
+      "position": "LW",
+      "salary_cash": 850000,
+      "aav": 850000,
+      "best_score": 0.0
+    },
+    {
       "full_name_en": "Christian Wolanin",
       "team": "COL",
       "position": "D",
@@ -15041,25 +15101,9 @@
       "best_score": 0.0
     },
     {
-      "full_name_en": "Mitchell Gibson",
-      "team": "",
-      "position": "G",
-      "salary_cash": 850000,
-      "aav": 812500,
-      "best_score": 0.0
-    },
-    {
       "full_name_en": "Cameron Hebig",
       "team": "UTA",
       "position": "C",
-      "salary_cash": 850000,
-      "aav": 812500,
-      "best_score": 0.0
-    },
-    {
-      "full_name_en": "Dakota Mermis",
-      "team": "TOR",
-      "position": "D",
       "salary_cash": 850000,
       "aav": 812500,
       "best_score": 0.0
@@ -15076,14 +15120,6 @@
       "full_name_en": "Isaak Phillips",
       "team": "WPG",
       "position": "D",
-      "salary_cash": 850000,
-      "aav": 812500,
-      "best_score": 0.0
-    },
-    {
-      "full_name_en": "Cole Reinhardt",
-      "team": "FLA",
-      "position": "LW",
       "salary_cash": 850000,
       "aav": 812500,
       "best_score": 0.0
