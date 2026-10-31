@@ -8,8 +8,8 @@ const AWAY = 'Арсенал';
 const row = (market_id, template, koef, V, R, favorite = 0) => ({ market_id, line_id: 1, template, koef, V, R, favorite });
 
 test('template tokens: period, team scope, line slot', () => {
-  assert.deepEqual(parseTemplate('Тотал [a] (@NP@) @1'), { base: 'тотал', period: 'FT', scope: 'home', hasLine: true });
-  assert.deepEqual(parseTemplate('@2HT@ тотал [a] @2'), { base: 'тотал', period: '2H', scope: 'away', hasLine: true });
+  assert.deepEqual(parseTemplate('Тотал [a] (@NP@) @1'), { base: 'тотал', period: 'FT', scope: 'home', hasLine: true, stat: null });
+  assert.deepEqual(parseTemplate('@2HT@ тотал [a] @2'), { base: 'тотал', period: '2H', scope: 'away', hasLine: true, stat: null });
   assert.equal(parseTemplate('@1P@/Матч (@NP@)').period, '1H');
   assert.equal(parseTemplate('@[a]P@ точный счет').period, 'P[a]');
   assert.equal(parseTemplate('Победа @1 (@NP@)').scope, 'home');
@@ -29,6 +29,17 @@ test('classification covers the families seen on EPL pages', () => {
   for (const [template, family] of Object.entries(cases)) assert.equal(classify(parseTemplate(template).base)[0], family, template);
   assert.deepEqual(classify(parseTemplate('Выйдет и забьет первый гол (@NP@)').base), ['player_goal', 'first']);
   assert.deepEqual(classify(parseTemplate('Исход 1X2 в интервале с [a] минут').base), ['match_result', 'interval']);
+});
+
+test('statistics in brackets are not goals (2026-10-31: Челси woodwork 0,5 at 3.91 went on air as a goal)', () => {
+  const woodwork = normalizeLine(row(1244, 'Тотал [a] (штанги и перекладины) @1 (@NP@)', '0.5', [3.91, 1.2], ['Больше', 'Меньше']), HOME, AWAY);
+  assert.equal(woodwork.family, 'other');
+  assert.equal(woodwork.variant, 'штанги и перекладины');
+  for (const template of ['Тотал [a] @1 (ауты) (@NP@)', '@[a]P@ тотал [b] (офсайды) @2', 'Тотал [a] (удары в створ) (@NP@)', 'Исход 1X2 (фолы) (@NP@)'])
+    assert.equal(normalizeLine(row(1, template, '1.5', [1.9, 1.9], ['Больше', 'Меньше']), HOME, AWAY).family, 'other', template);
+  assert.equal(normalizeLine(row(1050, 'Тотал [a] (@NP@) @1', '0.5', [1.2, 4.1], ['Больше', 'Меньше']), HOME, AWAY).family, 'total');
+  assert.equal(normalizeLine(row(1048, 'Следующий гол [a]-й (интервал 15 мин)', '1', [2, 2], ['1', '2']), HOME, AWAY).family, 'goal_sequence');
+  assert.equal(normalizeLine(row(1070, 'Тотал угловых [a] (@NP@)', '8.5', [1.8, 1.95], ['Больше', 'Меньше']), HOME, AWAY).family, 'corners');
 });
 
 test('1X2 and double chance sides', () => {

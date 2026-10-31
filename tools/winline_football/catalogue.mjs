@@ -26,6 +26,8 @@ export function parseTemplate(template) {
     period = token[1] === '[a]' ? 'P[a]' : token[1] === '1' ? '1H' : token[1] === '2' ? '2H' : `P${token[1]}`;
     text = text.replace(token[0], ' ');
   }
+  // a match statistic in brackets, «Тотал [a] (штанги и перекладины) @1 (@NP@)»: not goals (see normalizeLine)
+  const stat = text.match(/\((?!@NP@\)|интервал)([^)]*)\)/i);
   text = text.replace(/@NP@/g, ' ');
   let scope = 'match';
   const team = text.match(/\s@([12])(?![A-Za-z0-9@])/);
@@ -35,8 +37,11 @@ export function parseTemplate(template) {
   }
   const hasLine = /\[a\]/.test(text);
   const base = text.replace(/\[a\]/g, ' ').replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-  return { base, period, scope, hasLine };
+  return { base, period, scope, hasLine, stat: stat ? stat[1].trim().toLowerCase() : null };
 }
+
+// Families whose own words already tell the statistic or the interval apart (corners, cards, «интервал 10 мин»)
+const STAT_AWARE = new Set(['corners', 'cards', 'player_goal', 'goal_sequence']);
 
 export function classify(base) {
   if (/выйдет и забьет первый гол/.test(base)) return ['player_goal', 'first'];
@@ -114,7 +119,10 @@ const SIDES = {
 
 export function normalizeLine(row, home, away) {
   const parsed = parseTemplate(row.template);
-  const [family, variant] = classify(parsed.base);
+  // 2026-10-31: «Тотал (штанги и перекладины) @1» больше 0,5 at 3.91 went on air as «Челси забьёт»; totals and 1X2 of
+  // shots, throw-ins, fouls, offsides, goal kicks, woodwork stay "other" with the statistic as the variant
+  let [family, variant] = classify(parsed.base);
+  if (parsed.stat && !STAT_AWARE.has(family)) [family, variant] = ['other', parsed.stat];
   const odds = Array.isArray(row.V) ? row.V : [];
   const labels = (row.R || []).filter((label) => label !== '' && label != null);
   const koef = String(row.koef ?? '');

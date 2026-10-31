@@ -14,6 +14,7 @@ import argparse
 from collections import Counter
 import gzip
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -35,6 +36,21 @@ STATS_BASELINE = 114  # three seasons
 
 def load(name: str):
     return json.loads((epl.NORM / name).read_text(encoding="utf-8"))
+
+
+STAT_SUBJECT = re.compile(r"\((?!@NP@\)|интервал)([^)]*)\)", re.IGNORECASE)
+STAT_AWARE = {"corners", "cards", "player_goal", "goal_sequence"}
+
+
+def stat_markets_apart(event: dict) -> dict:
+    """Markets of a match statistic in brackets — «Тотал [a] (штанги и перекладины) @1 (@NP@)», «Исход 1X2 (фолы)», shots,
+    throw-ins, offsides, goal kicks — become family "other", as tools/winline_football/catalogue.mjs now does, also in the
+    snapshots it captured before. 2026-10-31: Челси woodwork over 0,5 at 3.91 went on air as «Челси забьёт хотя бы один»."""
+    for market in event.get("markets") or []:
+        found = STAT_SUBJECT.search(market.get("template") or "")
+        if found and market.get("family") not in STAT_AWARE:
+            market["family"], market["variant"] = "other", found.group(1).strip().lower()
+    return event
 
 
 MOVE_HOURS = 24
@@ -420,6 +436,7 @@ def main(argv: list[str] | None = None) -> int:
     live_at, live_events = load_live(Path(args.live), datetime.now(timezone.utc))
     out_matches, skipped = [], []
     for event in snapshot["events"] + started + finished:
+        stat_markets_apart(event)
         home, away = club_for(event["home"], teams), club_for(event["away"], teams)
         if not home or not away:
             skipped.append(f"{event['home']} - {event['away']}")
