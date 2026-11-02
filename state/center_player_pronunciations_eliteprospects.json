@@ -8898,12 +8898,12 @@
       "last_name": "Robertson",
       "player_id": 8481525,
       "position_code": "D",
-      "pronunciation_source": "local_cached_pronunciation",
-      "pronunciation_url": null,
+      "pronunciation_source": "nhl.com_team_pronunciation_guide",
+      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/sgta3iqsocaljvneu40w.mp3",
       "shoots_catches": "L",
       "sweater_number": 29,
       "team_tri": "NYR",
-      "upstream_verified": false,
+      "upstream_verified": true,
       "weight_kg": 99
     },
     "8481527": {
@@ -12098,7 +12098,7 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/shane_wright.mp3",
       "shoots_catches": "R",
-      "sweater_number": null,
+      "sweater_number": 15,
       "team_tri": "NSH",
       "upstream_verified": true,
       "weight_kg": 87
@@ -24412,12 +24412,12 @@
       "last_name": "Robertson",
       "player_id": 8481525,
       "position_code": "D",
-      "pronunciation_source": "local_cached_pronunciation",
-      "pronunciation_url": null,
+      "pronunciation_source": "nhl.com_team_pronunciation_guide",
+      "pronunciation_url": "https://media.d3.nhle.com/video/private/t_document/prd/sgta3iqsocaljvneu40w.mp3",
       "shoots_catches": "L",
       "sweater_number": 29,
       "team_tri": "NYR",
-      "upstream_verified": false,
+      "upstream_verified": true,
       "weight_kg": 99
     },
     "8481527": {
@@ -28893,7 +28893,7 @@
       "pronunciation_source": "eliteprospects_player_audio",
       "pronunciation_url": "https://files.eliteprospects.com/layout/player_audio/shane_wright.mp3",
       "shoots_catches": "R",
-      "sweater_number": null,
+      "sweater_number": 15,
       "team_tri": "NSH",
       "upstream_verified": true,
       "weight_kg": 87
