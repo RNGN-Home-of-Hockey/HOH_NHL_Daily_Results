@@ -106,8 +106,8 @@ class Data(unittest.TestCase):
         row = {"date": "d", "won": True, "full": False, "margin": 3, "total": 11}
         self.assertEqual((md.result_of(row)["margin"], md.result_of(row)["total"]), (None, None))
 
-    def test_other_circuits_get_the_markets_and_a_note(self):
-        other = {**ATP, "wl_id": "300", "circuit": "UTR (М)"}
+    def test_doubles_get_the_markets_and_a_note(self):
+        other = {**ATP, "wl_id": "300", "is_doubles": 1, "team1": "Гамма Г./Дельта Д."}
         ws.store(self.raw, [other], [{**WINNER, "wl_id": "300"}], "2026-11-04T10:10:00+00:00")
         detail = md.match_detail(self.db, self.history, "300")
         self.assertEqual(detail["markets"][0]["rungs"][0]["odd2"], 2.4)

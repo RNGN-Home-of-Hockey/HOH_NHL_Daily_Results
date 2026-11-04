@@ -44,7 +44,7 @@ MAX_BODY = 16 * 1024
 MOVE = 0.03  # a price counts as moved at 3 %, as on the EPL site
 RECENT_DAYS = 2
 HISTORY_TTL = 600
-PLATE_NOTE = "Плашки пока только для одиночного разряда WTA и ATP"
+PLATE_NOTE = "Плашки пока только для одиночного разряда"
 
 
 class LoginLimiter:
@@ -91,13 +91,13 @@ class History:
         self.lock = threading.Lock()
         self.loaded: dict[str, tuple[float, tennis_plates.Tour]] = {}
 
-    def get(self, tour: str) -> tennis_plates.Tour:
+    def get(self, tour: str):
         with self.lock:
             loaded_at, found = self.loaded.get(tour, (None, None))
             if found is None or time.monotonic() - loaded_at >= self.ttl:
                 db = open_db(self.path)
                 db.row_factory = None
-                found = tennis_plates.load_tour(db, tour)
+                found = tennis_plates.load_bolshe(db) if tour == "BOLSHE" else tennis_plates.load_tour(db, tour)
                 db.close()
                 self.loaded[tour] = (time.monotonic(), found)
             return found
@@ -157,10 +157,10 @@ def last_fetch(db: sqlite3.Connection) -> dict:
 
 
 def plates_for(event: dict, lines: list[dict], history: History) -> dict | None:
-    if event["circuit"] not in tennis_plates.TOURS or event["is_doubles"]:
+    if event["is_doubles"]:
         return None
-    tour = history.get(event["circuit"])
-    return tennis_plates.build(event, lines, tour.players, tour.ids, tour.surfaces, tour.learned)
+    tour = history.get(event["circuit"]) if event["circuit"] in tennis_plates.TOURS else tennis_plates.Tour({}, {}, {}, {})
+    return tennis_plates.build(event, lines, tour.players, tour.ids, tour.surfaces, tour.learned, history.get("BOLSHE"))
 
 
 def list_matches(db: sqlite3.Connection, history: History, now: datetime | None = None) -> dict:
@@ -183,7 +183,7 @@ def list_matches(db: sqlite3.Connection, history: History, now: datetime | None 
         winner = winners.get(event["wl_id"])
         in_line = event["last_seen"] == fetch["taken_at"]
         plates = 0
-        if in_line and event["circuit"] in tennis_plates.TOURS and not event["is_doubles"]:
+        if in_line and not event["is_doubles"]:
             built = plates_for(event, latest_lines(db, event["wl_id"]), history)
             plates = len(built["lines"]) if built else 0
         matches.append({

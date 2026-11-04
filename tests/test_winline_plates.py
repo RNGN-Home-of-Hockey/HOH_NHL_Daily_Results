@@ -93,33 +93,117 @@ def priced_result(won, price=2.2, opp=1.6):
     return {**result(won), "price": price, "opp_price": opp}
 
 
-class Lines(unittest.TestCase):
-    def test_an_underdog_is_judged_as_an_underdog(self):
-        as_underdog = [priced_result(True)] * 7 + [priced_result(False)]
-        as_favourite = [priced_result(False, 1.5, 2.6)] * 10
-        cards = wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), {1: as_underdog + as_favourite, 2: []}, "hard")
-        self.assertEqual(cards[0]["text"], "Победа Альфа А. — 2.2")
-        self.assertEqual((cards[0]["hits"], cards[0]["n"]), (7, 8))
-        self.assertIn("андердог", cards[0]["what"])
-        self.assertEqual(len(cards[0]["matches"]), 8)
+def plates_for(prices=(2.2, 1.6), form=None, hist=None, pool=None, h2h=None, info=None, surface="hard"):
+    empty = {1: [], 2: []}
+    lines = lines_of(("Победитель", None, *prices)) if prices else []
+    price = wp.winner_prices(lines)
+    found = wp.candidates(EVENT, price, form or empty, hist or empty, pool or empty, h2h or [], info or {1: None, 2: None}, surface)
+    return wp.select_plates(EVENT, price, found)
 
-    def test_a_good_record_in_the_other_role_does_not_count(self):
-        as_favourite = [priced_result(True, 1.5, 2.6)] * 20
-        self.assertEqual(wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), {1: as_favourite, 2: []}), [])
 
-    def test_a_small_sample_or_no_prices_give_no_plate(self):
-        self.assertEqual(wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), {1: [priced_result(True)] * 7, 2: []}), [])
-        self.assertEqual(wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), {1: [result(True)] * 20, 2: []}), [])
+class Plates(unittest.TestCase):
+    def test_a_match_with_only_a_price_still_gets_a_plate(self):
+        cards = plates_for()
+        self.assertEqual([c["text"] for c in cards], ["Фаворит у букмекеров: Бета Б., цена 1.6"])
+        self.assertEqual(cards[0]["price_text"], "Победа Бета Б. — 1.6")
+        self.assertIn("рынок ждёт", cards[0]["why"])
 
-    def test_only_the_winner_market_makes_a_plate(self):
-        hist = {1: [priced_result(True)] * 12, 2: []}
-        self.assertEqual(wp.line_cards(EVENT, lines_of(("Фора", 1.5, 2.2, 1.6), ("Тотал", 20.5, 2.2, 1.6)), hist), [])
+    def test_no_price_and_no_history_means_no_plate(self):
+        self.assertEqual(plates_for(prices=None), [])
+
+    def test_a_run_ranks_above_ordinary_form(self):
+        form = {1: [result(True)] * 6 + [result(False)] * 4, 2: []}
+        cards = plates_for(form=form)
+        self.assertEqual(cards[0]["text"], "Альфа А.: побед подряд — 6")
+        self.assertEqual((cards[0]["hits"], cards[0]["n"]), (6, 6))
+        self.assertIn("Альфа А.", cards[0]["price_text"])
+
+    def test_a_losing_run_is_a_story_too(self):
+        cards = plates_for(form={1: [result(False)] * 4 + [result(True)], 2: []})
+        self.assertEqual(cards[0]["text"], "Альфа А.: поражений подряд — 4")
+
+    def test_a_record_counts_in_todays_role(self):
+        pool = {1: [priced_result(False)] * 6 + [priced_result(True, 1.5, 2.6)] * 9, 2: []}
+        role = [c for c in plates_for(pool=pool) if c["family"] == "role"][0]
+        self.assertEqual(role["text"], "Альфа А.: андердогом 0-6")
+        self.assertIn("андердог", role["what"])
+        self.assertEqual(role["score"], 75)
+
+    def test_head_to_head_shutout_ranks_high(self):
+        cards = plates_for(h2h=[result(False)] * 3)
+        self.assertEqual(cards[0]["text"], "Личные встречи: Бета Б. ведёт 3-0")
+
+    def test_better_ranked_underdog_is_a_story(self):
+        info = {1: {"rank": 12}, 2: {"rank": 90}}
+        self.assertEqual(plates_for(info=info)[0]["family"], "rank")
+        self.assertEqual(plates_for(prices=(1.6, 2.2), info=info)[-1]["family"], "market")
+
+    def test_elo_against_the_market(self):
+        info = {1: {"elo": 2000}, 2: {"elo": 1600}}
+        card = [c for c in plates_for(info=info) if c["family"] == "elo"][0]
+        self.assertEqual(card["score"], 70)
+        self.assertEqual(card["text"], "По Эло Альфа А. 91 %, рынок 42 %")
+
+    def test_surface_elo_is_preferred(self):
+        self.assertEqual(wp.elo_of({"elo": 1500, "elo_hard": 1700}, "hard"), 1700)
+        self.assertEqual(wp.elo_of({"elo": 1500}, "hard"), 1500)
+        self.assertIsNone(wp.elo_of(None, "hard"))
+
+    def test_at_most_a_few_plates(self):
+        form = {1: [result(True)] * 8, 2: [result(False)] * 8}
+        info = {1: {"rank": 12, "elo": 2000}, 2: {"rank": 90, "elo": 1600}}
+        self.assertLessEqual(len(plates_for(form=form, info=info, h2h=[result(True)] * 3)), wp.MAX_PLATES)
 
     def test_wording_never_calls_a_bet_good(self):
-        hist = {1: [priced_result(True)] * 12, 2: []}
-        card = wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), hist, "hard")[0]
-        for word in ("выгод", "ставь", "ставк", "верняк", "ценн"):
-            self.assertNotIn(word, (card["text"] + card["what"] + card["why"]).lower())
+        form = {1: [result(True)] * 8, 2: [result(False)] * 8}
+        for card in plates_for(form=form, info={1: {"rank": 12, "elo": 2000}, 2: {"rank": 90, "elo": 1600}}):
+            words = (card["text"] + card["what"] + card.get("why", "")).lower()
+            for word in ("выгод", "ставь", "ставк", "верняк", "ценн"):
+                self.assertNotIn(word, words)
+
+
+class Circuits(unittest.TestCase):
+    def test_winline_circuits_to_tours(self):
+        for circuit, tour in (("ATP", "ATP"), ("World Tennis, Мужчины", "ATP"), ("Челленджер (М)", "ATP"), ("UTR (М)", "ATP"),
+                              ("WTA", "WTA"), ("World Tennis, Женщины", "WTA"), ("UTR (Ж)", "WTA")):
+            self.assertEqual(wp.circuit_tour(circuit), tour)
+
+
+class BolsheFallback(unittest.TestCase):
+    def setUp(self):
+        self.db = fresh_db()
+        self.db.execute("INSERT INTO player (player_id, fs_id, name_ru, tour, singles_rank, elo, source) VALUES ('a', 'F1', 'Анна Альфа', 'WTA', 300, 1500, 't')")
+        self.db.execute("INSERT INTO player (player_id, fs_id, name_ru, tour, singles_rank, elo, source) VALUES ('b', 'F2', 'Бея Бета', 'WTA', 450, 1400, 't')")
+        self.db.execute("INSERT INTO tournament (tournament_key, tour, tournament, surface, first_seen, source) VALUES ('k', 'WTA', 'W35 Город', 'clay', '2026', 't')")
+        for n in range(6):
+            self.db.execute("""INSERT INTO match (match_id, tournament_key, p1_fs_id, p2_fs_id, p1_name, p2_name, date_msk, status, winner, sets_json, is_doubles, source)
+                               VALUES (?, 'k', 'F1', 'F2', 'Альфа А.', 'Бета Б.', ?, 'finished', 1, '[{"p1":6,"p2":3},{"p1":6,"p2":4}]', 0, 't')""", (f"M{n}", f"2026-10-{n + 10}"))
+        self.db.execute("INSERT INTO match (match_id, tournament_key, p1_fs_id, p2_fs_id, status, is_doubles, source) VALUES ('NEXT', 'k', 'F2', 'F1', 'scheduled', 0, 't')")
+        self.db.execute("INSERT INTO match_odds (match_id, wl_id, pre1, pre2, source) VALUES ('NEXT', '100', 2.3, 1.6, 't')")
+        self.bolshe = wp.load_bolshe(self.db)
+
+    def test_rows_from_each_side(self):
+        rows = self.bolshe.players["F2"]
+        self.assertEqual((len(rows), rows[0]["won"], rows[0]["margin"], rows[0]["total"]), (6, False, -5, 19))
+        self.assertEqual(rows[0]["score"], "6-3  6-4")
+
+    def test_link_by_name_and_by_the_matched_event(self):
+        event = {**EVENT, "circuit": "World Tennis, Женщины", "team1": "Альфа А.", "team2": "Незнакомая Н."}
+        self.assertEqual(self.bolshe.link(event, {}), ("F1", "F2"))
+
+    def test_link_by_prices_when_no_name_fits(self):
+        event = {**EVENT, "circuit": "World Tennis, Женщины", "team1": "Иная И.", "team2": "Другая Д."}
+        self.assertEqual(self.bolshe.link(event, {1: 2.3, 2: 1.6}), ("F2", "F1"))
+        self.assertEqual(self.bolshe.link(event, {1: 1.6, 2: 2.3}), ("F1", "F2"))
+
+    def test_an_event_without_a_base_of_its_own_gets_stories(self):
+        event = {**EVENT, "circuit": "World Tennis, Женщины", "tournament": "Город, Страна"}
+        built = wp.build(event, lines_of(("Победитель", None, 1.6, 2.3)), {}, {}, {}, None, self.bolshe)
+        self.assertEqual(built["history"], "bolshe")
+        self.assertTrue(built["linked"])
+        self.assertEqual(built["surface"], "clay")
+        self.assertEqual(built["lines"][0]["text"], "Альфа А.: побед подряд — 6")
+        self.assertTrue(any("месяц" in n for n in built["notes"]))
 
 
 class AtpHistory(unittest.TestCase):
@@ -242,17 +326,18 @@ class Build(unittest.TestCase):
         built = wp.build(EVENT, [], players, self.ids, self.surfaces)
         self.assertEqual(built["facts"], [])
 
-    def test_unknown_player_gives_a_note_and_no_cards(self):
-        built = wp.build({**EVENT, "team2": "Неизвестная Н."}, lines_of(("Победитель", None, 1.9, 1.9)), {}, self.ids, self.surfaces)
+    def test_unknown_player_still_gets_the_price_plate(self):
+        built = wp.build({**EVENT, "team2": "Неизвестная Н."}, lines_of(("Победитель", None, 1.9, 1.8)), {}, self.ids, self.surfaces)
         self.assertFalse(built["linked"])
-        self.assertEqual((built["facts"], built["lines"]), ([], []))
+        self.assertEqual(built["facts"], [])
+        self.assertEqual([c["family"] for c in built["lines"]], ["market"])
         self.assertTrue(built["notes"])
 
     def test_unknown_surface_still_gives_form_and_head_to_head(self):
         players = {1: [result(True, opp=2)] * 6, 2: [result(False, opp=1)] * 6}
-        built = wp.build({**EVENT, "tournament": "Другой, Страна"}, lines_of(("Победитель", None, 1.9, 1.9)), players, self.ids, self.surfaces)
+        built = wp.build({**EVENT, "tournament": "Другой, Страна"}, lines_of(("Победитель", None, 1.9, 1.8)), players, self.ids, self.surfaces)
         self.assertEqual({c["kind"] for c in built["facts"]}, {"form", "h2h"})
-        self.assertEqual(built["lines"], [])
+        self.assertTrue(built["lines"])
         self.assertTrue(any("покрытие" in n for n in built["notes"]))
 
     def test_end_to_end_from_the_feed(self):

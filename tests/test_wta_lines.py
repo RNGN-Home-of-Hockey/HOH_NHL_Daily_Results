@@ -158,14 +158,6 @@ class Plates(unittest.TestCase):
     def test_no_prices_means_no_record(self):
         self.assertIsNone(wp.priced_record([{"won": True, "price": None, "opp_price": None}]))
 
-    def test_plate_uses_only_the_winner_market(self):
-        hist = {1: [{"won": True, "date": "2026-10-01", "surface": "hard", "full": True, "total": 15, "margin": 9, "opp": 3, "price": 1.8, "opp_price": 2.0}] * 12, 2: []}
-        event = {"team1": "А", "team2": "Б"}
-        rows = [{"market": "Фора", "value": -1.5, "odd1": 1.9, "odd2": 1.9}, {"market": "Тотал", "value": 20.5, "odd1": 1.9, "odd2": 1.9}]
-        self.assertEqual(wp.line_cards(event, rows, hist), [])
-        cards = wp.line_cards(event, rows + [{"market": "Победитель", "value": None, "odd1": 1.8, "odd2": 2.0}], hist)
-        self.assertEqual([c["family"] for c in cards], ["winner"])
-
 
 if __name__ == "__main__":
     unittest.main()

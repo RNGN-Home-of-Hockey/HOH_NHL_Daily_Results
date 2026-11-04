@@ -287,11 +287,11 @@ function evidenceTable(matches) {
 }
 
 function plateCard(card) {
-  const priced = card.kind === "line";
-  const text = priced ? `${card.text} (${card.hits} из ${card.n})` : card.text;
-  return el("article", { class: `plate${priced ? " priced" : ""}` },
+  const plate = card.kind === "plate";
+  const text = [card.text, card.price_text].filter(Boolean).join(". ");
+  return el("article", { class: `plate${plate ? " priced" : ""}` },
     el("p", { class: "plate-text" }, card.text),
-    priced ? el("p", { class: "plate-count" }, `${card.hits} из ${card.n}`) : null,
+    card.price_text ? el("p", { class: "plate-count" }, card.price_text) : null,
     card.what ? el("p", { class: "plate-evidence" }, card.what) : null,
     card.why ? el("p", { class: "plate-evidence" }, card.why) : null,
     card.matches ? evidenceTable(card.matches) : null,
@@ -302,15 +302,15 @@ function platesTab(detail) {
   const parts = [];
   detail.notes.forEach((note) => parts.push(el("p", { class: "note" }, note)));
   if (detail.lines.length) {
-    parts.push(el("h2", {}, "С линией"), el("div", { class: "plates" }, detail.lines.map(plateCard)));
+    parts.push(el("h2", {}, "Плашки"), el("div", { class: "plates" }, detail.lines.map(plateCard)));
   }
   if (detail.facts.length) {
-    parts.push(el("h2", {}, "Факты"), el("div", { class: "plates" }, detail.facts.map(plateCard)));
+    parts.push(el("h2", {}, "Все факты"), el("div", { class: "plates" }, detail.facts.map(plateCard)));
   }
   if (!detail.lines.length && !detail.facts.length && !detail.notes.length) {
     parts.push(el("p", { class: "empty" }, "По этому матчу пока нечего показать"));
   }
-  parts.push(el("p", { class: "caption" }, "Как читать: «5 из 8» значит, что в 8 прошлых матчах в той же роли, что и сегодня (фаворит или андердог по цене того матча), игрок победил 5 раз. Осторожная оценка учитывает, что выборка маленькая: при 90 % уверенности доля не ниже этого числа. Проверка на 25 тысячах матчей 2022–2026 годов: такие строки выигрывали реже, чем ждал рынок (фавориты 54 % при ожидании 57 %, андердоги 31–32 % при ожидании 33–34 %), поэтому это материал для рассказа, а не совет. История WTA: тур и WTA 125 с 2016 года, пока без ITF и шлемов до 2025. История ATP: основные сетки тура из tennis-data, без Челленджеров и ITF, фор и тоталов тех матчей там нет."));
+  parts.push(el("p", { class: "caption" }, "Плашки отобраны по интересности истории: серии, резкая форма, покрытие, роль фаворита или андердога, личные встречи, рейтинг, Эло. Цена рядом это факт, а не совет: проверка на 25 тысячах матчей 2022–2026 годов показала, что статистика игрока не обгоняет рынок. История WTA: тур и WTA 125 с 2016 года. ATP: основные сетки тура из tennis-data. ITF, Челленджеры и UTR: копия BOLSHE, только последний месяц."));
   return parts;
 }
 
@@ -352,7 +352,7 @@ function resultsTable(results, perspective) {
 }
 
 function h2hTab(detail) {
-  if (detail.is_doubles || !["WTA", "ATP"].includes(detail.circuit)) return [el("p", { class: "note" }, "Пока только для одиночного разряда WTA и ATP")];
+  if (detail.is_doubles) return [el("p", { class: "note" }, "Пока только для одиночного разряда")];
   if (!detail.h2h.length) return [el("p", { class: "empty" }, "Личных встреч в базе нет")];
   return [resultsTable(detail.h2h)];
 }

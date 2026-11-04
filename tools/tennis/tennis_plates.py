@@ -34,7 +34,7 @@ SURFACE_LIMIT = 20
 FORM_MONTHS = 12
 FORM_LIMIT = 10
 Z90 = 1.2816
-MAX_LINE_CARDS = 3
+MAX_PLATES = 4
 MIN_PRICED = 5
 MIN_ROLE = 8
 ROLE_LIMIT = 100
@@ -304,60 +304,236 @@ def same_role(rows: list[dict], favourite: bool) -> list[dict]:
             and (r["price"] < r["opp_price"]) == favourite]
 
 
-def line_cards(event: dict, lines: list[dict], hist: dict, surface: str | None = None) -> list[dict]:
-    """A plate next to a price, for the match winner only, on both tours. A record counts only in the
-    role of today: an underdog is judged by matches as an underdog, each at the price it had then."""
-    names = {1: event["team1"], 2: event["team2"]}
-    scope = scope_words(surface)
-    best = None
+def winner_prices(lines: list[dict]) -> dict:
     for line in lines:
-        if line["market"] != "Победитель":
-            continue
-        for side, mine, other in ((1, line["odd1"], line["odd2"]), (2, line["odd2"], line["odd1"])):
-            if mine == other:
-                continue
-            favourite = mine < other
-            role = "фаворит" if favourite else "андердог"
-            played = same_role(hist[side], favourite)
-            wins = sum(r["won"] for r in played)
-            gate = priced(mine, other, wins, len(played), MIN_ROLE, 0.0)
-            if not gate or (best and gate["score"] <= best["score"]):
-                continue
-            what = f"Сегодня {names[side]}: {role}. В этой роли {scope}: побед {wins} из {len(played)}, по цене каждого матча."
-            best = {"kind": "line", "family": "winner", "text": f"Победа {names[side]} — {mine}", **gate, "what": what, "why": reason_words(gate),
-                    "matches": [evidence_row(r, names[side], r["won"], "победа" if r["won"] else "поражение") for r in played]}
-    return [best] if best else []
+        if line["market"] == "Победитель":
+            return {1: line["odd1"], 2: line["odd2"]}
+    return {}
+
+
+def run_of(rows: list[dict]) -> tuple[int, bool | None]:
+    """The current run: how many results in a row, newest first, and whether they are wins."""
+    if not rows:
+        return 0, None
+    won = rows[0]["won"]
+    count = 0
+    for row in rows:
+        if row["won"] != won:
+            break
+        count += 1
+    return count, won
+
+
+def elo_chance(mine: float, other: float) -> float:
+    return 1 / (1 + 10 ** ((other - mine) / 400))
+
+
+def elo_of(info: dict | None, surface: str | None):
+    if not info:
+        return None
+    return info.get(f"elo_{surface}") or info.get("elo")
+
+
+def candidates(event: dict, prices: dict, form: dict, hist: dict, pool: dict, h2h: list[dict], info: dict, surface: str | None) -> list[dict]:
+    """Everything worth saying, each with how interesting it is. The score ranks stories for an editor
+    and says nothing about a bet: on 25,000 matches a record above the market lost more than average."""
+    names = {1: event["team1"], 2: event["team2"]}
+    fair = {1: fair_price(prices[1], prices[2]), 2: fair_price(prices[2], prices[1])} if prices else {}
+    found = []
+
+    def add(score, kind, side, text, what, rows=None, hit=None):
+        card = {"kind": "plate", "family": kind, "score": score, "side": side, "text": text, "what": what}
+        if rows:
+            hits = [hit(r) for r in rows]
+            card.update(hits=sum(hits), n=len(rows), matches=[
+                evidence_row(r, names[side], h, "победа" if r["won"] else "поражение") for r, h in zip(rows, hits)])
+        found.append(card)
+
+    won = lambda r: r["won"]  # noqa: E731
+    for side in (1, 2):
+        name = names[side]
+        count, wins = run_of(form[side])
+        if count >= 3:
+            word = "побед" if wins else "поражений"
+            add(min(60 + 5 * count, 95), "run", side, f"{name}: {word} подряд — {count}", "Подряд, считая самый свежий матч в базе.",
+                form[side][:count], (won if wins else lambda r: not r["won"]))
+        played = form[side]
+        if len(played) >= MIN_PRICED:
+            hits = sum(r["won"] for r in played)
+            rate = hits / len(played)
+            add(70 if rate >= 0.8 or rate <= 0.2 else 30, "form", side, f"{name}: {hits}-{len(played) - hits} в последних {len(played)} матчах",
+                f"Последние матчи за {FORM_MONTHS} месяцев, на всех покрытиях.", played, won)
+        played = hist[side]
+        if surface and len(played) >= MIN_PRICED:
+            hits = sum(r["won"] for r in played)
+            rate = hits / len(played)
+            add(65 if rate >= 0.75 or rate <= 0.3 else 25, "surface", side,
+                f"{name}: {hits}-{len(played) - hits} на {SURFACE_RU.get(surface, surface)}", f"Последние матчи на этом покрытии, {scope_words(surface)}.", played, won)
+        if prices and prices[1] != prices[2]:
+            favourite = prices[side] < prices[3 - side]
+            played = same_role(pool[side], favourite)
+            if len(played) >= MIN_PRICED:
+                hits = sum(r["won"] for r in played)
+                role = "фаворит" if favourite else "андердог"
+                add(75 if abs(hits / len(played) - fair[side]) >= 0.15 else 35, "role", side,
+                    f"{name}: {'фаворитом' if favourite else 'андердогом'} {hits}-{len(played) - hits}",
+                    f"Сегодня {role}. Прошлые матчи в той же роли, по цене каждого из них, {scope_words(surface)}.", played, won)
+    if h2h:
+        first, second = record(h2h)
+        if first == second:
+            add(40, "h2h", None, f"Личные встречи: {first}-{second}", "Все встречи в базе.")
+        else:
+            leader = 1 if first > second else 2
+            total = first + second
+            add(80 if total >= 3 and min(first, second) == 0 else 55 if total >= 2 else 35, "h2h", leader,
+                f"Личные встречи: {names[leader]} ведёт {max(first, second)}-{min(first, second)}", "Все встречи в базе.")
+    rank = {side: (info.get(side) or {}).get("rank") for side in (1, 2)}
+    if rank[1] and rank[2]:
+        better = 1 if rank[1] < rank[2] else 2
+        surprise = bool(prices) and prices[better] > prices[3 - better] and abs(rank[1] - rank[2]) >= 10
+        add(70 if surprise else 30, "rank", better, f"Рейтинг: {names[1]} №{rank[1]}, {names[2]} №{rank[2]}",
+            "Выше в рейтинге, но у букмекеров андердог." if surprise else "Текущий рейтинг из копии BOLSHE.")
+    elo = {side: elo_of(info.get(side), surface) for side in (1, 2)}
+    if elo[1] and elo[2]:
+        chance = elo_chance(elo[1], elo[2])
+        top = 1 if chance >= 0.5 else 2
+        mine = chance if top == 1 else 1 - chance
+        tail = f", рынок {round(fair[top] * 100)} %" if fair else ""
+        add(70 if fair and abs(mine - fair[top]) >= 0.10 else 25, "elo", top, f"По Эло {names[top]} {round(mine * 100)} %{tail}",
+            "Шанс на победу по рейтингу Эло из копии BOLSHE, с учётом покрытия, если он известен.")
+    if prices:
+        if prices[1] == prices[2]:
+            add(10, "market", None, f"Рынок поровну: {prices[1]} и {prices[2]}", "Букмекеры не выделяют фаворита.")
+        else:
+            top = 1 if prices[1] < prices[2] else 2
+            add(10, "market", top, f"Фаворит у букмекеров: {names[top]}, цена {prices[top]}", "Цена Winline на победителя матча.")
+    return found
+
+
+def select_plates(event: dict, prices: dict, found: list[dict]) -> list[dict]:
+    """The most interesting stories, each next to the price of the player it is about. A price is a
+    fact beside the story, not advice."""
+    plates = sorted(found, key=lambda c: -c["score"])[:MAX_PLATES]
+    names = {1: event["team1"], 2: event["team2"]}
+    for card in plates:
+        side = card["side"]
+        if prices and side:
+            card["price_text"] = f"Победа {names[side]} — {prices[side]}"
+            card["why"] = f"Цена {prices[side]}: рынок ждёт победы примерно в {round(fair_price(prices[side], prices[3 - side]) * 100)} % случаев, маржа букмекера убрана."
+    return plates
 
 
 def resolve(side_id, team, ids: dict, learned: dict):
     return learned.get(side_id) or find_wta_id(team, ids)
 
 
-def build(event: dict, lines: list[dict], players: dict, player_ids: dict, surfaces: dict, learned: dict | None = None) -> dict:
+def build(event: dict, lines: list[dict], players: dict, player_ids: dict, surfaces: dict, learned: dict | None = None, bolshe=None) -> dict:
     cutoff = (event["start_at"] or "")[:10]
     learned = learned or {}
     id1 = resolve(event.get("team1_id"), event["team1"], player_ids, learned)
     id2 = resolve(event.get("team2_id"), event["team2"], player_ids, learned)
+    prices = winner_prices(lines)
+    fs1, fs2 = bolshe.link(event, prices) if bolshe else (None, None)
+    info = {1: bolshe.info.get(fs1) if bolshe else None, 2: bolshe.info.get(fs2) if bolshe else None}
     result = {"wl_id": event["wl_id"], "tournament": event["tournament"], "start_at": event["start_at"],
               "team1": event["team1"], "team2": event["team2"], "url": event["url"], "linked": bool(id1 and id2),
-              "facts": [], "lines": [], "notes": [], "form_rows": {1: [], 2: []}, "h2h_rows": []}
+              "facts": [], "lines": [], "notes": [], "form_rows": {1: [], 2: []}, "h2h_rows": [], "history": "tour"}
+    if not (id1 and id2) and fs1 and fs2:
+        id1, id2, players = fs1, fs2, bolshe.players
+        result.update(linked=True, history="bolshe")
+        result["notes"].append("История только за последний месяц: для этого турнира нет своей базы")
+    surface = surface_of(event["tournament"], surfaces) or (bolshe.surface(event["wl_id"]) if bolshe else None)
     if not (id1 and id2 and cutoff):
         result["notes"].append("нет однозначной связи с игроками в базе")
+        empty = {1: [], 2: []}
+        result["lines"] = select_plates(event, prices, candidates(event, prices, empty, empty, empty, [], info, surface))
         return result
-    surface = surface_of(event["tournament"], surfaces)
     if not surface:
         result["notes"].append("покрытие турнира неизвестно: нужен свежий справочник BOLSHE")
     rows = {1: players.get(id1, []), 2: players.get(id2, [])}
     hist = {side: recent(rows[side], cutoff, surface) if surface else [] for side in (1, 2)}
     form = {side: recent(rows[side], cutoff, None, FORM_MONTHS, FORM_LIMIT) for side in (1, 2)}
     h2h = [r for r in rows[1] if r["opp"] == id2 and r["date"] and r["date"] < cutoff]
-    result["facts"] = fact_cards(event, hist, form, h2h, surface)
     pool = {side: recent(rows[side], cutoff, surface, limit=ROLE_LIMIT) if surface else [] for side in (1, 2)}
-    result["lines"] = line_cards(event, lines, pool, surface)
+    result["facts"] = fact_cards(event, hist, form, h2h, surface)
+    result["lines"] = select_plates(event, prices, candidates(event, prices, form, hist, pool, h2h, info, surface))
     result["surface"] = surface
     result["form_rows"] = {side: recent(rows[side], cutoff, None, 120, RESULTS_LIMIT) for side in (1, 2)}
     result["h2h_rows"] = h2h[:30]
     return result
+
+
+def circuit_tour(circuit: str | None) -> str:
+    """Winline's circuit names to a tour: 'World Tennis, Мужчины', 'Челленджер (М)', 'UTR (Ж)'..."""
+    text = circuit or ""
+    return "ATP" if text == "ATP" or "Мужч" in text or "(М)" in text else "WTA"
+
+
+@dataclass
+class Bolshe:
+    """The fallback for every event without a base of its own: BOLSHE's copy has a month of matches
+    at all levels, and rankings and Elo for players of both tours."""
+
+    players: dict
+    info: dict
+    ids: dict
+    wl: dict
+
+    def surface(self, wl_id: str) -> str | None:
+        found = self.wl.get(str(wl_id))
+        return found[4] if found else None
+
+    def link(self, event: dict, prices: dict) -> tuple:
+        ids = self.ids.get(circuit_tour(event.get("circuit")), {})
+        first, second = find_wta_id(event["team1"], ids), find_wta_id(event["team2"], ids)
+        found = self.wl.get(str(event["wl_id"]))
+        if not found:
+            return first, second
+        p1, p2, pre1, pre2, _ = found
+        if first in (p1, p2):
+            return first, p2 if first == p1 else p1
+        if second in (p1, p2):
+            return (p2 if second == p1 else p1), second
+        if prices and pre1 and pre2 and pre1 != pre2:
+            straight = abs(prices[1] - pre1) + abs(prices[2] - pre2)
+            crossed = abs(prices[1] - pre2) + abs(prices[2] - pre1)
+            return (p1, p2) if straight <= crossed else (p2, p1)
+        return None, None
+
+
+def load_bolshe(db: sqlite3.Connection) -> Bolshe:
+    players = defaultdict(list)
+    wl = {}
+    for p1, p2, name1, name2, day, status, winner, sets_json, event, surface, wl_id, pre1, pre2, hcap in db.execute(
+            """SELECT m.p1_fs_id, m.p2_fs_id, m.p1_name, m.p2_name, m.date_msk, m.status, m.winner, m.sets_json, t.tournament, t.surface,
+                      o.wl_id, o.pre1, o.pre2, o.hcap
+               FROM match m LEFT JOIN tournament t ON t.tournament_key = m.tournament_key LEFT JOIN match_odds o ON o.match_id = m.match_id
+               WHERE m.is_doubles = 0 AND m.p1_fs_id IS NOT NULL AND m.p2_fs_id IS NOT NULL"""):
+        if wl_id:
+            wl[str(wl_id)] = (p1, p2, pre1, pre2, (surface or "").lower() or None)
+        if winner not in (1, 2) or not day or status not in ("finished", "retired"):
+            continue
+        sets = [(s.get("p1") or 0, s.get("p2") or 0) for s in json.loads(sets_json)] if sets_json else []
+        margin = sum(a - b for a, b in sets) * (1 if winner == 1 else -1)
+        full = status == "finished"
+        ordered = sets if winner == 1 else [(b, a) for a, b in sets]
+        base = {"date": day, "surface": (surface or "").lower(), "full": full, "total": sum(a + b for a, b in sets), "tournament": event,
+                "score": "  ".join(f"{a}-{b}" for a, b in ordered), "status": "completed" if full else "retired", "total_line": None}
+        first_won = winner == 1
+        players[p1].append({**base, "won": first_won, "margin": margin if first_won else -margin, "opp": p2, "own_name": name1, "opp_name": name2,
+                            "price": pre1, "opp_price": pre2, "own_handicap": hcap})
+        players[p2].append({**base, "won": not first_won, "margin": -margin if first_won else margin, "opp": p1, "own_name": name2, "opp_name": name1,
+                            "price": pre2, "opp_price": pre1, "own_handicap": None if hcap is None else -hcap})
+    for rows in players.values():
+        rows.sort(key=lambda r: r["date"] or "", reverse=True)
+    info, ids = {}, {"WTA": defaultdict(set), "ATP": defaultdict(set)}
+    for fs, tour, name, rank, elo, hard, clay, grass in db.execute(
+            "SELECT fs_id, tour, name_ru, singles_rank, elo, elo_hard, elo_clay, elo_grass FROM player WHERE fs_id IS NOT NULL"):
+        info[fs] = {"rank": rank, "elo": elo, "elo_hard": hard, "elo_clay": clay, "elo_grass": grass}
+        words = (name or "").split()
+        if len(words) >= 2 and tour in ids:
+            ids[tour][(folded(" ".join(words[1:])), folded(words[0])[:1])].add(fs)
+    return Bolshe(players, info, ids, wl)
 
 
 @dataclass
@@ -381,7 +557,7 @@ def upcoming(db: sqlite3.Connection, day: str | None, player: str | None) -> lis
     db.row_factory = sqlite3.Row
     last = db.execute("SELECT MAX(taken_at) FROM winline_fetch").fetchone()[0]
     events = [dict(r) for r in db.execute(
-        """SELECT * FROM winline_event WHERE circuit IN ('WTA', 'ATP') AND is_doubles = 0 AND last_seen = ? ORDER BY start_at""", (last,))]
+        """SELECT * FROM winline_event WHERE is_doubles = 0 AND last_seen = ? ORDER BY start_at""", (last,))]
     lines = defaultdict(list)
     for row in db.execute("SELECT * FROM winline_current"):
         lines[row["wl_id"]].append(dict(row))
@@ -410,7 +586,7 @@ def show(results: list[dict]) -> None:
         for card in r["facts"]:
             print(f"  факт: {card['text']}")
         for card in r["lines"]:
-            print(f"  линия: {card['text']} | {card['hits']} из {card['n']}, рынок ждёт {100 * card['market_expects']:.0f}%")
+            print(f"  плашка: {card['text']} | {card.get('price_text', '')}")
 
 
 def main() -> int:
@@ -422,10 +598,11 @@ def main() -> int:
     args = parser.parse_args()
     db = sqlite3.connect(f"{args.db.resolve().as_uri()}?mode=ro", uri=True, timeout=30)
     tours = {tour: load_tour(db, tour) for tour in TOURS}
+    bolshe = load_bolshe(db)
     results = []
     for e in upcoming(db, args.date, args.player):
-        tour = tours[e["circuit"]]
-        results.append(build(e, e["lines"], tour.players, tour.ids, tour.surfaces, tour.learned))
+        tour = tours.get(e["circuit"]) or Tour({}, {}, {}, {})
+        results.append(build(e, e["lines"], tour.players, tour.ids, tour.surfaces, tour.learned, bolshe))
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=1))
         return 0
@@ -433,7 +610,7 @@ def main() -> int:
     if note:
         print(note)
     linked = sum(r["linked"] for r in results)
-    print(f"Матчей WTA в линии: {len(results)}, связаны с игроками: {linked}, с линией для плашки: {sum(bool(r['lines']) for r in results)}")
+    print(f"Одиночных матчей в линии: {len(results)}, связаны с игроками: {linked}, с линией для плашки: {sum(bool(r['lines']) for r in results)}")
     show(results)
     return 0
 
