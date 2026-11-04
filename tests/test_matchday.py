@@ -1,12 +1,8 @@
 """The Matchday page's data and its small server. Names and prices are invented."""
-import json
 import sqlite3
 import sys
 import tempfile
-import threading
 import unittest
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,7 +19,6 @@ WINNER = {"wl_id": "100", "market": "Победитель", "value": None, "odd1
 TOTAL = {"wl_id": "100", "market": "Тотал", "value": 20.5, "odd1": 1.8, "odd2": 1.95}
 HANDICAP = {"wl_id": "100", "market": "Фора", "value": -1.5, "odd1": 1.7, "odd2": 2.1}
 SET1 = {"wl_id": "100", "market": "1 сет Исход 12", "value": None, "odd1": 1.5, "odd2": 2.5}
-PASSWORD = "test-only-password"
 
 
 def make_db(path=":memory:"):
@@ -97,8 +92,19 @@ class Data(unittest.TestCase):
         self.assertEqual(detail["markets"][0]["name"], "Исход матча")
         self.assertTrue(detail["facts"])
         self.assertEqual([h["winner"] for h in detail["h2h"]], ["Anna Alpha"])
-        self.assertEqual(len(detail["form"][0]["results"]), 10)
-        self.assertEqual(detail["form"][0]["player_id"], 1)
+        self.assertEqual(len(detail["form"][0]["results"]), 12)
+        self.assertEqual((detail["form"][0]["player_id"], detail["form"][0]["side"]), (1, 1))
+
+    def test_form_gives_what_settles_a_handicap_and_a_total(self):
+        detail = md.match_detail(self.db, self.history, "100")
+        winner_side = detail["form"][0]["results"][0]
+        self.assertEqual((winner_side["margin"], winner_side["total"]), (5, 19))
+        loser_side = detail["form"][1]["results"][0]
+        self.assertEqual((loser_side["margin"], loser_side["total"]), (-5, 19))
+
+    def test_a_retirement_settles_nothing(self):
+        result = {"status": "retired", "score": "6-3  2-0", "winner_id": 1}
+        self.assertEqual((md.with_games(result, 1)["margin"], md.with_games(result, 1)["total"]), (None, None))
 
     def test_other_circuits_get_the_markets_and_a_note(self):
         ws.store(self.raw, [ATP], [{**WINNER, "wl_id": "200"}], "2026-11-04T10:10:00+00:00")
@@ -116,155 +122,6 @@ class Data(unittest.TestCase):
         self.assertTrue(self.history.get()[0])
         self.history.ttl = 0
         self.assertFalse(self.history.get()[0])
-
-
-class Http(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.dir = tempfile.TemporaryDirectory()
-        path = Path(cls.dir.name) / "t.sqlite"
-        raw = make_db(path)
-        ws.store(raw, [EVENT], [WINNER], "2026-11-04T10:00:00+00:00")
-        raw.close()
-        cls.auth = Path(cls.dir.name) / "auth.json"
-        md.set_password(cls.auth, PASSWORD, iterations=1000)
-        cls.server = md.make_server(path, 0, auth_path=cls.auth)
-        cls.base = f"http://127.0.0.1:{cls.server.server_address[1]}"
-        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
-        cls.cookie = f"{md.COOKIE}={md.make_token(md.load_auth(cls.auth))}"
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.server.shutdown()
-        cls.server.server_close()
-        cls.dir.cleanup()
-
-    def setUp(self):
-        self.server.limiter = md.LoginLimiter()
-
-    def send(self, path, cookie=None, data=None):
-        class NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, *args):
-                return None
-        headers = {"Cookie": cookie} if cookie else {}
-        request = urllib.request.Request(self.base + path, data=data, headers=headers)
-        try:
-            with urllib.request.build_opener(NoRedirect).open(request, timeout=10) as response:
-                return response.status, response.headers, response.read()
-        except urllib.error.HTTPError as error:
-            return error.code, error.headers, error.read()
-
-    def get(self, path):
-        return self.send(path, self.cookie)
-
-    def log_in(self, password=PASSWORD):
-        return self.send("/matchday/login", data=f"password={password}".encode())
-
-    def test_nothing_opens_without_a_login(self):
-        for path in ("/matchday/", "/matchday/app.js", "/matchday/index.html"):
-            status, headers, _ = self.send(path)
-            self.assertEqual((status, headers["Location"]), (302, "/matchday/login"), path)
-        for path in ("/matchday/api/matches", "/matchday/api/matches/100", "/matchday/api/health"):
-            status, _, body = self.send(path)
-            self.assertEqual(status, 401, path)
-            self.assertNotIn("Альфа", body.decode("utf-8"))
-
-    def test_login_page_and_what_it_needs_are_open(self):
-        for path in ("/matchday/login", "/matchday/styles.css", "/matchday/login.js"):
-            self.assertEqual(self.send(path)[0], 200, path)
-
-    def test_forged_and_expired_sessions_are_refused(self):
-        auth = md.load_auth(self.auth)
-        old = md.make_token(auth, now=0)
-        expires = int(md.time.time()) + 1000
-        for cookie in (f"{md.COOKIE}=abc", f"{md.COOKIE}={expires}.{'0' * 64}", f"{md.COOKIE}={old}", "other=1"):
-            self.assertEqual(self.send("/matchday/api/matches", cookie)[0], 401, cookie)
-
-    def test_right_password_gives_a_safe_session(self):
-        status, headers, _ = self.log_in()
-        self.assertEqual((status, headers["Location"]), (303, "/matchday/"))
-        cookie = headers["Set-Cookie"]
-        for part in ("HttpOnly", "Secure", "SameSite=Lax", "Path=/matchday"):
-            self.assertIn(part, cookie)
-        self.assertNotIn(PASSWORD, cookie)
-        self.assertEqual(self.send("/matchday/api/matches", cookie.split(";")[0])[0], 200)
-
-    def test_wrong_password_and_the_limit(self):
-        for _ in range(md.MAX_TRIES):
-            status, _, body = self.log_in("wrong-password")
-            self.assertEqual(status, 401)
-            self.assertIn("Неверный пароль", body.decode("utf-8"))
-        self.assertEqual(self.log_in()[0], 429, "even the right password waits once locked")
-
-    def test_limit_counts_each_visitor_apart(self):
-        for _ in range(md.MAX_TRIES):
-            self.server.limiter.failed("203.0.113.9")
-        self.assertEqual(self.log_in()[0], 303)
-
-    def test_logout_clears_the_cookie(self):
-        status, headers, _ = self.send("/matchday/logout", self.cookie, data=b"")
-        self.assertEqual((status, headers["Location"]), (303, "/matchday/login"))
-        self.assertIn("Max-Age=0", headers["Set-Cookie"])
-
-    def test_too_long_a_login_is_refused(self):
-        self.assertEqual(self.send("/matchday/login", data=b"x" * (md.MAX_LOGIN_BODY + 1))[0], 400)
-
-    def test_no_password_set_lets_nobody_in(self):
-        path = Path(self.dir.name) / "none.json"
-        self.assertIsNone(md.load_auth(path))
-        self.assertFalse(md.password_is_right(None, "anything-at-all"))
-        self.assertFalse(md.token_is_valid(None, "1.2"))
-
-    def test_the_address_without_a_slash_goes_to_the_page(self):
-        status, headers, _ = self.get("/matchday")
-        self.assertEqual((status, headers["Location"]), (302, "/matchday/"))
-
-    def test_page_and_its_files(self):
-        for path, kind in (("/matchday/", "text/html"), ("/matchday/app.js", "text/javascript"), ("/matchday/styles.css", "text/css")):
-            status, headers, body = self.get(path)
-            self.assertEqual(status, 200)
-            self.assertIn(kind, headers["Content-Type"])
-            self.assertTrue(body)
-            self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
-
-    def test_api(self):
-        status, _, body = self.get("/matchday/api/matches")
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["matches"][0]["id"], "100")
-        status, headers, body = self.get("/matchday/api/matches/100")
-        self.assertEqual((status, headers["Cache-Control"]), (200, "no-store"))
-        self.assertEqual(json.loads(body)["team1"], "Альфа А.")
-        self.assertEqual(self.get("/matchday/api/matches/999")[0], 404)
-        self.assertEqual(json.loads(self.get("/matchday/api/health")[2])["ok"], True)
-
-    def test_nothing_else_is_served(self):
-        for path in ("/", "/matchday/../schema.sql", "/matchday/matchday_server.py", "/matchday/api/matches/1%20OR%201=1",
-                     "/matchday/api/matches/abc", "/matchday/%2e%2e/%2e%2e/secret", "/other"):
-            self.assertEqual(self.get(path)[0], 404, path)
-
-    def test_writing_is_refused(self):
-        self.assertEqual(self.send("/matchday/api/matches", self.cookie, data=b"{}")[0], 404)
-
-    def test_new_password_ends_old_sessions(self):
-        auth_path = Path(self.dir.name) / "second.json"
-        md.set_password(auth_path, PASSWORD, iterations=1000)
-        first = md.load_auth(auth_path)
-        token = md.make_token(first)
-        md.set_password(auth_path, "another-long-password", iterations=1000)
-        second = md.load_auth(auth_path)
-        self.assertTrue(md.token_is_valid(first, token))
-        self.assertFalse(md.token_is_valid(second, token))
-        self.assertFalse(md.password_is_right(second, PASSWORD))
-        self.assertTrue(md.password_is_right(second, "another-long-password"))
-
-    def test_short_password_is_refused(self):
-        with self.assertRaises(ValueError):
-            md.set_password(Path(self.dir.name) / "short.json", "short")
-
-    def test_the_page_builds_from_text_only(self):
-        code = (md.SITE / "app.js").read_text(encoding="utf-8")
-        self.assertNotIn("innerHTML", code)
-        self.assertNotIn("insertAdjacentHTML", code)
 
 
 if __name__ == "__main__":

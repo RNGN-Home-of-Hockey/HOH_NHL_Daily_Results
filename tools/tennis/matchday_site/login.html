@@ -10,13 +10,16 @@
 </head>
 <body>
 <main class="login">
-  <form class="login-card" id="login" method="post" action="/matchday/login">
+  <form class="login-card" id="login">
     <h1>Больше! <span>Matchday</span></h1>
-    <p class="login-error" role="alert"><!--message--></p>
-    <label>Пароль
-      <input type="password" name="password" autocomplete="current-password" required autofocus>
+    <p class="login-error" id="error" role="alert"></p>
+    <label>Почта
+      <input type="email" name="email" autocomplete="username" inputmode="email" required autofocus>
     </label>
-    <button type="submit" class="button">Войти</button>
+    <label>Пароль
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="button" id="submit">Войти</button>
   </form>
 </main>
 <script src="/matchday/login.js"></script>

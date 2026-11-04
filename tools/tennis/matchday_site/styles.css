@@ -29,7 +29,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .fresh { color: var(--muted); font-size: 12px; text-align: right; }
 .fresh.stale { color: var(--bad); font-weight: 600; }
 .top-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.top-right form { margin: 0; }
+.who { display: flex; align-items: center; gap: 10px; flex: none; }
+.page-title { font-size: 22px; margin-bottom: 4px; }
+.page-subtitle { font-size: 16px; margin: 20px 0 2px; }
+.panel-form { display: flex; flex-direction: column; gap: 10px; max-width: 360px; margin-top: 12px; }
+.panel-form .button { align-self: flex-start; }
+.field { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+.field input, .field select { padding: 8px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text); font-size: 16px; }
+.done { color: var(--good); }
+.done:empty { display: none; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.row-actions button { font-size: 12px; padding: 4px 8px; white-space: nowrap; }
 .link { padding: 0; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; text-decoration: underline; }
 .login { display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 16px; }
 .login-card { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 340px; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
@@ -85,6 +95,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .plate.priced { border-color: var(--accent); }
 .plate-text { font-weight: 600; }
 .plate-evidence { color: var(--muted); font-size: 12px; }
+.plate-count { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.plates:has(.priced) { grid-template-columns: minmax(0, 1fr); }
+.plate.priced { max-width: 900px; }
+.evidence summary { cursor: pointer; font-size: 12px; color: var(--accent-text); }
+.evidence table { margin-top: 6px; font-size: 12px; }
+.form-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.field.inline select { font-size: 14px; }
+.form-summary { margin-bottom: 6px; color: var(--muted); }
+.over { color: var(--accent-text); }
+.under { color: #2456a6; }
 .plate button { align-self: flex-start; margin-top: auto; font-size: 12px; padding: 4px 8px; }
 .note { margin: 8px 0; padding: 8px 10px; background: var(--accent-soft); border-radius: var(--radius-sm); color: var(--accent-text); }
 .caption { margin-top: 14px; color: var(--muted); font-size: 12px; max-width: 70ch; }

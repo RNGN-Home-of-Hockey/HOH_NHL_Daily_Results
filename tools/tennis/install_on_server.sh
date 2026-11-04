@@ -12,8 +12,9 @@ ROOT=/opt/rngn-tennis
 PYTHON=/usr/bin/python3.14   # the system python3 here is 3.10; other units on this server use 3.14 too
 
 id rngn-tennis >/dev/null 2>&1 || useradd --system --home-dir "$ROOT" --shell /usr/sbin/nologin rngn-tennis
-mkdir -p "$ROOT/local-data/tennis/raw"
+mkdir -p "$ROOT/local-data/tennis/raw" "$ROOT/local-data/tennis/accounts"
 chown -R rngn-tennis:rngn-tennis "$ROOT/local-data"
+chmod 700 "$ROOT/local-data/tennis/accounts"
 
 common() {
   cat <<EOF
@@ -121,6 +122,10 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadOnlyPaths=$ROOT
+# accounts only: the page itself never writes to the data
+ReadWritePaths=$ROOT/local-data/tennis/accounts
+# the letters go through the same mailbox as the EPL site's
+LoadCredential=smtp.env:/opt/hoh-epl/secrets/smtp.env
 
 [Install]
 WantedBy=multi-user.target
