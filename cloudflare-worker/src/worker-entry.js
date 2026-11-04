@@ -17,6 +17,7 @@ import { runSportsRuNewsMaintenance } from "./telegram-center-v20-news.js";
 import { runWinlineFeedMaintenance } from "./winline-feed-maintenance.js";
 import { getWinlineLiveFeedMaintenanceStatus, runWinlineLiveBackup, runWinlineLiveFeedMaintenance } from "./winline-live-feed-maintenance.js";
 import { markCronStart, pruneCronTaskRuns, trackCronTask } from "./cron-task-log.js";
+import { runTennisWinlineSnapshot } from "./tennis-winline-snapshot.js";
 import { persistNhlLiveGame, runNhlLiveScoreMaintenance } from "./nhl-live-score-maintenance.js";
 import { runVkBroadcastMaintenance } from "./telegram-center-vk-maintenance-v2.js";
 import { runVkCoverScrape } from "./telegram-center-vk-cover-scrape.js";
@@ -120,6 +121,15 @@ export default {
 
   async scheduled(controller, env, ctx) {
     const cron = String(controller?.cron || "");
+
+    // A run of its own: this reads a 5 MB feed, and a heavy shared run is what stopped the live odds in October.
+    if (cron === "3,13,23,33,43,53 * * * *") {
+      ctx.waitUntil(markCronStart(env, cron));
+      if (env.DB && envFlag(env.TENNIS_WINLINE_SNAPSHOT_ENABLED, false)) {
+        ctx.waitUntil(trackCronTask(env, cron, "tennis_winline", () => runTennisWinlineSnapshot(env)));
+      }
+      return;
+    }
 
     if (cron === "* * * * *") {
       // every task leaves a row in cron_task_runs (cron-task-log.js): a task cut off by the platform leaves none

@@ -13,7 +13,7 @@
     "run_worker_first": true
   },
   "triggers": {
-    "crons": ["* * * * *", "*/5 * * * *", "*/2 * * * *"]
+    "crons": ["* * * * *", "*/5 * * * *", "*/2 * * * *", "3,13,23,33,43,53 * * * *"]
   },
   "d1_databases": [
     {
@@ -36,6 +36,7 @@
     "FAN_PREDICTIONS_DIGEST_ENABLED": "1",
     "TELEGRAM_CENTER_EVENT_STREAM_ENABLED": "0",
     "WINLINE_FEED_SYNC_ENABLED": "1",
+    "TENNIS_WINLINE_SNAPSHOT_ENABLED": "1",
     "BROADCAST_OPERATOR_OPEN": "1",
     "BROADCAST_RENDERER_URL": "https://hoh-broadcast-renderer.vercel.app",
     "TELEGRAM_PREGAME_MINUTES": "15",
