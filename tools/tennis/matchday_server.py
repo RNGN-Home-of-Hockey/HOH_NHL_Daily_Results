@@ -202,9 +202,11 @@ def list_matches(db: sqlite3.Connection, history: History, now: datetime | None 
 def past_results(db: sqlite3.Connection, where: str, values: tuple, limit: int) -> list[dict]:
     rows = db.execute(
         f"""SELECT m.winner_id, m.loser_id, m.score, m.status, m.round, COALESCE(m.match_date, t.start_date) AS played,
-                   t.name AS tournament, t.level, t.surface, w.full_name AS winner, l.full_name AS loser
+                   t.name AS tournament, t.level, t.surface, w.full_name AS winner, l.full_name AS loser,
+                   x.winner_price, x.loser_price, x.price_source, x.price_bookmaker, x.handicap, x.total AS total_line, x.line_source
             FROM wta_match m JOIN wta_tournament t ON t.group_id = m.group_id AND t.year = m.year
             LEFT JOIN wta_player w ON w.player_id = m.winner_id LEFT JOIN wta_player l ON l.player_id = m.loser_id
+            LEFT JOIN wta_match_line x ON x.match_key = m.match_key
             WHERE m.discipline = 'S' AND m.status IN ('completed', 'retired') AND ({where})
             ORDER BY played DESC LIMIT ?""", (*values, limit))
     return [dict(r) for r in rows]
@@ -247,13 +249,21 @@ def match_detail(db: sqlite3.Connection, history: History, wl_id: str) -> dict |
 
 
 def with_games(result: dict, player_id: int) -> dict:
-    """What the page needs to settle any handicap or total on this match. A match cut short by a
-    retirement settles neither, so its games are not given."""
+    """A past match from one player's side, with the line it had itself. A match cut short by a
+    retirement settles neither handicap nor total, so its games are not given."""
+    won = result["winner_id"] == player_id
+    handicap = result.get("handicap")
+    own = {
+        "won": won,
+        "price": result.get("winner_price") if won else result.get("loser_price"),
+        "opp_price": result.get("loser_price") if won else result.get("winner_price"),
+        "own_handicap": None if handicap is None else (handicap if won else -handicap),
+    }
     if result["status"] != "completed":
-        return {**result, "margin": None, "total": None}
+        return {**result, **own, "margin": None, "total": None}
     sets = wta_plates.games_of(result["score"])
     margin = sum(a - b for a, b in sets)
-    return {**result, "margin": margin if result["winner_id"] == player_id else -margin, "total": sum(a + b for a, b in sets)}
+    return {**result, **own, "margin": margin if won else -margin, "total": sum(a + b for a, b in sets)}
 
 
 class Handler(BaseHTTPRequestHandler):

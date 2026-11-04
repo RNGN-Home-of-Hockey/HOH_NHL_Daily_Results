@@ -6,7 +6,7 @@ const STALE_MS = 25 * 60 * 1000;
 const TABS = [["plates", "Плашки"], ["markets", "Рынки Winline"], ["h2h", "Личные встречи"], ["form", "Форма"]];
 const SURFACE = { hard: "хард", clay: "грунт", grass: "трава", carpet: "ковёр" };
 
-const state = { list: null, detail: null, tab: "plates", circuit: "WTA", doubles: false, query: "", me: null, formCap: null, formSum: null, formSurface: false };
+const state = { list: null, detail: null, tab: "plates", circuit: "WTA", doubles: false, query: "", me: null, formSurface: false };
 const rail = document.getElementById("rail");
 const content = document.getElementById("content");
 const fresh = document.getElementById("fresh");
@@ -357,70 +357,75 @@ function h2hTab(detail) {
   return [resultsTable(detail.h2h)];
 }
 
-// The rung with the most even prices is the main line of a ladder, the same choice BOLSHE makes.
-function mainRung(family) {
-  if (!family?.rungs.length) return null;
-  return [...family.rungs].sort((a, b) => Math.abs(a.odd1 - a.odd2) - Math.abs(b.odd1 - b.odd2))[0];
+// Every result is read against the line that match had itself, never today's.
+function priceCell2(result) {
+  if (!result.price || !result.opp_price) return el("td", { class: "muted" }, "нет данных");
+  const role = result.price === result.opp_price ? "поровну" : result.price < result.opp_price ? "фаворит" : "андердог";
+  return el("td", { title: result.price_bookmaker || "" }, price(result.price), el("span", { class: "move" }, role));
 }
 
-function handicapResult(result, line) {
-  if (result.margin === null || result.margin === undefined) return { text: "—", kind: "" };
-  const after = result.margin + line;
-  if (after === 0) return { text: "Возврат", kind: "" };
-  return after > 0 ? { text: "Сыграла", kind: "won", hit: true } : { text: "Нет", kind: "lost", hit: false };
+function handicapCell(result) {
+  if (result.own_handicap === null || result.own_handicap === undefined) return el("td", { class: "muted" }, "нет данных");
+  const line = signed(result.own_handicap);
+  if (result.margin === null) return el("td", { class: "muted" }, `${line}, отказ`);
+  const after = result.margin + result.own_handicap;
+  if (after === 0) return el("td", {}, `${line}: возврат`);
+  return el("td", { class: after > 0 ? "won" : "lost" }, `${line}: ${after > 0 ? "сыграла" : "нет"}`);
 }
 
-function totalResult(result, line) {
-  if (result.total === null || result.total === undefined) return { text: "—", kind: "" };
-  if (result.total === line) return { text: `${result.total}: возврат`, kind: "" };
-  return result.total > line ? { text: `${result.total}: больше`, kind: "over", over: true } : { text: `${result.total}: меньше`, kind: "under", over: false };
+function totalCell(result) {
+  if (result.total_line === null || result.total_line === undefined) return el("td", { class: "muted" }, "нет данных");
+  if (result.total === null) return el("td", { class: "muted" }, `${result.total_line}, отказ`);
+  if (result.total === result.total_line) return el("td", {}, `${result.total_line}: возврат`);
+  const over = result.total > result.total_line;
+  return el("td", { class: over ? "over" : "under" }, `${result.total_line}: ${result.total}, ${over ? "больше" : "меньше"}`);
 }
 
-function formSide(side, handicap, total, onlySurface, surface) {
+function formSummary(results) {
+  const wins = results.filter((r) => r.won).length;
+  const parts = [`${wins}-${results.length - wins}`];
+  const priced = results.filter((r) => r.price && r.opp_price && r.price !== r.opp_price);
+  if (priced.length) {
+    const favourite = priced.filter((r) => r.price < r.opp_price);
+    const underdog = priced.filter((r) => r.price > r.opp_price);
+    const line = (rows) => `${rows.filter((r) => r.won).length}-${rows.filter((r) => !r.won).length}`;
+    parts.push(`фаворитом ${line(favourite)}, андердогом ${line(underdog)}`);
+  } else {
+    parts.push("цен на эти матчи пока нет");
+  }
+  const capped = results.filter((r) => r.own_handicap !== null && r.own_handicap !== undefined && r.margin !== null && r.margin + r.own_handicap !== 0);
+  if (capped.length) parts.push(`своя фора сыграла в ${capped.filter((r) => r.margin + r.own_handicap > 0).length} из ${capped.length}`);
+  const totals = results.filter((r) => r.total_line !== null && r.total_line !== undefined && r.total !== null && r.total !== r.total_line);
+  if (totals.length) parts.push(`свой тотал: больше ${totals.filter((r) => r.total > r.total_line).length}, меньше ${totals.filter((r) => r.total < r.total_line).length}`);
+  return parts.join(" · ");
+}
+
+function formSide(side, onlySurface, surface) {
   const results = onlySurface ? side.results.filter((r) => String(r.surface).toLowerCase() === surface) : side.results;
-  const line = handicap === null ? null : side.side === 1 ? handicap : -handicap;
-  const settled = results.map((result) => ({ result, cap: line === null ? null : handicapResult(result, line), sum: total === null ? null : totalResult(result, total) }));
-  const capCount = settled.filter((row) => row.cap && row.cap.hit !== undefined);
-  const sumCount = settled.filter((row) => row.sum && row.sum.over !== undefined);
-  const wins = results.filter((r) => r.winner_id === side.player_id).length;
-  const summary = [`${wins}-${results.length - wins}`];
-  if (line !== null) summary.push(`фора ${signed(line)} сыграла в ${capCount.filter((row) => row.cap.hit).length} из ${capCount.length}`);
-  if (total !== null) summary.push(`больше ${total} в ${sumCount.filter((row) => row.sum.over).length} из ${sumCount.length}, меньше в ${sumCount.filter((row) => !row.sum.over).length}`);
   return el("section", { class: "family" },
     el("h2", {}, side.name),
-    el("p", { class: "form-summary" }, summary.join(" · ")),
+    el("p", { class: "form-summary" }, formSummary(results)),
     results.length ? el("div", { class: "scroll" }, el("table", { class: "results" },
       el("thead", {}, el("tr", {}, el("th", {}, "Дата"), el("th", {}, "Матч"), el("th", {}, "Счёт"), el("th", {}, "Турнир"), el("th", {}, "Итог"),
-        line !== null ? el("th", {}, `Фора ${signed(line)}`) : null, total !== null ? el("th", {}, `Тотал ${total}`) : null)),
-      el("tbody", {}, settled.map(({ result, cap, sum }) => el("tr", {},
+        el("th", {}, "Цена того матча"), el("th", {}, "Фора того матча"), el("th", {}, "Тотал того матча"))),
+      el("tbody", {}, results.map((result) => el("tr", {},
         el("td", {}, result.played),
         el("td", {}, `${result.winner || "—"} — ${result.loser || "—"}`),
         el("td", {}, `${result.score || ""}${result.status === "retired" ? " (отказ)" : ""}`),
         el("td", {}, `${result.tournament || ""}${result.surface ? `, ${SURFACE[String(result.surface).toLowerCase()] || result.surface}` : ""}`),
-        el("td", { class: result.winner_id === side.player_id ? "won" : "lost" }, result.winner_id === side.player_id ? "Победа" : "Поражение"),
-        cap ? el("td", { class: cap.kind }, cap.text) : null,
-        sum ? el("td", { class: sum.kind }, sum.text) : null)))))
+        el("td", { class: result.won ? "won" : "lost" }, result.won ? "Победа" : "Поражение"),
+        priceCell2(result), handicapCell(result), totalCell(result))))))
       : el("p", { class: "empty" }, "В базе нет таких матчей"));
 }
 
 function formTab(detail) {
   if (!detail.form.length) return [el("p", { class: "note" }, detail.notes[0] || "Нет данных")];
-  const capFamily = detail.markets.find((f) => f.name === "Фора по геймам");
-  const sumFamily = detail.markets.find((f) => f.name === "Тотал геймов");
-  state.formCap = capFamily?.rungs.some((r) => r.value === state.formCap?.value && state.formCap?.id === detail.id) ? state.formCap : { id: detail.id, value: mainRung(capFamily)?.value ?? null };
-  state.formSum = sumFamily?.rungs.some((r) => r.value === state.formSum?.value && state.formSum?.id === detail.id) ? state.formSum : { id: detail.id, value: mainRung(sumFamily)?.value ?? null };
-  const rerender = () => renderMatch();
-  const picker = (label, family, current, describe, change) => family ? el("label", { class: "field inline" }, label,
-    el("select", { onchange: (event) => { change(Number(event.target.value)); rerender(); } },
-      family.rungs.map((rung) => el("option", { value: rung.value, selected: rung.value === current }, describe(rung))))) : null;
   const surfaceWord = SURFACE[detail.surface];
   return [
-    el("div", { class: "form-controls" },
-      picker(`Фора для ${detail.team1}`, capFamily, state.formCap.value, (r) => `${signed(r.value)} (${price(r.odd1)} / ${price(r.odd2)})`, (value) => { state.formCap = { id: detail.id, value }; }),
-      picker("Тотал", sumFamily, state.formSum.value, (r) => `${r.value} (${price(r.odd1)} / ${price(r.odd2)})`, (value) => { state.formSum = { id: detail.id, value }; }),
-      surfaceWord ? el("label", { class: "toggle" }, el("input", { type: "checkbox", checked: state.formSurface, onchange: (event) => { state.formSurface = event.target.checked; rerender(); } }), `Только ${surfaceWord}`) : null),
-    el("p", { class: "caption" }, "Линии взяты из текущей лесенки этого матча и применены к прошлым матчам: так видно, как часто такая фора или тотал сыграли бы раньше. Старых цен на те матчи в базе нет. Матчи с отказом не считаются. Для соперницы фора показана с обратным знаком."),
-    ...detail.form.map((side) => formSide(side, state.formCap.value, state.formSum.value, state.formSurface, detail.surface)),
+    surfaceWord ? el("label", { class: "toggle" }, el("input", { type: "checkbox", checked: state.formSurface,
+      onchange: (event) => { state.formSurface = event.target.checked; renderMatch(); } }), `Только ${surfaceWord}`) : null,
+    el("p", { class: "caption" }, "У каждого матча показана его собственная линия. Цены на победителя: тур с 2007 года (Pinnacle, Bet365, средняя) и Winline. Фора и тотал пока есть только у Winline, с октября 2026 года, поэтому в большинстве старых матчей их нет: история начнёт расти по мере сбора и подключения платного источника."),
+    ...detail.form.map((side) => formSide(side, state.formSurface, detail.surface)),
   ];
 }
 

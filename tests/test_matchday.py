@@ -102,6 +102,16 @@ class Data(unittest.TestCase):
         loser_side = detail["form"][1]["results"][0]
         self.assertEqual((loser_side["margin"], loser_side["total"]), (-5, 19))
 
+    def test_a_result_is_turned_to_the_players_side_with_its_own_line(self):
+        result = {"status": "completed", "score": "6-3  6-4", "winner_id": 1, "winner_price": 1.5, "loser_price": 2.6, "handicap": -3.5}
+        winner, loser = md.with_games(result, 1), md.with_games(result, 2)
+        self.assertEqual((winner["price"], winner["opp_price"], winner["own_handicap"], winner["won"]), (1.5, 2.6, -3.5, True))
+        self.assertEqual((loser["price"], loser["opp_price"], loser["own_handicap"], loser["won"]), (2.6, 1.5, 3.5, False))
+
+    def test_a_match_without_a_line_says_so(self):
+        result = {"status": "completed", "score": "6-3  6-4", "winner_id": 1}
+        self.assertEqual((md.with_games(result, 1)["price"], md.with_games(result, 1)["own_handicap"]), (None, None))
+
     def test_a_retirement_settles_nothing(self):
         result = {"status": "retired", "score": "6-3  2-0", "winner_id": 1}
         self.assertEqual((md.with_games(result, 1)["margin"], md.with_games(result, 1)["total"]), (None, None))

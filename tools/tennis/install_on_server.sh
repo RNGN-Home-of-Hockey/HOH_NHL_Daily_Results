@@ -84,6 +84,7 @@ Description=Tennis: parse new WTA responses and refresh the coverage report
 [Service]
 Type=oneshot
 ExecStart=$PYTHON tools/tennis/wta_parse.py
+ExecStart=$PYTHON tools/tennis/wta_lines.py
 ExecStart=$PYTHON tools/tennis/wta_report.py --out local-data/tennis/coverage.md
 TimeoutStartSec=3000
 EOF

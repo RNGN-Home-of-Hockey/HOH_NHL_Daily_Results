@@ -34,6 +34,7 @@ FORM_MONTHS = 12
 FORM_LIMIT = 10
 Z90 = 1.2816
 MAX_LINE_CARDS = 3
+MIN_PRICED = 5
 SURFACE_RU = {"hard": "харде", "clay": "грунте", "grass": "траве", "carpet": "ковре"}
 
 
@@ -63,19 +64,22 @@ def load_history(db: sqlite3.Connection) -> dict:
     """Singles results by WTA id, newest first. Walkovers are not matches; a retirement counts for
     the result but not for games, as it was cut short."""
     players = defaultdict(list)
-    for winner, loser, score, status, played, surface, event, winner_name, loser_name in db.execute(
+    for winner, loser, score, status, played, surface, event, winner_name, loser_name, winner_price, loser_price in db.execute(
             """SELECT m.winner_id, m.loser_id, m.score, m.status, COALESCE(m.match_date, t.start_date), t.surface, t.name,
-                      w.full_name, l.full_name
+                      w.full_name, l.full_name, x.winner_price, x.loser_price
                FROM wta_match m JOIN wta_tournament t ON t.group_id = m.group_id AND t.year = m.year
                LEFT JOIN wta_player w ON w.player_id = m.winner_id LEFT JOIN wta_player l ON l.player_id = m.loser_id
+               LEFT JOIN wta_match_line x ON x.match_key = m.match_key
                WHERE m.discipline = 'S' AND m.status IN ('completed', 'retired')
                  AND m.winner_id IS NOT NULL AND m.loser_id IS NOT NULL"""):
         sets = games_of(score)
         base = {"date": played, "surface": (surface or "").lower(), "full": status == "completed",
                 "total": sum(a + b for a, b in sets), "score": score, "tournament": event}
         margin = sum(a - b for a, b in sets)
-        players[winner].append({**base, "won": True, "margin": margin, "opp": loser, "opp_name": loser_name})
-        players[loser].append({**base, "won": False, "margin": -margin, "opp": winner, "opp_name": winner_name})
+        players[winner].append({**base, "won": True, "margin": margin, "opp": loser, "opp_name": loser_name,
+                                "price": winner_price, "opp_price": loser_price})
+        players[loser].append({**base, "won": False, "margin": -margin, "opp": winner, "opp_name": winner_name,
+                               "price": loser_price, "opp_price": winner_price})
     for rows in players.values():
         rows.sort(key=lambda r: r["date"] or "", reverse=True)
     return players
@@ -156,6 +160,20 @@ def record(rows: list[dict]) -> tuple[int, int]:
     return wins, len(rows) - wins
 
 
+def priced_record(rows: list[dict]) -> dict | None:
+    """Results read against the price of the same match: as favourite and as underdog."""
+    priced = [r for r in rows if r.get("price") and r.get("opp_price") and r["price"] != r["opp_price"]]
+    if not priced:
+        return None
+    favourite = [r for r in priced if r["price"] < r["opp_price"]]
+    underdog = [r for r in priced if r["price"] > r["opp_price"]]
+    return {"n": len(priced), "favourite": record(favourite), "underdog": record(underdog)}
+
+
+def priced_words(found: dict) -> str:
+    return f"фаворитом {found['favourite'][0]}-{found['favourite'][1]}, андердогом {found['underdog'][0]}-{found['underdog'][1]}"
+
+
 def fact_cards(event: dict, hist: dict, form: dict, h2h: list[dict], surface: str | None) -> list[dict]:
     """What can be said whatever the line. No gate beyond a minimum of matches."""
     cards = []
@@ -171,6 +189,11 @@ def fact_cards(event: dict, hist: dict, form: dict, h2h: list[dict], surface: st
             cards.append({"kind": "surface", "side": side, "hits": wins, "n": wins + losses,
                           "what": f"Победы и поражения только на этом покрытии, не больше {SURFACE_LIMIT} матчей за {SURFACE_MONTHS // 12} года.",
                           "text": f"{names[side]}: {wins}-{losses} в последних {wins + losses} матчах на {SURFACE_RU.get(surface, surface)}"})
+        found = priced_record(hist[side])
+        if found and found["n"] >= MIN_PRICED:
+            cards.append({"kind": "priced", "side": side, "hits": found["favourite"][0] + found["underdog"][0], "n": found["n"],
+                          "what": f"По цене каждого из этих матчей: кто был фаворитом у букмекеров тогда. Цены известны для {found['n']} матчей.",
+                          "text": f"{names[side]}: {priced_words(found)}"})
     if h2h:
         first, second = record(h2h)
         if first == second:
@@ -207,58 +230,32 @@ def reason_words(gate: dict) -> str:
 
 def evidence_row(row: dict, player: str, hit: bool, note: str) -> dict:
     return {"date": row["date"], "player": player, "opponent": row.get("opp_name"), "score": row.get("score"),
-            "tournament": row.get("tournament"), "won": row["won"], "hit": hit, "note": note}
+            "tournament": row.get("tournament"), "won": row["won"], "hit": hit, "note": note,
+            "price": row.get("price"), "opp_price": row.get("opp_price")}
 
 
 def line_cards(event: dict, lines: list[dict], hist: dict, surface: str | None = None) -> list[dict]:
-    """Candidates by market family, the strongest of each family kept. Handicap and total ladders
-    offer many rungs of one idea, and one plate per idea is enough. Each card says in words what its
-    numbers count and lists the matches behind them."""
+    """A plate next to a price, for the match winner only. A handicap or total is judged against the
+    line that match had, and those are too few so far; today's line on old matches says nothing."""
     names = {1: event["team1"], 2: event["team2"]}
     scope = scope_words(surface)
-    best: dict[str, dict] = {}
-
-    def offer(family, text, gate, what, rows):
-        """rows is built only for what passes: (row, player, hit, note) for each match counted."""
-        if gate and (family not in best or gate["score"] > best[family]["score"]):
-            best[family] = {"kind": "line", "family": family, "text": text, **gate, "what": what(),
-                            "why": reason_words(gate), "matches": [evidence_row(*r) for r in rows()]}
-
+    best = None
     for line in lines:
-        market, value, odd1, odd2 = line["market"], line["value"], line["odd1"], line["odd2"]
-        if market == "Победитель":
-            for side, mine, other in ((1, odd1, odd2), (2, odd2, odd1)):
-                played = hist[side]
-                wins = sum(r["won"] for r in played)
-                offer("winner", f"Победа {names[side]} — {mine}", priced(mine, other, wins, len(played)),
-                      lambda s=side, w=wins, n=len(played): f"{names[s]}: побед {w} из {n} последних матчей {scope}.",
-                      lambda s=side, p=played: [(r, names[s], r["won"], "победа" if r["won"] else "поражение") for r in p])
-        elif market == "Фора" and value is not None:
-            for side, mine, other, cap in ((1, odd1, odd2, value), (2, odd2, odd1, -value)):
-                full = [r for r in hist[side] if r["full"]]
-                hits = sum(r["margin"] + cap > 0 for r in full)
-                offer("handicap", f"{names[side]} {cap:+.1f} по геймам — {mine}", priced(mine, other, hits, len(full)),
-                      lambda s=side, c=cap, h=hits, n=len(full): (
-                          f"{names[s]}: фора {c:+.1f} сыграла бы в {h} из {n} последних матчей {scope}. Считается разница выигранных и проигранных "
-                          "геймов за матч, матчи с отказом не считаются. Из всех ступеней лесенки показана та, где запас над ценой больше."),
-                      lambda s=side, c=cap, f=full: [(r, names[s], r["margin"] + c > 0, f"разница геймов {r['margin']:+d}") for r in f])
-        elif market == "Тотал" and value is not None:
-            # A total depends on both, so both must have the sample, and their matches are pooled.
-            one, two = [r for r in hist[1] if r["full"]], [r for r in hist[2] if r["full"]]
-            if len(one) < MIN_SAMPLE or len(two) < MIN_SAMPLE:
+        if line["market"] != "Победитель":
+            continue
+        for side, mine, other in ((1, line["odd1"], line["odd2"]), (2, line["odd2"], line["odd1"])):
+            played = hist[side]
+            wins = sum(r["won"] for r in played)
+            gate = priced(mine, other, wins, len(played))
+            if not gate or (best and gate["score"] <= best["score"]):
                 continue
-            pool = one + two
-            for word, price, other, test in (("больше", odd1, odd2, lambda r, v=value: r["total"] > v),
-                                             ("меньше", odd2, odd1, lambda r, v=value: r["total"] < v)):
-                hits = sum(test(r) for r in pool)
-                offer("total", f"Тотал {word} {value} — {price}", priced(price, other, hits, len(pool)),
-                      lambda w=word, v=value, h=hits, t=test: (
-                          f"Геймов {w} {v} было в {h} из {len(pool)} матчей обеих: {names[1]} {sum(t(r) for r in one)} из {len(one)}, "
-                          f"{names[2]} {sum(t(r) for r in two)} из {len(two)} (матчи {scope}, без отказов). "
-                          "Из всех ступеней лесенки показана та, где запас над ценой больше."),
-                      lambda t=test: [(r, names[1], t(r), f"геймов {r['total']}") for r in one]
-                      + [(r, names[2], t(r), f"геймов {r['total']}") for r in two])
-    return sorted(best.values(), key=lambda c: -c["score"])[:MAX_LINE_CARDS]
+            what = f"{names[side]}: побед {wins} из {len(played)} последних матчей {scope}."
+            found = priced_record(played)
+            if found:
+                what += f" По ценам тех матчей ({found['n']} известно): {priced_words(found)}."
+            best = {"kind": "line", "family": "winner", "text": f"Победа {names[side]} — {mine}", **gate, "what": what, "why": reason_words(gate),
+                    "matches": [evidence_row(r, names[side], r["won"], "победа" if r["won"] else "поражение") for r in played]}
+    return [best] if best else []
 
 
 def build(event: dict, lines: list[dict], players: dict, player_ids: dict, surfaces: dict, learned: dict | None = None) -> dict:

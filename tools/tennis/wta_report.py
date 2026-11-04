@@ -159,7 +159,7 @@ def reconcile(tds: list[dict], wtas: list[dict]) -> dict:
     return {
         "td_rows": len(tds), "wta_rows": len(wtas), "matched": result["matched"],
         "same_score": result["same_score"], "score_missing_one_side": result["score_missing_one_side"],
-        "score_diffs": score_diffs, "winner_diffs": winner_diffs, "surface_diffs": surface_diffs,
+        "pairs": pairs_found, "score_diffs": score_diffs, "winner_diffs": winner_diffs, "surface_diffs": surface_diffs,
         "only_td": only_td, "only_wta": only_wta,
         "only_wta_by_level": Counter(w.get("level") or "?" for w in only_wta),
     }

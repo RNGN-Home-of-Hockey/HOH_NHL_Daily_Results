@@ -95,29 +95,6 @@ class Lines(unittest.TestCase):
         cards = wp.line_cards(EVENT, lines_of(("Победитель", None, 1.6, 2.3)), hist)
         self.assertEqual([c["text"] for c in cards], ["Победа Бета Б. — 2.3"])
 
-    def test_handicap_is_turned_for_the_second_side(self):
-        hist = {1: [result(False, margin=-8)] * 10, 2: [result(True, margin=1)] * 10}
-        cards = wp.line_cards(EVENT, lines_of(("Фора", -1.5, 2.0, 1.8)), hist)
-        self.assertEqual([c["text"] for c in cards], ["Бета Б. +1.5 по геймам — 1.8"])
-        self.assertEqual(cards[0]["hits"], 10)
-
-    def test_a_ladder_gives_one_card_per_market(self):
-        hist = {1: [result(True, margin=9)] * 12, 2: [result(False, margin=-9)] * 12}
-        ladder = lines_of(("Фора", -1.5, 1.6, 2.2), ("Фора", -2.5, 1.8, 1.9), ("Фора", -3.5, 2.1, 1.7))
-        self.assertEqual(len(wp.line_cards(EVENT, ladder, hist)), 1)
-
-    def test_total_needs_both_players(self):
-        low = [result(True, total=15)] * 12
-        self.assertEqual(wp.line_cards(EVENT, lines_of(("Тотал", 20.5, 1.9, 1.9)), {1: low, 2: low[:5]}), [])
-        cards = wp.line_cards(EVENT, lines_of(("Тотал", 20.5, 1.9, 1.9)), {1: low, 2: low})
-        self.assertEqual(cards[0]["text"], "Тотал меньше 20.5 — 1.9")
-        self.assertEqual(cards[0]["n"], 24)
-
-    def test_retirements_count_for_the_winner_market_but_not_for_games(self):
-        cut = [result(True, margin=1, total=7, full=False)] * 12
-        self.assertEqual(wp.line_cards(EVENT, lines_of(("Фора", -1.5, 1.9, 1.9)), {1: cut, 2: []}), [])
-        self.assertEqual(len(wp.line_cards(EVENT, lines_of(("Победитель", None, 1.9, 1.9)), {1: cut, 2: []})), 1)
-
     def test_wording_never_calls_a_bet_good(self):
         hist = {1: [result(True, margin=9, total=15)] * 12, 2: [result(True, margin=9, total=15)] * 12}
         ladder = lines_of(("Победитель", None, 1.9, 1.9), ("Фора", -1.5, 1.9, 1.9), ("Тотал", 20.5, 1.9, 1.9))
@@ -139,24 +116,6 @@ class Lines(unittest.TestCase):
         card = wp.line_cards(EVENT, lines_of(("Победитель", None, 1.9, 1.9)), hist)[0]
         self.assertEqual(len(card["matches"]), card["n"])
         self.assertEqual(sum(m["hit"] for m in card["matches"]), card["hits"])
-
-    def test_handicap_matches_show_the_margin_and_whether_it_played(self):
-        hist = {1: [result(True, margin=5)] * 9 + [result(False, margin=-1)] * 3, 2: []}
-        card = wp.line_cards(EVENT, lines_of(("Фора", 1.5, 1.9, 1.9)), hist)[0]
-        self.assertEqual((card["hits"], card["n"]), (12, 12))
-        self.assertEqual(card["matches"][-1]["note"], "разница геймов -1")
-        self.assertTrue(card["matches"][-1]["hit"])
-        self.assertIn("фора +1.5 сыграла бы в 12 из 12", card["what"])
-
-    def test_total_says_how_many_each_player_brought(self):
-        one, two = [result(True, total=15)] * 12, [result(True, total=15)] * 8 + [result(True, total=30)] * 4
-        card = wp.line_cards(EVENT, lines_of(("Тотал", 20.5, 1.9, 1.9)), {1: one, 2: two})[0]
-        self.assertEqual(card["text"], "Тотал меньше 20.5 — 1.9")
-        self.assertIn("20 из 24", card["what"])
-        self.assertIn("Альфа А. 12 из 12", card["what"])
-        self.assertIn("Бета Б. 8 из 12", card["what"])
-        self.assertEqual({m["player"] for m in card["matches"]}, {"Альфа А.", "Бета Б."})
-
 
 class Facts(unittest.TestCase):
     def test_head_to_head_names_the_leader(self):

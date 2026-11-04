@@ -274,6 +274,16 @@ CREATE TABLE IF NOT EXISTS winline_line (
   PRIMARY KEY (wl_id, market, value_key, taken_at)
 );
 
+-- The line a past match itself had, built by wta_lines.py, so a result can be read against its own
+-- price and not today's. Everything is from the winner's side. Prices and lines may come from
+-- different sources: price_source says tennis-data, bolshe-winline or winline-feed, line_source the last two.
+CREATE TABLE IF NOT EXISTS wta_match_line (
+  match_key TEXT PRIMARY KEY,
+  winner_price REAL, loser_price REAL, price_source TEXT, price_bookmaker TEXT,
+  handicap REAL, handicap_winner_price REAL, handicap_loser_price REAL,
+  total REAL, over_price REAL, under_price REAL, line_source TEXT
+);
+
 DROP VIEW IF EXISTS winline_current;
 CREATE VIEW winline_current AS
 SELECT l.wl_id, l.market, l.value, l.odd1, l.odd2, l.taken_at
