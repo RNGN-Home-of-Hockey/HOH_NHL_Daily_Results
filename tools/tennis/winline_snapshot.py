@@ -2,7 +2,8 @@
 """Keep Winline's tennis line with its history: every market, stored whenever a price changes.
 
 The open feed only ever shows the current price, so a day not recorded is lost. It is the same
-feed BOLSHE reads, at the same 10-minute pace; a 403 or 429 stops the loop.
+feed BOLSHE reads, at the same 10-minute pace. On the shared server a systemd timer runs it, see
+install_on_server.sh; a 403 or 429 stops --loop.
 
     python tools/tennis/winline_snapshot.py            # once
     python tools/tennis/winline_snapshot.py --loop     # every 10 minutes

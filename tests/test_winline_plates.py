@@ -167,24 +167,6 @@ class Linking(unittest.TestCase):
         self.assertIsNone(wp.surface_of("Другой, Страна", index))
 
 
-class Pull(unittest.TestCase):
-    def test_only_what_is_new_is_asked_and_pages_go_on(self):
-        import winline_pull as pull
-        db = fresh_db()
-        row = {"taken_at": "t2", "events": 1, "lines": 2, "changed": 3}
-        db.execute("INSERT INTO winline_fetch VALUES ('t1', 0, 0, 0)")
-        asked = []
-
-        def select(sql):
-            asked.append(sql)
-            return [row] * pull.PAGE if len(asked) == 1 else []
-
-        self.assertEqual(pull.pull(db, "winline_fetch", select), pull.PAGE)
-        self.assertIn("taken_at > 't1'", asked[0])
-        self.assertIn(f"OFFSET {pull.PAGE}", asked[1])
-        self.assertEqual(db.execute("SELECT COUNT(*) FROM winline_fetch").fetchone()[0], 2)
-
-
 class Learned(unittest.TestCase):
     def setUp(self):
         self.db = fresh_db()

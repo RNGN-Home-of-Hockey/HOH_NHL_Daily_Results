@@ -646,7 +646,7 @@ def refresh_levels(db: sqlite3.Connection) -> None:
 
 def open_db(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path)
+    db = sqlite3.connect(path, timeout=60)  # winline_snapshot.py writes to the same database
     db.executescript((HERE / "schema.sql").read_text(encoding="utf-8"))
     return db
 
