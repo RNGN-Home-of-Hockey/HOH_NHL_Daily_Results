@@ -11,7 +11,10 @@
 <body>
 <header class="top">
   <a class="brand" href="#">Больше! <span>Matchday</span></a>
-  <span class="fresh" id="fresh"></span>
+  <span class="top-right">
+    <span class="fresh" id="fresh"></span>
+    <form method="post" action="/matchday/logout"><button type="submit" class="link">Выйти</button></form>
+  </span>
 </header>
 <div class="layout">
   <nav class="rail" id="rail" aria-label="Матчи"></nav>

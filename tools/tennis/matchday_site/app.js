@@ -56,6 +56,10 @@ function signed(value) {
 
 async function getJson(path) {
   const response = await fetch(API + path, { cache: "no-store" });
+  if (response.status === 401) {
+    location.assign(`/matchday/login${location.hash}`);
+    return new Promise(() => {});
+  }
   if (!response.ok && response.status !== 404) throw new Error(`Сервер ответил ${response.status}`);
   return response.status === 404 ? null : response.json();
 }

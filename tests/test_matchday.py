@@ -23,6 +23,7 @@ WINNER = {"wl_id": "100", "market": "Победитель", "value": None, "odd1
 TOTAL = {"wl_id": "100", "market": "Тотал", "value": 20.5, "odd1": 1.8, "odd2": 1.95}
 HANDICAP = {"wl_id": "100", "market": "Фора", "value": -1.5, "odd1": 1.7, "odd2": 2.1}
 SET1 = {"wl_id": "100", "market": "1 сет Исход 12", "value": None, "odd1": 1.5, "odd2": 2.5}
+PASSWORD = "test-only-password"
 
 
 def make_db(path=":memory:"):
@@ -125,9 +126,12 @@ class Http(unittest.TestCase):
         raw = make_db(path)
         ws.store(raw, [EVENT], [WINNER], "2026-11-04T10:00:00+00:00")
         raw.close()
-        cls.server = md.make_server(path, 0)
+        cls.auth = Path(cls.dir.name) / "auth.json"
+        md.set_password(cls.auth, PASSWORD, iterations=1000)
+        cls.server = md.make_server(path, 0, auth_path=cls.auth)
         cls.base = f"http://127.0.0.1:{cls.server.server_address[1]}"
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        cls.cookie = f"{md.COOKIE}={md.make_token(md.load_auth(cls.auth))}"
 
     @classmethod
     def tearDownClass(cls):
@@ -135,15 +139,81 @@ class Http(unittest.TestCase):
         cls.server.server_close()
         cls.dir.cleanup()
 
-    def get(self, path):
+    def setUp(self):
+        self.server.limiter = md.LoginLimiter()
+
+    def send(self, path, cookie=None, data=None):
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, *args):
                 return None
+        headers = {"Cookie": cookie} if cookie else {}
+        request = urllib.request.Request(self.base + path, data=data, headers=headers)
         try:
-            with urllib.request.build_opener(NoRedirect).open(self.base + path, timeout=10) as response:
+            with urllib.request.build_opener(NoRedirect).open(request, timeout=10) as response:
                 return response.status, response.headers, response.read()
         except urllib.error.HTTPError as error:
             return error.code, error.headers, error.read()
+
+    def get(self, path):
+        return self.send(path, self.cookie)
+
+    def log_in(self, password=PASSWORD):
+        return self.send("/matchday/login", data=f"password={password}".encode())
+
+    def test_nothing_opens_without_a_login(self):
+        for path in ("/matchday/", "/matchday/app.js", "/matchday/index.html"):
+            status, headers, _ = self.send(path)
+            self.assertEqual((status, headers["Location"]), (302, "/matchday/login"), path)
+        for path in ("/matchday/api/matches", "/matchday/api/matches/100", "/matchday/api/health"):
+            status, _, body = self.send(path)
+            self.assertEqual(status, 401, path)
+            self.assertNotIn("Альфа", body.decode("utf-8"))
+
+    def test_login_page_and_what_it_needs_are_open(self):
+        for path in ("/matchday/login", "/matchday/styles.css", "/matchday/login.js"):
+            self.assertEqual(self.send(path)[0], 200, path)
+
+    def test_forged_and_expired_sessions_are_refused(self):
+        auth = md.load_auth(self.auth)
+        old = md.make_token(auth, now=0)
+        expires = int(md.time.time()) + 1000
+        for cookie in (f"{md.COOKIE}=abc", f"{md.COOKIE}={expires}.{'0' * 64}", f"{md.COOKIE}={old}", "other=1"):
+            self.assertEqual(self.send("/matchday/api/matches", cookie)[0], 401, cookie)
+
+    def test_right_password_gives_a_safe_session(self):
+        status, headers, _ = self.log_in()
+        self.assertEqual((status, headers["Location"]), (303, "/matchday/"))
+        cookie = headers["Set-Cookie"]
+        for part in ("HttpOnly", "Secure", "SameSite=Lax", "Path=/matchday"):
+            self.assertIn(part, cookie)
+        self.assertNotIn(PASSWORD, cookie)
+        self.assertEqual(self.send("/matchday/api/matches", cookie.split(";")[0])[0], 200)
+
+    def test_wrong_password_and_the_limit(self):
+        for _ in range(md.MAX_TRIES):
+            status, _, body = self.log_in("wrong-password")
+            self.assertEqual(status, 401)
+            self.assertIn("Неверный пароль", body.decode("utf-8"))
+        self.assertEqual(self.log_in()[0], 429, "even the right password waits once locked")
+
+    def test_limit_counts_each_visitor_apart(self):
+        for _ in range(md.MAX_TRIES):
+            self.server.limiter.failed("203.0.113.9")
+        self.assertEqual(self.log_in()[0], 303)
+
+    def test_logout_clears_the_cookie(self):
+        status, headers, _ = self.send("/matchday/logout", self.cookie, data=b"")
+        self.assertEqual((status, headers["Location"]), (303, "/matchday/login"))
+        self.assertIn("Max-Age=0", headers["Set-Cookie"])
+
+    def test_too_long_a_login_is_refused(self):
+        self.assertEqual(self.send("/matchday/login", data=b"x" * (md.MAX_LOGIN_BODY + 1))[0], 400)
+
+    def test_no_password_set_lets_nobody_in(self):
+        path = Path(self.dir.name) / "none.json"
+        self.assertIsNone(md.load_auth(path))
+        self.assertFalse(md.password_is_right(None, "anything-at-all"))
+        self.assertFalse(md.token_is_valid(None, "1.2"))
 
     def test_the_address_without_a_slash_goes_to_the_page(self):
         status, headers, _ = self.get("/matchday")
@@ -173,10 +243,23 @@ class Http(unittest.TestCase):
             self.assertEqual(self.get(path)[0], 404, path)
 
     def test_writing_is_refused(self):
-        request = urllib.request.Request(self.base + "/matchday/api/matches", data=b"{}", method="POST")
-        with self.assertRaises(urllib.error.HTTPError) as caught:
-            urllib.request.urlopen(request, timeout=10)
-        self.assertEqual(caught.exception.code, 501)
+        self.assertEqual(self.send("/matchday/api/matches", self.cookie, data=b"{}")[0], 404)
+
+    def test_new_password_ends_old_sessions(self):
+        auth_path = Path(self.dir.name) / "second.json"
+        md.set_password(auth_path, PASSWORD, iterations=1000)
+        first = md.load_auth(auth_path)
+        token = md.make_token(first)
+        md.set_password(auth_path, "another-long-password", iterations=1000)
+        second = md.load_auth(auth_path)
+        self.assertTrue(md.token_is_valid(first, token))
+        self.assertFalse(md.token_is_valid(second, token))
+        self.assertFalse(md.password_is_right(second, PASSWORD))
+        self.assertTrue(md.password_is_right(second, "another-long-password"))
+
+    def test_short_password_is_refused(self):
+        with self.assertRaises(ValueError):
+            md.set_password(Path(self.dir.name) / "short.json", "short")
 
     def test_the_page_builds_from_text_only(self):
         code = (md.SITE / "app.js").read_text(encoding="utf-8")
