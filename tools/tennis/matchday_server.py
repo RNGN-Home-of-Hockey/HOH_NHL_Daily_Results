@@ -29,7 +29,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import matchday_accounts as accounts_module  # noqa: E402
 from matchday_accounts import AccountError  # noqa: E402
-import wta_plates  # noqa: E402
+import tennis_plates  # noqa: E402
 
 DEFAULT_DB = HERE.parents[1] / "local-data" / "tennis" / "tennis.sqlite"
 SITE = HERE / "matchday_site"
@@ -43,9 +43,8 @@ TRIES_WINDOW = 900
 MAX_BODY = 16 * 1024
 MOVE = 0.03  # a price counts as moved at 3 %, as on the EPL site
 RECENT_DAYS = 2
-FORM_RESULTS = 20
 HISTORY_TTL = 600
-PLATE_NOTE = "Плашки пока только для одиночного разряда WTA"
+PLATE_NOTE = "Плашки пока только для одиночного разряда WTA и ATP"
 
 
 class LoginLimiter:
@@ -90,21 +89,18 @@ class History:
     def __init__(self, path: Path, ttl: float = HISTORY_TTL):
         self.path, self.ttl = path, ttl
         self.lock = threading.Lock()
-        self.loaded_at = 0.0
-        self.players = self.ids = self.surfaces = self.learned = {}
+        self.loaded: dict[str, tuple[float, tennis_plates.Tour]] = {}
 
-    def get(self):
+    def get(self, tour: str) -> tennis_plates.Tour:
         with self.lock:
-            if time.monotonic() - self.loaded_at >= self.ttl or not self.loaded_at:
+            loaded_at, found = self.loaded.get(tour, (None, None))
+            if found is None or time.monotonic() - loaded_at >= self.ttl:
                 db = open_db(self.path)
                 db.row_factory = None
-                self.players = wta_plates.load_history(db)
-                self.ids = wta_plates.player_index(db)
-                self.surfaces = wta_plates.surface_index(db)
-                self.learned = wta_plates.learned_players(db, self.ids)
+                found = tennis_plates.load_tour(db, tour)
                 db.close()
-                self.loaded_at = time.monotonic()
-            return self.players, self.ids, self.surfaces, self.learned
+                self.loaded[tour] = (time.monotonic(), found)
+            return found
 
 
 def family_of(market: str) -> tuple[int, str]:
@@ -161,10 +157,10 @@ def last_fetch(db: sqlite3.Connection) -> dict:
 
 
 def plates_for(event: dict, lines: list[dict], history: History) -> dict | None:
-    if event["circuit"] != "WTA" or event["is_doubles"]:
+    if event["circuit"] not in tennis_plates.TOURS or event["is_doubles"]:
         return None
-    players, ids, surfaces, learned = history.get()
-    return wta_plates.build(event, lines, players, ids, surfaces, learned)
+    tour = history.get(event["circuit"])
+    return tennis_plates.build(event, lines, tour.players, tour.ids, tour.surfaces, tour.learned)
 
 
 def list_matches(db: sqlite3.Connection, history: History, now: datetime | None = None) -> dict:
@@ -187,7 +183,7 @@ def list_matches(db: sqlite3.Connection, history: History, now: datetime | None 
         winner = winners.get(event["wl_id"])
         in_line = event["last_seen"] == fetch["taken_at"]
         plates = 0
-        if in_line and event["circuit"] == "WTA" and not event["is_doubles"]:
+        if in_line and event["circuit"] in tennis_plates.TOURS and not event["is_doubles"]:
             built = plates_for(event, latest_lines(db, event["wl_id"]), history)
             plates = len(built["lines"]) if built else 0
         matches.append({
@@ -199,17 +195,15 @@ def list_matches(db: sqlite3.Connection, history: History, now: datetime | None 
     return {"fetch": fetch, "matches": matches}
 
 
-def past_results(db: sqlite3.Connection, where: str, values: tuple, limit: int) -> list[dict]:
-    rows = db.execute(
-        f"""SELECT m.winner_id, m.loser_id, m.score, m.status, m.round, COALESCE(m.match_date, t.start_date) AS played,
-                   t.name AS tournament, t.level, t.surface, w.full_name AS winner, l.full_name AS loser,
-                   x.winner_price, x.loser_price, x.price_source, x.price_bookmaker, x.handicap, x.total AS total_line, x.line_source
-            FROM wta_match m JOIN wta_tournament t ON t.group_id = m.group_id AND t.year = m.year
-            LEFT JOIN wta_player w ON w.player_id = m.winner_id LEFT JOIN wta_player l ON l.player_id = m.loser_id
-            LEFT JOIN wta_match_line x ON x.match_key = m.match_key
-            WHERE m.discipline = 'S' AND m.status IN ('completed', 'retired') AND ({where})
-            ORDER BY played DESC LIMIT ?""", (*values, limit))
-    return [dict(r) for r in rows]
+def result_of(row: dict) -> dict:
+    """A past match from one player's side, as the page shows it. A match cut short by a retirement
+    settles neither handicap nor total, so its games are not given."""
+    full = row.get("full")
+    own, other = row.get("own_name"), row.get("opp_name")
+    return {"played": row["date"], "winner": own if row["won"] else other, "loser": other if row["won"] else own,
+            "score": row.get("score"), "status": row.get("status"), "tournament": row.get("tournament"), "surface": row.get("surface"),
+            "won": row["won"], "price": row.get("price"), "opp_price": row.get("opp_price"), "own_handicap": row.get("own_handicap"),
+            "total_line": row.get("total_line"), "margin": row["margin"] if full else None, "total": row["total"] if full else None}
 
 
 def match_detail(db: sqlite3.Connection, history: History, wl_id: str) -> dict | None:
@@ -231,39 +225,12 @@ def match_detail(db: sqlite3.Connection, history: History, wl_id: str) -> dict |
         detail["notes"].append(PLATE_NOTE)
         return detail
     detail.update(facts=built["facts"], lines=built["lines"], notes=built["notes"])
-    ids = built.get("wta_ids")
-    if ids:
-        first, second = ids
-        cutoff = (event["start_at"] or "9")[:10]
-        detail["h2h"] = past_results(
-            db, "((m.winner_id = ? AND m.loser_id = ?) OR (m.winner_id = ? AND m.loser_id = ?)) AND COALESCE(m.match_date, t.start_date) < ?",
-            (first, second, second, first, cutoff), 30)
+    if built["linked"]:
         detail["surface"] = built.get("surface")
-        detail["form"] = [
-            {"name": name, "side": side, "player_id": pid, "results": [
-                with_games(result, pid) for result in past_results(
-                    db, "(m.winner_id = ? OR m.loser_id = ?) AND COALESCE(m.match_date, t.start_date) < ?", (pid, pid, cutoff), FORM_RESULTS)]}
-            for side, pid, name in ((1, first, event["team1"]), (2, second, event["team2"]))
-        ]
+        detail["h2h"] = [result_of(row) for row in built["h2h_rows"]]
+        detail["form"] = [{"name": name, "side": side, "results": [result_of(row) for row in built["form_rows"][side]]}
+                          for side, name in ((1, event["team1"]), (2, event["team2"]))]
     return detail
-
-
-def with_games(result: dict, player_id: int) -> dict:
-    """A past match from one player's side, with the line it had itself. A match cut short by a
-    retirement settles neither handicap nor total, so its games are not given."""
-    won = result["winner_id"] == player_id
-    handicap = result.get("handicap")
-    own = {
-        "won": won,
-        "price": result.get("winner_price") if won else result.get("loser_price"),
-        "opp_price": result.get("loser_price") if won else result.get("winner_price"),
-        "own_handicap": None if handicap is None else (handicap if won else -handicap),
-    }
-    if result["status"] != "completed":
-        return {**result, **own, "margin": None, "total": None}
-    sets = wta_plates.games_of(result["score"])
-    margin = sum(a - b for a, b in sets)
-    return {**result, **own, "margin": margin if won else -margin, "total": sum(a + b for a, b in sets)}
 
 
 class Handler(BaseHTTPRequestHandler):

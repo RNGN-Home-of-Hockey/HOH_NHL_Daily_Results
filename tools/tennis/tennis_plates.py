@@ -6,9 +6,9 @@ a real price, an editor who decides. A trial on 787 finished matches found no pr
 history against this market, so a plate states what happened and the price, never that a bet is
 good. The gate below only picks what is worth an editor's look.
 
-    python tools/tennis/wta_plates.py
-    python tools/tennis/wta_plates.py --date 2026-11-05
-    python tools/tennis/wta_plates.py --player Саснович --json
+    python tools/tennis/tennis_plates.py
+    python tools/tennis/tennis_plates.py --date 2026-11-05
+    python tools/tennis/tennis_plates.py --player Саснович --json
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ import sqlite3
 import sys
 import unicodedata
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -35,6 +36,10 @@ FORM_LIMIT = 10
 Z90 = 1.2816
 MAX_LINE_CARDS = 3
 MIN_PRICED = 5
+MIN_ROLE = 8
+ROLE_LIMIT = 100
+RESULTS_LIMIT = 20
+TOURS = ("WTA", "ATP")
 SURFACE_RU = {"hard": "харде", "clay": "грунте", "grass": "траве", "carpet": "ковре"}
 
 
@@ -64,9 +69,9 @@ def load_history(db: sqlite3.Connection) -> dict:
     """Singles results by WTA id, newest first. Walkovers are not matches; a retirement counts for
     the result but not for games, as it was cut short."""
     players = defaultdict(list)
-    for winner, loser, score, status, played, surface, event, winner_name, loser_name, winner_price, loser_price in db.execute(
+    for winner, loser, score, status, played, surface, event, winner_name, loser_name, winner_price, loser_price, handicap, total_line in db.execute(
             """SELECT m.winner_id, m.loser_id, m.score, m.status, COALESCE(m.match_date, t.start_date), t.surface, t.name,
-                      w.full_name, l.full_name, x.winner_price, x.loser_price
+                      w.full_name, l.full_name, x.winner_price, x.loser_price, x.handicap, x.total
                FROM wta_match m JOIN wta_tournament t ON t.group_id = m.group_id AND t.year = m.year
                LEFT JOIN wta_player w ON w.player_id = m.winner_id LEFT JOIN wta_player l ON l.player_id = m.loser_id
                LEFT JOIN wta_match_line x ON x.match_key = m.match_key
@@ -74,12 +79,37 @@ def load_history(db: sqlite3.Connection) -> dict:
                  AND m.winner_id IS NOT NULL AND m.loser_id IS NOT NULL"""):
         sets = games_of(score)
         base = {"date": played, "surface": (surface or "").lower(), "full": status == "completed",
-                "total": sum(a + b for a, b in sets), "score": score, "tournament": event}
+                "total": sum(a + b for a, b in sets), "score": score, "tournament": event, "status": status, "total_line": total_line}
         margin = sum(a - b for a, b in sets)
-        players[winner].append({**base, "won": True, "margin": margin, "opp": loser, "opp_name": loser_name,
-                                "price": winner_price, "opp_price": loser_price})
-        players[loser].append({**base, "won": False, "margin": -margin, "opp": winner, "opp_name": winner_name,
-                               "price": loser_price, "opp_price": winner_price})
+        players[winner].append({**base, "won": True, "margin": margin, "opp": loser, "own_name": winner_name, "opp_name": loser_name,
+                                "price": winner_price, "opp_price": loser_price, "own_handicap": handicap})
+        players[loser].append({**base, "won": False, "margin": -margin, "opp": winner, "own_name": loser_name, "opp_name": winner_name,
+                               "price": loser_price, "opp_price": winner_price, "own_handicap": None if handicap is None else -handicap})
+    for rows in players.values():
+        rows.sort(key=lambda r: r["date"] or "", reverse=True)
+    return players
+
+
+def load_atp_history(db: sqlite3.Connection, tour: str = "ATP") -> dict:
+    """The men's tour from tennis-data until it has a collector of its own: tour-level main draws,
+    closing prices on the winner, no handicap or total of the match. Same row shape as load_history."""
+    from wta_lines import td_price  # noqa: PLC0415 - wta_lines imports this module
+    players = defaultdict(list)
+    for winner, loser, played, surface, event, sets_json, comment, odds in db.execute(
+            """SELECT winner, loser, match_date, surface, tournament, sets_json, comment, odds_json FROM td_match
+               WHERE tour = ? AND comment IN ('Completed', 'Retired') AND match_date IS NOT NULL""", (tour,)):
+        sets = json.loads(sets_json) if sets_json else []
+        margin = sum(a - b for a, b in sets)
+        full = comment == "Completed"
+        price = td_price(odds) or {}
+        base = {"date": played, "surface": (surface or "").lower(), "full": full, "total": sum(a + b for a, b in sets),
+                "score": "  ".join(f"{a}-{b}" for a, b in sets), "tournament": event, "status": "completed" if full else "retired",
+                "total_line": None, "own_handicap": None}
+        key_w, key_l = td_key(winner), td_key(loser)
+        players[key_w].append({**base, "won": True, "margin": margin, "opp": key_l, "own_name": winner, "opp_name": loser,
+                               "price": price.get("winner_price"), "opp_price": price.get("loser_price")})
+        players[key_l].append({**base, "won": False, "margin": -margin, "opp": key_w, "own_name": loser, "opp_name": winner,
+                               "price": price.get("loser_price"), "opp_price": price.get("winner_price")})
     for rows in players.values():
         rows.sort(key=lambda r: r["date"] or "", reverse=True)
     return players
@@ -91,13 +121,32 @@ def recent(rows: list[dict], cutoff: str, surface=None, months=SURFACE_MONTHS, l
     return found[:limit]
 
 
-def player_index(db: sqlite3.Connection) -> dict:
-    """(surname, initial) -> WTA ids, from BOLSHE's Russian names. Winline writes 'Саснович А.'."""
+def td_key(name: str) -> str:
+    """A tennis-data name as a player's key: there are no ids in those files."""
+    words = name.replace(",", " ").split()
+    initials = [w for w in words if w.endswith(".")]
+    return f"{folded(' '.join(w for w in words if not w.endswith('.')))}|{folded(initials[0])[:1] if initials else ''}"
+
+
+def atp_key(latin: str | None) -> str | None:
+    words = (latin or "").split()
+    return f"{folded(' '.join(words[1:]))}|{folded(words[0])[:1]}" if len(words) >= 2 else None
+
+
+def player_key(tour: str, wta_id, latin):
+    if tour == "WTA":
+        return int(wta_id) if wta_id else None
+    return atp_key(latin)
+
+
+def player_index(db: sqlite3.Connection, tour: str = "WTA") -> dict:
+    """(surname, initial) -> player keys, from BOLSHE's Russian names. Winline writes 'Саснович А.'."""
     index = defaultdict(set)
-    for name, wta_id in db.execute("SELECT name_ru, wta_id FROM player WHERE wta_id IS NOT NULL AND name_ru IS NOT NULL AND tour = 'WTA'"):
+    for name, wta_id, latin in db.execute("SELECT name_ru, wta_id, name_latin FROM player WHERE name_ru IS NOT NULL AND tour = ?", (tour,)):
         words = name.split()
-        if len(words) >= 2:
-            index[(folded(" ".join(words[1:])), folded(words[0])[:1])].add(int(wta_id))
+        key = player_key(tour, wta_id, latin)
+        if len(words) >= 2 and key:
+            index[(folded(" ".join(words[1:])), folded(words[0])[:1])].add(key)
     return index
 
 
@@ -112,20 +161,22 @@ def find_wta_id(team: str | None, index: dict) -> int | None:
     return next(iter(found)) if len(found) == 1 else None
 
 
-def learned_players(db: sqlite3.Connection, names: dict) -> dict:
+def learned_players(db: sqlite3.Connection, names: dict, tour: str = "WTA") -> dict:
     """Winline player id -> WTA id, from matches BOLSHE has already tied to Winline. Its two players
     may be in the other order, which the prices tell, or a name when the prices are level. An id
     that ever points at two players is dropped."""
     learned = defaultdict(set)
-    for team1, team2, name1, name2, odd1, odd2, pre1, pre2, id1, id2 in db.execute(
-            """SELECT e.team1_id, e.team2_id, e.team1, e.team2, l.odd1, l.odd2, o.pre1, o.pre2, a.wta_id, b.wta_id
+    for team1, team2, name1, name2, odd1, odd2, pre1, pre2, wta1, wta2, latin1, latin2 in db.execute(
+            """SELECT e.team1_id, e.team2_id, e.team1, e.team2, l.odd1, l.odd2, o.pre1, o.pre2, a.wta_id, b.wta_id, a.name_latin, b.name_latin
                FROM winline_event e
                JOIN match_odds o ON o.wl_id = e.wl_id JOIN match m ON m.match_id = o.match_id
                JOIN player a ON a.fs_id = m.p1_fs_id JOIN player b ON b.fs_id = m.p2_fs_id
                JOIN winline_line l ON l.wl_id = e.wl_id AND l.market = 'Победитель'
-               WHERE a.wta_id IS NOT NULL AND b.wta_id IS NOT NULL AND o.pre1 IS NOT NULL AND e.is_doubles = 0
-               GROUP BY e.wl_id"""):
-        id1, id2 = int(id1), int(id2)
+               WHERE a.tour = ? AND o.pre1 IS NOT NULL AND e.is_doubles = 0
+               GROUP BY e.wl_id""", (tour,)):
+        id1, id2 = player_key(tour, wta1, latin1), player_key(tour, wta2, latin2)
+        if not id1 or not id2:
+            continue
         straight = abs(odd1 - pre1) + abs(odd2 - pre2)
         crossed = abs(odd1 - pre2) + abs(odd2 - pre1)
         if straight == crossed or pre1 == pre2:
@@ -142,11 +193,11 @@ def learned_players(db: sqlite3.Connection, names: dict) -> dict:
     return {wl: next(iter(ids)) for wl, ids in learned.items() if len(ids) == 1}
 
 
-def surface_index(db: sqlite3.Connection) -> dict:
+def surface_index(db: sqlite3.Connection, tour: str = "WTA") -> dict:
     """City -> surface, newest event winning, from BOLSHE's directory. Winline's feed has no surface."""
     index = {}
     for city, surface in db.execute(
-            "SELECT tournament, surface FROM tournament WHERE tour = 'WTA' AND surface IS NOT NULL AND tournament IS NOT NULL ORDER BY first_seen"):
+            "SELECT tournament, surface FROM tournament WHERE tour = ? AND surface IS NOT NULL AND tournament IS NOT NULL ORDER BY first_seen", (tour,)):
         index[folded(city)] = surface.lower()
     return index
 
@@ -194,6 +245,19 @@ def fact_cards(event: dict, hist: dict, form: dict, h2h: list[dict], surface: st
             cards.append({"kind": "priced", "side": side, "hits": found["favourite"][0] + found["underdog"][0], "n": found["n"],
                           "what": f"По цене каждого из этих матчей: кто был фаворитом у букмекеров тогда. Цены известны для {found['n']} матчей.",
                           "text": f"{names[side]}: {priced_words(found)}"})
+        done = [r for r in hist[side] if r.get("full")]
+        capped = [r for r in done if r.get("own_handicap") is not None and r["margin"] + r["own_handicap"] != 0]
+        if len(capped) >= MIN_PRICED:
+            hits = sum(r["margin"] + r["own_handicap"] > 0 for r in capped)
+            cards.append({"kind": "own_handicap", "side": side, "hits": hits, "n": len(capped),
+                          "what": "Фора бралась та, что стояла на тот самый матч, а не сегодняшняя.",
+                          "text": f"{names[side]}: своя фора сыграла в {hits} из {len(capped)}"})
+        totalled = [r for r in done if r.get("total_line") is not None and r["total"] != r["total_line"]]
+        if len(totalled) >= MIN_PRICED:
+            over = sum(r["total"] > r["total_line"] for r in totalled)
+            cards.append({"kind": "own_total", "side": side, "hits": over, "n": len(totalled),
+                          "what": "Тотал брался тот, что стоял на тот самый матч, а не сегодняшний.",
+                          "text": f"{names[side]}: свой тотал, больше {over}, меньше {len(totalled) - over}"})
     if h2h:
         first, second = record(h2h)
         if first == second:
@@ -205,9 +269,9 @@ def fact_cards(event: dict, hist: dict, form: dict, h2h: list[dict], surface: st
     return cards
 
 
-def priced(side_price: float, other_price: float, hits: int, n: int) -> dict | None:
+def priced(side_price: float, other_price: float, hits: int, n: int, min_n: int = MIN_SAMPLE, min_hit: float = MIN_HIT) -> dict | None:
     """The gate: a real price in range, enough matches, and a record above what the price expects."""
-    if not (MIN_ODDS <= side_price <= MAX_ODDS) or n < MIN_SAMPLE or hits / n < MIN_HIT:
+    if not (MIN_ODDS <= side_price <= MAX_ODDS) or n < min_n or hits / n < min_hit:
         return None
     fair, low = fair_price(side_price, other_price), wilson_low(hits, n)
     if low <= fair:
@@ -234,9 +298,15 @@ def evidence_row(row: dict, player: str, hit: bool, note: str) -> dict:
             "price": row.get("price"), "opp_price": row.get("opp_price")}
 
 
+def same_role(rows: list[dict], favourite: bool) -> list[dict]:
+    """Past matches with a known price where the player was in the role she or he has today."""
+    return [r for r in rows if r.get("price") and r.get("opp_price") and r["price"] != r["opp_price"]
+            and (r["price"] < r["opp_price"]) == favourite]
+
+
 def line_cards(event: dict, lines: list[dict], hist: dict, surface: str | None = None) -> list[dict]:
-    """A plate next to a price, for the match winner only. A handicap or total is judged against the
-    line that match had, and those are too few so far; today's line on old matches says nothing."""
+    """A plate next to a price, for the match winner only, on both tours. A record counts only in the
+    role of today: an underdog is judged by matches as an underdog, each at the price it had then."""
     names = {1: event["team1"], 2: event["team2"]}
     scope = scope_words(surface)
     best = None
@@ -244,30 +314,35 @@ def line_cards(event: dict, lines: list[dict], hist: dict, surface: str | None =
         if line["market"] != "Победитель":
             continue
         for side, mine, other in ((1, line["odd1"], line["odd2"]), (2, line["odd2"], line["odd1"])):
-            played = hist[side]
+            if mine == other:
+                continue
+            favourite = mine < other
+            role = "фаворит" if favourite else "андердог"
+            played = same_role(hist[side], favourite)
             wins = sum(r["won"] for r in played)
-            gate = priced(mine, other, wins, len(played))
+            gate = priced(mine, other, wins, len(played), MIN_ROLE, 0.0)
             if not gate or (best and gate["score"] <= best["score"]):
                 continue
-            what = f"{names[side]}: побед {wins} из {len(played)} последних матчей {scope}."
-            found = priced_record(played)
-            if found:
-                what += f" По ценам тех матчей ({found['n']} известно): {priced_words(found)}."
+            what = f"Сегодня {names[side]}: {role}. В этой роли {scope}: побед {wins} из {len(played)}, по цене каждого матча."
             best = {"kind": "line", "family": "winner", "text": f"Победа {names[side]} — {mine}", **gate, "what": what, "why": reason_words(gate),
                     "matches": [evidence_row(r, names[side], r["won"], "победа" if r["won"] else "поражение") for r in played]}
     return [best] if best else []
 
 
+def resolve(side_id, team, ids: dict, learned: dict):
+    return learned.get(side_id) or find_wta_id(team, ids)
+
+
 def build(event: dict, lines: list[dict], players: dict, player_ids: dict, surfaces: dict, learned: dict | None = None) -> dict:
     cutoff = (event["start_at"] or "")[:10]
     learned = learned or {}
-    id1 = learned.get(event.get("team1_id")) or find_wta_id(event["team1"], player_ids)
-    id2 = learned.get(event.get("team2_id")) or find_wta_id(event["team2"], player_ids)
+    id1 = resolve(event.get("team1_id"), event["team1"], player_ids, learned)
+    id2 = resolve(event.get("team2_id"), event["team2"], player_ids, learned)
     result = {"wl_id": event["wl_id"], "tournament": event["tournament"], "start_at": event["start_at"],
               "team1": event["team1"], "team2": event["team2"], "url": event["url"], "linked": bool(id1 and id2),
-              "facts": [], "lines": [], "notes": []}
+              "facts": [], "lines": [], "notes": [], "form_rows": {1: [], 2: []}, "h2h_rows": []}
     if not (id1 and id2 and cutoff):
-        result["notes"].append("нет однозначной связи с игроками WTA")
+        result["notes"].append("нет однозначной связи с игроками в базе")
         return result
     surface = surface_of(event["tournament"], surfaces)
     if not surface:
@@ -277,18 +352,36 @@ def build(event: dict, lines: list[dict], players: dict, player_ids: dict, surfa
     form = {side: recent(rows[side], cutoff, None, FORM_MONTHS, FORM_LIMIT) for side in (1, 2)}
     h2h = [r for r in rows[1] if r["opp"] == id2 and r["date"] and r["date"] < cutoff]
     result["facts"] = fact_cards(event, hist, form, h2h, surface)
-    result["lines"] = line_cards(event, lines, hist, surface)
-    result["wta_ids"] = [id1, id2]
+    pool = {side: recent(rows[side], cutoff, surface, limit=ROLE_LIMIT) if surface else [] for side in (1, 2)}
+    result["lines"] = line_cards(event, lines, pool, surface)
     result["surface"] = surface
+    result["form_rows"] = {side: recent(rows[side], cutoff, None, 120, RESULTS_LIMIT) for side in (1, 2)}
+    result["h2h_rows"] = h2h[:30]
     return result
 
 
+@dataclass
+class Tour:
+    """What the same engine needs for one tour; only where the history comes from differs."""
+
+    players: dict
+    ids: dict
+    surfaces: dict
+    learned: dict
+
+
+def load_tour(db: sqlite3.Connection, tour: str) -> Tour:
+    ids = player_index(db, tour)
+    players = load_history(db) if tour == "WTA" else load_atp_history(db)
+    return Tour(players, ids, surface_index(db, tour), learned_players(db, ids, tour))
+
+
 def upcoming(db: sqlite3.Connection, day: str | None, player: str | None) -> list[dict]:
-    """WTA singles still to start, from the last prices seen."""
+    """Singles of both tours still to start, from the last prices seen."""
     db.row_factory = sqlite3.Row
     last = db.execute("SELECT MAX(taken_at) FROM winline_fetch").fetchone()[0]
     events = [dict(r) for r in db.execute(
-        """SELECT * FROM winline_event WHERE circuit = 'WTA' AND is_doubles = 0 AND last_seen = ? ORDER BY start_at""", (last,))]
+        """SELECT * FROM winline_event WHERE circuit IN ('WTA', 'ATP') AND is_doubles = 0 AND last_seen = ? ORDER BY start_at""", (last,))]
     lines = defaultdict(list)
     for row in db.execute("SELECT * FROM winline_current"):
         lines[row["wl_id"]].append(dict(row))
@@ -328,9 +421,11 @@ def main() -> int:
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     db = sqlite3.connect(f"{args.db.resolve().as_uri()}?mode=ro", uri=True, timeout=30)
-    players, ids, surfaces = load_history(db), player_index(db), surface_index(db)
-    learned = learned_players(db, ids)
-    results = [build(e, e["lines"], players, ids, surfaces, learned) for e in upcoming(db, args.date, args.player)]
+    tours = {tour: load_tour(db, tour) for tour in TOURS}
+    results = []
+    for e in upcoming(db, args.date, args.player):
+        tour = tours[e["circuit"]]
+        results.append(build(e, e["lines"], tour.players, tour.ids, tour.surfaces, tour.learned))
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=1))
         return 0

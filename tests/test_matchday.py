@@ -93,45 +93,41 @@ class Data(unittest.TestCase):
         self.assertTrue(detail["facts"])
         self.assertEqual([h["winner"] for h in detail["h2h"]], ["Anna Alpha"])
         self.assertEqual(len(detail["form"][0]["results"]), 12)
-        self.assertEqual((detail["form"][0]["player_id"], detail["form"][0]["side"]), (1, 1))
+        self.assertEqual(detail["form"][0]["side"], 1)
 
-    def test_form_gives_what_settles_a_handicap_and_a_total(self):
+    def test_form_gives_each_match_from_the_players_side(self):
         detail = md.match_detail(self.db, self.history, "100")
-        winner_side = detail["form"][0]["results"][0]
-        self.assertEqual((winner_side["margin"], winner_side["total"]), (5, 19))
+        winner_side = detail["form"][0]["results"][-1]
+        self.assertEqual((winner_side["margin"], winner_side["total"], winner_side["won"]), (5, 19, True))
         loser_side = detail["form"][1]["results"][0]
-        self.assertEqual((loser_side["margin"], loser_side["total"]), (-5, 19))
-
-    def test_a_result_is_turned_to_the_players_side_with_its_own_line(self):
-        result = {"status": "completed", "score": "6-3  6-4", "winner_id": 1, "winner_price": 1.5, "loser_price": 2.6, "handicap": -3.5}
-        winner, loser = md.with_games(result, 1), md.with_games(result, 2)
-        self.assertEqual((winner["price"], winner["opp_price"], winner["own_handicap"], winner["won"]), (1.5, 2.6, -3.5, True))
-        self.assertEqual((loser["price"], loser["opp_price"], loser["own_handicap"], loser["won"]), (2.6, 1.5, 3.5, False))
-
-    def test_a_match_without_a_line_says_so(self):
-        result = {"status": "completed", "score": "6-3  6-4", "winner_id": 1}
-        self.assertEqual((md.with_games(result, 1)["price"], md.with_games(result, 1)["own_handicap"]), (None, None))
+        self.assertEqual((loser_side["margin"], loser_side["won"], loser_side["winner"]), (-5, False, "Anna Alpha"))
 
     def test_a_retirement_settles_nothing(self):
-        result = {"status": "retired", "score": "6-3  2-0", "winner_id": 1}
-        self.assertEqual((md.with_games(result, 1)["margin"], md.with_games(result, 1)["total"]), (None, None))
+        row = {"date": "d", "won": True, "full": False, "margin": 3, "total": 11}
+        self.assertEqual((md.result_of(row)["margin"], md.result_of(row)["total"]), (None, None))
 
     def test_other_circuits_get_the_markets_and_a_note(self):
-        ws.store(self.raw, [ATP], [{**WINNER, "wl_id": "200"}], "2026-11-04T10:10:00+00:00")
-        detail = md.match_detail(self.db, self.history, "200")
+        other = {**ATP, "wl_id": "300", "circuit": "UTR (М)"}
+        ws.store(self.raw, [other], [{**WINNER, "wl_id": "300"}], "2026-11-04T10:10:00+00:00")
+        detail = md.match_detail(self.db, self.history, "300")
         self.assertEqual(detail["markets"][0]["rungs"][0]["odd2"], 2.4)
         self.assertEqual((detail["lines"], detail["notes"]), ([], [md.PLATE_NOTE]))
+
+    def test_the_mens_tour_goes_through_the_same_engine(self):
+        ws.store(self.raw, [ATP], [{**WINNER, "wl_id": "200"}], "2026-11-04T10:10:00+00:00")
+        detail = md.match_detail(self.db, self.history, "200")
+        self.assertNotIn(md.PLATE_NOTE, detail["notes"])
 
     def test_unknown_match(self):
         self.assertIsNone(md.match_detail(self.db, self.history, "999"))
 
     def test_history_is_cached_until_it_is_due(self):
-        self.history.get()
+        self.history.get("WTA")
         self.raw.execute("DELETE FROM wta_match")
         self.raw.commit()
-        self.assertTrue(self.history.get()[0])
+        self.assertTrue(self.history.get("WTA").players)
         self.history.ttl = 0
-        self.assertFalse(self.history.get()[0])
+        self.assertFalse(self.history.get("WTA").players)
 
 
 if __name__ == "__main__":

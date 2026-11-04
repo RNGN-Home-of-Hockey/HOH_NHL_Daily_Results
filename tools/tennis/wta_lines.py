@@ -23,7 +23,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import wta_plates  # noqa: E402
+import tennis_plates  # noqa: E402
 import wta_report  # noqa: E402
 
 DEFAULT_DB = HERE.parents[1] / "local-data" / "tennis" / "tennis.sqlite"
@@ -121,16 +121,16 @@ def closing_lines(rows: list[dict], start: datetime) -> dict:
 
 def from_winline(db: sqlite3.Connection, lines: dict, index: dict, now: datetime | None = None) -> None:
     now = now or datetime.now(timezone.utc)
-    names = wta_plates.player_index(db)
-    learned = wta_plates.learned_players(db, names)
+    names = tennis_plates.player_index(db)
+    learned = tennis_plates.learned_players(db, names)
     marks = ", ".join("?" for _ in WOMEN)
     events = db.execute(f"SELECT wl_id, team1, team2, team1_id, team2_id, start_at FROM winline_event WHERE is_doubles = 0 AND circuit IN ({marks})", WOMEN).fetchall()
     for wl_id, team1, team2, id1, id2, start_at in events:
         if not start_at:
             continue
         start = datetime.fromisoformat(start_at)
-        first = learned.get(id1) or wta_plates.find_wta_id(team1, names)
-        second = learned.get(id2) or wta_plates.find_wta_id(team2, names)
+        first = learned.get(id1) or tennis_plates.find_wta_id(team1, names)
+        second = learned.get(id2) or tennis_plates.find_wta_id(team2, names)
         if start >= now or not first or not second:
             continue
         found = find_match(index, first, second, start_at)

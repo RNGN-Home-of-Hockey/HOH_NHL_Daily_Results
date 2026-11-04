@@ -310,7 +310,7 @@ function platesTab(detail) {
   if (!detail.lines.length && !detail.facts.length && !detail.notes.length) {
     parts.push(el("p", { class: "empty" }, "По этому матчу пока нечего показать"));
   }
-  parts.push(el("p", { class: "caption" }, "Как читать: «15 из 20» значит, что из 20 последних подходящих матчей такой исход случился в 15. Осторожная оценка учитывает, что выборка маленькая: при 90 % уверенности доля не ниже этого числа. Проверка на 787 сыгранных матчах WTA не показала, что такие строки обгоняют рынок, поэтому это материал для редактора, а не совет. История: тур и WTA 125 с 2016 года, пока без ITF и Больших шлемов до 2025."));
+  parts.push(el("p", { class: "caption" }, "Как читать: «5 из 8» значит, что в 8 прошлых матчах в той же роли, что и сегодня (фаворит или андердог по цене того матча), игрок победил 5 раз. Осторожная оценка учитывает, что выборка маленькая: при 90 % уверенности доля не ниже этого числа. Это материал для редактора, а не совет. История WTA: тур и WTA 125 с 2016 года, пока без ITF и шлемов до 2025. История ATP: основные сетки тура из tennis-data, без Челленджеров и ITF, фор и тоталов тех матчей там нет."));
   return parts;
 }
 
@@ -352,7 +352,7 @@ function resultsTable(results, perspective) {
 }
 
 function h2hTab(detail) {
-  if (detail.is_doubles || detail.circuit !== "WTA") return [el("p", { class: "note" }, "Пока только для одиночного разряда WTA")];
+  if (detail.is_doubles || !["WTA", "ATP"].includes(detail.circuit)) return [el("p", { class: "note" }, "Пока только для одиночного разряда WTA и ATP")];
   if (!detail.h2h.length) return [el("p", { class: "empty" }, "Личных встреч в базе нет")];
   return [resultsTable(detail.h2h)];
 }
@@ -424,7 +424,7 @@ function formTab(detail) {
   return [
     surfaceWord ? el("label", { class: "toggle" }, el("input", { type: "checkbox", checked: state.formSurface,
       onchange: (event) => { state.formSurface = event.target.checked; renderMatch(); } }), `Только ${surfaceWord}`) : null,
-    el("p", { class: "caption" }, "У каждого матча показана его собственная линия. Цены на победителя: тур с 2007 года (Pinnacle, Bet365, средняя) и Winline. Фора и тотал пока есть только у Winline, с октября 2026 года, поэтому в большинстве старых матчей их нет: история начнёт расти по мере сбора и подключения платного источника."),
+    el("p", { class: "caption" }, "У каждого матча показана его собственная линия. Цены на победителя: тур WTA с 2007 года и ATP с 2000 года (Pinnacle, Bet365, средняя), а также Winline. Фора и тотал пока есть только у Winline и только для WTA, с октября 2026 года, поэтому в большинстве старых матчей их нет."),
     ...detail.form.map((side) => formSide(side, state.formSurface, detail.surface)),
   ];
 }

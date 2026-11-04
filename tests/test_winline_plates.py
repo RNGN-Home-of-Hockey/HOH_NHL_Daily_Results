@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools" / "tennis"))
 
 import winline_snapshot as ws  # noqa: E402
-import wta_plates as wp  # noqa: E402
+import tennis_plates as wp  # noqa: E402
 
 FEED = """<Feed><Sport Name="Футбол" Id="1"><Country Name="Лига"><Tournament Name="Кубок"><Match Team1="А" Team2="Б" Id="9">
 <line freetext="Победитель" name1="1" odd1="2.0" name2="2" odd2="2.0"></line></Match></Tournament></Country></Sport>
@@ -89,33 +89,70 @@ class Gate(unittest.TestCase):
         self.assertAlmostEqual(wp.fair_price(1.9, 1.9), 0.5)
 
 
+def priced_result(won, price=2.2, opp=1.6):
+    return {**result(won), "price": price, "opp_price": opp}
+
+
 class Lines(unittest.TestCase):
-    def test_winner_goes_to_the_side_with_the_record(self):
-        hist = {1: [result(False)] * 10, 2: [result(True)] * 10}
-        cards = wp.line_cards(EVENT, lines_of(("Победитель", None, 1.6, 2.3)), hist)
-        self.assertEqual([c["text"] for c in cards], ["Победа Бета Б. — 2.3"])
+    def test_an_underdog_is_judged_as_an_underdog(self):
+        as_underdog = [priced_result(True)] * 7 + [priced_result(False)]
+        as_favourite = [priced_result(False, 1.5, 2.6)] * 10
+        cards = wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), {1: as_underdog + as_favourite, 2: []}, "hard")
+        self.assertEqual(cards[0]["text"], "Победа Альфа А. — 2.2")
+        self.assertEqual((cards[0]["hits"], cards[0]["n"]), (7, 8))
+        self.assertIn("андердог", cards[0]["what"])
+        self.assertEqual(len(cards[0]["matches"]), 8)
+
+    def test_a_good_record_in_the_other_role_does_not_count(self):
+        as_favourite = [priced_result(True, 1.5, 2.6)] * 20
+        self.assertEqual(wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), {1: as_favourite, 2: []}), [])
+
+    def test_a_small_sample_or_no_prices_give_no_plate(self):
+        self.assertEqual(wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), {1: [priced_result(True)] * 7, 2: []}), [])
+        self.assertEqual(wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), {1: [result(True)] * 20, 2: []}), [])
+
+    def test_only_the_winner_market_makes_a_plate(self):
+        hist = {1: [priced_result(True)] * 12, 2: []}
+        self.assertEqual(wp.line_cards(EVENT, lines_of(("Фора", 1.5, 2.2, 1.6), ("Тотал", 20.5, 2.2, 1.6)), hist), [])
 
     def test_wording_never_calls_a_bet_good(self):
-        hist = {1: [result(True, margin=9, total=15)] * 12, 2: [result(True, margin=9, total=15)] * 12}
-        ladder = lines_of(("Победитель", None, 1.9, 1.9), ("Фора", -1.5, 1.9, 1.9), ("Тотал", 20.5, 1.9, 1.9))
-        for card in wp.line_cards(EVENT, ladder, hist):
-            for word in ("выгод", "ставь", "ставк", "верняк", "ценн"):
-                self.assertNotIn(word, (card["text"] + card["what"] + card["why"]).lower())
-
-    def test_a_card_says_what_it_counts_and_why_it_was_picked(self):
-        hist = {1: [result(True)] * 15 + [result(False)] * 5, 2: []}
+        hist = {1: [priced_result(True)] * 12, 2: []}
         card = wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), hist, "hard")[0]
-        self.assertIn("побед 15 из 20 последних матчей", card["what"])
-        self.assertIn("на харде", card["what"])
-        self.assertIn("Цена 2.2", card["why"])
-        self.assertIn("42 %", card["why"])
-        self.assertIn("не прогноз", card["why"])
+        for word in ("выгод", "ставь", "ставк", "верняк", "ценн"):
+            self.assertNotIn(word, (card["text"] + card["what"] + card["why"]).lower())
 
-    def test_a_card_lists_the_matches_behind_its_count(self):
-        hist = {1: [result(True, opp=5)] * 11 + [result(False, opp=6)] * 2, 2: []}
-        card = wp.line_cards(EVENT, lines_of(("Победитель", None, 1.9, 1.9)), hist)[0]
-        self.assertEqual(len(card["matches"]), card["n"])
-        self.assertEqual(sum(m["hit"] for m in card["matches"]), card["hits"])
+
+class AtpHistory(unittest.TestCase):
+    def setUp(self):
+        self.db = fresh_db()
+        for n, (winner, loser, day, comment) in enumerate((("Shelton B.", "De Minaur A.", "2026-10-01", "Completed"),
+                                                           ("De Minaur A.", "Shelton B.", "2026-09-01", "Retired"),
+                                                           ("Shelton B.", "De Minaur A.", "2026-08-01", "Walkover"))):
+            self.db.execute("""INSERT INTO td_match (td_key, tour, season, file, surface, tournament, match_date, winner, loser, sets_json, comment, odds_json, source)
+                               VALUES (?, 'ATP', 2026, 'f', 'Hard', 'Open', ?, ?, ?, '[[6, 3], [6, 4]]', ?, '{"PSW": 1.5, "PSL": 2.6}', 't')""", (str(n), day, winner, loser, comment))
+        self.db.execute("INSERT INTO player (player_id, name_ru, name_latin, tour, source) VALUES ('s', 'Бен Шелтон', 'Ben Shelton', 'ATP', 't')")
+        self.db.execute("INSERT INTO player (player_id, name_ru, name_latin, tour, source) VALUES ('m', 'Алекс Де Минор', 'Alex de Minaur', 'ATP', 't')")
+        self.db.execute("INSERT INTO tournament (tournament_key, tour, tournament, surface, first_seen, source) VALUES ('k', 'ATP', 'Париж', 'hard', '2026', 't')")
+
+    def test_rows_have_the_same_shape_and_prices_from_each_side(self):
+        rows = wp.load_atp_history(self.db)
+        shelton = rows["shelton|b"]
+        self.assertEqual(len(shelton), 2, "a walkover is not a match")
+        self.assertEqual((shelton[0]["won"], shelton[0]["price"], shelton[0]["opp_price"], shelton[0]["margin"]), (True, 1.5, 2.6, 5))
+        self.assertEqual((shelton[1]["won"], shelton[1]["price"], shelton[1]["full"]), (False, 2.6, False))
+
+    def test_the_same_engine_builds_a_mens_match(self):
+        tour = wp.load_tour(self.db, "ATP")
+        event = {**EVENT, "team1": "Шелтон Б.", "team2": "Де Минор А.", "tournament": "Париж, Франция"}
+        built = wp.build(event, [], tour.players, tour.ids, tour.surfaces, tour.learned)
+        self.assertTrue(built["linked"])
+        self.assertEqual(len(built["h2h_rows"]), 2)
+        self.assertEqual(built["surface"], "hard")
+
+    def test_names_become_the_same_key_from_both_sides(self):
+        self.assertEqual(wp.td_key("De Minaur A."), wp.atp_key("Alex de Minaur"))
+        self.assertEqual(wp.td_key("Auger-Aliassime F."), wp.atp_key("Felix Auger-Aliassime"))
+
 
 class Facts(unittest.TestCase):
     def test_head_to_head_names_the_leader(self):
