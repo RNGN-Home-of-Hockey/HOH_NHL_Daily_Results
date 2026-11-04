@@ -20,7 +20,7 @@ import sqlite3
 import sys
 import unicodedata
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -427,11 +427,42 @@ def resolve(side_id, team, ids: dict, learned: dict):
     return learned.get(side_id) or find_wta_id(team, ids)
 
 
-def build(event: dict, lines: list[dict], players: dict, player_ids: dict, surfaces: dict, learned: dict | None = None, bolshe=None) -> dict:
+def name_words(name: str | None) -> frozenset:
+    """A full name as a set of words, so 'Shelton, Ben' and 'Ben Shelton' are one name."""
+    return frozenset(folded(word) for word in re.split(r"[\s,/-]+", name or "") if folded(word))
+
+
+def by_english(name: str | None, english: dict | None, players: dict):
+    """A Latin name to a player. A whole name and a single candidate only: a wrong player on air is
+    worse than no plate. Men have no ids in tennis-data, so their key is made from the name."""
+    words = name_words(name)
+    if len(words) < 2:
+        return None
+    if english:
+        return english.get(words)
+    plain = " ".join(reversed([part.strip() for part in name.split(",")])) if "," in name else name
+    key = atp_key(plain)
+    return key if key in players else None
+
+
+def english_index(pairs) -> dict:
+    """(name, key) to words -> key; a name two players share links nobody."""
+    index, clash = {}, set()
+    for name, key in pairs:
+        words = name_words(name)
+        if len(words) < 2 or not key:
+            continue
+        if words in index and index[words] != key:
+            clash.add(words)
+        index[words] = key
+    return {words: key for words, key in index.items() if words not in clash}
+
+
+def build(event: dict, lines: list[dict], players: dict, player_ids: dict, surfaces: dict, learned: dict | None = None, bolshe=None, english: dict | None = None) -> dict:
     cutoff = (event["start_at"] or "")[:10]
     learned = learned or {}
-    id1 = resolve(event.get("team1_id"), event["team1"], player_ids, learned)
-    id2 = resolve(event.get("team2_id"), event["team2"], player_ids, learned)
+    id1 = resolve(event.get("team1_id"), event["team1"], player_ids, learned) or by_english(event.get("team1_en"), english, players)
+    id2 = resolve(event.get("team2_id"), event["team2"], player_ids, learned) or by_english(event.get("team2_en"), english, players)
     prices = winner_prices(lines)
     fs1, fs2 = bolshe.link(event, prices) if bolshe else (None, None)
     info = {1: bolshe.info.get(fs1) if bolshe else None, 2: bolshe.info.get(fs2) if bolshe else None}
@@ -478,6 +509,7 @@ class Bolshe:
     info: dict
     ids: dict
     wl: dict
+    english: dict = field(default_factory=dict)
 
     def surface(self, wl_id: str) -> str | None:
         found = self.wl.get(str(wl_id))
@@ -485,7 +517,9 @@ class Bolshe:
 
     def link(self, event: dict, prices: dict) -> tuple:
         ids = self.ids.get(circuit_tour(event.get("circuit")), {})
-        first, second = find_wta_id(event["team1"], ids), find_wta_id(event["team2"], ids)
+        english = self.english.get(circuit_tour(event.get("circuit")), {})
+        first = find_wta_id(event["team1"], ids) or english.get(name_words(event.get("team1_en")))
+        second = find_wta_id(event["team2"], ids) or english.get(name_words(event.get("team2_en")))
         found = self.wl.get(str(event["wl_id"]))
         if not found:
             return first, second
@@ -533,7 +567,9 @@ def load_bolshe(db: sqlite3.Connection) -> Bolshe:
         words = (name or "").split()
         if len(words) >= 2 and tour in ids:
             ids[tour][(folded(" ".join(words[1:])), folded(words[0])[:1])].add(fs)
-    return Bolshe(players, info, ids, wl)
+    english = {tour: english_index(db.execute("SELECT name_latin, fs_id FROM player WHERE tour = ? AND fs_id IS NOT NULL", (tour,)))
+               for tour in ("WTA", "ATP")}
+    return Bolshe(players, info, ids, wl, english)
 
 
 @dataclass
@@ -544,12 +580,15 @@ class Tour:
     ids: dict
     surfaces: dict
     learned: dict
+    english: dict = field(default_factory=dict)
 
 
 def load_tour(db: sqlite3.Connection, tour: str) -> Tour:
     ids = player_index(db, tour)
     players = load_history(db) if tour == "WTA" else load_atp_history(db)
-    return Tour(players, ids, surface_index(db, tour), learned_players(db, ids, tour))
+    # Women have ids behind their full names; the men's key comes from the name itself.
+    english = english_index(db.execute("SELECT full_name, player_id FROM wta_player")) if tour == "WTA" else {}
+    return Tour(players, ids, surface_index(db, tour), learned_players(db, ids, tour), english)
 
 
 def upcoming(db: sqlite3.Connection, day: str | None, player: str | None) -> list[dict]:
@@ -602,7 +641,7 @@ def main() -> int:
     results = []
     for e in upcoming(db, args.date, args.player):
         tour = tours.get(e["circuit"]) or Tour({}, {}, {}, {})
-        results.append(build(e, e["lines"], tour.players, tour.ids, tour.surfaces, tour.learned, bolshe))
+        results.append(build(e, e["lines"], tour.players, tour.ids, tour.surfaces, tour.learned, bolshe, tour.english))
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=1))
         return 0

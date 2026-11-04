@@ -24,6 +24,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DEFAULT_DB = HERE.parents[1] / "local-data" / "tennis" / "tennis.sqlite"
 FEED = "https://back.winline.ru/banners/prematch_mainsports"
+FEED_EN = "https://back.winline.ru/banners/prematch_mainsports_eng"  # the same matches with full Latin names
 USER_AGENT = "RNGN-Matchday-data/0.1"
 SOURCE = "winline-feed"
 
@@ -92,8 +93,35 @@ def store(db: sqlite3.Connection, events: list[dict], lines: list[dict], taken_a
     return len(changed)
 
 
-def fetch() -> str:
-    request = urllib.request.Request(FEED, headers={"User-Agent": USER_AGENT})
+def parse_names(text: str) -> list[tuple]:
+    """(name 1, name 2, match id) from the English feed; the Latin names tie players to the bases."""
+    block = re.search(r'<Sport[^>]*Name="Tennis".*?</Sport>', text, re.S)
+    if not block:
+        return []
+    names = []
+    for tag in re.findall(r"<Match ([^>]*)>", block.group(0)):
+        m = attributes(tag)
+        if m.get("Id") and m.get("Team1") and m.get("Team2"):
+            names.append((m["Team1"], m["Team2"], m["Id"]))
+    return names
+
+
+def store_names(db: sqlite3.Connection, names: list[tuple]) -> None:
+    db.executemany("UPDATE winline_event SET team1_en = ?, team2_en = ? WHERE wl_id = ?", names)
+    db.commit()
+
+
+def add_name_columns(db: sqlite3.Connection) -> None:
+    """A database made before the English feed was read lacks these two columns."""
+    known = {row[1] for row in db.execute("PRAGMA table_info(winline_event)")}
+    for column in ("team1_en", "team2_en"):
+        if column not in known:
+            db.execute(f"ALTER TABLE winline_event ADD COLUMN {column} TEXT")
+    db.commit()
+
+
+def fetch(url: str = FEED) -> str:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=120) as response:
         return response.read().decode("utf-8", "replace")
 
@@ -105,7 +133,9 @@ def run_once(db: sqlite3.Connection) -> None:
         return
     taken_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     changed = store(db, events, lines, taken_at)
-    print(f"{taken_at} events {len(events)}, lines {len(lines)}, changed {changed}", flush=True)
+    names = parse_names(fetch(FEED_EN))
+    store_names(db, names)
+    print(f"{taken_at} events {len(events)}, lines {len(lines)}, changed {changed}, latin names {len(names)}", flush=True)
 
 
 def main() -> int:
@@ -116,6 +146,7 @@ def main() -> int:
     args = parser.parse_args()
     db = sqlite3.connect(args.db, timeout=60)
     db.executescript((HERE / "schema.sql").read_text(encoding="utf-8"))
+    add_name_columns(db)
     while True:
         try:
             run_once(db)

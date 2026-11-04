@@ -160,7 +160,7 @@ def plates_for(event: dict, lines: list[dict], history: History) -> dict | None:
     if event["is_doubles"]:
         return None
     tour = history.get(event["circuit"]) if event["circuit"] in tennis_plates.TOURS else tennis_plates.Tour({}, {}, {}, {})
-    return tennis_plates.build(event, lines, tour.players, tour.ids, tour.surfaces, tour.learned, history.get("BOLSHE"))
+    return tennis_plates.build(event, lines, tour.players, tour.ids, tour.surfaces, tour.learned, history.get("BOLSHE"), tour.english)
 
 
 def list_matches(db: sqlite3.Connection, history: History, now: datetime | None = None) -> dict:

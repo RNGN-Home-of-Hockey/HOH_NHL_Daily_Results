@@ -263,6 +263,7 @@ CREATE TABLE IF NOT EXISTS winline_fetch (
 );
 CREATE TABLE IF NOT EXISTS winline_event (
   wl_id TEXT PRIMARY KEY, circuit TEXT, tournament TEXT, team1 TEXT, team2 TEXT, team1_id TEXT, team2_id TEXT,
+  team1_en TEXT, team2_en TEXT,
   start_at TEXT, url TEXT, is_doubles INTEGER NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
   source TEXT NOT NULL
 );

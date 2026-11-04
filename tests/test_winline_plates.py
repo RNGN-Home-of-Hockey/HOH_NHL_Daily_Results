@@ -162,6 +162,53 @@ class Plates(unittest.TestCase):
                 self.assertNotIn(word, words)
 
 
+class EnglishNames(unittest.TestCase):
+    def test_either_order_is_one_name(self):
+        self.assertEqual(wp.name_words("Shelton, Ben"), wp.name_words("Ben Shelton"))
+        self.assertEqual(wp.name_words("Auger-Aliassime, Felix"), wp.name_words("Felix Auger Aliassime"))
+
+    def test_women_link_through_the_index(self):
+        index = wp.english_index([("Anna Alpha", 1), ("Bea Beta", 2)])
+        self.assertEqual(wp.by_english("Alpha, Anna", index, {}), 1)
+        self.assertIsNone(wp.by_english("Anna Other", index, {}))
+
+    def test_a_shared_name_links_nobody(self):
+        index = wp.english_index([("Anna Alpha", 1), ("Alpha Anna", 2), ("Bea Beta", 3)])
+        self.assertIsNone(index.get(wp.name_words("Anna Alpha")))
+        self.assertEqual(index[wp.name_words("Bea Beta")], 3)
+
+    def test_men_need_a_history_under_that_key(self):
+        players = {"shelton|b": [result(True)]}
+        self.assertEqual(wp.by_english("Ben Shelton", None, players), "shelton|b")
+        self.assertEqual(wp.by_english("Shelton, Ben", None, players), "shelton|b")
+        self.assertIsNone(wp.by_english("Bob Shelton Junior", None, players))
+
+    def test_a_one_word_or_empty_name_links_nobody(self):
+        self.assertIsNone(wp.by_english("Shelton", None, {"shelton|b": []}))
+        self.assertIsNone(wp.by_english(None, None, {}))
+
+    def test_build_links_by_the_latin_name_when_the_russian_one_fails(self):
+        event = {**EVENT, "team1": "Иначе И.", "team2": "Совсем С.", "team1_en": "Anna Alpha", "team2_en": "Bea Beta"}
+        built = wp.build(event, [], {}, {}, {"город": "hard"}, None, None, wp.english_index([("Anna Alpha", 1), ("Bea Beta", 2)]))
+        self.assertTrue(built["linked"])
+
+    def test_feed_names_reach_the_event(self):
+        db = fresh_db()
+        events, lines = ws.parse_feed(FEED)
+        ws.store(db, events, lines, "t1")
+        text = """<Sport Name="Tennis"><Match Team1="Anna Alpha" Team2="Beta, Bea" Id="100"></Match></Sport>"""
+        ws.store_names(db, ws.parse_names(text))
+        self.assertEqual(db.execute("SELECT team1_en, team2_en FROM winline_event WHERE wl_id='100'").fetchone(), ("Anna Alpha", "Beta, Bea"))
+        self.assertEqual(ws.parse_names("<Feed></Feed>"), [])
+
+    def test_an_old_database_gets_the_columns(self):
+        db = sqlite3.connect(":memory:")
+        db.execute("CREATE TABLE winline_event (wl_id TEXT)")
+        ws.add_name_columns(db)
+        ws.add_name_columns(db)
+        self.assertEqual([r[1] for r in db.execute("PRAGMA table_info(winline_event)")], ["wl_id", "team1_en", "team2_en"])
+
+
 class Circuits(unittest.TestCase):
     def test_winline_circuits_to_tours(self):
         for circuit, tour in (("ATP", "ATP"), ("World Tennis, Мужчины", "ATP"), ("Челленджер (М)", "ATP"), ("UTR (М)", "ATP"),
