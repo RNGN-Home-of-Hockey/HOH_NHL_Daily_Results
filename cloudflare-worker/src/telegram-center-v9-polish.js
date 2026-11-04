@@ -11,8 +11,8 @@ function json(payload,status=200){return new Response(JSON.stringify(payload),{s
 const POLISH_JS=String.raw`(function(){
 'use strict';function posRu(c){return {C:'ЦН',L:'ЛН',R:'ПН',D:'З',G:'В'}[String(c||'').toUpperCase()]||c||''}function yearsRu(n){const x=Math.abs(Number(n))%100,y=x%10;return x>10&&x<20?'лет':y===1?'год':y>=2&&y<=4?'года':'лет'}
 const V2='/api/telegram-center-v2',V3='/api/telegram-center-v3',V4='/api/telegram-center-v4',V7='/api/telegram-center-v7',V9='/api/telegram-center-v9';
-const PRON_AUDIO_URL='https://raw.githubusercontent.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results/main/state/center_player_pronunciations_nhl.json';
-const PRON_TEXT_URL='https://raw.githubusercontent.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results/main/state/center_player_pronunciation_text_nhl.json';
+const PRON_AUDIO_URL='https://raw.githubusercontent.com/RNGN-Home-of-Hockey/RNGN-Matchday/main/state/center_player_pronunciations_nhl.json';
+const PRON_TEXT_URL='https://raw.githubusercontent.com/RNGN-Home-of-Hockey/RNGN-Matchday/main/state/center_player_pronunciation_text_nhl.json';
 const tg=window.Telegram&&window.Telegram.WebApp?window.Telegram.WebApp:null;
 const initData=tg&&tg.initData?tg.initData:'';
 const view=document.getElementById('view'),tabs=document.getElementById('tabs'),status=document.getElementById('status');

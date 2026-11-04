@@ -29,7 +29,7 @@ from bs4 import BeautifulSoup
 
 NHL = "https://api-web.nhle.com/v1"
 SPORTS = "https://www.sports.ru"
-UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.2; +https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)"
+UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.2; +https://github.com/RNGN-Home-of-Hockey/RNGN-Matchday)"
 
 SPORTS_SLUGS = {
     "ANA": "hockey/club/anaheim-ducks",

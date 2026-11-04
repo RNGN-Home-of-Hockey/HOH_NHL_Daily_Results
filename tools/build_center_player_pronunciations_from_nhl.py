@@ -33,7 +33,7 @@ TEAM_SLUGS = {
 }
 HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/json",
-    "User-Agent": "HOH-NHL-Center-Pronunciations/1.0 (+https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)",
+    "User-Agent": "HOH-NHL-Center-Pronunciations/1.0 (+https://github.com/RNGN-Home-of-Hockey/RNGN-Matchday)",
 }
 
 

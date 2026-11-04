@@ -33,7 +33,7 @@ TEAM_CODES = [
     "STL","TBL","TOR","UTA","VAN","VGK","WSH","WPG",
 ]
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; HOH-NHL-Center/2.0; +https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)",
+    "User-Agent": "Mozilla/5.0 (compatible; HOH-NHL-Center/2.0; +https://github.com/RNGN-Home-of-Hockey/RNGN-Matchday)",
 }
 AUDIO_HEADERS = {
     **HEADERS,

@@ -23,7 +23,7 @@ from bs4 import BeautifulSoup
 NHL = "https://api-web.nhle.com/v1"
 SOURCE_URL = "https://www.markerzone.com/hockey/stats/nhl/salaries.php?a=168"
 SOURCE_NAME = "MarkerZone NHL salaries 2026-27"
-UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.2; +https://github.com/RNGN-Home-of-Hockey/HOH_NHL_Daily_Results)"
+UA = "Mozilla/5.0 (compatible; HOH-NHL-Center/1.2; +https://github.com/RNGN-Home-of-Hockey/RNGN-Matchday)"
 SEASON = "2026-27"
 TEAMS = (
     "ANA","BOS","BUF","CGY","CAR","CHI","COL","CBJ","DAL","DET","EDM","FLA","LAK","MIN","MTL","NSH",

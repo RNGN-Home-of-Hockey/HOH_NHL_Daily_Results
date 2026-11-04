@@ -1,7 +1,7 @@
 import { importCurrentTeams, importGame } from "./data-core-importer.js";
 
 const DEFAULT_TARGET_CHAT = "-1003167239288";
-const DEFAULT_REPOSITORY = "RNGN-Home-of-Hockey/HOH_NHL_Daily_Results";
+const DEFAULT_REPOSITORY = "RNGN-Home-of-Hockey/RNGN-Matchday";
 const DEFAULT_GITHUB_REF = "main";
 const NHL_BASE = "https://api-web.nhle.com/v1";
 

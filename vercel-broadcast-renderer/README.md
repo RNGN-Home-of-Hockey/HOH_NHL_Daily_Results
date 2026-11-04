@@ -10,7 +10,7 @@ The existing HOH Live Center, Cloudflare Worker, D1, Winline ingest and broadcas
 
 Import the GitHub repository:
 
-`RNGN-Home-of-Hockey/HOH_NHL_Daily_Results`
+`RNGN-Home-of-Hockey/RNGN-Matchday`
 
 During Vercel project setup use:
 
