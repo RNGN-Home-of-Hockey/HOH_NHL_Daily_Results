@@ -194,8 +194,8 @@ def priced(side_price: float, other_price: float, hits: int, n: int) -> dict | N
 
 
 def scope_words(surface: str | None) -> str:
-    place = f" на {SURFACE_RU.get(surface, surface)}" if surface else ""
-    return f"матчей{place} за {SURFACE_MONTHS // 12} года"
+    place = f"на {SURFACE_RU.get(surface, surface)} " if surface else ""
+    return f"{place}за {SURFACE_MONTHS // 12} года"
 
 
 def reason_words(gate: dict) -> str:
@@ -231,7 +231,7 @@ def line_cards(event: dict, lines: list[dict], hist: dict, surface: str | None =
                 played = hist[side]
                 wins = sum(r["won"] for r in played)
                 offer("winner", f"Победа {names[side]} — {mine}", priced(mine, other, wins, len(played)),
-                      lambda s=side, w=wins, n=len(played): f"{names[s]}: {w} побед в {n} последних {scope}.",
+                      lambda s=side, w=wins, n=len(played): f"{names[s]}: побед {w} из {n} последних матчей {scope}.",
                       lambda s=side, p=played: [(r, names[s], r["won"], "победа" if r["won"] else "поражение") for r in p])
         elif market == "Фора" and value is not None:
             for side, mine, other, cap in ((1, odd1, odd2, value), (2, odd2, odd1, -value)):
@@ -239,7 +239,7 @@ def line_cards(event: dict, lines: list[dict], hist: dict, surface: str | None =
                 hits = sum(r["margin"] + cap > 0 for r in full)
                 offer("handicap", f"{names[side]} {cap:+.1f} по геймам — {mine}", priced(mine, other, hits, len(full)),
                       lambda s=side, c=cap, h=hits, n=len(full): (
-                          f"{names[s]}: фора {c:+.1f} сыграла бы в {h} из {n} последних {scope}. Считается разница выигранных и проигранных "
+                          f"{names[s]}: фора {c:+.1f} сыграла бы в {h} из {n} последних матчей {scope}. Считается разница выигранных и проигранных "
                           "геймов за матч, матчи с отказом не считаются. Из всех ступеней лесенки показана та, где запас над ценой больше."),
                       lambda s=side, c=cap, f=full: [(r, names[s], r["margin"] + c > 0, f"разница геймов {r['margin']:+d}") for r in f])
         elif market == "Тотал" and value is not None:
@@ -254,7 +254,7 @@ def line_cards(event: dict, lines: list[dict], hist: dict, surface: str | None =
                 offer("total", f"Тотал {word} {value} — {price}", priced(price, other, hits, len(pool)),
                       lambda w=word, v=value, h=hits, t=test: (
                           f"Геймов {w} {v} было в {h} из {len(pool)} матчей обеих: {names[1]} {sum(t(r) for r in one)} из {len(one)}, "
-                          f"{names[2]} {sum(t(r) for r in two)} из {len(two)} ({scope}, без отказов). "
+                          f"{names[2]} {sum(t(r) for r in two)} из {len(two)} (матчи {scope}, без отказов). "
                           "Из всех ступеней лесенки показана та, где запас над ценой больше."),
                       lambda t=test: [(r, names[1], t(r), f"геймов {r['total']}") for r in one]
                       + [(r, names[2], t(r), f"геймов {r['total']}") for r in two])

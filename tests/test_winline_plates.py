@@ -128,7 +128,7 @@ class Lines(unittest.TestCase):
     def test_a_card_says_what_it_counts_and_why_it_was_picked(self):
         hist = {1: [result(True)] * 15 + [result(False)] * 5, 2: []}
         card = wp.line_cards(EVENT, lines_of(("Победитель", None, 2.2, 1.6)), hist, "hard")[0]
-        self.assertIn("15 побед в 20 последних", card["what"])
+        self.assertIn("побед 15 из 20 последних матчей", card["what"])
         self.assertIn("на харде", card["what"])
         self.assertIn("Цена 2.2", card["why"])
         self.assertIn("42 %", card["why"])
