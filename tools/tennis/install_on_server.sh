@@ -101,5 +101,31 @@ AccuracySec=5min
 WantedBy=timers.target
 EOF
 
+{
+  cat <<EOF
+[Unit]
+Description=Tennis: the Matchday page, read-only, behind /matchday of the Больше address
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=$PYTHON tools/tennis/matchday_server.py --port 8107
+Restart=always
+RestartSec=5
+User=rngn-tennis
+WorkingDirectory=$ROOT
+Nice=5
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=$ROOT
+
+[Install]
+WantedBy=multi-user.target
+EOF
+} > /etc/systemd/system/rngn-tennis-matchday.service
+
 systemctl daemon-reload
 echo installed
