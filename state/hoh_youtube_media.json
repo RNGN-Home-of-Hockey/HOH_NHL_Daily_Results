@@ -1,21 +1,29 @@
 {
   "channel": "@homeofhockey-yt",
   "news": {
-    "id": "DtQ2SePRt0A",
+    "id": "whXxzxmXhRI",
     "kind": "news",
-    "url": "https://www.youtube.com/watch?v=DtQ2SePRt0A",
-    "title": "КУЧЕРОВА СПЛАВЛЯЮТ ИЗ ТАМПЫ | КАНЦЕРОВ — ГЛАВНАЯ ЗВЕЗДА ЧИКАГО — HOME OF HOCKEY NEWS",
-    "thumb": "https://i.ytimg.com/vi/DtQ2SePRt0A/hq720.jpg",
-    "view_count": 79
+    "url": "https://www.youtube.com/watch?v=whXxzxmXhRI",
+    "title": "КАМБЭК ВЕКА | МАКДЭВИДА НЕ ОСТАНОВИТЬ | РЕКОРД СЕРГАЧЁВА – HOME OF HOCKEY NEWS",
+    "thumb": "https://i.ytimg.com/vi/whXxzxmXhRI/hq720.jpg",
+    "view_count": 753
   },
   "shorts_top10": [
+    {
+      "id": "TElR8mgSTxs",
+      "kind": "short",
+      "url": "https://www.youtube.com/shorts/TElR8mgSTxs",
+      "title": "😁 Леон Драйзайтль собрал идеального хоккеиста — и вспомнил Коннора Макдэвида! #shorts",
+      "thumb": "https://i.ytimg.com/vi/TElR8mgSTxs/hq720.jpg",
+      "view_count": 418
+    },
     {
       "id": "pVG253-FPeY",
       "kind": "short",
       "url": "https://www.youtube.com/shorts/pVG253-FPeY",
       "title": "😂 Никому не пожелаешь прокомментировать ТАКОЙ матч... #shorts",
       "thumb": "https://i.ytimg.com/vi/pVG253-FPeY/hq720.jpg",
-      "view_count": 12
+      "view_count": 14
     },
     {
       "id": "_V8q2Oy3k_0",
@@ -47,7 +55,7 @@
       "url": "https://www.youtube.com/shorts/RuelHyrkmMo",
       "title": "🎨 Хоккеист врезается в картины за деньги! #shorts",
       "thumb": "https://i.ytimg.com/vi/RuelHyrkmMo/hq720.jpg",
-      "view_count": 21
+      "view_count": 22
     },
     {
       "id": "IumdJ-sTNXA",
@@ -80,15 +88,7 @@
       "title": "🥤 Овечкин пьёт колу прямо во время матчей?! #shorts",
       "thumb": "https://i.ytimg.com/vi/lE6HsW_lO3A/hq720.jpg",
       "view_count": 544
-    },
-    {
-      "id": "qpl6TBYZ6kk",
-      "kind": "short",
-      "url": "https://www.youtube.com/shorts/qpl6TBYZ6kk",
-      "title": "🥶 Плюс сто к ауре! #shorts",
-      "thumb": "https://i.ytimg.com/vi/qpl6TBYZ6kk/hq720.jpg",
-      "view_count": 15
     }
   ],
-  "updated_at": "2026-11-03T08:59:02.329984+00:00"
+  "updated_at": "2026-11-04T17:30:19.448980+00:00"
 }
